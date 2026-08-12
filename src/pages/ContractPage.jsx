@@ -206,11 +206,25 @@ export default function ContractPage() {
       return;
     }
     setIsSigning(true);
+    // Tracks which of the 3 sequential steps below is in flight, so the catch block
+    // can report exactly what failed instead of a single generic message that made
+    // this bug impossible to diagnose from a user's screenshot alone.
+    let step = 'sign';
     try {
       const signedAt = format(new Date(), "d/M/yyyy HH:mm");
-      const signatureDataUrl = signatureRef.current
-        .getTrimmedCanvas()
-        .toDataURL('image/png');
+      // getTrimmedCanvas() is a known crash source in react-signature-canvas
+      // (IndexSizeError/DOMException) on certain devicePixelRatio + percentage-width
+      // canvas combinations -- common on phones, which is how most couples actually
+      // sign. It was called unguarded here, so any such crash aborted the whole flow
+      // before signLeadPublic was even called, surfacing as an immediate generic error.
+      // Fall back to the untrimmed canvas (always safe) rather than failing the signing.
+      let signatureDataUrl;
+      try {
+        signatureDataUrl = signatureRef.current.getTrimmedCanvas().toDataURL('image/png');
+      } catch (trimErr) {
+        console.error('getTrimmedCanvas() failed, falling back to full canvas:', trimErr);
+        signatureDataUrl = signatureRef.current.getCanvas().toDataURL('image/png');
+      }
 
       await base44.functions.invoke('signLeadPublic', {
         leadId: lead.id,
@@ -226,7 +240,10 @@ export default function ContractPage() {
       // the PDF silently failed to save). If this step fails, the couple's signature is
       // already recorded on the lead (signLeadPublic succeeded above) but we tell them
       // the document itself needs a retry, rather than falsely claiming full success.
+      step = 'pdf';
       const { pdfBase64, fileName } = await generateSignedPdf(lead, clientForm, signedAt, signatureDataUrl);
+
+      step = 'upload';
       const saveRes = await base44.functions.invoke('saveSignedContract', {
         leadId: lead.id,
         pdfBase64,
@@ -237,7 +254,19 @@ export default function ContractPage() {
       setSigned(true);
       toast.success("החוזה נחתם בהצלחה!", { duration: 4000 });
     } catch (e) {
-      toast.error("שגיאה בשמירת החוזה החתום, נא לנסות שוב");
+      // Previously swallowed silently (no console.error, no real message shown), which
+      // made this exact class of bug undiagnosable from a user's report. Now logs the
+      // real error and surfaces its message in the toast description.
+      console.error(`Contract signing failed at step "${step}":`, e);
+      const stepLabel = step === 'sign'
+        ? 'שמירת פרטי החתימה'
+        : step === 'pdf'
+          ? 'יצירת מסמך ה-PDF'
+          : 'שמירת הקובץ החתום';
+      toast.error(`שגיאה ב${stepLabel}, נא לנסות שוב`, {
+        description: e?.message || undefined,
+        duration: 8000,
+      });
     }
     setIsSigning(false);
   };

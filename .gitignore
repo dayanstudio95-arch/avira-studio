@@ -34,3 +34,5 @@ base44/.app.jsonc
 
 # Supabase CLI local cache — not meant to be versioned
 supabase/.temp
+.vercel
+.env*
