@@ -1,0 +1,62 @@
+{
+  "name": "AutomationMessageLog",
+  "type": "object",
+  "properties": {
+    "automation_run_id": {
+      "type": "string",
+      "description": "\u05de\u05d6\u05d4\u05d4 \u05e8\u05d9\u05e6\u05ea \u05d4\u05d0\u05d5\u05d8\u05d5\u05de\u05e6\u05d9\u05d4"
+    },
+    "automation_id": {
+      "type": "string",
+      "description": "\u05de\u05d6\u05d4\u05d4 \u05d4\u05d0\u05d5\u05d8\u05d5\u05de\u05e6\u05d9\u05d4"
+    },
+    "automation_name": {
+      "type": "string",
+      "description": "\u05e9\u05dd \u05d4\u05d0\u05d5\u05d8\u05d5\u05de\u05e6\u05d9\u05d4"
+    },
+    "recipient_name": {
+      "type": "string",
+      "description": "\u05e9\u05dd \u05d4\u05e0\u05de\u05e2\u05df"
+    },
+    "recipient_contact": {
+      "type": "string",
+      "description": "\u05d8\u05dc\u05e4\u05d5\u05df / \u05d0\u05d9\u05de\u05d9\u05d9\u05dc \u05d4\u05e0\u05de\u05e2\u05df"
+    },
+    "channel": {
+      "type": "string",
+      "enum": [
+        "whatsapp",
+        "email"
+      ],
+      "description": "\u05e2\u05e8\u05d5\u05e5 \u05e9\u05dc\u05d9\u05d7\u05d4"
+    },
+    "message_content": {
+      "type": "string",
+      "description": "\u05ea\u05d5\u05db\u05df \u05d4\u05d4\u05d5\u05d3\u05e2\u05d4 \u05e9\u05e0\u05e9\u05dc\u05d7\u05d4"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "sent",
+        "failed",
+        "skipped"
+      ],
+      "default": "sent",
+      "description": "\u05e1\u05d8\u05d8\u05d5\u05e1 \u05e9\u05dc\u05d9\u05d7\u05d4"
+    },
+    "sent_at": {
+      "type": "string",
+      "description": "\u05d6\u05de\u05df \u05e9\u05dc\u05d9\u05d7\u05d4"
+    },
+    "error": {
+      "type": "string",
+      "description": "\u05d4\u05d5\u05d3\u05e2\u05ea \u05e9\u05d2\u05d9\u05d0\u05d4 \u05d0\u05dd \u05e0\u05db\u05e9\u05dc"
+    }
+  },
+  "required": [
+    "automation_id",
+    "automation_name",
+    "recipient_name",
+    "status"
+  ]
+}

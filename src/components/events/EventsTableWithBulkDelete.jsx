@@ -1,0 +1,993 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { useColumnWidths } from '@/hooks/useColumnWidths';
+import { format } from "date-fns";
+import { Link } from "react-router-dom";
+import { createPageUrl } from "@/utils";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Eye, Heart, Users, Album, MapPin, UserCheck, AlertTriangle, MessageCircle, Trash2, DollarSign, Copy, RefreshCw, X, FileText, Edit3 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { base44 } from "@/api/base44Client";
+import { toast } from "sonner";
+import UnifiedSidePanel from "../unified/UnifiedSidePanel";
+import EventExpensesEditor from "../eventDetails/EventExpensesEditor";
+import { calculateNetProfit, getProfitColor } from "@/lib/profitCalculations";
+import EventMobileCards from "./EventMobileCards";
+
+const paymentStatusConfig = {
+  "Paid": { color: "bg-green-500/20 text-green-400 border-green-500/30", icon: "✅" },
+  "Partially Paid": { color: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30", icon: "🟡" },
+  "Unpaid": { color: "bg-red-500/20 text-red-400 border-red-500/30", icon: "🔴" }
+};
+
+const statusLabels = {
+  "Paid": "שולם",
+  "Partially Paid": "חלקי",
+  "Unpaid": "לא שולם"
+};
+
+// Compact staff picker cell
+function StaffPickerCell({ event, role, roleKey, label, color, icon, staffList, events, onRefresh, editingKey, setEditingKey, sendCalendarInviteByName, isWrapped }) {
+  const member = event.team?.find(m => m.role === roleKey);
+
+  const removeMember = async (e) => {
+    e.stopPropagation();
+    const newTeam = event.team.filter(m => m.role !== roleKey);
+    await base44.entities.Event.update(event.id, { team: newTeam });
+    onRefresh?.();
+  };
+
+  const content = (
+    <Popover open={editingKey === `${event.id}-${role}`} onOpenChange={(open) => setEditingKey(open ? `${event.id}-${role}` : null)}>
+      <PopoverTrigger asChild>
+        <button className="text-left hover:bg-gray-800/30 p-1 rounded transition-colors cursor-pointer w-full">
+          {member?.staffMemberName ? (
+            <div className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium border ${color} w-fit hover:opacity-80 transition-opacity max-w-full`}>
+              <span>{icon}</span>
+              <span className="truncate" title={member.staffMemberName}>{member.staffMemberName}</span>
+              <button onClick={removeMember} className="hover:text-red-400 text-sm leading-none flex-shrink-0">×</button>
+            </div>
+          ) : (
+            <span className="text-gray-600 hover:text-gray-400 text-[10px] transition-colors">+{label}</span>
+          )}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 bg-gray-900 border-gray-700 text-white p-3" align="start" side="bottom">
+        <div className="space-y-2">
+          <div className="text-sm font-semibold text-gray-400 mb-3">בחר {label}</div>
+          {staffList.length === 0 ? (
+            <div className="text-sm text-gray-500 text-center py-4">אין {label} זמינים</div>
+          ) : (
+            staffList.map((staff) => {
+              const isSelected = member?.staffMemberName === staff.name;
+              const isBooked = events.some(e =>
+                e.id !== event.id &&
+                e.date === event.date &&
+                e.team?.some(m => m.staffMemberName === staff.name && m.role === roleKey)
+              );
+              return (
+                <div key={staff.id} className={`flex items-center gap-3 p-2 rounded ${isBooked && !isSelected ? 'opacity-60 cursor-not-allowed' : 'hover:bg-gray-800/50'}`}>
+                  <Checkbox
+                    checked={isSelected}
+                    disabled={isBooked && !isSelected}
+                    onCheckedChange={async () => {
+                      const currentTeam = event.team || [];
+                      const newTeam = currentTeam.filter(m => m.role !== roleKey);
+                      if (!isSelected) {
+                        // Get cost from ratesByRole if available, otherwise use defaultRate
+                        let cost = staff.defaultRate || 0;
+                        if (staff.ratesByRole && staff.ratesByRole.length > 0) {
+                          const roleRate = staff.ratesByRole.find(r => r.role === roleKey);
+                          if (roleRate) {
+                            cost = roleRate.rate;
+                          }
+                        }
+                        newTeam.push({ role: roleKey, staffMemberName: staff.name, cost, isPaid: false, progressStatus: 'pending' });
+                        await base44.entities.Event.update(event.id, { team: newTeam });
+                        await sendCalendarInviteByName(event.id, staff.name);
+                      }
+                      if (onRefresh) onRefresh();
+                      setEditingKey(null);
+                    }}
+                    />
+                  <div className="flex items-center gap-2 flex-1">
+                    <div className={`w-8 h-8 ${color} rounded-full flex items-center justify-center text-sm font-semibold`}>
+                      {staff.name.charAt(0).toUpperCase()}
+                    </div>
+                    <span className="text-sm">{staff.name}{isBooked && !isSelected && ' (כבר משובץ)'}</span>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+
+  if (isWrapped) return content;
+  return <TableCell className="px-1 py-1">{content}</TableCell>;
+}
+
+// ─── Event Detail Modal ───────────────────────────────────────────────────────
+function EventDetailModal({ event, onClose, onEditLead }) {
+  const [lead, setLead] = React.useState(null);
+  const [message, setMessage] = React.useState("");
+
+  React.useEffect(() => {
+    const leadLinkId = event?.source_lead_id || event?.leadId;
+    if (event && leadLinkId) {
+      base44.entities.Lead.get(leadLinkId)
+        .then(function(data) { setLead(data); })
+        .catch(function(err) { console.error("Failed to load lead:", err); });
+    }
+  }, [event?.source_lead_id, event?.leadId]);
+
+  if (!event) return null;
+
+  var phone = event.phoneNumber || (lead && lead.phoneNumber) || "";
+  var phoneClean = phone.replace(/\D/g, "");
+  var waPhone = phoneClean.startsWith("0") ? "972" + phoneClean.slice(1) : phoneClean;
+
+  async function handleSendWhatsApp() {
+    if (!phoneClean) { toast.error('אין מספר טלפון'); return; }
+    if (!message.trim()) { toast.error('כתוב הודעה קודם'); return; }
+    try {
+      // CHANGED: this used to call the retired Make.com webhook function
+      // ('sendMakeWebhook'), which no longer exists now that every WhatsApp send
+      // goes through Green API (see supabase/functions/_shared/whatsapp.ts) — every
+      // click of this button was silently failing. Fixed to call the real
+      // send-whatsapp-message Edge Function (mapped as 'sendWhatsAppMessage' in
+      // src/api/functions.js), same helper WhatsAppPanel's test-send already uses.
+      await base44.functions.invoke('sendWhatsAppMessage', { to: waPhone, message: message.trim() });
+      toast.success('ההודעה נשלחה בהצלחה');
+      setMessage('');
+    } catch(err) {
+      toast.error('שגיאה בשליחת ההודעה: ' + (err.message || ''));
+    }
+  }
+
+  var workSteps = [
+    { label: "צלם 1", done: event.photographer1_done },
+    { label: "צלם 2", done: event.photographer2_done },
+    { label: "וידאו", done: event.video1_done },
+    { label: "עריכה", done: event.editor_done },
+    { label: "גלם הועלה", done: event.raw_done_manual },
+    { label: "גלם לעורך", done: event.raw_sent_to_editor },
+    { label: "סופי הועלה", done: event.final_done_manual },
+  ];
+
+  var payStatusMap = {
+    "Paid": { label: "שולם במלואו", cls: "bg-green-900/50 text-green-300 border-green-700" },
+    "Partially Paid": { label: "תשלום חלקי", cls: "bg-yellow-900/50 text-yellow-300 border-yellow-700" },
+    "Unpaid": { label: "לא שולם", cls: "bg-red-900/50 text-red-300 border-red-700" },
+  };
+  var payStatus = payStatusMap[event.clientPaymentStatus] || payStatusMap["Unpaid"];
+
+  var leadStatusColors = {
+    "חוזה": "bg-yellow-900/60 text-yellow-300 border-yellow-700",
+    "נסגר/חתימה": "bg-green-900/60 text-green-300 border-green-700",
+    "חדש": "bg-blue-900/60 text-blue-300 border-blue-700",
+    "נשלחה הצעה": "bg-orange-900/60 text-orange-300 border-orange-700",
+    "פולו-אף": "bg-purple-900/60 text-purple-300 border-purple-700",
+    "לא רלוונטי": "bg-gray-800/60 text-gray-400 border-gray-600",
+  };
+  var leadCls = (lead && lead.status && leadStatusColors[lead.status]) || "bg-gray-800/60 text-gray-400 border-gray-600";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" dir="rtl">
+      <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl">
+
+        {/* Header */}
+        <div className="sticky top-0 z-10 bg-gray-900/95 backdrop-blur border-b border-gray-700 px-6 py-4 flex items-center justify-between rounded-t-2xl">
+          <div>
+            <h2 className="text-xl font-bold text-white">{event.coupleNames || "אירוע"}</h2>
+            <p className="text-gray-400 text-sm mt-0.5">
+              {event.date ? format(new Date(event.date), "dd/MM/yyyy") : ""}
+              {event.venue ? " • " + event.venue : ""}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-gray-800 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+
+          {/* Row 1 */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+            {/* Couple / Lead */}
+            <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-white font-semibold text-sm">👫 פרטי הזוג</span>
+                {lead && lead.status && (
+                  <span className={"text-xs px-2 py-0.5 rounded-full border " + leadCls}>{lead.status}</span>
+                )}
+              </div>
+              <div className="space-y-2 text-sm">
+                {phone && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-500 text-xs w-12">טלפון</span>
+                    <a href={"tel:" + phone} className="text-gray-200 hover:text-yellow-400 transition-colors">{phone}</a>
+                    {phoneClean && (
+                      <a href={"https://wa.me/" + waPhone} target="_blank" rel="noreferrer"
+                         className="text-xs px-1.5 py-0.5 bg-green-500/15 border border-green-500/30 text-green-400 rounded hover:bg-green-500/25 transition-colors">WA</a>
+                    )}
+                  </div>
+                )}
+                {lead && lead.email && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-500 text-xs w-12">מייל</span>
+                    <span className="text-gray-200 text-xs truncate">{lead.email}</span>
+                  </div>
+                )}
+                {lead && lead.idNumber && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-500 text-xs w-12">ת.ז</span>
+                    <span className="text-gray-200 text-sm">{lead.idNumber}</span>
+                  </div>
+                )}
+                {lead && lead.signedAt && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-500 text-xs w-12">חתם</span>
+                    <span className="text-gray-300 text-xs">{format(new Date(lead.signedAt), "dd/MM/yyyy HH:mm")}</span>
+                  </div>
+                )}
+                {lead && lead.signedContractPdfUrl && (
+                  <a href={lead.signedContractPdfUrl} target="_blank" rel="noreferrer"
+                     className="flex items-center gap-1.5 text-xs text-yellow-400 hover:text-yellow-300 border border-yellow-700/40 bg-yellow-900/20 rounded-lg px-2.5 py-1.5 w-full transition-colors">
+                    <FileText className="w-3.5 h-3.5 flex-shrink-0" /> 📄 חוזה חתום — לצפייה
+                  </a>
+                )}
+                {lead && lead.coupleNotesSigned && (
+                  <div className="border-t border-gray-700 pt-2 text-xs text-gray-400">
+                    <span className="text-gray-500">הערות חתימה: </span>{lead.coupleNotesSigned}
+                  </div>
+                )}
+              </div>
+              <Button
+                size="sm"
+                onClick={function() { onEditLead && onEditLead(event, lead); }}
+                className="w-full bg-yellow-600/20 hover:bg-yellow-600/35 text-yellow-400 border border-yellow-700/50 hover:border-yellow-600 text-xs h-8"
+              >
+                <Edit3 className="w-3 h-3 ml-1" /> ✏️ ערוך ליד
+              </Button>
+            </div>
+
+            {/* Event info + Payment */}
+            <div className="space-y-3">
+              <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-4">
+                <div className="text-white font-semibold text-sm mb-2">📅 פרטי האירוע</div>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+                  <div><span className="text-gray-500">תאריך: </span><span className="text-gray-200">{event.date ? format(new Date(event.date), "dd/MM/yyyy") : "-"}</span></div>
+                  <div><span className="text-gray-500">אולם: </span><span className="text-gray-200">{event.venue || "-"}</span></div>
+                  <div><span className="text-gray-500">צוות: </span><span className="text-gray-200">{event.requiredCrew || "-"} אנשים</span></div>
+                  {event.totalAmountGross && (<div><span className="text-gray-500">מחיר: </span><span className="text-gray-200">₪{event.totalAmountGross.toLocaleString()}</span></div>)}
+                </div>
+              </div>
+              <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-4">
+                <div className="text-white font-semibold text-sm mb-2">💳 סטטוס תשלום</div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={"text-xs px-2.5 py-1 rounded-full border " + payStatus.cls}>{payStatus.label}</span>
+                  {event.totalAmountGross && (<span className="text-gray-400 text-xs">סה"כ: ₪{event.totalAmountGross.toLocaleString()}</span>)}
+                </div>
+                {lead && lead.manualPayment > 0 && (<div className="mt-1.5 text-xs text-gray-400">שולם: ₪{lead.manualPayment.toLocaleString()}</div>)}
+                {lead && lead.manualPaymentNote && (<div className="mt-1 text-xs text-gray-500">{lead.manualPaymentNote}</div>)}
+              </div>
+            </div>
+          </div>
+
+          {/* Work Status */}
+          <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-4">
+            <div className="text-white font-semibold text-sm mb-3">⚙️ סטטוס עבודה</div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+              {workSteps.map(function(step, i) { return (
+                <div key={i} className={"flex items-center gap-1.5 text-xs px-2 py-1.5 rounded-lg border " + (step.done ? "bg-green-900/30 border-green-700/50 text-green-400" : "bg-gray-700/30 border-gray-600/50 text-gray-500")}>
+                  {step.done ? "✅" : "⬜"} {step.label}
+                </div>
+              ); })}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {event.raw_link && (<a href={event.raw_link} target="_blank" rel="noreferrer" className="text-xs px-2.5 py-1 bg-blue-900/30 border border-blue-700/40 text-blue-400 rounded-lg hover:bg-blue-900/50 transition-colors">🗂️ גלם</a>)}
+              {event.final_link && (<a href={event.final_link} target="_blank" rel="noreferrer" className="text-xs px-2.5 py-1 bg-purple-900/30 border border-purple-700/40 text-purple-400 rounded-lg hover:bg-purple-900/50 transition-colors">🎬 סופי</a>)}
+              {event.albumSketchLink && (<a href={event.albumSketchLink} target="_blank" rel="noreferrer" className="text-xs px-2.5 py-1 bg-pink-900/30 border border-pink-700/40 text-pink-400 rounded-lg hover:bg-pink-900/50 transition-colors">🖼️ סקיצת אלבום</a>)}
+            </div>
+          </div>
+
+          {/* Notes */}
+          {(event.notes || (lead && lead.notes)) && (
+            <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-4 space-y-2">
+              <div className="text-white font-semibold text-sm">📝 הערות</div>
+              {event.notes && (<div><div className="text-gray-500 text-xs mb-1">הערות אירוע:</div><p className="text-gray-300 text-sm leading-relaxed">{event.notes}</p></div>)}
+              {lead && lead.notes && (<div className={event.notes ? "border-t border-gray-700 pt-2" : ""}><div className="text-gray-500 text-xs mb-1">הערות ליד:</div><p className="text-gray-300 text-sm leading-relaxed">{lead.notes}</p></div>)}
+            </div>
+          )}
+
+          {/* Send message */}
+          <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-4">
+            <div className="text-white font-semibold text-sm mb-3">💬 שלח הודעה לזוג</div>
+            <textarea
+              value={message}
+              onChange={function(e) { setMessage(e.target.value); }}
+              placeholder="כתוב הודעה לשליחה בוואטסאפ..."
+              className="w-full bg-gray-700/60 border border-gray-600 text-white placeholder-gray-500 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-gray-500 mb-2"
+              rows={3}
+              dir="rtl"
+            />
+            <Button
+              onClick={handleSendWhatsApp}
+              disabled={!message.trim() || !phoneClean}
+              className="w-full bg-green-700 hover:bg-green-600 text-white font-medium h-9 text-sm disabled:opacity-40"
+            >
+              📲 שלח בוואטסאפ
+            </Button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+}
+export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh }) {
+  const { widths, setWidth } = useColumnWidths();
+  const tableRef = useRef(null);
+  const [resizingColumn, setResizingColumn] = useState(null);
+  const [updatingEventId, setUpdatingEventId] = useState(null);
+  const [editingTeamEventId, setEditingTeamEventId] = useState(null);
+  const [staffMembers, setStaffMembers] = useState([]);
+  const [packages, setPackages] = useState([]);
+  const [leads, setLeads] = useState([]);
+  const [selectedEvents, setSelectedEvents] = useState([]);
+  const [isDeletingBulk, setIsDeletingBulk] = useState(false);
+  const [isBulkSyncing, setIsBulkSyncing] = useState(false);
+  const [selectedEventForDrawer, setSelectedEventForDrawer] = useState(null);
+  const [selectedLeadForDrawer, setSelectedLeadForDrawer] = useState(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [selectedEventForModal, setSelectedEventForModal] = useState(null);
+  const [expensesSheetOpen, setExpensesSheetOpen] = useState(false);
+  const [selectedEventForExpenses, setSelectedEventForExpenses] = useState(null);
+  const [syncingEventId, setSyncingEventId] = useState(null);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [members, pkgs, leadsData] = await Promise.all([
+          base44.entities.StaffMember.list(),
+          base44.entities.Package.list(),
+          base44.entities.Lead.list()
+        ]);
+        setStaffMembers(members);
+        setPackages(pkgs);
+        setLeads(leadsData);
+      } catch (error) {
+        console.error("Failed to fetch data:", error);
+      }
+    };
+    fetchData();
+  }, []);
+
+  useEffect(() => {
+    if (!resizingColumn) return;
+    const handleMouseMove = (e) => {
+      const header = document.querySelector(`[data-column="${resizingColumn}"]`);
+      if (!header) return;
+      const rect = header.getBoundingClientRect();
+      const newWidth = e.clientX - rect.left;
+      if (newWidth > 30) setWidth(resizingColumn, newWidth);
+    };
+    const handleMouseUp = () => setResizingColumn(null);
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [resizingColumn, setWidth]);
+  const handleEditLeadFromModal = (event, lead) => {
+    setSelectedEventForModal(null);
+    setSelectedLeadForDrawer(lead || null);
+    setSelectedEventForDrawer(event);
+    setIsDrawerOpen(true);
+  };
+
+  const ColumnHeader = ({ column, label, width }) => (
+    <TableHead
+      className="text-gray-400 px-1 relative group select-none"
+      style={{ width: `${width}px`, minWidth: `${width}px` }}
+      data-column={column}
+    >
+      {label}
+      <div
+        onMouseDown={() => setResizingColumn(column)}
+        className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-yellow-400/50 opacity-0 group-hover:opacity-100 transition-opacity"
+      />
+    </TableHead>
+  );
+
+  const photographers = staffMembers.filter(s => s.role === 'photographer');
+  const videographers = staffMembers.filter(s => s.role === 'videographer');
+  const editors = staffMembers.filter(s => s.role === 'editor');
+
+  const handleToggleSelectAll = () => {
+    if (selectedEvents.length === events.length) {
+      setSelectedEvents([]);
+    } else {
+      setSelectedEvents(events.map(e => e.id));
+    }
+  };
+
+  const handleToggleSelectEvent = (eventId) => {
+    setSelectedEvents(prev =>
+      prev.includes(eventId) ? prev.filter(id => id !== eventId) : [...prev, eventId]
+    );
+  };
+
+  const handleBulkSyncToCalendar = async () => {
+    if (selectedEvents.length === 0) return;
+    if (!confirm(`לסנכרן ${selectedEvents.length} אירועים ליומן גוגל?`)) return;
+    setIsBulkSyncing(true);
+    let success = 0, failed = 0;
+    for (const eventId of selectedEvents) {
+      try {
+        await base44.functions.invoke('syncEventToCalendar', { eventId });
+        success++;
+      } catch {
+        failed++;
+      }
+    }
+    setIsBulkSyncing(false);
+    setSelectedEvents([]);
+    if (failed === 0) {
+      toast.success(`סונכרנו ${success} אירועים ליומן בהצלחה`);
+    } else {
+      toast.warning(`הצלחה: ${success}, נכשלו: ${failed}`);
+    }
+    if (onRefresh) onRefresh();
+  };
+
+  const handleDeleteSelected = async () => {
+    if (!confirm(`Delete ${selectedEvents.length} selected events?`)) return;
+    setIsDeletingBulk(true);
+    try {
+      await Promise.all(selectedEvents.map(id => base44.entities.Event.delete(id)));
+      setSelectedEvents([]);
+      toast.success(`Deleted ${selectedEvents.length} events`);
+      if (onRefresh) onRefresh();
+    } catch (error) {
+      toast.error('Error deleting events');
+    }
+    setIsDeletingBulk(false);
+  };
+
+  const handleStatusChange = async (eventId, newStatus) => {
+    setUpdatingEventId(eventId);
+    try {
+      await base44.entities.Event.update(eventId, { clientPaymentStatus: newStatus });
+      toast.success('Status updated');
+      if (onRefresh) onRefresh();
+    } catch (error) {
+      toast.error('Error updating status');
+    }
+    setUpdatingEventId(null);
+  };
+
+  const handleRemoveTeamMember = async (event, staffName) => {
+    const newTeam = event.team.filter(m => m.staffMemberName !== staffName);
+    await base44.entities.Event.update(event.id, { team: newTeam });
+    if (onRefresh) onRefresh();
+  };
+
+  const sendCalendarInviteByName = async (eventId, staffName) => {
+    try {
+      await base44.functions.invoke('sendStaffInvite', { eventId, staffName });
+    } catch (error) {
+      console.error('Error sending calendar invite:', error);
+    }
+  };
+
+  const handleSyncToCalendar = async (event) => {
+    setSyncingEventId(event.id);
+    try {
+      await base44.functions.invoke('syncEventToCalendar', { eventId: event.id });
+      toast.success('סונכרן ליומן בהצלחה');
+      if (onRefresh) onRefresh();
+    } catch (error) {
+      console.error('Error syncing to calendar:', error);
+      toast.error('שגיאה בסנכרון ליומן');
+    } finally {
+      setSyncingEventId(null);
+    }
+  };
+
+  const getEventProgressStatus = (event) => {
+    const teamCount = event.team?.filter(m => m.staffMemberName)?.length || 0;
+    if (teamCount === 0) return { label: 'חסר צוות', color: 'bg-red-500/20 text-red-400 border-red-500/30' };
+    if (event.photographer1_done && event.video1_done && event.editor_done) return { label: 'הושלם', color: 'bg-green-500/20 text-green-400 border-green-500/30' };
+    return { label: 'בתהליך', color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' };
+  };
+
+  return (
+    <>
+    {/* Mobile: card list */}
+    <div className="md:hidden">
+      <EventMobileCards
+        events={events}
+        isLoading={isLoading}
+        onOpenDetail={(event) => setSelectedEventForModal(event)}
+        onOpenExpenses={(event) => { setSelectedEventForExpenses(event); setExpensesSheetOpen(true); }}
+      />
+    </div>
+
+    {/* Desktop: full table — hidden on mobile */}
+    <Card className="hidden md:block bg-gray-900/50 border-gray-800 backdrop-blur-sm">
+      <CardHeader className="border-b border-gray-800">
+        <div className="flex justify-between items-center">
+          <CardTitle className="text-xl font-bold text-white flex items-center gap-2">
+            <Heart className="w-5 h-5 text-yellow-400" />
+            כל האירועים
+            {selectedEvents.length > 0 && (
+              <span className="text-sm font-normal text-gray-400">({selectedEvents.length} נבחרו)</span>
+            )}
+          </CardTitle>
+          <div className="flex gap-2">
+            {selectedEvents.length > 0 && (
+              <Button
+                size="sm"
+                onClick={handleBulkSyncToCalendar}
+                disabled={isBulkSyncing}
+                className="bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 border border-purple-500/30"
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${isBulkSyncing ? 'animate-spin' : ''}`} />
+                {isBulkSyncing ? 'מסנכרן...' : `סנכרן ליומן (${selectedEvents.length})`}
+              </Button>
+            )}
+            {selectedEvents.length > 0 && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleDeleteSelected}
+                disabled={isDeletingBulk}
+                className="bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                {isDeletingBulk ? 'מוחק...' : `מחק ${selectedEvents.length}`}
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onRefresh}
+              className="border-gray-700 text-gray-300 hover:bg-gray-800"
+            >
+              רענן
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="w-full overflow-x-auto" ref={tableRef}>
+          <Table className="text-xs border-collapse w-full">
+            <TableHeader>
+              <TableRow className="border-gray-800 hover:bg-gray-800/30 sticky top-0 bg-gray-900">
+                <TableHead className="text-gray-400 px-1" style={{ width: `${widths.checkbox}px`, minWidth: `${widths.checkbox}px` }}>
+                  <Checkbox
+                    checked={events.length > 0 && selectedEvents.length === events.length}
+                    onCheckedChange={handleToggleSelectAll}
+                    className="border-gray-600"
+                  />
+                </TableHead>
+                <ColumnHeader column="id" label="#" width={widths.id} />
+                <ColumnHeader column="date" label="תאריך" width={widths.date} />
+                <ColumnHeader column="couple" label="זוג" width={widths.couple} />
+                <ColumnHeader column="venue" label="אולם" width={widths.venue} />
+                <ColumnHeader column="photo1" label="צלם 1" width={widths.photo1} />
+                <ColumnHeader column="photo2" label="צלם 2" width={widths.photo2} />
+                <ColumnHeader column="video1" label="וידאו 1" width={widths.video1} />
+                <ColumnHeader column="video2" label="וידאו 2" width={widths.video2} />
+                <ColumnHeader column="editor" label="עורך" width={widths.editor} />
+                <ColumnHeader column="teamStatus" label="צוות" width={widths.teamStatus} />
+                <ColumnHeader column="gross" label="ברוטו" width={widths.gross} />
+                <ColumnHeader column="net" label="נקי" width={widths.net} />
+                <ColumnHeader column="payment" label="תשלום" width={widths.payment} />
+                <ColumnHeader column="progress" label="התקד'" width={widths.progress} />
+                <ColumnHeader column="album" label="אלבום" width={widths.album} />
+                <TableHead className="text-gray-400 px-1 sticky right-0 bg-gray-900" style={{ width: '72px', minWidth: '72px' }}>פעולות</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {events.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={17} className="text-center py-12">
+                    <div className="text-gray-500">
+                      <Heart className="w-12 h-12 mx-auto mb-4 text-gray-600" />
+                      <p className="text-lg font-medium">אין אירועים עדיין</p>
+                      <p className="text-sm">צור את האירוע הראשון שלך כדי להתחיל</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                events.map((event, idx, arr) => {
+                  const clientPaymentStatus = event.clientPaymentStatus || "Unpaid";
+                  const statusConfig = paymentStatusConfig[clientPaymentStatus];
+                  const assignedTeam = event.team?.filter(m => {
+                    if (!m.staffMemberName) return false;
+                    const sm = staffMembers.find(s => s.name === m.staffMemberName);
+                    return sm?.role !== 'editor';
+                  }) || [];
+                  const requiredCrew = event.requiredCrew || 3;
+                  const isFullTeam = assignedTeam.length >= requiredCrew;
+                  const missingCount = requiredCrew - assignedTeam.length;
+                  const ps = getEventProgressStatus(event);
+
+                  // Check if month changed from previous event
+                  const prevEventDate = idx > 0 ? new Date(arr[idx - 1].date) : null;
+                  const currentMonth = new Date(event.date);
+                  const monthChanged = !prevEventDate || prevEventDate.getMonth() !== currentMonth.getMonth() || prevEventDate.getFullYear() !== currentMonth.getFullYear();
+
+                  return (
+                    <React.Fragment key={`event-${event.id}`}>
+                      {monthChanged && (
+                        <TableRow className="bg-gray-800/20 border-t border-b border-gray-700/40 hover:bg-gray-800/20">
+                          <TableCell colSpan={17} className="text-center py-2 px-1">
+                            <span className="text-gray-500 text-xs font-medium">
+                              {format(currentMonth, "MMMM yyyy")}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      <TableRow id={`event-row-${event.id}`} className="border-gray-800 hover:bg-gray-800/30 transition-colors duration-200">
+                        {/* Checkbox */}
+                        <TableCell className="px-1 py-1">
+                          <Checkbox
+                            checked={selectedEvents.includes(event.id)}
+                            onCheckedChange={() => handleToggleSelectEvent(event.id)}
+                            className="border-gray-600"
+                          />
+                        </TableCell>
+
+                        {/* Studio ID */}
+                        <TableCell className="text-gray-500 font-mono text-[10px] font-semibold text-center px-1 py-1" style={{ width: `${widths.id}px`, minWidth: `${widths.id}px` }}>
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span>{event.studio_id || '—'}</span>
+                            <button
+                              onClick={() => { navigator.clipboard.writeText(event.id); toast.success('ID הועתק'); }}
+                              title={`העתק ID: ${event.id}`}
+                              className="text-gray-600 hover:text-yellow-400 transition-colors"
+                            >
+                              <Copy className="w-2.5 h-2.5" />
+                            </button>
+                          </div>
+                        </TableCell>
+
+                        {/* Date */}
+                        <TableCell className="text-gray-300 px-1 py-1 whitespace-nowrap" style={{ width: `${widths.date}px`, minWidth: `${widths.date}px` }}>
+                          {format(new Date(event.date), "d/M/yy")}
+                        </TableCell>
+
+                        {/* Couple */}
+                        <TableCell className="px-1 py-1" style={{ width: `${widths.couple}px`, minWidth: `${widths.couple}px` }}>
+                          <div className="flex flex-col gap-0.5">
+                            <button
+                              onClick={() => {
+                              let relatedLead = null;
+                              if (event.source_lead_id) relatedLead = leads.find(l => l.id === event.source_lead_id);
+                              setSelectedLeadForDrawer(relatedLead || null);
+                                setSelectedEventForDrawer(event);
+                                setIsDrawerOpen(true);
+                              }}
+                              className="flex items-center gap-1 hover:opacity-80 transition-opacity cursor-pointer text-left"
+                            >
+                              <div className="font-medium text-white hover:text-yellow-400 truncate" title={event.coupleNames}>{event.coupleNames}</div>
+                              {event.phoneNumber && (
+                                <a
+                                  href={`https://wa.me/${(() => { const c = event.phoneNumber.replace(/[-\s()]/g, ''); return c.startsWith('0') ? '972' + c.substring(1) : c; })()}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-green-500 hover:text-green-400 transition-colors flex-shrink-0"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <MessageCircle className="w-3 h-3" />
+                                </a>
+                              )}
+                            </button>
+                            {event.signedAt && (
+                              <Badge className="bg-green-500/20 text-green-400 border-green-500/30 border w-fit text-[9px] font-medium px-1 py-0">✅ חתם</Badge>
+                            )}
+                          </div>
+                        </TableCell>
+
+                        {/* Venue */}
+                        <TableCell className="px-1 py-1" style={{ width: `${widths.venue}px`, minWidth: `${widths.venue}px` }}>
+                          {event.venue ? (
+                            <div className="flex items-center gap-1 text-gray-300">
+                              <MapPin className="w-3 h-3 text-gray-500 flex-shrink-0" />
+                              <span className="truncate" title={event.venue}>{event.venue}</span>
+                            </div>
+                          ) : (
+                            <span className="text-gray-600">—</span>
+                          )}
+                        </TableCell>
+
+                        {/* Photographer 1 */}
+                        <TableCell className="px-1 py-1" style={{ width: `${widths.photo1}px`, minWidth: `${widths.photo1}px` }}>
+                          <StaffPickerCell
+                            event={event} role="photo1" roleKey="photographer1" label="צלם"
+                            color="bg-blue-500/20 text-blue-400 border-blue-500/30" icon="📸"
+                            staffList={photographers} events={events} onRefresh={onRefresh}
+                            editingKey={editingTeamEventId} setEditingKey={setEditingTeamEventId}
+                            sendCalendarInviteByName={sendCalendarInviteByName}
+                            isWrapped={true}
+                          />
+                        </TableCell>
+
+                        {/* Photographer 2 */}
+                        <TableCell className="px-1 py-1" style={{ width: `${widths.photo2}px`, minWidth: `${widths.photo2}px` }}>
+                          <StaffPickerCell
+                            event={event} role="photo2" roleKey="photographer2" label="צלם"
+                            color="bg-blue-500/20 text-blue-400 border-blue-500/30" icon="📸"
+                            staffList={photographers} events={events} onRefresh={onRefresh}
+                            editingKey={editingTeamEventId} setEditingKey={setEditingTeamEventId}
+                            sendCalendarInviteByName={sendCalendarInviteByName}
+                            isWrapped={true}
+                          />
+                        </TableCell>
+
+                        {/* Videographer 1 */}
+                        <TableCell className="px-1 py-1" style={{ width: `${widths.video1}px`, minWidth: `${widths.video1}px` }}>
+                          <StaffPickerCell
+                            event={event} role="video1" roleKey="videographer" label="וידאו"
+                            color="bg-pink-500/20 text-pink-400 border-pink-500/30" icon="🎥"
+                            staffList={videographers} events={events} onRefresh={onRefresh}
+                            editingKey={editingTeamEventId} setEditingKey={setEditingTeamEventId}
+                            sendCalendarInviteByName={sendCalendarInviteByName}
+                            isWrapped={true}
+                          />
+                        </TableCell>
+
+                        {/* Videographer 2 */}
+                        <TableCell className="px-1 py-1" style={{ width: `${widths.video2}px`, minWidth: `${widths.video2}px` }}>
+                          <StaffPickerCell
+                            event={event} role="video2" roleKey="videographer2" label="וידאו"
+                            color="bg-pink-500/20 text-pink-400 border-pink-500/30" icon="🎥"
+                            staffList={videographers} events={events} onRefresh={onRefresh}
+                            editingKey={editingTeamEventId} setEditingKey={setEditingTeamEventId}
+                            sendCalendarInviteByName={sendCalendarInviteByName}
+                            isWrapped={true}
+                          />
+                        </TableCell>
+
+                        {/* Editor */}
+                        <TableCell className="px-1 py-1" style={{ width: `${widths.editor}px`, minWidth: `${widths.editor}px` }}>
+                          {(() => {
+                            const videoEditor = event.team?.find(m => {
+                              const staff = staffMembers.find(s => s.name === m.staffMemberName);
+                              return staff?.role === 'editor';
+                            });
+                            return (
+                              <Popover open={editingTeamEventId === `${event.id}-editor`} onOpenChange={(open) => setEditingTeamEventId(open ? `${event.id}-editor` : null)}>
+                                <PopoverTrigger asChild>
+                                  <button className="text-left hover:bg-gray-800/30 p-1 rounded transition-colors cursor-pointer w-full">
+                                    {videoEditor ? (
+                                      <div className="flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium border bg-purple-500/20 text-purple-400 border-purple-500/30 w-fit hover:opacity-80 transition-opacity">
+                                        <span>✂️</span>
+                                        <span className="truncate max-w-[44px]" title={videoEditor.staffMemberName}>{videoEditor.staffMemberName}</span>
+                                        <button onClick={(e) => { e.stopPropagation(); handleRemoveTeamMember(event, videoEditor.staffMemberName); }} className="hover:text-red-400 text-sm leading-none">×</button>
+                                      </div>
+                                    ) : (
+                                      <span className="text-gray-600 hover:text-gray-400 text-[10px] transition-colors">+עורך</span>
+                                    )}
+                                  </button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-80 bg-gray-900 border-gray-700 text-white p-3" align="start">
+                                  <div className="space-y-2">
+                                    <div className="text-sm font-semibold text-gray-400 mb-3">בחר עורך וידאו</div>
+                                    {editors.length === 0 ? (
+                                      <div className="text-sm text-gray-500 text-center py-4">אין עורכים זמינים</div>
+                                    ) : (
+                                      editors.map((staff) => {
+                                        const isSelected = videoEditor?.staffMemberName === staff.name;
+                                        return (
+                                          <div key={staff.id} className="flex items-center gap-3 p-2 rounded hover:bg-gray-800/50">
+                                            <Checkbox
+                                              checked={isSelected}
+                                              onCheckedChange={async () => {
+                                                if (isSelected) {
+                                                  await handleRemoveTeamMember(event, staff.name);
+                                                } else {
+                                                    const currentTeam = event.team || [];
+                                                    const withoutEmptyEditor = currentTeam.filter(m => m.role !== 'editor' || m.staffMemberName);
+                                                    // Get cost from ratesByRole if available, otherwise use defaultRate
+                                                    let cost = staff.defaultRate || 0;
+                                                    if (staff.ratesByRole && staff.ratesByRole.length > 0) {
+                                                      const roleRate = staff.ratesByRole.find(r => r.role === 'editor');
+                                                      if (roleRate) {
+                                                        cost = roleRate.rate;
+                                                      }
+                                                    }
+                                                    const newTeam = [...withoutEmptyEditor, { role: 'editor', staffMemberName: staff.name, cost, isPaid: false, progressStatus: 'pending' }];
+                                                    await base44.entities.Event.update(event.id, { team: newTeam });
+                                                    await sendCalendarInviteByName(event.id, staff.name);
+                                                    if (onRefresh) onRefresh();
+                                                  }
+                                                setEditingTeamEventId(null);
+                                              }}
+                                            />
+                                            <div className="flex items-center gap-2 flex-1">
+                                              <div className="w-8 h-8 bg-purple-500/20 text-purple-400 rounded-full flex items-center justify-center text-sm font-semibold">
+                                                {staff.name.charAt(0).toUpperCase()}
+                                              </div>
+                                              <span className="text-sm">{staff.name}</span>
+                                            </div>
+                                          </div>
+                                        );
+                                      })
+                                    )}
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
+                            );
+                          })()}
+                        </TableCell>
+
+                        {/* Team Status */}
+                        <TableCell className="px-1 py-1" style={{ width: `${widths.teamStatus}px`, minWidth: `${widths.teamStatus}px` }}>
+                          {isFullTeam ? (
+                            <Badge className="bg-green-500/20 text-green-400 border-green-500/30 border text-[10px] font-medium px-1 py-0 flex items-center gap-0.5 w-fit">
+                              <UserCheck className="w-2.5 h-2.5" /> מלא
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-red-500/20 text-red-400 border-red-500/30 border text-[10px] font-medium px-1 py-0 flex items-center gap-0.5 w-fit">
+                              <AlertTriangle className="w-2.5 h-2.5" /> חסר {missingCount}
+                            </Badge>
+                          )}
+                        </TableCell>
+
+                        {/* Gross */}
+                        <TableCell className="px-1 py-1" style={{ width: `${widths.gross}px`, minWidth: `${widths.gross}px` }}>
+                          <span className="font-semibold text-yellow-400 text-[10px]">₪{event.totalAmountGross?.toLocaleString()}</span>
+                        </TableCell>
+
+                        {/* Net Profit */}
+                        <TableCell className="px-1 py-1" style={{ width: `${widths.net}px`, minWidth: `${widths.net}px` }}>
+                          <span className={`font-semibold text-[10px] ${getProfitColor(event, staffMembers)}`}>
+                            ₪{Math.round(calculateNetProfit(event, staffMembers)).toLocaleString()}
+                          </span>
+                        </TableCell>
+
+                        {/* Payment Status */}
+                        <TableCell className="px-1 py-1" style={{ width: `${widths.payment}px`, minWidth: `${widths.payment}px` }}>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <div className="focus:outline-none cursor-pointer">
+                                <Badge variant="outline" className={`${statusConfig?.color || paymentStatusConfig.Unpaid.color} border font-medium cursor-pointer hover:opacity-80 transition-opacity text-[10px] px-1 py-0`}>
+                                  {updatingEventId === event.id ? '...' : `${statusConfig?.icon} ${statusLabels[clientPaymentStatus]}`}
+                                </Badge>
+                              </div>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="bg-gray-800 border-gray-700 text-white">
+                              <DropdownMenuItem onSelect={() => handleStatusChange(event.id, 'Paid')} className="focus:bg-green-500/20 cursor-pointer"><span className="mr-2">✅</span> {statusLabels['Paid']}</DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => handleStatusChange(event.id, 'Partially Paid')} className="focus:bg-yellow-500/20 cursor-pointer"><span className="mr-2">🟡</span> {statusLabels['Partially Paid']}</DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => handleStatusChange(event.id, 'Unpaid')} className="focus:bg-red-500/20 cursor-pointer"><span className="mr-2">🔴</span> {statusLabels['Unpaid']}</DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+
+                        {/* Progress Status */}
+                        <TableCell className="px-1 py-1" style={{ width: `${widths.progress}px`, minWidth: `${widths.progress}px` }}>
+                          <Badge variant="outline" className={`${ps.color} border text-[10px] font-medium px-1 py-0`}>{ps.label}</Badge>
+                        </TableCell>
+
+                        {/* Album */}
+                        <TableCell className="px-1 py-1" style={{ width: `${widths.album}px`, minWidth: `${widths.album}px` }}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={async () => {
+                              const newStatus = event.albumStatus === 'sent' ? 'pending' : 'sent';
+                              await base44.entities.Event.update(event.id, { albumStatus: newStatus });
+                              if (event.leadId) {
+                                try { await base44.functions.invoke('syncEventToLead', { eventId: event.id }); } catch {}
+                              }
+                              if (onRefresh) onRefresh();
+                            }}
+                            className="p-0 h-auto hover:bg-transparent"
+                          >
+                            <div className="flex items-center gap-1">
+                              <Album className={`w-3 h-3 ${event.albumStatus === 'sent' ? 'text-green-400' : 'text-pink-400'}`} />
+                              <Badge
+                                variant="outline"
+                                className={`${event.albumStatus === 'sent' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-pink-500/20 text-pink-400 border-pink-500/30'} border font-medium text-[10px] px-1 py-0 cursor-pointer hover:opacity-80 transition-opacity`}
+                              >
+                                {event.albumStatus === 'sent' ? 'נשלח' : 'ממתין'}
+                              </Badge>
+                            </div>
+                          </Button>
+                        </TableCell>
+
+                        {/* Actions */}
+                        <TableCell className="px-1 py-1 sticky right-0 bg-gray-800/50" style={{ width: '72px', minWidth: '72px' }}>
+                          <div className="flex gap-0.5">
+                            <Button variant="ghost" size="sm"
+                              onClick={function() { setSelectedEventForModal(event); }}
+                              className="text-gray-400 hover:text-yellow-400 hover:bg-yellow-500/10 h-7 w-7 p-0"
+                              title="פרטי אירוע">
+                              <Eye className="w-3 h-3" />
+                            </Button>
+                              <Button variant="ghost"
+                              size="sm"
+                              onClick={() => { setSelectedEventForExpenses(event); setExpensesSheetOpen(true); }}
+                              className="text-gray-400 hover:text-green-400 hover:bg-green-500/10 h-7 w-7 p-0"
+                              title="עריכת הוצאות"
+                            >
+                              <DollarSign className="w-3 h-3" />
+                            </Button>
+                            <Link to={createPageUrl(`TeamPayments?id=${event.id}`)}>
+                              <Button variant="ghost" size="sm" className="text-gray-400 hover:text-blue-400 hover:bg-blue-500/10 h-7 w-7 p-0">
+                                <Users className="w-3 h-3" />
+                              </Button>
+                            </Link>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleSyncToCalendar(event)}
+                              disabled={syncingEventId === event.id}
+                              className="text-gray-400 hover:text-purple-400 hover:bg-purple-500/10 h-7 w-7 p-0"
+                              title="סנכרון ליומן גוגל"
+                            >
+                              <RefreshCw className={`w-3 h-3 ${syncingEventId === event.id ? 'animate-spin' : ''}`} />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    </React.Fragment>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+    {/* END desktop table */}
+
+    {selectedEventForModal && (
+      <EventDetailModal
+        event={selectedEventForModal}
+        onClose={function() { setSelectedEventForModal(null); }}
+        onEditLead={handleEditLeadFromModal}
+      />
+    )}
+    <UnifiedSidePanel
+      isOpen={isDrawerOpen}
+      onClose={() => { setIsDrawerOpen(false); setSelectedEventForDrawer(null); setSelectedLeadForDrawer(null); }}
+      event={selectedEventForDrawer}
+      lead={selectedLeadForDrawer}
+      staffMembers={staffMembers}
+      onEventUpdated={() => { setIsDrawerOpen(false); if (onRefresh) onRefresh(); }}
+      onLeadUpdated={() => { setIsDrawerOpen(false); if (onRefresh) onRefresh(); }}
+    />
+
+    <Sheet open={expensesSheetOpen} onOpenChange={setExpensesSheetOpen}>
+      <SheetContent className="bg-gray-900 border-gray-800 text-white w-full sm:max-w-2xl overflow-y-auto" dir="rtl">
+        <SheetHeader>
+          <SheetTitle className="text-white">עריכת הוצאות</SheetTitle>
+        </SheetHeader>
+        {selectedEventForExpenses && (
+          <EventExpensesEditor
+            eventId={selectedEventForExpenses.id}
+            onSave={() => { setExpensesSheetOpen(false); if (onRefresh) onRefresh(); }}
+          />
+        )}
+      </SheetContent>
+    </Sheet>
+    </>
+  );
+}

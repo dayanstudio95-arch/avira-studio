@@ -1,0 +1,231 @@
+{
+  "name": "Lead",
+  "type": "object",
+  "properties": {
+    "studio_id": {
+      "type": "number",
+      "description": "\u05de\u05e1\u05e4\u05e8 \u05d9\u05d9\u05d7\u05d5\u05d3\u05d9 \u05e8\u05e5 \u05e9\u05dc \u05d4\u05e1\u05d8\u05d5\u05d3\u05d9\u05d5 (Auto-increment)"
+    },
+    "coupleNames": {
+      "type": "string",
+      "description": "\u05e9\u05de\u05d5\u05ea \u05d4\u05d6\u05d5\u05d2"
+    },
+    "eventDate": {
+      "type": "string",
+      "format": "date",
+      "description": "\u05ea\u05d0\u05e8\u05d9\u05da \u05d4\u05d0\u05d9\u05e8\u05d5\u05e2"
+    },
+    "phoneNumber": {
+      "type": "string",
+      "description": "\u05d8\u05dc\u05e4\u05d5\u05df"
+    },
+    "email": {
+      "type": "string",
+      "description": "\u05d0\u05d9\u05de\u05d9\u05d9\u05dc"
+    },
+    "idNumber": {
+      "type": "string",
+      "description": "\u05ea\u05e2\u05d5\u05d3\u05ea \u05d6\u05d4\u05d5\u05ea"
+    },
+    "coupleNotesSigned": {
+      "type": "string",
+      "description": "\u05d4\u05e2\u05e8\u05d5\u05ea \u05d4\u05d6\u05d5\u05d2 \u05de\u05d4\u05d7\u05ea\u05d9\u05de\u05d4"
+    },
+    "signedCoupleNames": {
+      "type": "string",
+      "description": "\u05e9\u05dd \u05d4\u05d6\u05d5\u05d2 \u05db\u05e4\u05d9 \u05e9\u05d4\u05d5\u05d6\u05df \u05d1\u05d7\u05ea\u05d9\u05de\u05d4 \u05e2\u05dc \u05d4\u05d7\u05d5\u05d6\u05d4"
+    },
+    "signedPhoneNumber": {
+      "type": "string",
+      "description": "\u05d8\u05dc\u05e4\u05d5\u05df \u05db\u05e4\u05d9 \u05e9\u05d4\u05d5\u05d6\u05df \u05d1\u05d7\u05ea\u05d9\u05de\u05d4 \u05e2\u05dc \u05d4\u05d7\u05d5\u05d6\u05d4"
+    },
+    "signedEmail": {
+      "type": "string",
+      "description": "\u05d0\u05d9\u05de\u05d9\u05d9\u05dc \u05db\u05e4\u05d9 \u05e9\u05d4\u05d5\u05d6\u05df \u05d1\u05d7\u05ea\u05d9\u05de\u05d4 \u05e2\u05dc \u05d4\u05d7\u05d5\u05d6\u05d4"
+    },
+    "signedIdNumber": {
+      "type": "string",
+      "description": "\u05ea\u05e2\u05d5\u05d3\u05ea \u05d6\u05d4\u05d5\u05ea \u05db\u05e4\u05d9 \u05e9\u05d4\u05d5\u05d6\u05e0\u05d4 \u05d1\u05d7\u05ea\u05d9\u05de\u05d4 \u05e2\u05dc \u05d4\u05d7\u05d5\u05d6\u05d4"
+    },
+    "venueName": {
+      "type": "string",
+      "description": "\u05e9\u05dd \u05d4\u05d0\u05d5\u05dc\u05dd"
+    },
+    "packageChoice": {
+      "type": "string",
+      "enum": [
+        "\u05d7\u05d1\u05d9\u05dc\u05d4 1",
+        "\u05d7\u05d1\u05d9\u05dc\u05d4 2",
+        "\u05d7\u05d1\u05d9\u05dc\u05d4 3",
+        "\u05d7\u05d1\u05d9\u05dc\u05d4 4"
+      ],
+      "description": "\u05d1\u05d7\u05d9\u05e8\u05ea \u05d7\u05d1\u05d9\u05dc\u05d4"
+    },
+    "packageId": {
+      "type": "string",
+      "description": "\u05de\u05d6\u05d4\u05d4 \u05d4\u05d7\u05d1\u05d9\u05dc\u05d4 \u05d4\u05e0\u05d1\u05d7\u05e8\u05ea"
+    },
+    "packageDetails": {
+      "type": "string",
+      "description": "\u05e4\u05d9\u05e8\u05d5\u05d8 \u05d4\u05d7\u05d1\u05d9\u05dc\u05d4 (Rich Text)"
+    },
+    "basePrice": {
+      "type": "number",
+      "description": "\u05de\u05d7\u05d9\u05e8 \u05d1\u05e1\u05d9\u05e1 (\u20aa)"
+    },
+    "discount": {
+      "type": "number",
+      "default": 0,
+      "description": "\u05d4\u05e0\u05d7\u05d4 (\u20aa)"
+    },
+    "finalPrice": {
+      "type": "number",
+      "description": "\u05e1\u05db\u05d5\u05dd \u05e1\u05d5\u05e4\u05d9 (\u20aa)"
+    },
+    "requiredCrew": {
+      "type": "number",
+      "default": 3,
+      "description": "\u05de\u05e1\u05e4\u05e8 \u05d0\u05e0\u05e9\u05d9 \u05d4\u05e6\u05d5\u05d5\u05ea \u05d4\u05e0\u05d3\u05e8\u05e9\u05d9\u05dd"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "\u05d7\u05d3\u05e9",
+        "\u05e0\u05e9\u05dc\u05d7\u05d4 \u05d4\u05e6\u05e2\u05d4",
+        "\u05e4\u05d5\u05dc\u05d5-\u05d0\u05e4",
+        "\u05e0\u05e1\u05d2\u05e8/\u05d7\u05ea\u05d9\u05de\u05d4",
+        "\u05d7\u05d5\u05d6\u05d4",
+        "\u05dc\u05d0 \u05e8\u05dc\u05d5\u05d5\u05e0\u05d8\u05d9"
+      ],
+      "default": "\u05d7\u05d3\u05e9",
+      "description": "\u05e1\u05d8\u05d8\u05d5\u05e1 \u05dc\u05d9\u05d3"
+    },
+    "last_contact_date": {
+      "type": "string",
+      "description": "\u05ea\u05d0\u05e8\u05d9\u05da \u05d5\u05e9\u05e2\u05ea \u05d9\u05e6\u05d9\u05e8\u05ea \u05e7\u05e9\u05e8 \u05d0\u05d7\u05e8\u05d5\u05df (ISO)"
+    },
+    "notes": {
+      "type": "string",
+      "description": "\u05d4\u05e2\u05e8\u05d5\u05ea"
+    },
+    "contractTerms": {
+      "type": "string",
+      "description": "\u05ea\u05e0\u05d0\u05d9 \u05d4\u05d7\u05d5\u05d6\u05d4 (Rich Text)"
+    },
+    "signedAt": {
+      "type": "string",
+      "description": "\u05ea\u05d0\u05e8\u05d9\u05da \u05d5\u05e9\u05e2\u05ea \u05d7\u05ea\u05d9\u05de\u05d4"
+    },
+    "contractSent": {
+      "type": "boolean",
+      "default": false,
+      "description": "\u05d4\u05d0\u05dd \u05e0\u05e9\u05dc\u05d7 \u05d7\u05d5\u05d6\u05d4 \u05dc\u05dc\u05e7\u05d5\u05d7"
+    },
+    "signedContractPdfUrl": {
+      "type": "string",
+      "description": "\u05e7\u05d9\u05e9\u05d5\u05e8 \u05dc\u05d7\u05d5\u05d6\u05d4 \u05d4\u05d7\u05ea\u05d5\u05dd \u05db-PDF"
+    },
+    "totalPaid": {
+      "type": "number",
+      "default": 0,
+      "description": "\u05e1\u05d4\u05f4\u05db \u05e9\u05d5\u05dc\u05dd (\u05d0\u05d5\u05d8\u05d5\u05de\u05d8\u05d9)"
+    },
+    "remainingBalance": {
+      "type": "number",
+      "default": 0,
+      "description": "\u05d9\u05ea\u05e8\u05d4 \u05dc\u05ea\u05e9\u05dc\u05d5\u05dd (\u05d0\u05d5\u05d8\u05d5\u05de\u05d8\u05d9)"
+    },
+    "lastInvoiceUrl": {
+      "type": "string",
+      "description": "\u05dc\u05d9\u05e0\u05e7 \u05dc\u05d7\u05e9\u05d1\u05d5\u05e0\u05d9\u05ea \u05d4\u05d0\u05d7\u05e8\u05d5\u05e0\u05d4 \u05e9\u05d4\u05d5\u05e4\u05e7\u05d4"
+    },
+    "depositInvoiceIssued": {
+      "type": "boolean",
+      "default": false,
+      "description": "\u05d4\u05d0\u05dd \u05d4\u05d5\u05e4\u05e7\u05d4 \u05d7\u05e9\u05d1\u05d5\u05e0\u05d9\u05ea \u05de\u05e7\u05d3\u05de\u05d4"
+    },
+    "invoicesList": {
+      "type": "array",
+      "description": "\u05e8\u05e9\u05d9\u05de\u05ea \u05db\u05dc \u05d4\u05d7\u05e9\u05d1\u05d5\u05e0\u05d9\u05d5\u05ea \u05e9\u05d4\u05d5\u05e4\u05e7\u05d5 \u05dc\u05dc\u05d9\u05d3 \u05d6\u05d4",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "manualPayment": {
+      "type": "number",
+      "default": 0,
+      "description": "\u05ea\u05e9\u05dc\u05d5\u05dd \u05d9\u05d3\u05e0\u05d9 \u05e9\u05d4\u05d5\u05d6\u05df \u05de\u05d7\u05d5\u05e5 \u05dc\u05de\u05e2\u05e8\u05db\u05ea"
+    },
+    "manualPaymentNote": {
+      "type": "string",
+      "description": "\u05d4\u05e2\u05e8\u05d4 \u05dc\u05ea\u05e9\u05dc\u05d5\u05dd \u05d4\u05d9\u05d3\u05e0\u05d9"
+    },
+    "googleCalendarStatus": {
+      "type": "string",
+      "description": "\u05e1\u05d8\u05d8\u05d5\u05e1 \u05e1\u05e0\u05db\u05e8\u05d5\u05df Google Calendar"
+    },
+    "googleCalendarEventId": {
+      "type": "string",
+      "description": "\u05de\u05d6\u05d4\u05d4 \u05d0\u05d9\u05e8\u05d5\u05e2 \u05d1\u05d9\u05d5\u05de\u05df \u05d2\u05d5\u05d2\u05dc"
+    },
+    "linked_event_id": {
+      "type": "string",
+      "description": "\u05de\u05d6\u05d4\u05d4 \u05d4\u05d0\u05d9\u05e8\u05d5\u05e2 \u05d4\u05de\u05e7\u05d5\u05e9\u05e8 \u05d1\u05d8\u05d1\u05dc\u05ea Event \u2014 \u05de\u05e7\u05d5\u05e8 \u05d4\u05d0\u05de\u05ea \u05dc\u05de\u05e0\u05d9\u05e2\u05ea \u05db\u05e4\u05d9\u05dc\u05d5\u05d9\u05d5\u05ea"
+    },
+    "productionBridePhone": {
+      "type": "string",
+      "description": "\u05e0\u05d9\u05d9\u05d3 \u05db\u05dc\u05d4"
+    },
+    "productionGroomPhone": {
+      "type": "string",
+      "description": "\u05e0\u05d9\u05d9\u05d3 \u05d7\u05ea\u05df"
+    },
+    "productionBridePrepLocation": {
+      "type": "string",
+      "description": "\u05de\u05e7\u05d5\u05dd \u05d4\u05ea\u05d0\u05e8\u05d2\u05e0\u05d5\u05ea \u05db\u05dc\u05d4"
+    },
+    "productionInstagram": {
+      "type": "string",
+      "description": "\u05d0\u05d9\u05e0\u05e1\u05d8\u05d2\u05e8\u05dd \u05e9\u05dc \u05d4\u05d6\u05d5\u05d2"
+    },
+    "productionSpecialRequests": {
+      "type": "string",
+      "description": "\u05d1\u05e7\u05e9\u05d5\u05ea \u05de\u05d9\u05d5\u05d7\u05d3\u05d5\u05ea \u05de\u05d4\u05e6\u05d5\u05d5\u05ea"
+    },
+    "productionFormFilledAt": {
+      "type": "string",
+      "description": "\u05ea\u05d0\u05e8\u05d9\u05da \u05d5\u05de\u05d9\u05dc\u05d5\u05d9 \u05e9\u05d0\u05dc\u05d5\u05df \u05d4\u05d4\u05e4\u05e7\u05d4"
+    },
+    "productionBrief": {
+      "type": "string",
+      "description": "\u05e1\u05d9\u05db\u05d5\u05dd \u05d4\u05e4\u05e7\u05d4 \u05de\u05e1\u05d5\u05d3\u05e8 \u05dc\u05e6\u05d5\u05d5\u05ea - \u05de\u05e9\u05ea\u05d3\u05db\u05df \u05d0\u05d5\u05d8\u05d5\u05de\u05d8\u05d9\u05ea"
+    },
+    "finalTechnicalSummary": {
+      "type": "string",
+      "description": "\u05e1\u05d9\u05db\u05d5\u05dd \u05d0\u05d9\u05e8\u05d5\u05e2 \u05d8\u05db\u05e0\u05d9 \u05e1\u05d5\u05e4\u05d9 - \u05e0\u05e9\u05dc\u05d7 \u05d9\u05e9\u05d9\u05e8\u05d5\u05ea \u05dc\u05e6\u05d5\u05d5\u05ea"
+    }
+  },
+  "required": [
+    "coupleNames"
+  ]
+}

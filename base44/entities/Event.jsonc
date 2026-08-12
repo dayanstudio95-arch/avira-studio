@@ -1,0 +1,215 @@
+{
+  "name": "Event",
+  "type": "object",
+  "properties": {
+    "studio_id": {
+      "type": "number"
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "coupleNames": {
+      "type": "string"
+    },
+    "phoneNumber": {
+      "type": "string"
+    },
+    "packageId": {
+      "type": "string"
+    },
+    "venue": {
+      "type": "string"
+    },
+    "leadId": {
+      "type": "string"
+    },
+    "source_lead_id": {
+      "type": "string"
+    },
+    "requiredCrew": {
+      "type": "number",
+      "default": 3
+    },
+    "totalAmountGross": {
+      "type": "number"
+    },
+    "vatableAmount": {
+      "type": "number"
+    },
+    "vatPercent": {
+      "type": "number",
+      "default": 18
+    },
+    "vatAmount": {
+      "type": "number"
+    },
+    "selectedDiscountId": {
+      "type": "string"
+    },
+    "manualDiscount": {
+      "type": "number"
+    },
+    "team": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "photographer1",
+              "photographer2",
+              "videographer",
+              "videographer2",
+              "editor"
+            ]
+          },
+          "staffMemberName": {
+            "type": "string"
+          },
+          "cost": {
+            "type": "number",
+            "default": 0
+          },
+          "isPaid": {
+            "type": "boolean",
+            "default": false
+          },
+          "progressStatus": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "sent"
+            ],
+            "default": "pending"
+          },
+          "calendarEventId": {
+            "type": "string"
+          },
+          "calendarStatus": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "accepted",
+              "declined"
+            ]
+          }
+        }
+      }
+    },
+    "photographer1_done": {
+      "type": "boolean",
+      "default": false
+    },
+    "photographer2_done": {
+      "type": "boolean",
+      "default": false
+    },
+    "video1_done": {
+      "type": "boolean",
+      "default": false
+    },
+    "editor_done": {
+      "type": "boolean",
+      "default": false
+    },
+    "raw_link": {
+      "type": "string"
+    },
+    "raw_done_manual": {
+      "type": "boolean",
+      "default": false
+    },
+    "raw_sent_to_editor": {
+      "type": "boolean",
+      "default": false,
+      "description": "\u05d4\u05d0\u05dd \u05e0\u05e9\u05dc\u05d7 \u05d2\u05dc\u05dd \u05dc\u05e2\u05d5\u05e8\u05da"
+    },
+    "raw_sent_at": {
+      "type": "string",
+      "description": "\u05d6\u05de\u05df \u05e9\u05dc\u05d9\u05d7\u05ea \u05d4\u05d2\u05dc\u05dd \u05dc\u05e2\u05d5\u05e8\u05da"
+    },
+    "final_link": {
+      "type": "string"
+    },
+    "final_done_manual": {
+      "type": "boolean",
+      "default": false
+    },
+    "albumSketchLink": {
+      "type": "string",
+      "description": "\u05dc\u05d9\u05e0\u05e7 \u05dc\u05e1\u05e7\u05d9\u05e6\u05ea \u05d4\u05d0\u05dc\u05d1\u05d5\u05dd \u05de\u05d4\u05d2\u05e8\u05e4\u05d9\u05e7\u05d0\u05d9\u05ea"
+    },
+    "albumSketchGraphicNotified": {
+      "type": "boolean",
+      "default": false,
+      "description": "\u05d4\u05d0\u05dd \u05e0\u05e9\u05dc\u05d7\u05d4 \u05d4\u05d5\u05d3\u05e2\u05d4 \u05dc\u05d2\u05e8\u05e4\u05d9\u05e7\u05d0\u05d9\u05ea"
+    },
+    "albumSketchCoupleNotified": {
+      "type": "boolean",
+      "default": false,
+      "description": "\u05d4\u05d0\u05dd \u05e0\u05e9\u05dc\u05d7 \u05dc\u05d9\u05e0\u05e7 \u05d4\u05e1\u05e7\u05d9\u05e6\u05d4 \u05dc\u05d6\u05d5\u05d2"
+    },
+    "clientPaymentStatus": {
+      "type": "string",
+      "enum": [
+        "Paid",
+        "Partially Paid",
+        "Unpaid"
+      ],
+      "default": "Unpaid"
+    },
+    "profitNet": {
+      "type": "number"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "albumStatus": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "sent"
+      ],
+      "default": "pending"
+    },
+    "album_reminder_sent": {
+      "type": "boolean",
+      "default": false,
+      "description": "\u05d4\u05d0\u05dd \u05e0\u05e9\u05dc\u05d7\u05d4 \u05ea\u05d6\u05db\u05d5\u05e8\u05ea \u05d0\u05dc\u05d1\u05d5\u05dd"
+    },
+    "album_reminder_sent_at": {
+      "type": "string",
+      "description": "\u05d6\u05de\u05df \u05e9\u05dc\u05d9\u05d7\u05ea \u05ea\u05d6\u05db\u05d5\u05e8\u05ea \u05d4\u05d0\u05dc\u05d1\u05d5\u05dd"
+    },
+    "signedAt": {
+      "type": "string"
+    },
+    "googleCalendarEventId": {
+      "type": "string"
+    },
+    "questionnaireSentAt": {
+      "type": "string",
+      "description": "\u05ea\u05d0\u05e8\u05d9\u05da \u05d5\u05e9\u05e2\u05ea \u05e9\u05dc\u05d9\u05d7\u05ea \u05d4\u05e9\u05d0\u05dc\u05d5\u05df (ISO 8601)"
+    },
+    "calendarSyncStatus": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "success",
+        "failed"
+      ],
+      "description": "\u05de\u05e6\u05d1 \u05e1\u05e0\u05db\u05e8\u05d5\u05df \u05dc\u05d9\u05d5\u05de\u05df \u05d2\u05d5\u05d2\u05dc. null = \u05dc\u05d0 \u05e2\u05d5\u05e7\u05d1 (\u05d4\u05d9\u05e1\u05d8\u05d5\u05e8\u05d9). pending = \u05d1\u05ea\u05d4\u05dc\u05d9\u05da. success = \u05e1\u05d5\u05e0\u05db\u05e8\u05df \u05d1\u05d4\u05e6\u05dc\u05d7\u05d4. failed = \u05d4\u05e1\u05e0\u05db\u05e8\u05d5\u05df \u05d4\u05d0\u05d7\u05e8\u05d5\u05df \u05e0\u05db\u05e9\u05dc."
+    },
+    "calendarSyncError": {
+      "type": "string",
+      "description": "\u05d4\u05d5\u05d3\u05e2\u05ea \u05d4\u05e9\u05d2\u05d9\u05d0\u05d4 \u05d4\u05d0\u05d7\u05e8\u05d5\u05e0\u05d4 \u05de\u05e0\u05d9\u05e1\u05d9\u05d5\u05df \u05e1\u05e0\u05db\u05e8\u05d5\u05df \u05d9\u05d5\u05de\u05df \u05d2\u05d5\u05d2\u05dc \u05e9\u05e0\u05db\u05e9\u05dc."
+    }
+  },
+  "required": [
+    "date",
+    "coupleNames",
+    "totalAmountGross"
+  ]
+}

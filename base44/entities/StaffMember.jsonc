@@ -1,0 +1,64 @@
+{
+  "name": "StaffMember",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "\u05e9\u05dd \u05d0\u05d9\u05e9 \u05d4\u05e6\u05d5\u05d5\u05ea"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "photographer",
+        "videographer",
+        "editor",
+        "graphic_designer"
+      ],
+      "description": "\u05ea\u05e4\u05e7\u05d9\u05d3 \u05d1\u05e8\u05d9\u05e8\u05ea \u05de\u05d7\u05d3\u05dc"
+    },
+    "defaultRate": {
+      "type": "number",
+      "description": "\u05ea\u05e2\u05e8\u05d9\u05e3 \u05d1\u05e8\u05d9\u05e8\u05ea \u05de\u05d7\u05d3\u05dc (\u05dc\u05d0\u05d7\u05e8 \u05d4\u05ea\u05d0\u05de\u05d4)",
+      "default": 0
+    },
+    "ratesByRole": {
+      "type": "array",
+      "description": "\u05ea\u05e2\u05e8\u05d9\u05e4\u05d9\u05dd \u05e9\u05d5\u05e0\u05d9\u05dd \u05dc\u05db\u05dc \u05ea\u05e4\u05e7\u05d9\u05d3",
+      "items": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "photographer1",
+              "photographer2",
+              "videographer",
+              "videographer2",
+              "editor"
+            ]
+          },
+          "rate": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "phoneNumber": {
+      "type": "string",
+      "description": "\u05de\u05e1\u05e4\u05e8 \u05d8\u05dc\u05e4\u05d5\u05df"
+    },
+    "email": {
+      "type": "string",
+      "description": "\u05db\u05ea\u05d5\u05d1\u05ea \u05d0\u05d9\u05de\u05d9\u05d9\u05dc"
+    },
+    "orderIndex": {
+      "type": "number",
+      "description": "\u05e1\u05d3\u05e8 \u05ea\u05e6\u05d5\u05d2\u05d4 \u05d1\u05e8\u05e9\u05d9\u05de\u05ea \u05d4\u05e6\u05d5\u05d5\u05ea",
+      "default": 999
+    }
+  },
+  "required": [
+    "name",
+    "role"
+  ]
+}
