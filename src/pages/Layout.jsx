@@ -20,7 +20,8 @@ import {
   EyeOff,
   Edit2,
   X,
-  Shield
+  Shield,
+  LogOut,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,8 +38,24 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import AIAssistant from "@/components/AIAssistant";
 import { toast } from "sonner";
+import { useAuth } from "@/lib/SupabaseAuthContext";
+
+const ROLE_LABELS = {
+  owner: "בעלים",
+  admin: "מנהל",
+  studio_manager: "מנהל סטודיו",
+  photographer: "צלם",
+  editor: "עורך",
+  album_manager: "מנהל אלבומים",
+};
 
 const primaryNavItems = [
   { title: "לוח בקרה",        url: "/",                              icon: LayoutDashboard },
@@ -65,6 +82,7 @@ const secondaryNavItems = [
 const navigationItems = [...primaryNavItems, ...secondaryNavItems];
 
 export default function Layout({ children }) {
+  const { user, logout } = useAuth();
   const location = useLocation();
   const isInSecondaryNav = secondaryNavItems.some(item =>
     item.url !== '/' && location.pathname === item.url
@@ -406,15 +424,34 @@ export default function Layout({ children }) {
           </SidebarContent>
 
           <SidebarFooter className="bg-slate-700 p-4 flex flex-col gap-2 border-t border-gray-800">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-full flex items-center justify-center">
-                <span className="text-gray-900 font-bold text-sm">A</span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-gray-100 text-sm truncate">Studio Owner</p>
-                <p className="text-xs text-gray-500 truncate">Manage your events</p>
-              </div>
-            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex items-center gap-3 w-full text-right hover:bg-slate-600/50 rounded-lg p-1 -m-1 transition-colors">
+                  <div className="w-10 h-10 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-full flex items-center justify-center shrink-0">
+                    <span className="text-gray-900 font-bold text-sm">
+                      {(user?.full_name || user?.email || "A").charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-gray-100 text-sm truncate">
+                      {user?.full_name || user?.email || "משתמש"}
+                    </p>
+                    <p className="text-xs text-gray-500 truncate">
+                      {ROLE_LABELS[user?.role] || user?.email || "Manage your events"}
+                    </p>
+                  </div>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" side="top" className="w-56 bg-gray-900 border-gray-700 text-white">
+                <DropdownMenuItem
+                  onClick={() => logout()}
+                  className="text-red-400 focus:text-red-400 focus:bg-red-950/50 cursor-pointer"
+                >
+                  <LogOut className="w-4 h-4 ml-2" />
+                  התנתקות
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </SidebarFooter>
         </Sidebar>
 
