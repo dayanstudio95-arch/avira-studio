@@ -11,6 +11,7 @@ import LeadCSVImportDialog from "../components/leads/LeadCSVImportDialog";
 import MobileMoreMenu from "../components/leads/MobileMoreMenu";
 import LeadImageImportReviewDialog from "../components/leads/LeadImageImportReviewDialog";
 import LeadContractDialog from "../components/leads/LeadContractDialog";
+import FollowUpReminderDialog from "../components/leads/FollowUpReminderDialog";
 import UnifiedSidePanel from "../components/unified/UnifiedSidePanel";
 import InvoiceDialog from "../components/invoice/InvoiceDialog";
 import { toast } from "sonner";
@@ -55,6 +56,7 @@ export default function Leads() {
   const [duplicates, setDuplicates] = useState([]);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
   const [bulkStatusDialogOpen, setBulkStatusDialogOpen] = useState(false);
+  const [followUpDialogOpen, setFollowUpDialogOpen] = useState(false);
 
   const [selectedBulkStatus, setSelectedBulkStatus] = useState(null);
 
@@ -83,6 +85,13 @@ export default function Leads() {
   const loadData = async () => {
     setIsLoading(true);
     try {
+      // New (2026-08-13): opportunistically auto-flip any lead stuck in "נשלחה הצעה"
+      // (contract sent, unsigned) for 48h+ to "פולו-אפ" before loading the list, so the
+      // status shown always reflects the 48h rule without needing cron infrastructure
+      // (see sync-lead-followups edge function for why this runs here instead of on a
+      // schedule). Best-effort — a failure here must never block the page from loading.
+      try { await base44.functions.invoke('syncLeadFollowups', {}); } catch (syncErr) { console.error('syncLeadFollowups failed:', syncErr); }
+
       const [leadsData, eventsData, staffData] = await Promise.all([
         base44.entities.Lead.list("-created_date"),
         base44.entities.Event.list(),
@@ -384,6 +393,7 @@ export default function Leads() {
              </Button>
            </>
            )}
+            <Button onClick={() => setFollowUpDialogOpen(true)} variant="outline" className="border-orange-500 text-orange-300 bg-transparent hover:bg-orange-600/10 px-4 py-2 rounded-lg font-medium">📨 תזכורת פולו-אפ</Button>
             <Button onClick={handleAssignStudioIds} variant="outline" className="border-purple-500 text-purple-300 bg-transparent hover:bg-purple-600/10 px-4 py-2 rounded-lg font-medium">🔢 שייך IDs</Button>
             <Button onClick={handleFixMissingEvents} disabled={convertingId === 'fix'} variant="outline" className="border-red-500 text-red-300 bg-transparent hover:bg-red-600/10 px-4 py-2 rounded-lg font-medium">🔧 תיקון חסרים</Button>
             <Button onClick={() => setIsCSVImportOpen(true)} variant="outline" className="border-gray-600 text-gray-300 bg-transparent hover:bg-gray-700 px-4 py-2 rounded-lg font-medium">📂 ייבוא CSV</Button>
@@ -410,6 +420,7 @@ export default function Leads() {
               onAssignIds={handleAssignStudioIds}
               onFixMissing={handleFixMissingEvents}
               onCSVImport={() => setIsCSVImportOpen(true)}
+              onFollowUpReminder={() => setFollowUpDialogOpen(true)}
             />
           </div>
         </div>
@@ -818,6 +829,13 @@ export default function Leads() {
         staffMembers={staffMembers}
         onLeadUpdated={loadLeads}
         onEventUpdated={loadLeads}
+      />
+
+      <FollowUpReminderDialog
+        isOpen={followUpDialogOpen}
+        onClose={() => setFollowUpDialogOpen(false)}
+        leads={leads}
+        onSent={loadLeads}
       />
     </div>
   );

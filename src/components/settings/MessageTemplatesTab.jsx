@@ -41,6 +41,18 @@ const TEMPLATES = [
     variables: ["{{names}}", "{{event_date}}"],
   },
   {
+    key: "template_lead_followup",
+    label: "תזכורת פולו-אפ (חוזה לא נחתם)",
+    description: "ההודעה שנשלחת מדף הלידים בכפתור 'שלח תזכורת ללידים בפולו-אפ' — ללידים ששלחתם להם חוזה ועדיין לא חתמו",
+    defaultValue: `היי {{names}} 😊
+רצינו לבדוק שקיבלתם את קישור החוזה ולוודא שהכל בסדר מצידכם.
+נשמח שתחתמו בהקדם כדי לשריין את התאריך:
+{{contract_link}}
+
+זמינים לכל שאלה! 📸`,
+    variables: ["{{names}}", "{{event_date}}", "{{contract_link}}"],
+  },
+  {
     key: "template_payment_request",
     label: "דרישת תשלום",
     description: "ההודעה שתישלח כשלוחצים על 'שלח דרישת תשלום' בוואטסאפ",

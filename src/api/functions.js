@@ -34,6 +34,7 @@ const FUNCTION_MAP = {
   assignStudioIdToNewLead: 'assign-studio-id-to-new-lead',
   fixMissingEventForLead: 'fix-missing-event-for-lead',
   syncAllSignedLeads: 'sync-all-signed-leads',
+  syncLeadFollowups: 'sync-lead-followups',
   sendStaffInvite: 'send-staff-invite',
 
   // Public / unauthenticated pages

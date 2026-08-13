@@ -11,6 +11,7 @@ export default function MobileMoreMenu({
   onAssignIds,
   onFixMissing,
   onCSVImport,
+  onFollowUpReminder,
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -50,6 +51,7 @@ export default function MobileMoreMenu({
               {item(`🗑️ מחק ${selectedIds.size} מסומנים`, onBulkDelete, "text-red-300")}
             </>
           )}
+          {item("📨 תזכורת פולו-אפ", onFollowUpReminder, "text-orange-300")}
           {item("🔢 שייך IDs", onAssignIds, "text-purple-300")}
           {item("🔧 תיקון חסרים", onFixMissing, "text-red-300")}
           {item("📂 ייבוא CSV", onCSVImport, "text-gray-300")}

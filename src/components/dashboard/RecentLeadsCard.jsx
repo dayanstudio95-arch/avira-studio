@@ -20,6 +20,9 @@ export default function RecentLeadsCard() {
   const [panelOpen, setPanelOpen] = useState(false);
 
   useEffect(() => {
+    // Best-effort 48h auto-follow-up sync (see sync-lead-followups edge function) so
+    // the dashboard's status badges stay accurate too, not just the Leads page.
+    base44.functions.invoke('syncLeadFollowups', {}).catch(() => {});
     base44.entities.Lead.list("-created_date", 5).then(setLeads).catch(() => {});
   }, []);
 

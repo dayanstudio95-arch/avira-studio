@@ -235,6 +235,22 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
       const ok = await sendViaWebhook('contract', lead.phoneNumber, message_text);
       if (ok) {
         setLastContractSentAt(new Date());
+        // New (2026-08-13): sending the contract now persists status + a timestamp,
+        // per explicit request that a lead should automatically move to "נשלחה הצעה"
+        // once the contract is sent (previously this only updated local React state,
+        // never the DB -- see contractSent's other write site, Leads.jsx handleCopyLink,
+        // for the only place this used to happen before). Guarded so re-sending a
+        // contract to an already-signed/closed lead never regresses its status.
+        // contract_sent_at also feeds sync-lead-followups' 48h auto-follow-up flip.
+        if (!['חוזה', 'נסגר/חתימה'].includes(lead.status)) {
+          await base44.entities.Lead.update(lead.id, {
+            status: 'נשלחה הצעה',
+            contractSent: true,
+            contractSentAt: new Date().toISOString(),
+            lastContactDate: new Date().toISOString(),
+          });
+          if (onLeadUpdated) onLeadUpdated();
+        }
         toast.success('הודעת חוזה נשלחה בהצלחה');
       }
     } catch (error) {
