@@ -74,7 +74,7 @@ export default function SystemAdvisor() {
     // failed runs last 3 days
     automationRuns.filter(r => {
       const threeDaysAgo = new Date(today.getTime() - 3 * 86400000).toISOString();
-      return r.status === "error" && r.started_at > threeDaysAgo;
+      return r.status === "error" && r.startedAt > threeDaysAgo;
     }).length,
     // open debts
     events.filter(e => new Date(e.date) < today && e.clientPaymentStatus !== "Paid").length,

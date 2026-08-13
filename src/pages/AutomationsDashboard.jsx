@@ -133,13 +133,13 @@ function buildPreview(template, type) {
 function SettingsModal({ automation, onClose, onSaved }) {
   const [form, setForm] = useState({
     frequency: automation.frequency || "manual",
-    run_day: automation.run_day || 1,
-    run_time: automation.run_time || "09:00",
-    target_month_mode: automation.target_month_mode || "next_month",
+    run_day: automation.runDay || 1,
+    run_time: automation.runTime || "09:00",
+    target_month_mode: automation.targetMonthMode || "next_month",
     messageTemplate: automation.messageTemplate || "",
     mediaFileUrl: automation.mediaFileUrl || "",
     test_phone: "",
-    test_mode: automation.test_mode || false,
+    test_mode: automation.testMode || false,
     selectedStaffIds: automation.selectedStaffIds || [],
   });
   const [saving, setSaving] = useState(false);
@@ -861,10 +861,10 @@ function AutomationCard({ automation, onToggle, onSettings, onManualRun, onSyncS
       {/* Audit panel */}
       <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-3 space-y-1.5">
         {/* Configured time */}
-        {automation.run_time && automation.frequency !== 'manual' && (
+        {automation.runTime && automation.frequency !== 'manual' && (
           <div className="flex items-center justify-between text-xs">
             <span className="text-gray-500">שעה מוגדרת</span>
-            <span className="text-white font-mono font-semibold">{automation.run_time}</span>
+            <span className="text-white font-mono font-semibold">{automation.runTime}</span>
           </div>
         )}
         {/* Next run */}
@@ -877,8 +877,8 @@ function AutomationCard({ automation, onToggle, onSettings, onManualRun, onSyncS
               <span className="text-red-400 font-semibold">כבויה</span>
             ) : (
               <>
-                <span className={`font-mono ${automation.next_run_at ? 'text-indigo-300' : 'text-gray-500'}`}>
-                  {automation.next_run_at ? formatIsraelTime(automation.next_run_at) : '—'}
+                <span className={`font-mono ${automation.nextRunAt ? 'text-indigo-300' : 'text-gray-500'}`}>
+                  {automation.nextRunAt ? formatIsraelTime(automation.nextRunAt) : '—'}
                 </span>
                 <button
                   onClick={() => onSyncSchedule(automation)}
@@ -898,7 +898,7 @@ function AutomationCard({ automation, onToggle, onSettings, onManualRun, onSyncS
         <div className="flex items-center justify-between text-xs">
           <span className="text-gray-500">הרצה אחרונה</span>
           <span className="text-gray-400 font-mono">
-            {automation.last_run_at ? formatIsraelTime(automation.last_run_at) : 'טרם הורץ'}
+            {automation.lastRunAt ? formatIsraelTime(automation.lastRunAt) : 'טרם הורץ'}
           </span>
         </div>
       </div>
@@ -953,19 +953,19 @@ function AutomationCard({ automation, onToggle, onSettings, onManualRun, onSyncS
                   <div className="flex items-center gap-1.5">
                     {runStatusIcon(run.status)}
                     <span className="text-gray-300 font-mono">
-                      {run.started_at ? formatIsraelTime(run.started_at) : '—'}
+                      {run.startedAt ? formatIsraelTime(run.startedAt) : '—'}
                     </span>
                   </div>
                   <span className={`font-semibold ${
                     run.status === 'completed' ? 'text-green-400' :
                     run.status === 'error'     ? 'text-red-400' : 'text-yellow-400'
                   }`}>
-                    {run.status === 'completed' ? `✓ נשלחו ${run.messages_sent ?? 0}` :
+                    {run.status === 'completed' ? `✓ נשלחו ${run.messagesSent ?? 0}` :
                      run.status === 'error'     ? '✗ כישלון' : '⏳ רץ'}
                   </span>
                 </div>
-                {run.error_message && (
-                  <p className="text-red-300 text-[10px] mt-0.5 leading-relaxed">{run.error_message}</p>
+                {run.errorMessage && (
+                  <p className="text-red-300 text-[10px] mt-0.5 leading-relaxed">{run.errorMessage}</p>
                 )}
               </div>
             ))
@@ -1038,7 +1038,7 @@ export default function AutomationsDashboard() {
         automation_id: automation.id,
       });
       const { next_run_at, israel_time } = res.data;
-      setAutomations(prev => prev.map(a => a.id === automation.id ? { ...a, next_run_at } : a));
+      setAutomations(prev => prev.map(a => a.id === automation.id ? { ...a, nextRunAt: next_run_at } : a));
       toast.success(`תזמון עודכן → ${israel_time} (ישראל)`);
     } catch (e) {
       toast.error("שגיאה בסנכרון תזמון: " + e.message);

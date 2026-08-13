@@ -70,8 +70,8 @@ export default function DataAnomaliesCard({ events, leads, staffMembers, message
   // Build set of phone numbers proven to work (sent successfully via WhatsApp)
   const provenPhones = new Set(
     messageLogs
-      .filter(log => log.status === "sent" && log.channel === "whatsapp" && log.recipient_contact)
-      .map(log => log.recipient_contact.replace(/[^\d]/g, ""))
+      .filter(log => log.status === "sent" && log.channel === "whatsapp" && log.recipientContact)
+      .map(log => log.recipientContact.replace(/[^\d]/g, ""))
   );
 
   const anomalies = [];

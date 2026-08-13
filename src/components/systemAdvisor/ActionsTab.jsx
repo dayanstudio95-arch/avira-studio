@@ -124,7 +124,7 @@ export default function ActionsTab({ events, leads, automationRuns, staffMembers
   });
 
   const threeDaysAgo = new Date(today.getTime() - 3 * 86400000).toISOString();
-  const failedRuns = automationRuns.filter(r => r.status === "error" && r.started_at > threeDaysAgo);
+  const failedRuns = automationRuns.filter(r => r.status === "error" && r.startedAt > threeDaysAgo);
 
   const staleLeads = leads.filter(l => {
     if (l.status !== "חדש" && l.status !== "נשלחה הצעה") return false;

@@ -15,7 +15,7 @@ export function calcHealthScore({ events, automations, automationRuns, leads, st
   // Failed run in last 3 days
   const threeDaysAgo = new Date(today.getTime() - 3 * 86400000).toISOString();
   const recentFailedRuns = automationRuns.filter(
-    r => r.status === "error" && r.started_at > threeDaysAgo
+    r => r.status === "error" && r.startedAt > threeDaysAgo
   );
   if (recentFailedRuns.length > 0) {
     const deduct = Math.min(recentFailedRuns.length * 12, 30);
@@ -130,9 +130,9 @@ export function getDailyTip({ events, automations, automationRuns, leads }) {
 
   // 3. Failed automation
   const threeDaysAgo = new Date(today.getTime() - 3 * 86400000).toISOString();
-  const failedRun = automationRuns.find(r => r.status === "error" && r.started_at > threeDaysAgo);
+  const failedRun = automationRuns.find(r => r.status === "error" && r.startedAt > threeDaysAgo);
   if (failedRun) {
-    return `האוטומציה "${failedRun.automation_name}" נכשלה לאחרונה — כדאי לבדוק את הגדרות ה-Webhook.`;
+    return `האוטומציה "${failedRun.automationName}" נכשלה לאחרונה — כדאי לבדוק את הגדרות ה-Webhook.`;
   }
 
   // 4. Inactive automations
@@ -185,7 +185,7 @@ export function getPriorityItems({ events, automations, automationRuns, leads })
 
   // Failed automation runs (HIGH)
   const threeDaysAgo = new Date(today.getTime() - 3 * 86400000).toISOString();
-  const failedRuns = automationRuns.filter(r => r.status === "error" && r.started_at > threeDaysAgo);
+  const failedRuns = automationRuns.filter(r => r.status === "error" && r.startedAt > threeDaysAgo);
   if (failedRuns.length > 0) {
     items.push({
       priority: 2,

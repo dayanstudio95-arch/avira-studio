@@ -11,13 +11,13 @@ export default function AutomationsStatusCard({ automations, runs }) {
 
   // Last run across all automations (active only — inactive haven't run recently)
   const lastRun = [...active]
-    .filter(a => a.last_run_at)
-    .sort((a, b) => new Date(b.last_run_at) - new Date(a.last_run_at))[0];
+    .filter(a => a.lastRunAt)
+    .sort((a, b) => new Date(b.lastRunAt) - new Date(a.lastRunAt))[0];
 
   // Last error from AutomationRun records
   const lastError = [...(runs || [])]
-    .filter(r => r.status === "error" && r.error_message)
-    .sort((a, b) => new Date(b.started_at) - new Date(a.started_at))[0];
+    .filter(r => r.status === "error" && r.errorMessage)
+    .sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt))[0];
 
   const formatDate = (d) => {
     if (!d) return "—";
@@ -69,7 +69,7 @@ export default function AutomationsStatusCard({ automations, runs }) {
         <div className="text-xs text-gray-500">
           ריצה אחרונה:{" "}
           <span className="text-gray-300">
-            {lastRun ? `${lastRun.name} — ${formatDate(lastRun.last_run_at)}` : "—"}
+            {lastRun ? `${lastRun.name} — ${formatDate(lastRun.lastRunAt)}` : "—"}
           </span>
         </div>
 
@@ -78,9 +78,9 @@ export default function AutomationsStatusCard({ automations, runs }) {
           <div className="bg-red-950/40 border border-red-800/40 rounded-lg p-3 flex items-start gap-2">
             <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
             <div>
-              <p className="text-red-300 text-xs font-medium">{lastError.automation_name}</p>
-              <p className="text-red-400/80 text-xs mt-0.5">{lastError.error_message}</p>
-              <p className="text-gray-500 text-xs mt-1">{formatDate(lastError.started_at)}</p>
+              <p className="text-red-300 text-xs font-medium">{lastError.automationName}</p>
+              <p className="text-red-400/80 text-xs mt-0.5">{lastError.errorMessage}</p>
+              <p className="text-gray-500 text-xs mt-1">{formatDate(lastError.startedAt)}</p>
             </div>
           </div>
         )}

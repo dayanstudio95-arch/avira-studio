@@ -55,9 +55,9 @@ export default function AutomationLogs() {
     setRunningNow(null);
   };
 
-  const filteredRuns = selectedAutomation === "all" ? runs : runs.filter(r => r.automation_id === selectedAutomation);
+  const filteredRuns = selectedAutomation === "all" ? runs : runs.filter(r => r.automationId === selectedAutomation);
 
-  const getRunMessages = (runId) => messages.filter(m => m.automation_run_id === runId);
+  const getRunMessages = (runId) => messages.filter(m => m.automationRunId === runId);
 
   return (
     <div className="min-h-screen bg-gray-950 text-white p-6" dir="rtl">
@@ -133,15 +133,15 @@ export default function AutomationLogs() {
                         run.status === "error" ? <XCircle className="w-5 h-5 text-red-400" /> :
                         <Clock className="w-5 h-5 text-blue-400 animate-spin" />}
                       <div>
-                        <p className="font-medium text-white">{run.automation_name}</p>
-                        <p className="text-xs text-gray-500">{formatDate(run.started_at)} · {run.triggered_by === "manual" ? "ידני" : "אוטומטי"}</p>
+                        <p className="font-medium text-white">{run.automationName}</p>
+                        <p className="text-xs text-gray-500">{formatDate(run.startedAt)} · {run.triggeredBy === "manual" ? "ידני" : "אוטומטי"}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
                       {run.status === "completed" && (
                         <div className="flex gap-2 text-sm">
-                          <span className="text-green-400">✓ {run.messages_sent}</span>
-                          {run.messages_failed > 0 && <span className="text-red-400">✗ {run.messages_failed}</span>}
+                          <span className="text-green-400">✓ {run.messagesSent}</span>
+                          {run.messagesFailed > 0 && <span className="text-red-400">✗ {run.messagesFailed}</span>}
                         </div>
                       )}
                       <span className={`text-xs px-2 py-1 rounded border ${statusColor[run.status] || ""}`}>
@@ -153,9 +153,9 @@ export default function AutomationLogs() {
 
                   {isExpanded && (
                     <div className="border-t border-gray-700 bg-gray-950/50">
-                      {run.error_message && (
+                      {run.errorMessage && (
                         <div className="p-3 bg-red-900/20 border-b border-red-900/30">
-                          <p className="text-red-400 text-sm">⚠️ {run.error_message}</p>
+                          <p className="text-red-400 text-sm">⚠️ {run.errorMessage}</p>
                         </div>
                       )}
                       {runMsgs.length === 0 ? (
@@ -174,13 +174,13 @@ export default function AutomationLogs() {
                           <tbody>
                             {runMsgs.map(msg => (
                               <tr key={msg.id} className="border-t border-gray-800 hover:bg-gray-800/30">
-                                <td className="px-4 py-2 text-gray-200">{msg.recipient_name}</td>
-                                <td className="px-4 py-2 text-gray-400 text-xs">{msg.recipient_contact}</td>
+                                <td className="px-4 py-2 text-gray-200">{msg.recipientName}</td>
+                                <td className="px-4 py-2 text-gray-400 text-xs">{msg.recipientContact}</td>
                                 <td className="px-4 py-2 text-gray-400">{msg.channel}</td>
                                 <td className={`px-4 py-2 font-medium ${msgStatusColor[msg.status]}`}>
                                   {msg.status === "sent" ? "✓ נשלח" : msg.status === "failed" ? `✗ נכשל${msg.error ? ": " + msg.error : ""}` : "דולג"}
                                 </td>
-                                <td className="px-4 py-2 text-gray-500 text-xs max-w-xs truncate">{msg.message_content?.substring(0, 80)}...</td>
+                                <td className="px-4 py-2 text-gray-500 text-xs max-w-xs truncate">{msg.messageContent?.substring(0, 80)}...</td>
                               </tr>
                             ))}
                           </tbody>
