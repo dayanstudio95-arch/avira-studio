@@ -128,8 +128,8 @@ export default function ActionsTab({ events, leads, automationRuns, staffMembers
 
   const staleLeads = leads.filter(l => {
     if (l.status !== "חדש" && l.status !== "נשלחה הצעה") return false;
-    if (!l.last_contact_date) return true;
-    return (today - new Date(l.last_contact_date)) / 86400000 > 5;
+    if (!l.lastContactDate) return true;
+    return (today - new Date(l.lastContactDate)) / 86400000 > 5;
   });
 
   // ── Build draft texts ───────────────────────────────────────────────────────

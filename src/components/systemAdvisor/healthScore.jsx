@@ -144,8 +144,8 @@ export function getDailyTip({ events, automations, automationRuns, leads }) {
   // 5. Leads pending follow-up
   const staleleads = leads.filter(l => {
     if (l.status !== "חדש" && l.status !== "נשלחה הצעה") return false;
-    if (!l.last_contact_date) return true;
-    const days = (today - new Date(l.last_contact_date)) / 86400000;
+    if (!l.lastContactDate) return true;
+    const days = (today - new Date(l.lastContactDate)) / 86400000;
     return days > 5;
   });
   if (staleleads.length > 0) {
@@ -235,8 +235,8 @@ export function getPriorityItems({ events, automations, automationRuns, leads })
   // Stale leads (LOW)
   const staleLeads = leads.filter(l => {
     if (l.status !== "חדש" && l.status !== "נשלחה הצעה") return false;
-    if (!l.last_contact_date) return true;
-    const days = (today - new Date(l.last_contact_date)) / 86400000;
+    if (!l.lastContactDate) return true;
+    const days = (today - new Date(l.lastContactDate)) / 86400000;
     return days > 5;
   });
   if (staleLeads.length > 0) {

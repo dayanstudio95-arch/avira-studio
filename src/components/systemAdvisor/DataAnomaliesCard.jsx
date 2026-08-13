@@ -123,7 +123,7 @@ export default function DataAnomaliesCard({ events, leads, staffMembers, message
   // 2. Signed leads without a linked event
   const signedLeads = leads.filter(l => l.status === "נסגר/חתימה");
   signedLeads.forEach(l => {
-    if (!l.linked_event_id) {
+    if (!l.linkedEventId) {
       anomalies.push({
         type: "lead",
         label: `ליד חתום ללא אירוע — ${l.coupleNames || l.id}`,
