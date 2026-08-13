@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Users, Plus, Mail } from "lucide-react";
 import { toast } from "sonner";
+import CreateStudioDialog from "./CreateStudioDialog";
 
 const ROLE_LABELS = {
   owner: "בעלים",
@@ -105,6 +106,7 @@ export default function UsersTab() {
   };
 
   return (
+    <div className="space-y-6">
     <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm">
       <CardHeader className="border-b border-gray-800">
         <div className="flex items-center justify-between">
@@ -235,5 +237,8 @@ export default function UsersTab() {
         )}
       </CardContent>
     </Card>
+
+    <CreateStudioDialog canManage={user?.role === "owner"} />
+    </div>
   );
 }

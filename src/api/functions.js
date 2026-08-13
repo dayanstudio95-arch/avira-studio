@@ -70,6 +70,7 @@ const FUNCTION_MAP = {
   inviteUser: 'invite-user',
   listTenantUsers: 'list-tenant-users',
   updateTenantUser: 'update-tenant-user',
+  createTenant: 'create-tenant',
 };
 
 // Names that intentionally have NO Edge Function port yet — either confirmed dead
