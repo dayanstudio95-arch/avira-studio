@@ -58,7 +58,7 @@ export default function DashboardAlerts({ events }) {
 
   const handleAlertClick = (alert) => {
     const ev = alert.event;
-    const lead = leads.find(l => l.id === ev.source_lead_id || l.linked_event_id === ev.id);
+    const lead = leads.find(l => l.id === ev.sourceLeadId || l.linkedEventId === ev.id);
     setSelectedEvent(ev);
     setSelectedLead(lead || null);
     setPanelOpen(true);

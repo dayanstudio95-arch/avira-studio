@@ -121,13 +121,13 @@ function EventDetailModal({ event, onClose, onEditLead }) {
   const [message, setMessage] = React.useState("");
 
   React.useEffect(() => {
-    const leadLinkId = event?.source_lead_id || event?.leadId;
+    const leadLinkId = event?.sourceLeadId || event?.leadId;
     if (event && leadLinkId) {
       base44.entities.Lead.get(leadLinkId)
         .then(function(data) { setLead(data); })
         .catch(function(err) { console.error("Failed to load lead:", err); });
     }
-  }, [event?.source_lead_id, event?.leadId]);
+  }, [event?.sourceLeadId, event?.leadId]);
 
   if (!event) return null;
 
@@ -154,13 +154,13 @@ function EventDetailModal({ event, onClose, onEditLead }) {
   }
 
   var workSteps = [
-    { label: "צלם 1", done: event.photographer1_done },
-    { label: "צלם 2", done: event.photographer2_done },
-    { label: "וידאו", done: event.video1_done },
-    { label: "עריכה", done: event.editor_done },
-    { label: "גלם הועלה", done: event.raw_done_manual },
-    { label: "גלם לעורך", done: event.raw_sent_to_editor },
-    { label: "סופי הועלה", done: event.final_done_manual },
+    { label: "צלם 1", done: event.photographer1Done },
+    { label: "צלם 2", done: event.photographer2Done },
+    { label: "וידאו", done: event.video1Done },
+    { label: "עריכה", done: event.editorDone },
+    { label: "גלם הועלה", done: event.rawDoneManual },
+    { label: "גלם לעורך", done: event.rawSentToEditor },
+    { label: "סופי הועלה", done: event.finalDoneManual },
   ];
 
   var payStatusMap = {
@@ -296,8 +296,8 @@ function EventDetailModal({ event, onClose, onEditLead }) {
               ); })}
             </div>
             <div className="flex flex-wrap gap-2">
-              {event.raw_link && (<a href={event.raw_link} target="_blank" rel="noreferrer" className="text-xs px-2.5 py-1 bg-blue-900/30 border border-blue-700/40 text-blue-400 rounded-lg hover:bg-blue-900/50 transition-colors">🗂️ גלם</a>)}
-              {event.final_link && (<a href={event.final_link} target="_blank" rel="noreferrer" className="text-xs px-2.5 py-1 bg-purple-900/30 border border-purple-700/40 text-purple-400 rounded-lg hover:bg-purple-900/50 transition-colors">🎬 סופי</a>)}
+              {event.rawLink && (<a href={event.rawLink} target="_blank" rel="noreferrer" className="text-xs px-2.5 py-1 bg-blue-900/30 border border-blue-700/40 text-blue-400 rounded-lg hover:bg-blue-900/50 transition-colors">🗂️ גלם</a>)}
+              {event.finalLink && (<a href={event.finalLink} target="_blank" rel="noreferrer" className="text-xs px-2.5 py-1 bg-purple-900/30 border border-purple-700/40 text-purple-400 rounded-lg hover:bg-purple-900/50 transition-colors">🎬 סופי</a>)}
               {event.albumSketchLink && (<a href={event.albumSketchLink} target="_blank" rel="noreferrer" className="text-xs px-2.5 py-1 bg-pink-900/30 border border-pink-700/40 text-pink-400 rounded-lg hover:bg-pink-900/50 transition-colors">🖼️ סקיצת אלבום</a>)}
             </div>
           </div>
@@ -510,7 +510,7 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
   const getEventProgressStatus = (event) => {
     const teamCount = event.team?.filter(m => m.staffMemberName)?.length || 0;
     if (teamCount === 0) return { label: 'חסר צוות', color: 'bg-red-500/20 text-red-400 border-red-500/30' };
-    if (event.photographer1_done && event.video1_done && event.editor_done) return { label: 'הושלם', color: 'bg-green-500/20 text-green-400 border-green-500/30' };
+    if (event.photographer1Done && event.video1Done && event.editorDone) return { label: 'הושלם', color: 'bg-green-500/20 text-green-400 border-green-500/30' };
     return { label: 'בתהליך', color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' };
   };
 
@@ -678,7 +678,7 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
                             <button
                               onClick={() => {
                               let relatedLead = null;
-                              if (event.source_lead_id) relatedLead = leads.find(l => l.id === event.source_lead_id);
+                              if (event.sourceLeadId) relatedLead = leads.find(l => l.id === event.sourceLeadId);
                               setSelectedLeadForDrawer(relatedLead || null);
                                 setSelectedEventForDrawer(event);
                                 setIsDrawerOpen(true);

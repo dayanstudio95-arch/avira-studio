@@ -23,8 +23,8 @@ export default function EventExpensesEditor({ eventId, onSave }) {
           setEvent(eventData[0]);
           setVatableAmountInput(eventData[0].vatableAmount || eventData[0].totalAmountGross || 0);
           // Load linked lead if exists
-          if (eventData[0].source_lead_id) {
-            const leadData = await base44.entities.Lead.filter({ id: eventData[0].source_lead_id });
+          if (eventData[0].sourceLeadId) {
+            const leadData = await base44.entities.Lead.filter({ id: eventData[0].sourceLeadId });
             if (leadData.length > 0) {
               setLead(leadData[0]);
             }

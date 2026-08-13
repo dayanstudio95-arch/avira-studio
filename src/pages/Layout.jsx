@@ -147,10 +147,10 @@ export default function Layout({ children }) {
         });
         const monthIncome = thisMonthEvents.reduce((sum, e) => sum + (e.totalAmountGross || 0), 0);
         const ROLE_DONE_FIELDS = {
-          photographer1: "photographer1_done",
-          photographer2: "photographer2_done",
-          videographer:  "video1_done",
-          editor:        "editor_done",
+          photographer1: "photographer1Done",
+          photographer2: "photographer2Done",
+          videographer:  "video1Done",
+          editor:        "editorDone",
         };
         const getEventProgress = (e) => {
           const items = [];
@@ -158,8 +158,8 @@ export default function Layout({ children }) {
             const field = ROLE_DONE_FIELDS[m?.role];
             if (field) items.push(!!e[field]);
           });
-          items.push(!!(e.raw_link || e.raw_done_manual));
-          items.push(!!(e.final_link || e.final_done_manual));
+          items.push(!!(e.rawLink || e.rawDoneManual));
+          items.push(!!(e.finalLink || e.finalDoneManual));
           const total = items.length;
           const completed = items.filter(Boolean).length;
           return total > 0 ? Math.round((completed / total) * 100) : 0;
@@ -261,7 +261,7 @@ export default function Layout({ children }) {
         }
       `}</style>
       <div className="min-h-screen flex w-full bg-gray-950">
-        <Sidebar className="border-r border-gray-800 bg-gray-900">
+        <Sidebar side="right" className="border-l border-gray-800 bg-gray-900">
           <SidebarHeader className="border-b border-gray-800 p-6">
             <div className="flex items-center justify-between gap-3 w-full">
               <div className="flex items-center gap-3">

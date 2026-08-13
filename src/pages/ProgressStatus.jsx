@@ -16,14 +16,14 @@ const formatMonthYear = (date) => `${HEBREW_MONTHS[date.getMonth()]} ${date.getF
 import { toast } from "sonner";
 
 const ROLE_CONFIG = {
-  photographer1: { label: "צלם 1", icon: Camera, doneField: "photographer1_done" },
-  photographer2: { label: "צלם 2", icon: Camera, doneField: "photographer2_done" },
-  videographer:  { label: "וידאו",  icon: Video,  doneField: "video1_done" },
-  editor:        { label: "עורך",   icon: Scissors, doneField: "editor_done" },
+  photographer1: { label: "צלם 1", icon: Camera, doneField: "photographer1Done" },
+  photographer2: { label: "צלם 2", icon: Camera, doneField: "photographer2Done" },
+  videographer:  { label: "וידאו",  icon: Video,  doneField: "video1Done" },
+  editor:        { label: "עורך",   icon: Scissors, doneField: "editorDone" },
 };
 
-const isRawCompleted   = (e) => !!(e?.raw_link  || e?.raw_done_manual);
-const isFinalCompleted = (e) => !!(e?.final_link || e?.final_done_manual);
+const isRawCompleted   = (e) => !!(e?.rawLink  || e?.rawDoneManual);
+const isFinalCompleted = (e) => !!(e?.finalLink || e?.finalDoneManual);
 
 const getProgress = (event, teamMembers) => {
   const items = [];
@@ -100,11 +100,11 @@ export default function ProgressStatus() {
   };
 
   const handleSendToEditor = async (event) => {
-    if (event?.raw_sent_to_editor) {
+    if (event?.rawSentToEditor) {
       toast.warning('גלם כבר נשלח לעורך עבור אירוע זה');
       return;
     }
-    const rawLink = event?.raw_link || pendingLinks[`${event?.id}-raw_link`];
+    const rawLink = event?.rawLink || pendingLinks[`${event?.id}-rawLink`];
     if (!rawLink) { toast.error('נא להזין לינק גלם לפני השליחה'); return; }
 
     const editorMember = (event?.team || []).find(m => m?.role === 'editor');
@@ -126,7 +126,7 @@ export default function ProgressStatus() {
         rawLink,
       });
       setEvents(prev => prev.map(e => e?.id === event.id
-        ? { ...e, raw_sent_to_editor: true, raw_sent_at: new Date().toISOString() }
+        ? { ...e, rawSentToEditor: true, rawSentAt: new Date().toISOString() }
         : e
       ));
       toast.success('נשלח לעורך בהצלחה ✅');
@@ -138,7 +138,7 @@ export default function ProgressStatus() {
   };
 
   const handleSendToCouple = async (event) => {
-    const finalLink = event?.final_link || pendingLinks[`${event?.id}-final_link`];
+    const finalLink = event?.finalLink || pendingLinks[`${event?.id}-finalLink`];
     if (!finalLink) { toast.error('נא להזין לינק סופי לפני השליחה'); return; }
     if (!event?.phoneNumber) { toast.error('חסר טלפון זוג לאירוע'); return; }
 
@@ -153,7 +153,7 @@ export default function ProgressStatus() {
         finalLink,
       });
       setEvents(prev => prev.map(e => e?.id === event.id
-        ? { ...e, final_done_manual: true }
+        ? { ...e, finalDoneManual: true }
         : e
       ));
       toast.success('נשלח לזוג בהצלחה ✅');
@@ -419,7 +419,7 @@ export default function ProgressStatus() {
                         {group.map(ev => (
                           <div key={ev.id} className="flex items-center gap-3 text-xs text-gray-300">
                             <span className="font-mono text-gray-500">{ev.id}</span>
-                            <span>source_lead_id: {ev.source_lead_id || "—"}</span>
+                            <span>source_lead_id: {ev.sourceLeadId || "—"}</span>
                             <span>יומן: {ev.googleCalendarEventId ? "✅" : "—"}</span>
                             <span className="text-gray-400">נוצר: {ev.created_date ? new Date(ev.created_date).toLocaleDateString("he-IL") : "—"}</span>
                           </div>
@@ -575,14 +575,14 @@ export default function ProgressStatus() {
                         <Input
                           type="url"
                           placeholder="לינק גלם"
-                          value={getLinkValue(event, "raw_link")}
-                          onChange={e => setPendingLinks(prev => ({ ...prev, [`${event.id}-raw_link`]: e.target.value }))}
-                          onBlur={() => saveLinkOnBlur(event.id, "raw_link")}
+                          value={getLinkValue(event, "rawLink")}
+                          onChange={e => setPendingLinks(prev => ({ ...prev, [`${event.id}-rawLink`]: e.target.value }))}
+                          onBlur={() => saveLinkOnBlur(event.id, "rawLink")}
                           className="h-8 text-xs bg-gray-800 border-gray-700 text-white placeholder-gray-500 w-24"
                           dir="ltr"
                         />
                         <button
-                          onClick={() => updateField(event.id, "raw_done_manual", !event?.raw_done_manual)}
+                          onClick={() => updateField(event.id, "rawDoneManual", !event?.rawDoneManual)}
                           className={`h-8 px-2 text-xs rounded border font-medium transition-colors ${
                             rawDone
                               ? "bg-green-500/30 text-green-300 border-green-500/50"
@@ -594,21 +594,21 @@ export default function ProgressStatus() {
                         </button>
                         <button
                           onClick={() => {
-                            if (event?.raw_sent_to_editor) {
-                              updateField(event.id, 'raw_sent_to_editor', false);
+                            if (event?.rawSentToEditor) {
+                              updateField(event.id, 'rawSentToEditor', false);
                             } else {
                               handleSendToEditor(event);
                             }
                           }}
                           disabled={!!sendingEditor[event.id]}
                           className={`h-8 px-2 text-xs rounded border font-medium transition-colors whitespace-nowrap ${
-                            event?.raw_sent_to_editor
+                            event?.rawSentToEditor
                               ? 'bg-green-500/30 text-green-300 border-green-500/50 hover:bg-red-500/20 hover:text-red-300 hover:border-red-500/40'
                               : 'bg-blue-600/20 text-blue-300 border-blue-500/40 hover:bg-blue-600/30'
                           }`}
-                          title={event?.raw_sent_to_editor ? 'לחץ לאיפוס הסטטוס' : 'שלח לעורך'}
+                          title={event?.rawSentToEditor ? 'לחץ לאיפוס הסטטוס' : 'שלח לעורך'}
                         >
-                          {sendingEditor[event.id] ? '...' : event?.raw_sent_to_editor ? '✓ נשלח' : '→ עורך'}
+                          {sendingEditor[event.id] ? '...' : event?.rawSentToEditor ? '✓ נשלח' : '→ עורך'}
                         </button>
                       </div>
 
@@ -617,14 +617,14 @@ export default function ProgressStatus() {
                         <Input
                           type="url"
                           placeholder="לינק סופי"
-                          value={getLinkValue(event, "final_link")}
-                          onChange={e => setPendingLinks(prev => ({ ...prev, [`${event.id}-final_link`]: e.target.value }))}
-                          onBlur={() => saveLinkOnBlur(event.id, "final_link")}
+                          value={getLinkValue(event, "finalLink")}
+                          onChange={e => setPendingLinks(prev => ({ ...prev, [`${event.id}-finalLink`]: e.target.value }))}
+                          onBlur={() => saveLinkOnBlur(event.id, "finalLink")}
                           className="h-8 text-xs bg-gray-800 border-gray-700 text-white placeholder-gray-500 w-24"
                           dir="ltr"
                         />
                         <button
-                          onClick={() => updateField(event.id, "final_done_manual", !event?.final_done_manual)}
+                          onClick={() => updateField(event.id, "finalDoneManual", !event?.finalDoneManual)}
                           className={`h-8 px-2 text-xs rounded border font-medium transition-colors ${
                             finalDone
                               ? "bg-green-500/30 text-green-300 border-green-500/50"
@@ -638,13 +638,13 @@ export default function ProgressStatus() {
                           onClick={() => handleSendToCouple(event)}
                           disabled={!!sendingCouple[event.id]}
                           className={`h-8 px-2 text-xs rounded border font-medium transition-colors whitespace-nowrap ${
-                            event?.final_done_manual
+                            event?.finalDoneManual
                               ? "bg-green-500/30 text-green-300 border-green-500/50"
                               : "bg-purple-600/20 text-purple-300 border-purple-500/40 hover:bg-purple-600/30"
                           }`}
                           title="שלח סופי לזוג"
                         >
-                          {sendingCouple[event.id] ? '...' : event?.final_done_manual ? '✓ נשלח' : '→ זוג'}
+                          {sendingCouple[event.id] ? '...' : event?.finalDoneManual ? '✓ נשלח' : '→ זוג'}
                         </button>
                       </div>
 

@@ -169,7 +169,7 @@ export default function Leads() {
   const handleStatusChange = async (lead, newStatus) => {
     try {
       setConvertingId(lead.id);
-      await base44.entities.Lead.update(lead.id, { status: newStatus, last_contact_date: new Date().toISOString() });
+      await base44.entities.Lead.update(lead.id, { status: newStatus, lastContactDate: new Date().toISOString() });
       if (newStatus === "נסגר/חתימה") {
         await base44.functions.invoke('syncLeadToEvent', { leadId: lead.id });
         toast.success("הסטטוס עודכן — סינכרון לאירוע בוצע בהצלחה 🎉");
@@ -243,7 +243,7 @@ export default function Leads() {
       const leadIds = [...selectedIds];
       await Promise.all(
         leadIds.map(id => 
-          base44.entities.Lead.update(id, { status: newStatus, last_contact_date: new Date().toISOString() })
+          base44.entities.Lead.update(id, { status: newStatus, lastContactDate: new Date().toISOString() })
         )
       );
       if (newStatus === "נסגר/חתימה") {
@@ -313,18 +313,18 @@ export default function Leads() {
     if (statusFilter && lead.status !== statusFilter) return false;
     if (showDormant) {
       if (lead.status === 'נסגר/חתימה' || lead.status === 'לא רלוונטי') return false;
-      const lastContact = lead.last_contact_date || lead.updated_date || lead.created_date;
+      const lastContact = lead.lastContactDate || lead.updated_date || lead.created_date;
       if (!lastContact) return true;
       const hours = (Date.now() - new Date(lastContact).getTime()) / 36e5;
       if (hours < DORMANT_HOURS) return false;
     }
     if (quickFilter === 'no_event') {
-      const hasEvent = events.some(e => e.source_lead_id === lead.id || e.leadId === lead.id);
+      const hasEvent = events.some(e => e.sourceLeadId === lead.id || e.leadId === lead.id);
       if (hasEvent) return false;
     }
     if (quickFilter === 'no_contact_48h') {
       if (lead.status === 'נסגר/חתימה' || lead.status === 'לא רלוונטי') return false;
-      const lastContact = lead.last_contact_date || lead.updated_date || lead.created_date;
+      const lastContact = lead.lastContactDate || lead.updated_date || lead.created_date;
       if (!lastContact) return true;
       const hours = (Date.now() - new Date(lastContact).getTime()) / 36e5;
       if (hours < 48) return false;
@@ -825,7 +825,7 @@ export default function Leads() {
         isOpen={!!selectedLead}
         onClose={() => setSelectedLead(null)}
         lead={selectedLead}
-        event={selectedLead?.id ? events.find(e => e.source_lead_id === selectedLead.id || e.leadId === selectedLead.id) : null}
+        event={selectedLead?.id ? events.find(e => e.sourceLeadId === selectedLead.id || e.leadId === selectedLead.id) : null}
         staffMembers={staffMembers}
         onLeadUpdated={loadLeads}
         onEventUpdated={loadLeads}

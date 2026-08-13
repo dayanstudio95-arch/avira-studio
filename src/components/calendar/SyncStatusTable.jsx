@@ -47,7 +47,7 @@ export default function SyncStatusTable({ events, leads, syncing, loading, onSyn
     const nonEditor = (e.team || []).filter((m) => m.role !== "editor" && m.staffMemberName);
     const required = e.requiredCrew || 3;
     const teamFull = nonEditor.length >= required;
-    const lead = leadMap[e.leadId] || leadMap[e.source_lead_id] || null;
+    const lead = leadMap[e.leadId] || leadMap[e.sourceLeadId] || null;
     const hasQuestionnaire = lead?.productionFormFilledAt;
 
     return {

@@ -133,8 +133,8 @@ export default function DataAnomaliesCard({ events, leads, staffMembers, message
     }
   });
 
-  // 3. Events without source_lead_id
-  const noLead = events.filter(e => !e.source_lead_id);
+  // 3. Events without sourceLeadId
+  const noLead = events.filter(e => !e.sourceLeadId);
   if (noLead.length > 0) {
     anomalies.push({
       type: "event",

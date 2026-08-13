@@ -13,8 +13,8 @@ import { toast } from "sonner";
 import InvoiceDialog from "@/components/invoice/InvoiceDialog";
 
 export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMembers, onLeadUpdated, onEventUpdated }) {
-  // Hard stop: if event.source_lead_id points to a different lead, discard the event entirely
-  const hasLinkMismatch = !!(event && lead && event.source_lead_id && event.source_lead_id !== lead.id);
+  // Hard stop: if event.sourceLeadId points to a different lead, discard the event entirely
+  const hasLinkMismatch = !!(event && lead && event.sourceLeadId && event.sourceLeadId !== lead.id);
   const safeEvent = hasLinkMismatch ? null : event;
 
   const eventDate = safeEvent?.date || lead?.eventDate;
@@ -68,10 +68,10 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
   const coupleNames = safeEvent?.coupleNames || lead?.coupleNames || '';
   const venue = safeEvent?.venue || lead?.venueName || '';
 
-  // Auto-link: if event doesn't have source_lead_id but we have a lead, save the canonical link
+  // Auto-link: if event doesn't have sourceLeadId but we have a lead, save the canonical link
   useEffect(() => {
-    if (event?.id && lead?.id && !event.source_lead_id) {
-      base44.entities.Event.update(event.id, { source_lead_id: lead.id }).catch(() => {});
+    if (event?.id && lead?.id && !event.sourceLeadId) {
+      base44.entities.Event.update(event.id, { sourceLeadId: lead.id }).catch(() => {});
     }
   }, [event?.id, lead?.id]);
 
@@ -212,7 +212,7 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
       if (ok) {
         const updatedData = {
           status: 'פולו-אפ',
-          last_contact_date: new Date().toISOString() 
+          lastContactDate: new Date().toISOString()
         };
         await base44.entities.Lead.update(lead.id, updatedData);
         if (lead.status === 'נסגר/חתימה') {
@@ -388,8 +388,8 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
       if (safeEvent?.id) {
         await base44.entities.Event.update(safeEvent.id, { date: editingEventDateValue });
       }
-      if (safeEvent?.source_lead_id) {
-        await base44.entities.Lead.update(safeEvent.source_lead_id, { eventDate: editingEventDateValue });
+      if (safeEvent?.sourceLeadId) {
+        await base44.entities.Lead.update(safeEvent.sourceLeadId, { eventDate: editingEventDateValue });
       } else if (lead?.id) {
         await base44.entities.Lead.update(lead.id, { eventDate: editingEventDateValue });
       }
@@ -431,7 +431,7 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                 <div>
                   <p className="font-bold text-red-200">שגיאת קישור — מידע עלול להיות שגוי!</p>
                   <p className="text-xs mt-1 text-red-400">האירוע המוצג שייך לליד אחר. פנה לתמיכה לתיקון.</p>
-                  <p className="text-xs text-red-500 font-mono mt-1">lead: {lead?.id?.slice(-6)} | event.source: {event?.source_lead_id?.slice(-6)}</p>
+                  <p className="text-xs text-red-500 font-mono mt-1">lead: {lead?.id?.slice(-6)} | event.source: {event?.sourceLeadId?.slice(-6)}</p>
                 </div>
               </div>
             )}

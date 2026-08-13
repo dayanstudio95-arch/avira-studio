@@ -14,7 +14,7 @@ const paymentLabels = {
 function getProgressStatus(event) {
   const teamCount = event.team?.filter(m => m.staffMemberName)?.length || 0;
   if (teamCount === 0) return { label: "חסר צוות", cls: "bg-red-500/20 text-red-400 border-red-500/30" };
-  if (event.photographer1_done && event.video1_done && event.editor_done)
+  if (event.photographer1Done && event.video1Done && event.editorDone)
     return { label: "הושלם", cls: "bg-green-500/20 text-green-400 border-green-500/30" };
   return { label: "בתהליך", cls: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" };
 }

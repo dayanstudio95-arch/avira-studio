@@ -4,14 +4,14 @@ import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
 
 const ROLE_CONFIG = {
-  photographer1: { label: "צלם 1", icon: Camera, doneField: "photographer1_done" },
-  photographer2: { label: "צלם 2", icon: Camera, doneField: "photographer2_done" },
-  videographer:  { label: "וידאו",  icon: Video,  doneField: "video1_done" },
-  editor:        { label: "עורך",   icon: Scissors, doneField: "editor_done" },
+  photographer1: { label: "צלם 1", icon: Camera, doneField: "photographer1Done" },
+  photographer2: { label: "צלם 2", icon: Camera, doneField: "photographer2Done" },
+  videographer:  { label: "וידאו",  icon: Video,  doneField: "video1Done" },
+  editor:        { label: "עורך",   icon: Scissors, doneField: "editorDone" },
 };
 
-const isRawCompleted   = (e) => !!(e?.raw_link  || e?.raw_done_manual);
-const isFinalCompleted = (e) => !!(e?.final_link || e?.final_done_manual);
+const isRawCompleted   = (e) => !!(e?.rawLink  || e?.rawDoneManual);
+const isFinalCompleted = (e) => !!(e?.finalLink || e?.finalDoneManual);
 
 export default function ProgressEventMobileCard({
   event,
@@ -107,14 +107,14 @@ export default function ProgressEventMobileCard({
         <Input
           type="url"
           placeholder="לינק גלם"
-          value={getLinkValue(event, "raw_link")}
-          onChange={e => setPendingLinks(prev => ({ ...prev, [`${event.id}-raw_link`]: e.target.value }))}
-          onBlur={() => saveLinkOnBlur(event.id, "raw_link")}
+          value={getLinkValue(event, "rawLink")}
+          onChange={e => setPendingLinks(prev => ({ ...prev, [`${event.id}-rawLink`]: e.target.value }))}
+          onBlur={() => saveLinkOnBlur(event.id, "rawLink")}
           className="h-8 text-xs bg-gray-800 border-gray-700 text-white placeholder-gray-500 flex-1"
           dir="ltr"
         />
         <button
-          onClick={() => updateField(event.id, "raw_done_manual", !event?.raw_done_manual)}
+          onClick={() => updateField(event.id, "rawDoneManual", !event?.rawDoneManual)}
           className={`h-8 px-2 text-xs rounded border font-medium flex-shrink-0 transition-colors ${
             rawDone
               ? "bg-green-500/30 text-green-300 border-green-500/50"
@@ -123,20 +123,20 @@ export default function ProgressEventMobileCard({
         >גלם</button>
         <button
           onClick={() => {
-            if (event?.raw_sent_to_editor) {
-              updateField(event.id, 'raw_sent_to_editor', false);
+            if (event?.rawSentToEditor) {
+              updateField(event.id, 'rawSentToEditor', false);
             } else {
               handleSendToEditor(event);
             }
           }}
           disabled={!!sendingEditor[event.id]}
           className={`h-8 px-2 text-xs rounded border font-medium flex-shrink-0 whitespace-nowrap transition-colors ${
-            event?.raw_sent_to_editor
+            event?.rawSentToEditor
               ? 'bg-green-500/30 text-green-300 border-green-500/50'
               : 'bg-blue-600/20 text-blue-300 border-blue-500/40'
           }`}
         >
-          {sendingEditor[event.id] ? '...' : event?.raw_sent_to_editor ? '✓ נשלח' : '→ עורך'}
+          {sendingEditor[event.id] ? '...' : event?.rawSentToEditor ? '✓ נשלח' : '→ עורך'}
         </button>
       </div>
 
@@ -145,14 +145,14 @@ export default function ProgressEventMobileCard({
         <Input
           type="url"
           placeholder="לינק סופי"
-          value={getLinkValue(event, "final_link")}
-          onChange={e => setPendingLinks(prev => ({ ...prev, [`${event.id}-final_link`]: e.target.value }))}
-          onBlur={() => saveLinkOnBlur(event.id, "final_link")}
+          value={getLinkValue(event, "finalLink")}
+          onChange={e => setPendingLinks(prev => ({ ...prev, [`${event.id}-finalLink`]: e.target.value }))}
+          onBlur={() => saveLinkOnBlur(event.id, "finalLink")}
           className="h-8 text-xs bg-gray-800 border-gray-700 text-white placeholder-gray-500 flex-1"
           dir="ltr"
         />
         <button
-          onClick={() => updateField(event.id, "final_done_manual", !event?.final_done_manual)}
+          onClick={() => updateField(event.id, "finalDoneManual", !event?.finalDoneManual)}
           className={`h-8 px-2 text-xs rounded border font-medium flex-shrink-0 transition-colors ${
             finalDone
               ? "bg-green-500/30 text-green-300 border-green-500/50"
@@ -163,12 +163,12 @@ export default function ProgressEventMobileCard({
           onClick={() => handleSendToCouple(event)}
           disabled={!!sendingCouple[event.id]}
           className={`h-8 px-2 text-xs rounded border font-medium flex-shrink-0 whitespace-nowrap transition-colors ${
-            event?.final_done_manual
+            event?.finalDoneManual
               ? "bg-green-500/30 text-green-300 border-green-500/50"
               : "bg-purple-600/20 text-purple-300 border-purple-500/40"
           }`}
         >
-          {sendingCouple[event.id] ? '...' : event?.final_done_manual ? '✓ נשלח' : '→ זוג'}
+          {sendingCouple[event.id] ? '...' : event?.finalDoneManual ? '✓ נשלח' : '→ זוג'}
         </button>
       </div>
 

@@ -57,9 +57,9 @@ export default function Events() {
       // פונקציה לחלץ את כל הkeys האפשריים לאירוע
       const getEventKeys = (event) => {
         const keys = [];
-        if (event.source_lead_id) keys.push(`source:${event.source_lead_id}`);
+        if (event.sourceLeadId) keys.push(`source:${event.sourceLeadId}`);
         if (event.leadId) keys.push(`leadId:${event.leadId}`);
-        if (event.studio_id && event.studio_id > 0) keys.push(`studio:${event.studio_id}`);
+        if (event.studioId && event.studioId > 0) keys.push(`studio:${event.studioId}`);
         if (event.coupleNames && event.date) keys.push(`couple:${event.coupleNames}|${event.date}`);
         return keys;
       };

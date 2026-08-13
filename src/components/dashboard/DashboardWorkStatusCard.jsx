@@ -7,20 +7,20 @@ import { base44 } from "@/api/base44Client";
 
 // same fields as ProgressStatus
 const ROLE_DONE_FIELDS = {
-  photographer1: "photographer1_done",
-  photographer2: "photographer2_done",
-  videographer: "video1_done",
-  videographer2: "video1_done",
-  editor: "editor_done",
+  photographer1: "photographer1Done",
+  photographer2: "photographer2Done",
+  videographer: "video1Done",
+  videographer2: "video1Done",
+  editor: "editorDone",
 };
 
 const FIELD_LABELS = {
-  photographer1_done: "צלם 1",
-  photographer2_done: "צלם 2",
-  video1_done: "וידאו",
-  editor_done: "עריכה",
-  raw_done_manual: "גלם",
-  final_done_manual: "סופי",
+  photographer1Done: "צלם 1",
+  photographer2Done: "צלם 2",
+  video1Done: "וידאו",
+  editorDone: "עריכה",
+  rawDoneManual: "גלם",
+  finalDoneManual: "סופי",
 };
 
 export function getProgress(event) {
@@ -30,8 +30,8 @@ export function getProgress(event) {
     const field = ROLE_DONE_FIELDS[m?.role];
     if (field) items.push(!!event[field]);
   });
-  items.push(!!(event.raw_link || event.raw_done_manual));
-  items.push(!!(event.final_link || event.final_done_manual));
+  items.push(!!(event.rawLink || event.rawDoneManual));
+  items.push(!!(event.finalLink || event.finalDoneManual));
 
   const total = items.length;
   if (total === 0) return { label: "ממתין", pct: 0, color: "bg-red-500/20 text-red-400 border-red-500/30" };
@@ -53,8 +53,8 @@ function getRelevantFields(event) {
       fields.push(field);
     }
   });
-  fields.push("raw_done_manual");
-  fields.push("final_done_manual");
+  fields.push("rawDoneManual");
+  fields.push("finalDoneManual");
   return fields;
 }
 

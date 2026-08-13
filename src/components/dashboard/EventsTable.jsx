@@ -34,11 +34,11 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
   }, []);
 
   const ROLE_DONE_FIELDS = {
-    photographer1: 'photographer1_done',
-    photographer2: 'photographer2_done',
-    videographer: 'video1_done',
-    videographer2: 'video1_done',
-    editor: 'editor_done',
+    photographer1: 'photographer1Done',
+    photographer2: 'photographer2Done',
+    videographer: 'video1Done',
+    videographer2: 'video1Done',
+    editor: 'editorDone',
   };
 
   const getEventProgressStatus = (event) => {
@@ -48,8 +48,8 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
       const field = ROLE_DONE_FIELDS[m?.role];
       if (field) items.push(!!event[field]);
     });
-    items.push(!!(event.raw_link || event.raw_done_manual));
-    items.push(!!(event.final_link || event.final_done_manual));
+    items.push(!!(event.rawLink || event.rawDoneManual));
+    items.push(!!(event.finalLink || event.finalDoneManual));
 
     const total = items.length;
     if (total === 0) return { label: 'ממתין', color: 'bg-red-500/20 text-red-400 border-red-500/30' };
