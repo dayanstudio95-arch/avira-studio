@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { QrCode, RefreshCw, Wifi, WifiOff, Send, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-export default function WhatsAppPanel({ gatewayUrl, apiKey }) {
+export default function WhatsAppPanel({ gatewayUrl, instanceId, apiKey }) {
   const [status, setStatus] = useState(null); // null | { connected, phone }
   const [qrImage, setQrImage] = useState(null);
   const [loadingQr, setLoadingQr] = useState(false);
@@ -15,7 +15,7 @@ export default function WhatsAppPanel({ gatewayUrl, apiKey }) {
   const [sendingTest, setSendingTest] = useState(false);
   const intervalRef = useRef(null);
 
-  const isConfigured = !!(gatewayUrl && apiKey);
+  const isConfigured = !!(gatewayUrl && instanceId && apiKey);
 
   const checkStatus = async () => {
     if (!isConfigured) return;
@@ -123,7 +123,7 @@ export default function WhatsAppPanel({ gatewayUrl, apiKey }) {
 
       {!isConfigured && (
         <div className="bg-yellow-900/20 border border-yellow-700/40 rounded-xl p-3 text-xs text-yellow-300">
-          יש להגדיר Gateway URL ו-API Key ולשמור בכפתור "שמור הגדרות אינטגרציות" לפני שניתן לנהל את החיבור.
+          יש להגדיר API URL, Instance ID ו-API Token ולשמור בכפתור "שמור הגדרות אינטגרציות" לפני שניתן לנהל את החיבור.
         </div>
       )}
 
@@ -133,12 +133,12 @@ export default function WhatsAppPanel({ gatewayUrl, apiKey }) {
           <div>{status.error}</div>
           {status.statusCode === 404 && (
             <div className="text-red-200">
-              <strong>עזרה:</strong> זה בדרך כלל אומר שה-Gateway URL או ה-API Key אינם נכונים. אנא בדוק:
+              <strong>עזרה:</strong> זה בדרך כלל אומר שאחד השדות שגוי. אנא בדוק בדשבורד Green-API (console.green-api.com):
               <ul className="list-disc list-inside mt-1 ml-2">
-                <li>שה-Gateway URL כולל את ה-instance ID (לדוגמה: https://7107.api.green-api.com/waInstance7107558672)</li>
-                <li>שה-API Key תקין ותואם לחשבון Green-API שלך</li>
-                <li>שהחשבון בגרין-אפיי רשום ופעיל, ושה-WhatsApp בחשבון זה פעיל</li>
-                <li>אם בדקת הכל ועדיין יש בעיה, נסה ללכת לדשבורד גרין-אפיי ולהעתיק שנית את ה-instance ID וה-API Key</li>
+                <li>API URL — רק הכתובת הבסיסית (apiUrl), למשל https://7107.api.green-api.com, בלי waInstance</li>
+                <li>Instance ID — המספר בשדה idInstance בדיוק כפי שהוא</li>
+                <li>API Token — הערך בשדה apiTokenInstance בדיוק כפי שהוא</li>
+                <li>שהחשבון בגרין-אפיי רשום ופעיל, ושה-WhatsApp בחשבון זה מחובר</li>
               </ul>
             </div>
           )}

@@ -25,6 +25,7 @@ import { toast } from "sonner";
 // morning_api_key_company/morning_api_secret_company are new and start empty until filled in.
 const INTEGRATION_KEYS = [
   "whatsapp_gateway_url",
+  "whatsapp_instance_id",
   "whatsapp_api_key",
   "google_calendar_id",
   "morning_api_key_sole_prop",
@@ -36,6 +37,7 @@ const INTEGRATION_KEYS = [
 export default function IntegrationsTab() {
   const [values, setValues] = useState({
     whatsapp_gateway_url: "",
+    whatsapp_instance_id: "",
     whatsapp_api_key: "",
     google_calendar_id: "",
     morning_api_key_sole_prop: "",
@@ -129,24 +131,38 @@ export default function IntegrationsTab() {
         <CardContent className="p-6 space-y-4">
           <div className="bg-green-900/20 border border-green-700/40 rounded-lg p-3 text-xs text-green-300 space-y-1">
             <p><strong>🔗 הוראות:</strong></p>
-            <p>צור אינסטנס ב-Green API (green-api.com), העתק את ה-Instance URL וה-API Key מהדשבורד, הדבק כאן, שמור, וסרוק QR לחיבור המכשיר.</p>
+            <p>בדשבורד של Green API (console.green-api.com) יש שלושה שדות בעמוד האינסטנס שלך: apiUrl, idInstance ו-apiTokenInstance. העתק כל אחד מהם בדיוק לשדה המתאים למטה (בלי לשנות או לחבר ביניהם), שמור, ואז סרוק QR לחיבור המכשיר.</p>
           </div>
           <div>
-            <Label className="text-gray-300">Gateway URL (Instance URL)</Label>
+            <Label className="text-gray-300">API URL (apiUrl)</Label>
             <Input
               value={values.whatsapp_gateway_url}
               onChange={(e) => setValues((v) => ({ ...v, whatsapp_gateway_url: e.target.value }))}
-              placeholder="https://7107.api.green-api.com/waInstance7107xxxxxx"
+              placeholder="https://7107.api.green-api.com"
               className="bg-gray-800 border-gray-700 text-white mt-1"
               dir="ltr"
             />
           </div>
           <div>
-            <Label className="text-gray-300">API Key</Label>
-            <SecretInput fieldKey="whatsapp_api_key" placeholder="green-api-key" />
+            <Label className="text-gray-300">Instance ID (idInstance)</Label>
+            <Input
+              value={values.whatsapp_instance_id}
+              onChange={(e) => setValues((v) => ({ ...v, whatsapp_instance_id: e.target.value }))}
+              placeholder="7107558672"
+              className="bg-gray-800 border-gray-700 text-white mt-1"
+              dir="ltr"
+            />
+          </div>
+          <div>
+            <Label className="text-gray-300">API Token (apiTokenInstance)</Label>
+            <SecretInput fieldKey="whatsapp_api_key" placeholder="apiTokenInstance" />
           </div>
           <div className="pt-2 border-t border-gray-800">
-            <WhatsAppPanel gatewayUrl={values.whatsapp_gateway_url} apiKey={values.whatsapp_api_key} />
+            <WhatsAppPanel
+              gatewayUrl={values.whatsapp_gateway_url}
+              instanceId={values.whatsapp_instance_id}
+              apiKey={values.whatsapp_api_key}
+            />
           </div>
         </CardContent>
       </Card>
@@ -234,7 +250,7 @@ export default function IntegrationsTab() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <StatusBadge
               label="Green API (WhatsApp)"
-              active={!!(values.whatsapp_gateway_url && values.whatsapp_api_key)}
+              active={!!(values.whatsapp_gateway_url && values.whatsapp_instance_id && values.whatsapp_api_key)}
               icon={<MessageCircle className="w-3.5 h-3.5" />}
             />
             <StatusBadge
