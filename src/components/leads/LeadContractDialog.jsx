@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { format } from "date-fns";
 import { Printer, CheckCircle, Camera, Heart } from "lucide-react";
-import { DEFAULT_CONTRACT_TERMS } from "@/lib/defaultContractTerms";
+import { applyContractTermsPrice } from "@/lib/defaultContractTerms";
 import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
 
@@ -59,7 +59,7 @@ export default function LeadContractDialog({ isOpen, onClose, lead, onSigned }) 
 
   const today = format(new Date(), "d/M/yyyy");
   const eventDate = lead.eventDate ? format(new Date(lead.eventDate), "d/M/yyyy") : "טרם נקבע";
-  const contractTerms = lead.contractTerms || DEFAULT_CONTRACT_TERMS;
+  const contractTerms = applyContractTermsPrice(lead.contractTerms, lead.finalPrice);
   const packageDetails = lead.packageDetails || "";
 
   const handleSign = async () => {

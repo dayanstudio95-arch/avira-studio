@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { DEFAULT_CONTRACT_TERMS } from "@/lib/defaultContractTerms";
+import { applyContractTermsPrice } from "@/lib/defaultContractTerms";
 import { toast } from "sonner";
 
 function PackageDetailsRenderer({ html }) {
@@ -120,7 +120,10 @@ export default function ContractPage() {
     const packageDetailsHtml = leadData.packageDetails
       ? `<div style="white-space:pre-wrap;">${leadData.packageDetails}</div>`
       : '';
-    const contractTermsHtml = leadData.contractTerms || DEFAULT_CONTRACT_TERMS;
+    // applyContractTermsPrice resolves the {{FINAL_PRICE}} merge-field (or self-heals a
+    // legacy hardcoded number) in the "total consideration" sentence to this lead's real,
+    // current finalPrice -- see src/lib/defaultContractTerms.js for why this is needed.
+    const contractTermsHtml = applyContractTermsPrice(leadData.contractTerms, leadData.finalPrice);
 
     // Build the printable document off-screen (not display:none -- html2canvas needs
     // real layout -- just shifted far outside the viewport) so it never flashes on
@@ -352,7 +355,7 @@ export default function ContractPage() {
 
   const today = format(new Date(), "d/M/yyyy");
   const eventDate = lead.eventDate ? format(new Date(lead.eventDate), "d/M/yyyy") : "טרם נקבע";
-  const contractTerms = lead.contractTerms || DEFAULT_CONTRACT_TERMS;
+  const contractTerms = applyContractTermsPrice(lead.contractTerms, lead.finalPrice);
   const packageDetails = lead.packageDetails || "";
 
   return (

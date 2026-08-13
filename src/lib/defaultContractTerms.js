@@ -3,7 +3,7 @@ export const DEFAULT_CONTRACT_TERMS = `<div dir="rtl">
 
 <h3>1. מהות השירות והתמורה</h3>
 <p>פירוט חבילת הצילום הינו כפי שמופיע בהצעת המחיר המצורפת להסכם זה</p>
-<p>סך התמורה: 12,900 ש״ח (כולל מע״מ).</p>
+<p>סך התמורה: {{FINAL_PRICE}} ש״ח (כולל מע״מ).</p>
 <p>כניסה לאתרים בתשלום / חניונים במהלך יום הצילום תשולם על ידי הזוג.</p>
 
 <h3>2. תנאי תשלום</h3>
@@ -83,3 +83,23 @@ export const DEFAULT_CONTRACT_TERMS = `<div dir="rtl">
 <hr/>
 <p><strong>בחתימתי אני מאשר כי קראתי את ההסכם, ראיתי דוגמאות לעבודות הסטודיו ואני מסכים לכל התנאים.</strong></p>
 </div>`;
+
+// Added (2026-08-13) to fix a reported bug: the contract-terms text (this default template,
+// AND the studio's own customized version saved in Settings -> חוזה, AND every already-created
+// lead's stored contract_terms) had the studio's total-payment figure typed in as a literal,
+// static number ("סך התמורה: 12,900 ש״ח") that never matched a lead's real finalPrice.
+// This helper is the single place that resolves the real, current price into that sentence
+// at render time (called from every place contract terms get displayed/printed: ContractPage.jsx,
+// LeadContractDialog.jsx), so it needs to handle two cases:
+//   1. New template using the {{FINAL_PRICE}} merge-field above (going forward).
+//   2. Legacy text saved before this fix, which has an actual hardcoded number instead of the
+//      merge-field (e.g. the studio's saved defaultContractTerms app_setting, and every lead
+//      whose contract_terms was copied from it) -- self-healed via a targeted regex so old
+//      leads immediately show the correct price too, with no DB migration required.
+export function applyContractTermsPrice(contractTermsHtml, finalPrice) {
+  const html = contractTermsHtml || DEFAULT_CONTRACT_TERMS;
+  const formattedPrice = `${(finalPrice || 0).toLocaleString()}`;
+  return html
+    .replace(/\{\{FINAL_PRICE\}\}/g, formattedPrice)
+    .replace(/(סך\s*התמורה:?\s*)[\d,]+(\s*ש[״"]?ח)/g, `$1${formattedPrice}$2`);
+}

@@ -246,6 +246,10 @@ export default function Settings() {
               <CardContent className="p-6">
                 <p className="text-gray-400 text-sm mb-4">
                   הטקסט שתכתוב כאן יתמלא אוטומטית בכל ליד חדש. ניתן לערוך את החוזה לכל ליד בנפרד מבלי לשנות את הנוסח הכאן.
+                  <br />
+                  טיפ: כדי שסכום העסקה בחוזה יתעדכן אוטומטית לפי המחיר הסופי שנקבע לכל ליד, השתמשו במקום המספר בביטוי{" "}
+                  <code className="bg-gray-800 text-yellow-400 px-1 rounded">{"{{FINAL_PRICE}}"}</code>{" "}
+                  (לדוגמה: "סך התמורה: {"{{FINAL_PRICE}}"} ש״ח").
                 </p>
                 <div className="rounded-md overflow-hidden mb-4" dir="rtl">
                   <style>{`
