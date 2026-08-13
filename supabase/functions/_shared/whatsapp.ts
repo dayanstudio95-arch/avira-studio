@@ -63,6 +63,29 @@ export interface SendWhatsAppResult {
   raw?: unknown;
 }
 
+// Leads/staff records store Israeli phone numbers in local format (e.g. "050-1234567"),
+// but Green-API chat IDs need the full international number (972501234567@c.us). This
+// was previously left to each caller to handle -- UnifiedSidePanel.jsx even had a
+// correct formatPhoneForWhatsApp() helper for it, but it was dead code, never actually
+// called, so contract/payment/questionnaire sends from the lead panel sent a chatId
+// like "0501234567@c.us" (invalid) and Green-API rejected it. Centralized here so every
+// caller (test-send, contract, payment, questionnaire, staff schedule, automation
+// engine, ...) gets correct normalization for free.
+export function toInternationalIsraeliChatId(phone: string): string | null {
+  const digits = (phone || '').replace(/\D/g, '');
+  if (!digits) return null;
+  let intl = digits;
+  if (digits.startsWith('0')) {
+    intl = '972' + digits.substring(1);
+  } else if (!digits.startsWith('972')) {
+    // Already has some other country code, or a bare local number missing the
+    // leading 0 -- assume Israeli local number either way if it's not already
+    // prefixed with 972.
+    intl = '972' + digits;
+  }
+  return `${intl}@c.us`;
+}
+
 export async function sendWhatsApp(
   supabase: any,
   phone: string,
@@ -74,8 +97,8 @@ export async function sendWhatsApp(
     return { success: false, error: 'WhatsApp gateway URL, instance ID and API token are required (set them in Settings)' };
   }
 
-  const digitsOnly = (phone || '').replace(/\D/g, '');
-  if (!digitsOnly) {
+  const chatId = toInternationalIsraeliChatId(phone);
+  if (!chatId) {
     return { success: false, error: 'Invalid phone number' };
   }
 
@@ -85,7 +108,7 @@ export async function sendWhatsApp(
     const res = await fetch(sendUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chatId: `${digitsOnly}@c.us`, message }),
+      body: JSON.stringify({ chatId, message }),
     });
 
     const text = await res.text();

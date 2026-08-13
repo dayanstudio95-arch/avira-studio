@@ -20,6 +20,7 @@
 // Green-API dashboard -- hence the new whatsapp_instance_id setting (see IntegrationsTab.jsx).
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createUserClient, getRequestUser } from '../_shared/supabaseClients.ts';
+import { toInternationalIsraeliChatId } from '../_shared/whatsapp.ts';
 
 Deno.serve(async (req) => {
   const preflight = handleOptions(req);
@@ -120,20 +121,21 @@ Deno.serve(async (req) => {
       if (!testPhone) return jsonResponse({ error: 'testPhone is required' }, { status: 400 });
 
       const message = testMessage || 'הודעת ניסיון מ-Avira Studio 🎉 - החיבור עובד!';
-      const phone = testPhone.replace(/\D/g, '');
+      const chatId = toInternationalIsraeliChatId(testPhone);
+      if (!chatId) return jsonResponse({ error: 'Invalid phone number' }, { status: 400 });
       const sendUrl = buildUrl('sendMessage');
 
       try {
         const res = await fetch(sendUrl, {
           method: 'POST',
           headers,
-          body: JSON.stringify({ chatId: `${phone}@c.us`, message }),
+          body: JSON.stringify({ chatId, message }),
         });
 
         if (!res.ok) {
           const errText = await res.text();
           return jsonResponse(
-            { error: `Green-API Error (${res.status}): ${errText}`, details: { phone, statusCode: res.status } },
+            { error: `Green-API Error (${res.status}): ${errText}`, details: { chatId, statusCode: res.status } },
             { status: 502 }
           );
         }
