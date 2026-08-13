@@ -4,6 +4,7 @@ import { base44 } from "@/api/base44Client";
 import { format } from "date-fns";
 import { Heart, Camera, CheckCircle, Printer, FileDown, Eraser } from "lucide-react";
 import { jsPDF } from "jspdf";
+import html2canvas from "html2canvas";
 import SignatureCanvas from "react-signature-canvas";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -95,107 +96,153 @@ export default function ContractPage() {
       .finally(() => setLoading(false));
   }, [leadId]);
 
-  const generateSignedPdf = async (leadData, formData, signedAt, signatureDataUrl) => {
-    const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
-    doc.setFont('helvetica');
+  // FIXED (2026-08-13): the previous implementation built the PDF entirely with
+  // jsPDF's doc.text() calls using the built-in 'helvetica' font. jsPDF's standard
+  // fonts only support WinAnsi/Latin-1 glyphs -- they have NO Hebrew glyphs at all --
+  // so every Hebrew string (couple names, venue, package, client-entered details) came
+  // out as mojibake garbage in the downloaded PDF (confirmed by the user's screenshot:
+  // "ÙÜØÕ ÙàÓ" instead of the couple's actual name). It also never included the actual
+  // contract terms text, and the "Studio Signature" line was always blank.
+  //
+  // Rebuilt to render an actual styled, RTL, Hebrew DOM node (same content model as
+  // the live contract page above) off-screen, rasterize it with html2canvas (already
+  // an installed dependency, just unused until now), and place that image into the
+  // PDF page-by-page with jsPDF. This guarantees the PDF looks exactly like real
+  // Hebrew text because it *is* real browser-rendered Hebrew text, just captured as an
+  // image -- sidesteps jsPDF's font limitation entirely instead of fighting it with
+  // custom font embedding.
+  const escapeHtml = (str) => String(str ?? '').replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
 
-    // Header
-    doc.setFillColor(30, 30, 30);
-    doc.rect(0, 0, 210, 30, 'F');
-    doc.setTextColor(255, 215, 0);
-    doc.setFontSize(20);
-    doc.text('AVIRA STUDIO', 105, 18, { align: 'center' });
-    doc.setFontSize(9);
-    doc.setTextColor(200, 200, 200);
-    doc.text('Wedding Photography & Videography Studio', 105, 25, { align: 'center' });
+  const generateSignedPdf = async (leadData, formData, signedAt, signatureDataUrl, studioSignatureDataUrl) => {
+    const eventDateFormatted = leadData.eventDate ? format(new Date(leadData.eventDate), 'd/M/yyyy') : 'טרם נקבע';
+    const packageDetailsHtml = leadData.packageDetails
+      ? `<div style="white-space:pre-wrap;">${leadData.packageDetails}</div>`
+      : '';
+    const contractTermsHtml = leadData.contractTerms || DEFAULT_CONTRACT_TERMS;
 
-    doc.setTextColor(30, 30, 30);
-    let y = 42;
+    // Build the printable document off-screen (not display:none -- html2canvas needs
+    // real layout -- just shifted far outside the viewport) so it never flashes on
+    // screen or affects the visible page's scroll/layout.
+    const container = document.createElement('div');
+    container.setAttribute('dir', 'rtl');
+    container.style.position = 'fixed';
+    container.style.top = '0';
+    container.style.left = '-99999px';
+    container.style.width = '780px';
+    container.style.background = '#ffffff';
+    container.style.fontFamily = "Arial, 'Noto Sans Hebrew', sans-serif";
+    container.style.color = '#1f2937';
 
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Contract - ' + (leadData.coupleNames || ''), 105, y, { align: 'center' });
-    y += 8;
+    container.innerHTML = `
+      <div style="background:#1e1e1e; padding:24px; text-align:center;">
+        <div style="color:#ffd700; font-size:26px; font-weight:bold; letter-spacing:2px;">AVIRA STUDIO</div>
+        <div style="color:#c8c8c8; font-size:12px; margin-top:4px;">Wedding Photography &amp; Videography Studio</div>
+      </div>
+      <div style="padding:28px;">
+        <div style="text-align:center; border-bottom:1px solid #e5e7eb; padding-bottom:14px; margin-bottom:18px;">
+          <div style="font-size:20px; font-weight:bold;">הסכם שירותי צילום חתונה</div>
+          <div style="font-size:12px; color:#6b7280; margin-top:4px;">נחתם: ${escapeHtml(signedAt)}</div>
+        </div>
 
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(100, 100, 100);
-    doc.text('Signed: ' + signedAt, 105, y, { align: 'center' });
-    y += 10;
+        <div style="border:1px solid #e5e7eb; border-radius:10px; overflow:hidden; margin-bottom:16px;">
+          <div style="background:#111827; color:#fff; padding:8px 14px; font-weight:600; font-size:13px;">פרטי האירוע</div>
+          <div style="padding:14px; display:grid; grid-template-columns:1fr 1fr; gap:8px 16px; font-size:13px;">
+            <div><span style="color:#6b7280;">שמות הזוג: </span><strong>${escapeHtml(leadData.coupleNames)}</strong></div>
+            <div><span style="color:#6b7280;">תאריך האירוע: </span><strong>${escapeHtml(eventDateFormatted)}</strong></div>
+            <div><span style="color:#6b7280;">שם האולם: </span>${escapeHtml(leadData.venueName || '-')}</div>
+            <div><span style="color:#6b7280;">חבילה: </span>${escapeHtml(leadData.packageChoice || '-')}</div>
+            <div style="grid-column:1 / -1;"><span style="color:#6b7280;">סכום סופי לתשלום: </span><strong style="color:#15803d;">₪${(leadData.finalPrice || 0).toLocaleString()}</strong></div>
+          </div>
+        </div>
 
-    // Event details
-    doc.setDrawColor(200, 200, 200);
-    doc.setFillColor(245, 245, 245);
-    doc.rect(15, y, 180, 32, 'FD');
-    doc.setTextColor(30, 30, 30);
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Event Details', 20, y + 7);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    const eventDateFormatted = leadData.eventDate ? format(new Date(leadData.eventDate), 'd/M/yyyy') : 'TBD';
-    doc.text(`Couple: ${leadData.coupleNames || ''}`, 20, y + 14);
-    doc.text(`Date: ${eventDateFormatted}`, 20, y + 20);
-    doc.text(`Venue: ${leadData.venueName || '-'}`, 20, y + 26);
-    doc.text(`Package: ${leadData.packageChoice || '-'}`, 110, y + 14);
-    doc.text(`Final Price: ${(leadData.finalPrice || 0).toLocaleString()} ILS`, 110, y + 20);
-    y += 40;
+        ${packageDetailsHtml ? `
+        <div style="border:1px solid #fde68a; border-radius:10px; overflow:hidden; margin-bottom:16px;">
+          <div style="background:#fbbf24; color:#111827; padding:8px 14px; font-weight:600; font-size:13px;">פרטי החבילה — ${escapeHtml(leadData.packageChoice || '')}</div>
+          <div style="padding:14px; font-size:12px; line-height:1.6;">${packageDetailsHtml}</div>
+        </div>` : ''}
 
-    // Client details
-    const clientNotesText = formData.coupleNotes ? formData.coupleNotes.substring(0, 90) : '';
-    const clientBoxH = clientNotesText ? 50 : 40;
-    doc.setFillColor(255, 249, 220);
-    doc.rect(15, y, 180, clientBoxH, 'FD');
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.text('Client Confirmation Details', 20, y + 7);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    if (formData.coupleNamesVerify) doc.text('Couple Names: ' + formData.coupleNamesVerify, 20, y + 15);
-    doc.text('ID Number: ' + (formData.idNumber || '-'), 20, y + 22);
-    doc.text('Phone: ' + (formData.phone || '-'), 20, y + 29);
-    doc.text('Email: ' + (formData.email || '-'), 110, y + 22);
-    if (clientNotesText) doc.text('Notes: ' + clientNotesText, 20, y + 37);
-    y += clientBoxH + 8;
+        <div style="border:1px solid #e5e7eb; border-radius:10px; overflow:hidden; margin-bottom:16px;">
+          <div style="background:#111827; color:#fff; padding:8px 14px; font-weight:600; font-size:13px;">תנאי ההתקשרות</div>
+          <div style="padding:14px; font-size:12px; line-height:1.7;">${contractTermsHtml}</div>
+        </div>
 
-    // Signature line
-    doc.setFontSize(9);
-    doc.setTextColor(80, 80, 80);
-    doc.text('By signing, the client confirms they have read and agreed to all contract terms.', 105, y, { align: 'center' });
-    y += 10;
-    doc.setDrawColor(80, 80, 80);
-    doc.line(30, y + 10, 90, y + 10);
-    doc.line(120, y + 10, 180, y + 10);
-    // Embed the couple's actual drawn signature above the client signature line
-    // (was previously always blank -- just a typed name below an empty line).
-    if (signatureDataUrl) {
-      try {
-        doc.addImage(signatureDataUrl, 'PNG', 35, y - 3, 50, 12);
-      } catch (imgErr) {
-        console.error('Could not embed signature image in PDF:', imgErr);
+        <div style="background:#fff9dc; border:1px solid #fde68a; border-radius:10px; padding:14px; margin-bottom:22px; font-size:13px;">
+          <div style="font-weight:600; margin-bottom:8px;">פרטי אישור לקוח</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 16px;">
+            <div><span style="color:#6b7280;">שמות הזוג (לאימות): </span>${escapeHtml(formData.coupleNamesVerify)}</div>
+            <div><span style="color:#6b7280;">תעודת זהות: </span>${escapeHtml(formData.idNumber)}</div>
+            <div><span style="color:#6b7280;">טלפון: </span>${escapeHtml(formData.phone || '-')}</div>
+            <div><span style="color:#6b7280;">אימייל: </span>${escapeHtml(formData.email || '-')}</div>
+            ${formData.coupleNotes ? `<div style="grid-column:1 / -1;"><span style="color:#6b7280;">הערות: </span>${escapeHtml(formData.coupleNotes)}</div>` : ''}
+          </div>
+        </div>
+
+        <div style="text-align:center; font-size:11px; color:#4b5563; margin-bottom:10px;">
+          בחתימתם, הלקוח/ה מאשר/ת שקרא/ה והסכים/ה לכל תנאי ההסכם.
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; text-align:center;">
+          <div>
+            <div style="height:70px; display:flex; align-items:flex-end; justify-content:center;">
+              ${signatureDataUrl ? `<img src="${signatureDataUrl}" style="max-height:65px; max-width:220px;" />` : ''}
+            </div>
+            <div style="border-top:2px solid #9ca3af; margin-top:4px; padding-top:6px; font-size:11px;">
+              <div>${escapeHtml(leadData.coupleNames || 'לקוח/ה')}</div>
+              <div style="color:#6b7280;">חתימת הלקוח/ה</div>
+            </div>
+          </div>
+          <div>
+            <div style="height:70px; display:flex; align-items:flex-end; justify-content:center;">
+              ${studioSignatureDataUrl ? `<img src="${studioSignatureDataUrl}" style="max-height:65px; max-width:220px;" />` : ''}
+            </div>
+            <div style="border-top:2px solid #9ca3af; margin-top:4px; padding-top:6px; font-size:11px;">
+              <div>Avira Studio</div>
+              <div style="color:#6b7280;">חתימת הסטודיו</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="background:#1e1e1e; color:#b4b4b4; text-align:center; font-size:10px; padding:10px;">
+        Avira Studio | www.avira-studio.com
+      </div>
+    `;
+
+    document.body.appendChild(container);
+
+    let pdfBase64;
+    try {
+      const canvas = await html2canvas(container, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+
+      const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+      const pageWidth = 210;
+      const pageHeight = 297;
+      const imgWidth = pageWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      const imgData = canvas.toDataURL('image/png');
+
+      let heightLeft = imgHeight;
+      let position = 0;
+      doc.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight;
+        doc.addPage();
+        doc.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
       }
-    }
-    doc.setFontSize(8);
-    doc.text(leadData.coupleNames || 'Client', 60, y + 16, { align: 'center' });
-    doc.text('Avira Studio', 150, y + 16, { align: 'center' });
-    doc.text('Client Signature', 60, y + 21, { align: 'center' });
-    doc.text('Studio Signature', 150, y + 21, { align: 'center' });
 
-    // Footer
-    doc.setFillColor(30, 30, 30);
-    doc.rect(0, 285, 210, 12, 'F');
-    doc.setTextColor(180, 180, 180);
-    doc.setFontSize(7);
-    doc.text('Avira Studio | www.avira-studio.com', 105, 292, { align: 'center' });
+      const dataUri = doc.output('datauristring');
+      pdfBase64 = dataUri.split('base64,').pop();
+    } finally {
+      document.body.removeChild(container);
+    }
 
     const safeName = (leadData.coupleNames || 'client').replace(/\s+/g, '_').replace(/[^\w_\u0590-\u05ff]/gi, '');
     const fileName = `חוזה_חתום_${safeName}.pdf`;
-    // Base64-encode client-side and hand the bytes to save-signed-contract, which
-    // uploads them server-side (service-role) to the signed-contracts Storage bucket --
-    // see migration 0006 for why this replaced the old base44.integrations.Core.UploadFile
-    // call, which was never implemented against Supabase and silently failed.
-    const dataUri = doc.output('datauristring');
-    const pdfBase64 = dataUri.split('base64,').pop();
+    // fileName is only ever used client-side now (as the `download` attribute on the
+    // PDF link) -- the actual Supabase Storage object key is a fixed ASCII path built
+    // server-side in save-signed-contract, so this Hebrew name is safe to keep as-is.
 
     return { pdfBase64, fileName };
   };
@@ -238,7 +285,7 @@ export default function ContractPage() {
         signatureDataUrl = signatureRef.current.getCanvas().toDataURL('image/png');
       }
 
-      const { pdfBase64, fileName } = await generateSignedPdf(lead, clientForm, signedAt, signatureDataUrl);
+      const { pdfBase64, fileName } = await generateSignedPdf(lead, clientForm, signedAt, signatureDataUrl, lead.studioSignature);
 
       step = 'upload';
       const saveRes = await base44.functions.invoke('saveSignedContract', {

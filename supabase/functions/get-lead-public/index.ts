@@ -21,7 +21,25 @@ Deno.serve(async (req) => {
     if (error) return jsonResponse({ error: error.message }, { status: 500 });
     if (!lead) return jsonResponse({ error: 'Lead not found' }, { status: 404 });
 
+    // Added (2026-08-13) so the public contract page can stamp the studio's own saved
+    // signature (Settings -> חוזה -> חתימת הסטודיו) onto the signed PDF next to the
+    // client's signature. Best-effort: a missing signature setting must never break
+    // loading the contract itself, so failures here are swallowed.
+    let studioSignature: string | null = null;
+    try {
+      const { data: sigRow } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('tenant_id', lead.tenant_id)
+        .eq('key', 'studio_signature')
+        .maybeSingle();
+      studioSignature = sigRow?.value || null;
+    } catch (sigErr) {
+      console.error('[getLeadPublic] Failed to load studio_signature:', sigErr);
+    }
+
     return jsonResponse({
+      studioSignature,
       id: lead.id,
       coupleNames: lead.couple_names,
       eventDate: lead.event_date,

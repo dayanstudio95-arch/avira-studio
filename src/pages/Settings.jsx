@@ -27,6 +27,7 @@ import GoogleCalendarCleanupSettings from "../components/settings/GoogleCalendar
 import StaffRatesEditor from "../components/settings/StaffRatesEditor";
 import UsersTab from "../components/settings/UsersTab";
 import WorkspaceTab from "../components/settings/WorkspaceTab";
+import StudioSignatureCard from "../components/settings/StudioSignatureCard";
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 import { DEFAULT_CONTRACT_TERMS } from "@/lib/defaultContractTerms";
@@ -233,6 +234,8 @@ export default function Settings() {
 
           {/* חוזה */}
           <TabsContent value="contract">
+            <div className="space-y-6">
+            <StudioSignatureCard />
             <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm">
               <CardHeader className="border-b border-gray-800">
                 <CardTitle className="text-white flex items-center gap-2">
@@ -277,6 +280,7 @@ export default function Settings() {
                 </Button>
               </CardContent>
             </Card>
+            </div>
           </TabsContent>
 
           {/* תמחור והנחות */}
