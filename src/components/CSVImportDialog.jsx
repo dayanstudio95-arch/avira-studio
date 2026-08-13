@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Upload, FileText, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
+import { calculateEventFinancials } from "@/lib/financialCalculations";
 
 export default function CSVImportDialog({ isOpen, onClose, onSuccess }) {
   const [file, setFile] = useState(null);
@@ -116,6 +117,12 @@ export default function CSVImportDialog({ isOpen, onClose, onSuccess }) {
 
         // Validate required fields
         if (event.date && event.coupleNames && event.totalAmountGross > 0) {
+          // Compute + persist vatAmount/profitNet at import time too (same formula as
+          // AddEventModal.jsx), otherwise CSV-imported events end up with vatAmount=NULL
+          // and silently show ₪0 VAT on the Reports page even though income/expenses look fine.
+          const { vatAmount, profitNet } = calculateEventFinancials(event);
+          event.vatAmount = vatAmount;
+          event.profitNet = profitNet;
           eventsToCreate.push(event);
         } else {
           setErrors(prev => [...prev, `שורה ${idx + 2}: חסרים שדות חובה`]);

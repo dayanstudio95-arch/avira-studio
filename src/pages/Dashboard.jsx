@@ -14,6 +14,7 @@ import DashboardUnpaidCard from "../components/dashboard/DashboardUnpaidCard";
 import DashboardWorkStatusCard from "../components/dashboard/DashboardWorkStatusCard";
 import DashboardMissingTeamCard from "../components/dashboard/DashboardMissingTeamCard";
 import { calculateNetProfit } from "../lib/profitCalculations";
+import { calculateEventFinancials } from "../lib/financialCalculations";
 
 export default function Dashboard() {
   const [events, setEvents] = useState([]);
@@ -62,7 +63,7 @@ export default function Dashboard() {
           const hasVideographer = (event.team || []).some(m => ['videographer', 'videographer2'].includes(m.role));
           return sum + teamExpenses + (hasVideographer ? 1200 : 0);
         }, 0);
-        const vat = events.reduce((sum, event) => sum + (event.vatAmount || 0), 0);
+        const vat = events.reduce((sum, event) => sum + (event.vatAmount != null ? event.vatAmount : calculateEventFinancials(event).vatAmount), 0);
         const profit = events.reduce((sum, event) => sum + calculateNetProfit(event, staffMembers), 0);
         return { income, expenses, vat, profit };
     }

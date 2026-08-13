@@ -2,13 +2,17 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Receipt } from "lucide-react";
 import { calculateNetProfit } from "../../lib/profitCalculations";
+import { calculateEventFinancials } from "../../lib/financialCalculations";
 
 export default function ReportsTable({ events, period, isLoading, staffMembers = [] }) {
   const calculateTotals = () => {
     return events.reduce((totals, event) => ({
       income: totals.income + (event.totalAmountGross || 0),
       expenses: totals.expenses + (event.team || []).reduce((sum, member) => sum + (member.cost || 0), 0),
-      vat: totals.vat + (event.vatAmount || 0),
+      // Self-heal like calculateNetProfit below: some legacy/CSV-imported events never had
+      // vatAmount persisted, so fall back to live-computing it from totalAmountGross/vatPercent
+      // instead of silently showing 0 for those events.
+      vat: totals.vat + (event.vatAmount != null ? event.vatAmount : calculateEventFinancials(event).vatAmount),
       profit: totals.profit + calculateNetProfit(event, staffMembers)
     }), { income: 0, expenses: 0, vat: 0, profit: 0 });
   };
