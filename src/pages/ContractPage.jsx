@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { DEFAULT_CONTRACT_TERMS } from "@/lib/defaultContractTerms";
 import { toast } from "sonner";
 
@@ -52,6 +53,8 @@ export default function ContractPage() {
   const [signed, setSigned] = useState(false);
   const [isSigning, setIsSigning] = useState(false);
   const [signedPdfUrl, setSignedPdfUrl] = useState(null);
+  const [signedFileName, setSignedFileName] = useState(null);
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [signatureEmpty, setSignatureEmpty] = useState(true);
   const [clientForm, setClientForm] = useState({
     coupleNamesVerify: "",
@@ -209,7 +212,16 @@ export default function ContractPage() {
     // Tracks which of the 3 sequential steps below is in flight, so the catch block
     // can report exactly what failed instead of a single generic message that made
     // this bug impossible to diagnose from a user's screenshot alone.
-    let step = 'sign';
+    //
+    // FIXED (2026-08-13): order used to be sign -> pdf -> upload, so signLeadPublic
+    // (which sets leads.signed_at + status) ran BEFORE the PDF was generated/uploaded.
+    // When the upload step failed (e.g. the Hebrew-filename storage-key bug), the lead
+    // was already committed as "signed" with no PDF attached -- the couple saw an error
+    // toast, but the studio's dashboard showed the contract as signed with nothing to
+    // show for it. Now the PDF is generated and uploaded FIRST; signLeadPublic (the
+    // actual "mark as signed" step) only runs once the signed PDF is safely stored, so
+    // a failure anywhere above it leaves the lead correctly unsigned.
+    let step = 'pdf';
     try {
       const signedAt = format(new Date(), "d/M/yyyy HH:mm");
       // getTrimmedCanvas() is a known crash source in react-signature-canvas
@@ -226,6 +238,17 @@ export default function ContractPage() {
         signatureDataUrl = signatureRef.current.getCanvas().toDataURL('image/png');
       }
 
+      const { pdfBase64, fileName } = await generateSignedPdf(lead, clientForm, signedAt, signatureDataUrl);
+
+      step = 'upload';
+      const saveRes = await base44.functions.invoke('saveSignedContract', {
+        leadId: lead.id,
+        pdfBase64,
+        fileName,
+      });
+      const fileUrl = saveRes?.data?.fileUrl || null;
+
+      step = 'sign';
       await base44.functions.invoke('signLeadPublic', {
         leadId: lead.id,
         idNumber: clientForm.idNumber,
@@ -235,23 +258,10 @@ export default function ContractPage() {
         coupleNotesSigned: clientForm.coupleNotes || undefined,
       });
 
-      // PDF generation + upload is now awaited (was previously fire-and-forget with a
-      // .catch(console.error), meaning the couple saw "signed successfully" even when
-      // the PDF silently failed to save). If this step fails, the couple's signature is
-      // already recorded on the lead (signLeadPublic succeeded above) but we tell them
-      // the document itself needs a retry, rather than falsely claiming full success.
-      step = 'pdf';
-      const { pdfBase64, fileName } = await generateSignedPdf(lead, clientForm, signedAt, signatureDataUrl);
-
-      step = 'upload';
-      const saveRes = await base44.functions.invoke('saveSignedContract', {
-        leadId: lead.id,
-        pdfBase64,
-        fileName,
-      });
-      setSignedPdfUrl(saveRes?.data?.fileUrl || null);
-
+      setSignedPdfUrl(fileUrl);
+      setSignedFileName(fileName);
       setSigned(true);
+      setShowSuccessDialog(true);
       toast.success("החוזה נחתם בהצלחה!", { duration: 4000 });
     } catch (e) {
       // Previously swallowed silently (no console.error, no real message shown), which
@@ -455,6 +465,7 @@ export default function ContractPage() {
                   href={signedPdfUrl}
                   target="_blank"
                   rel="noopener noreferrer"
+                  download={signedFileName || 'contract-signed.pdf'}
                   className="inline-flex items-center gap-2 mt-3 bg-green-700 hover:bg-green-600 text-white font-semibold px-4 py-2 rounded-lg text-sm"
                 >
                   <FileDown className="w-4 h-4" />
@@ -494,6 +505,38 @@ export default function ContractPage() {
           </div>
         </div>
       </div>
+
+      {/* Popup shown right after a successful signature, so the couple gets an
+          unmissable confirmation (not just the toast, which can be missed on mobile)
+          with an immediate way to download their signed PDF. */}
+      <Dialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
+        <DialogContent dir="rtl" className="text-center">
+          <div className="flex flex-col items-center gap-2 py-2">
+            <CheckCircle className="w-14 h-14 text-green-600" />
+            <p className="text-xl font-bold text-gray-900">ההסכם נחתם בהצלחה! ✅</p>
+            <p className="text-gray-500 text-sm">הפרטים והחוזה החתום נשמרו במערכת.</p>
+            {signedPdfUrl && (
+              <a
+                href={signedPdfUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                download={signedFileName || 'contract-signed.pdf'}
+                className="inline-flex items-center gap-2 mt-3 bg-green-700 hover:bg-green-600 text-white font-semibold px-5 py-2.5 rounded-lg text-sm"
+              >
+                <FileDown className="w-4 h-4" />
+                הורדת החוזה החתום (PDF)
+              </a>
+            )}
+            <Button
+              variant="ghost"
+              onClick={() => setShowSuccessDialog(false)}
+              className="mt-1 text-gray-500 hover:text-gray-800"
+            >
+              סגירה
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

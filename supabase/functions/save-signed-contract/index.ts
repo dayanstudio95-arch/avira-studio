@@ -38,7 +38,16 @@ Deno.serve(async (req) => {
     let resolvedUrl = fileUrl;
     if (pdfBase64) {
       const bytes = base64ToBytes(pdfBase64);
-      const path = `${leadId}/${fileName || 'signed-contract.pdf'}`;
+      // FIXED (2026-08-13): the storage object key used to be `${leadId}/${fileName}`
+      // with fileName built client-side as a raw Hebrew string (e.g. "חוזה_חתום_דני.pdf",
+      // see ContractPage.jsx generateSignedPdf). Supabase Storage rejects non-ASCII bytes
+      // in object keys outright ("Invalid key: <uuid>/חוזה_חתום_...pdf"), so every signing
+      // whose couple-names produced a Hebrew fileName failed to upload -- while the couple
+      // had already been marked "signed" by the earlier signLeadPublic call, leaving a
+      // signed-with-no-PDF lead. The storage key is now always a fixed ASCII path; the
+      // couple-facing Hebrew fileName is only used client-side as the `download` attribute
+      // on the PDF link, never as part of the storage key.
+      const path = `${leadId}/signed-contract.pdf`;
       const { error: uploadError } = await supabase.storage
         .from('signed-contracts')
         .upload(path, bytes, { contentType: 'application/pdf', upsert: true });
