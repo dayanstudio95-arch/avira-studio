@@ -25,6 +25,7 @@ import Login from './pages/Login';
 import AcceptInvite from './pages/AcceptInvite';
 import Settings from './pages/Settings';
 import AutomationsDashboard from './pages/AutomationsDashboard';
+import GoogleCalendarSync from './pages/GoogleCalendarSync';
 import AutomationLogs from './pages/AutomationLogs';
 import PendingApprovals from './pages/PendingApprovals';
 import SystemAdvisor from './pages/SystemAdvisor';
@@ -86,6 +87,7 @@ const AuthenticatedApp = () => {
         <Route path="/TeamPaymentsPage" element={<TeamPaymentsPage />} />
         <Route path="/Settings" element={<Settings />} />
         <Route path="/AutomationsDashboard" element={<AutomationsDashboard />} />
+        <Route path="/GoogleCalendarSync" element={<GoogleCalendarSync />} />
         <Route path="/AutomationLogs" element={<AutomationLogs />} />
         <Route path="/PendingApprovals" element={<PendingApprovals />} />
         <Route path="/SystemAdvisor" element={<SystemAdvisor />} />

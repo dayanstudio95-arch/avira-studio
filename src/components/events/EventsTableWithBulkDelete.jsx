@@ -457,7 +457,17 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
     if (!confirm(`Delete ${selectedEvents.length} selected events?`)) return;
     setIsDeletingBulk(true);
     try {
-      await Promise.all(selectedEvents.map(id => base44.entities.Event.delete(id)));
+      await Promise.all(selectedEvents.map(async (id) => {
+        // Clean up Google Calendar BEFORE deleting the row — best-effort, never
+        // blocks the actual deletion (event_calendar_syncs cascades off events,
+        // so cleanup must happen first or the Google event IDs would be lost).
+        try {
+          await base44.functions.invoke('deleteEventFromCalendar', { eventId: id });
+        } catch (calendarErr) {
+          console.error('Failed to clean up Google Calendar for event', id, calendarErr);
+        }
+        await base44.entities.Event.delete(id);
+      }));
       setSelectedEvents([]);
       toast.success(`Deleted ${selectedEvents.length} events`);
       if (onRefresh) onRefresh();

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Event } from "@/entities/Event";
+import { base44 } from "@/api/base44Client";
 import { useNavigate, Link } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { Button } from "@/components/ui/button";
@@ -76,6 +77,13 @@ export default function EventDetails() {
   const handleDelete = async () => {
     if (!event) return;
     try {
+      // Clean up Google Calendar BEFORE deleting the row — best-effort, never
+      // blocks the actual deletion.
+      try {
+        await base44.functions.invoke('deleteEventFromCalendar', { eventId: event.id });
+      } catch (calendarErr) {
+        console.error('Failed to clean up Google Calendar for event', event.id, calendarErr);
+      }
       await Event.delete(event.id);
       setIsDeleteDialogOpen(false);
       navigate(createPageUrl("Dashboard"));

@@ -15,12 +15,12 @@
 // given and defaults action to 'invite', while still accepting the original
 // staffMemberId/action shape for forward-compatibility.
 //
-// Same Google Calendar OAuth-token gap as sync-event-to-calendar /
-// submit-production-questionnaire: reads google_calendar_access_token /
-// google_calendar_id from app_settings (RLS-scoped to caller's tenant) instead of
-// Base44's connectors abstraction.
+// Google Calendar token now comes from the real OAuth flow (primary account
+// only — this only ever touches the main/legacy calendar event) via
+// getValidAccessToken, instead of the old dead static app_settings token.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createUserClient, getRequestUser } from '../_shared/supabaseClients.ts';
+import { getValidAccessToken } from '../_shared/googleCalendarAuth.ts';
 
 Deno.serve(async (req) => {
   const preflight = handleOptions(req);
@@ -55,14 +55,13 @@ Deno.serve(async (req) => {
     if (!staffMember) return jsonResponse({ error: 'Staff member not found' }, { status: 404 });
     if (!staffMember.email) return jsonResponse({ error: 'Staff member email not set' }, { status: 400 });
 
-    const { data: settings } = await supabase
-      .from('app_settings')
-      .select('key, value')
-      .in('key', ['google_calendar_access_token', 'google_calendar_id']);
-    const accessToken = settings?.find((s) => s.key === 'google_calendar_access_token')?.value;
-    const calendarId = settings?.find((s) => s.key === 'google_calendar_id')?.value?.trim() || 'primary';
+    const { data: profile } = await supabase.from('profiles').select('tenant_id').eq('id', user.id).maybeSingle();
+    if (!profile) return jsonResponse({ error: 'Profile not found for user' }, { status: 403 });
 
-    if (!accessToken) return jsonResponse({ error: 'Google Calendar not connected' }, { status: 400 });
+    const token = await getValidAccessToken(supabase, profile.tenant_id, 'primary');
+    if (!token) return jsonResponse({ error: 'Google Calendar not connected' }, { status: 400 });
+    const accessToken = token.accessToken;
+    const calendarId = token.calendarId;
 
     const mainCalendarEventId: string | null = event.google_calendar_event_id;
 

@@ -37,6 +37,16 @@ const FUNCTION_MAP = {
   syncLeadFollowups: 'sync-lead-followups',
   sendStaffInvite: 'send-staff-invite',
 
+  // Google Calendar — real OAuth connect flow + dual-account sync (see
+  // supabase/functions/_shared/googleCalendarAuth.ts / googleCalendarSync.ts).
+  // google-calendar-oauth-callback is NOT here — Google redirects the browser
+  // to it directly, it's never called via functions.invoke.
+  googleCalendarOAuthStart: 'google-calendar-oauth-start',
+  googleCalendarOAuthDisconnect: 'google-calendar-oauth-disconnect',
+  deleteEventFromCalendar: 'delete-event-from-calendar',
+  deleteFromGoogleCalendar: 'delete-google-calendar-event',
+  reconcileCalendarSync: 'reconcile-calendar-sync',
+
   // Public / unauthenticated pages
   getLeadPublic: 'get-lead-public',
   saveSignedContract: 'save-signed-contract',
@@ -88,10 +98,8 @@ const KNOWN_UNIMPLEMENTED = new Set([
   'syncEventToLead',
   'sendMakeWebhook',
   'aiAssistant',
-  'checkGoogleCalendarConnection',
   'cleanupDuplicateEvents',
   'cleanupGoogleCalendarOnlyDuplicates',
-  'deleteFromGoogleCalendar',
 ]);
 
 export const functions = {

@@ -1,0 +1,13 @@
+# Per-function overrides for Supabase Edge Functions deployment.
+# Every function defaults to verify_jwt = true (Supabase platform checks the
+# Authorization header before the function code even runs) EXCEPT the ones
+# listed here.
+#
+# google-calendar-oauth-callback is hit directly by Google's OAuth redirect —
+# a plain browser GET with no Authorization header at all — so it must have
+# JWT verification disabled at the platform level, or every connect attempt
+# would 401 before google-calendar-oauth-callback/index.ts ever runs. It
+# recovers tenant context itself from the signed `state` query param instead
+# (see supabase/functions/_shared/googleCalendarAuth.ts verifyState).
+[functions.google-calendar-oauth-callback]
+verify_jwt = false

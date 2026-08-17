@@ -4,17 +4,15 @@
 // best-effort (non-fatal) attempt to append a production summary block onto the
 // matching Google Calendar event's description.
 //
-// NOTE (known gap, not yet resolved): the original Base44 function obtained a Google
-// Calendar access token via Base44's built-in "connectors" abstraction
-// (asServiceRole.connectors.getConnection('googlecalendar')). That abstraction has no
-// Supabase equivalent yet — the native integrations Settings UI (Phase 4) that will
-// let studios connect Google Calendar and store a token hasn't been built. Until then
-// this reads `google_calendar_access_token` / `google_calendar_id` from app_settings
-// (tenant-scoped) and, if missing or expired, just skips the calendar update —
-// exactly as non-fatal as the original's try/catch. The questionnaire data itself
-// always saves regardless.
+// Google Calendar token now comes from the real OAuth flow (primary account,
+// looked up by lead.tenant_id since this is a public/unauthenticated endpoint
+// with no user session) via getValidAccessToken. If the tenant hasn't
+// connected a primary account, or the refresh token is dead, this just skips
+// the calendar update non-fatally — the questionnaire data itself always
+// saves regardless.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createServiceRoleClient } from '../_shared/supabaseClients.ts';
+import { getValidAccessToken } from '../_shared/googleCalendarAuth.ts';
 
 Deno.serve(async (req) => {
   const preflight = handleOptions(req);
@@ -132,14 +130,9 @@ Deno.serve(async (req) => {
 
     // Best-effort Google Calendar description update — never fails the request.
     try {
-      const { data: settings } = await supabase
-        .from('app_settings')
-        .select('key, value')
-        .eq('tenant_id', lead.tenant_id)
-        .in('key', ['google_calendar_access_token', 'google_calendar_id']);
-
-      const accessToken = settings?.find((s) => s.key === 'google_calendar_access_token')?.value;
-      const calendarId = settings?.find((s) => s.key === 'google_calendar_id')?.value?.trim() || 'primary';
+      const token = await getValidAccessToken(supabase, lead.tenant_id, 'primary');
+      const accessToken = token?.accessToken;
+      const calendarId = token?.calendarId || 'primary';
 
       if (!accessToken) {
         console.log('Google Calendar not connected for this tenant — skipping calendar update');

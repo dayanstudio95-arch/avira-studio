@@ -119,4 +119,6 @@ export const entities = {
   PendingAutomation: createEntity('pending_automations'),
   AutomationRun: createEntity('automation_runs'),
   AutomationMessageLog: createEntity('automation_message_logs'),
+  GoogleCalendarAccount: createEntity('google_calendar_accounts'),
+  EventCalendarSync: createEntity('event_calendar_syncs'),
 };

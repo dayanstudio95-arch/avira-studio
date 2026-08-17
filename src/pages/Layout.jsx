@@ -66,6 +66,7 @@ const primaryNavItems = [
   { title: "דוחות",           url: createPageUrl("Reports"),         icon: PieChart },
   { title: "שיבוץ צוות",      url: createPageUrl("StaffScheduling"), icon: Users },
   { title: "🤖 לוח אוטומציות", url: "/AutomationsDashboard",         icon: Zap },
+  { title: "📅 יומן Google",   url: "/GoogleCalendarSync",           icon: Calendar },
   { title: "🛡️ יועץ מערכת",   url: "/SystemAdvisor",                 icon: Shield },
   { title: "הגדרות מערכת",    url: createPageUrl("Settings"),        icon: Settings },
 ];

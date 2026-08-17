@@ -19,6 +19,7 @@
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createUserClient, getRequestUser } from '../_shared/supabaseClients.ts';
 import { sendWhatsApp } from '../_shared/whatsapp.ts';
+import { getValidAccessToken } from '../_shared/googleCalendarAuth.ts';
 
 Deno.serve(async (req) => {
   const preflight = handleOptions(req);
@@ -30,17 +31,19 @@ Deno.serve(async (req) => {
 
     const supabase = createUserClient(req);
 
-    // Best-effort Google Calendar access (see sync-event-to-calendar for the token gap).
+    // Best-effort Google Calendar access via the real OAuth flow (primary
+    // account only — the description lives on the main/legacy calendar event).
     let googleAccessToken: string | null = null;
     let calendarId = 'primary';
     try {
-      const { data: settingsForCal } = await supabase
-        .from('app_settings')
-        .select('key, value')
-        .in('key', ['google_calendar_access_token', 'google_calendar_id']);
-      googleAccessToken = settingsForCal?.find((s) => s.key === 'google_calendar_access_token')?.value || null;
-      const savedCalendarId = settingsForCal?.find((s) => s.key === 'google_calendar_id')?.value?.trim();
-      if (savedCalendarId) calendarId = savedCalendarId;
+      const { data: profile } = await supabase.from('profiles').select('tenant_id').eq('id', user.id).maybeSingle();
+      if (profile) {
+        const token = await getValidAccessToken(supabase, profile.tenant_id, 'primary');
+        if (token) {
+          googleAccessToken = token.accessToken;
+          calendarId = token.calendarId;
+        }
+      }
     } catch {
       console.log('Google Calendar not available, proceeding without it');
     }

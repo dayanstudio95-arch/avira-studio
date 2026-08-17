@@ -140,6 +140,13 @@ export default function Leads() {
       for (const dup of duplicates) {
         // שמור את האחרון (החדש ביותר), מחק את השאר
         for (let i = 1; i < dup.events.length; i++) {
+          // Clean up Google Calendar BEFORE deleting the row — best-effort,
+          // never blocks the actual deletion.
+          try {
+            await base44.functions.invoke('deleteEventFromCalendar', { eventId: dup.events[i].id });
+          } catch (calendarErr) {
+            console.error('Failed to clean up Google Calendar for event', dup.events[i].id, calendarErr);
+          }
           await base44.entities.Event.delete(dup.events[i].id);
           deletedCount++;
         }

@@ -23,7 +23,6 @@ import DiscountList from "../components/settings/DiscountList";
 import PricingManagement from "../components/settings/PricingManagement";
 import MessageTemplatesTab from "../components/settings/MessageTemplatesTab";
 import TeamAutomationTab from "../components/settings/TeamAutomationTab";
-import GoogleCalendarCleanupSettings from "../components/settings/GoogleCalendarCleanupSettings";
 import StaffRatesEditor from "../components/settings/StaffRatesEditor";
 import UsersTab from "../components/settings/UsersTab";
 import WorkspaceTab from "../components/settings/WorkspaceTab";
@@ -514,7 +513,6 @@ export default function Settings() {
           {/* חיבורים */}
           <TabsContent value="integrations">
             <div className="space-y-6">
-              <GoogleCalendarCleanupSettings />
               <IntegrationsTab />
             </div>
           </TabsContent>

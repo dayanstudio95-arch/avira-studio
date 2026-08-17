@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Save, CheckCircle, MessageCircle, Calendar, FileText, Eye, EyeOff } from "lucide-react";
-import GoogleCalendarConnect from "./GoogleCalendarConnect";
+import { Save, CheckCircle, MessageCircle, Calendar, FileText, Eye, EyeOff, ArrowLeft } from "lucide-react";
 import WhatsAppPanel from "./WhatsAppPanel";
 import { toast } from "sonner";
 
@@ -27,7 +27,6 @@ const INTEGRATION_KEYS = [
   "whatsapp_gateway_url",
   "whatsapp_instance_id",
   "whatsapp_api_key",
-  "google_calendar_id",
   "morning_api_key_sole_prop",
   "morning_api_secret_sole_prop",
   "morning_api_key_company",
@@ -39,7 +38,6 @@ export default function IntegrationsTab() {
     whatsapp_gateway_url: "",
     whatsapp_instance_id: "",
     whatsapp_api_key: "",
-    google_calendar_id: "",
     morning_api_key_sole_prop: "",
     morning_api_secret_sole_prop: "",
     morning_api_key_company: "",
@@ -167,7 +165,7 @@ export default function IntegrationsTab() {
         </CardContent>
       </Card>
 
-      {/* Google Calendar */}
+      {/* Google Calendar — connect/manage/sync-health now lives on its own dedicated page */}
       <Card className="bg-gray-900/50 border-gray-800">
         <CardHeader className="border-b border-gray-800 pb-4">
           <CardTitle className="text-white flex items-center gap-2">
@@ -176,26 +174,15 @@ export default function IntegrationsTab() {
             </div>
             Google Calendar
           </CardTitle>
-          <p className="text-gray-400 text-sm">יצירת אירועים אוטומטית ביומן Google שלך</p>
+          <p className="text-gray-400 text-sm">חיבור חשבונות, סנכרון דו-כיווני וגיבוי ליומן שני</p>
         </CardHeader>
-        <CardContent className="p-6 space-y-4">
-          <div>
-            <Label className="text-gray-300 mb-2 block">סטטוס חיבור OAuth</Label>
-            <GoogleCalendarConnect />
-          </div>
-          <div>
-            <Label className="text-gray-300">Calendar ID (אופציונלי)</Label>
-            <Input
-              value={values.google_calendar_id}
-              onChange={(e) => setValues((v) => ({ ...v, google_calendar_id: e.target.value }))}
-              placeholder="example@gmail.com or c_xxxxx@group.calendar.google.com"
-              className="bg-gray-800 border-gray-700 text-white mt-1"
-              dir="ltr"
-            />
-            <p className="text-gray-500 text-xs mt-1">
-              השאר ריק לשימוש ביומן הראשי. מצא Calendar ID ב: הגדרות Google Calendar ← שתף יומן זה
-            </p>
-          </div>
+        <CardContent className="p-6">
+          <Link to="/GoogleCalendarSync">
+            <Button variant="outline" className="border-gray-700 text-gray-200 hover:bg-gray-800 gap-2 w-full justify-between">
+              <span>ניהול חיבור יומן Google ובריאות סנכרון</span>
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
+          </Link>
         </CardContent>
       </Card>
 
@@ -252,11 +239,6 @@ export default function IntegrationsTab() {
               label="Green API (WhatsApp)"
               active={!!(values.whatsapp_gateway_url && values.whatsapp_instance_id && values.whatsapp_api_key)}
               icon={<MessageCircle className="w-3.5 h-3.5" />}
-            />
-            <StatusBadge
-              label="Google Calendar"
-              active={true}
-              icon={<Calendar className="w-3.5 h-3.5" />}
             />
             <StatusBadge
               label="Morning — עוסק מורשה"

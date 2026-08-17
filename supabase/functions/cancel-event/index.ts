@@ -4,6 +4,7 @@
 // note — never leaves a dangling linked_event_id pointing at a deleted row.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createUserClient, getRequestUser } from '../_shared/supabaseClients.ts';
+import { deleteEventFromAllAccounts } from '../_shared/googleCalendarSync.ts';
 
 Deno.serve(async (req) => {
   const preflight = handleOptions(req);
@@ -22,6 +23,17 @@ Deno.serve(async (req) => {
     if (!event) return jsonResponse({ error: 'Event not found' }, { status: 404 });
 
     const linkedLeadId = event.source_lead_id || event.lead_id || null;
+
+    // Clean up Google Calendar BEFORE deleting the row — event_calendar_syncs
+    // cascades off events, so deleting the row first would destroy the very
+    // data needed to know what to delete on Google's side. Best-effort: a
+    // Google-side failure must never block the actual cancellation.
+    try {
+      const { data: profile } = await supabase.from('profiles').select('tenant_id').eq('id', user.id).maybeSingle();
+      if (profile) await deleteEventFromAllAccounts(supabase, profile.tenant_id, eventId);
+    } catch (calErr) {
+      console.error('[cancelEvent] Google Calendar cleanup failed (continuing with deletion):', calErr.message);
+    }
 
     const { error: delErr } = await supabase.from('events').delete().eq('id', eventId);
     if (delErr) return jsonResponse({ error: delErr.message }, { status: 500 });
