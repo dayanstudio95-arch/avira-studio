@@ -3,6 +3,7 @@ import { base44 } from "@/api/base44Client";
 const { Automation, AutomationRun, StaffMember, Event } = base44.entities;
 import QuestionnaireSendPreviewModal from "@/components/automations/QuestionnaireSendPreviewModal";
 import AlbumReminderPreviewModal from "@/components/automations/AlbumReminderPreviewModal";
+import CustomStaffMessageModal from "@/components/automations/CustomStaffMessageModal";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -73,6 +74,17 @@ const DEFAULTS = [
     channel: "whatsapp",
     messageTemplate: "היי {coupleNames}, ההתרגשות בשיאה! 🥂\nלקראת האירוע שלכם, אנחנו רוצים לוודא שכל הפרטים מסונכרנים אצלנו במערכת. 📋\nנשמח אם תוכלו למלא את השאלון הקצר בקישור הבא כדי שנוכל לתת לכם את השירות הטוב ביותר ❤️\n{questionnaireUrl}\nתודה! אווירה צלמים 📸",
     isActive: false,
+  },
+  {
+    name: "הודעה מותאמת אישית לצוות",
+    type: "custom_staff_message",
+    emoji: "✍️",
+    frequency: "manual",
+    channel: "whatsapp",
+    // Placeholder only — the compose modal always sends fresh text on every run,
+    // so this saved value is never actually used to send anything.
+    messageTemplate: "כתבו כאן הודעה חופשית שתישלח לצוות שתבחרו (למשל לכל צלמי הווידאו).",
+    isActive: true,
   },
 ];
 
@@ -988,6 +1000,7 @@ export default function AutomationsDashboard() {
   const [previewModal, setPreviewModal] = useState(null); // { automation, previews }
   const [albumReminderModal, setAlbumReminderModal] = useState(null); // { automation, previews }
   const [questionnaireSendModal, setQuestionnaireSendModal] = useState(null); // automation
+  const [customStaffMessageModal, setCustomStaffMessageModal] = useState(null); // automation
   const [sendingAll, setSendingAll] = useState(false);
   const [selectedRecipients, setSelectedRecipients] = useState(new Set()); // indices of selected previews
 
@@ -1050,6 +1063,12 @@ export default function AutomationsDashboard() {
     // questionnaire_send has its own dedicated modal
     if (automation.type === 'questionnaire_send') {
       setQuestionnaireSendModal(automation);
+      return;
+    }
+    // custom_staff_message: compose free text + pick role first, THEN preview —
+    // unlike the other types there's no saved template/target to dry-run immediately.
+    if (automation.type === 'custom_staff_message') {
+      setCustomStaffMessageModal(automation);
       return;
     }
     // album_reminder has its own dedicated modal
@@ -1195,6 +1214,14 @@ export default function AutomationsDashboard() {
           automation={albumReminderModal.automation}
           previews={albumReminderModal.previews}
           onClose={() => setAlbumReminderModal(null)}
+          onSent={loadAutomations}
+        />
+      )}
+
+      {customStaffMessageModal && (
+        <CustomStaffMessageModal
+          automation={customStaffMessageModal}
+          onClose={() => setCustomStaffMessageModal(null)}
           onSent={loadAutomations}
         />
       )}

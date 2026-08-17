@@ -228,12 +228,15 @@ async function runMonthlyStaffSummary(supabase: any, tenantId: string, automatio
     if (phone && sentPhones.has(phone)) {
       await supabase.from('automation_message_logs').insert({ ...logEntry, status: 'skipped', error: 'כפילות — אותו טלפון כבר קיבל הודעה בריצה זו' });
       skipped++;
-      logs.push({ name: member.name, status: 'skipped', reason: 'dup_phone' });
+      logs.push({ staffId: member.id, name: member.name, status: 'skipped', reason: 'dup_phone' });
       continue;
     }
 
     if (dryRun) {
-      logs.push({ name: member.name, phone, finalMessage, eventsCount: memberEvents.length, status: 'preview' });
+      // staffId must be set here — the frontend keys its checkbox selection Set by this
+      // field (see AutomationsDashboard.jsx handleManualRun / selectedRecipients). Without
+      // it every preview row collapses onto the same undefined key and checkboxes break.
+      logs.push({ staffId: member.id, name: member.name, phone, finalMessage, eventsCount: memberEvents.length, status: 'preview' });
       continue;
     }
 
@@ -241,7 +244,7 @@ async function runMonthlyStaffSummary(supabase: any, tenantId: string, automatio
     if (!isValidPhone) {
       await supabase.from('automation_message_logs').insert({ ...logEntry, status: 'skipped', error: `טלפון לא תקין: "${phone}"` });
       skipped++;
-      logs.push({ name: member.name, status: 'skipped', reason: 'invalid_phone', phone });
+      logs.push({ staffId: member.id, name: member.name, status: 'skipped', reason: 'invalid_phone', phone });
       continue;
     }
 
@@ -252,11 +255,11 @@ async function runMonthlyStaffSummary(supabase: any, tenantId: string, automatio
       }
       await supabase.from('automation_message_logs').insert({ ...logEntry, status: 'sent', sent_at: new Date().toISOString() });
       sent++;
-      logs.push({ name: member.name, phone, status: 'sent' });
+      logs.push({ staffId: member.id, name: member.name, phone, status: 'sent' });
     } catch (err) {
       await supabase.from('automation_message_logs').insert({ ...logEntry, status: 'failed', error: err.message });
       failed++;
-      logs.push({ name: member.name, phone, status: 'failed', error: err.message });
+      logs.push({ staffId: member.id, name: member.name, phone, status: 'failed', error: err.message });
     }
   }
 
@@ -724,12 +727,95 @@ async function runQuestionnaireSend(supabase: any, tenantId: string, automation:
   return { sent, skipped };
 }
 
+// Free-text WhatsApp broadcast to staff filtered by role. Unlike the other handlers,
+// the message content and target role are NOT read from `automation.message_template` /
+// `automation.filter_logic` — they're supplied fresh on every call via
+// `messageTemplateOverride` / `targetRoleOverride`, because the whole point of this
+// automation type is "compose something new right now", not a recurring saved template.
+// (Falling back to the persisted columns is still supported for robustness / future reuse.)
+async function runCustomStaffMessage(supabase: any, tenantId: string, automation: any, runId: string, opts: any = {}) {
+  const { testPhone, dryRun, selectedStaffIds, messageTemplateOverride, targetRoleOverride } = opts;
+
+  const template = (messageTemplateOverride ?? automation.message_template ?? '').trim();
+  const targetRole = targetRoleOverride || automation.filter_logic || 'all';
+
+  if (!template) {
+    return { sent: 0, failed: 0, skipped: 0, logs: [], previews: [] };
+  }
+
+  const { data: allStaff } = await supabase.from('staff_members').select('*').eq('tenant_id', tenantId);
+
+  const eligible = (allStaff || []).filter((m: any) => {
+    if (targetRole && targetRole !== 'all' && m.role !== targetRole) return false;
+    return true;
+  });
+
+  const rows = eligible.map((member: any) => {
+    const finalMessage = renderTemplate(template, {
+      staff_name: member.name,
+      staffName: member.name,
+    });
+    const phone = testPhone || member.phone_number || '';
+    return { staffId: member.id, name: member.name, role: member.role, phone, finalMessage };
+  });
+
+  if (dryRun) {
+    const previews = rows.map((r) => ({ staffId: r.staffId, name: r.name, staffPhone: r.phone, message: r.finalMessage, eventCount: 0 }));
+    return { sent: 0, failed: 0, skipped: 0, logs: [], previews };
+  }
+
+  const toSend = Array.isArray(selectedStaffIds) && selectedStaffIds.length > 0
+    ? rows.filter((r) => selectedStaffIds.includes(r.staffId))
+    : rows;
+
+  let sent = 0, failed = 0, skipped = 0;
+  const logs: any[] = [];
+  const sentPhones = new Set<string>();
+
+  for (const item of toSend) {
+    if (!item.phone || item.phone.trim().length <= 3) {
+      skipped++;
+      logs.push({ staffId: item.staffId, name: item.name, status: 'skipped', reason: 'invalid_phone' });
+      continue;
+    }
+    if (sentPhones.has(item.phone)) {
+      skipped++;
+      logs.push({ staffId: item.staffId, name: item.name, status: 'skipped', reason: 'dup_phone' });
+      continue;
+    }
+
+    const logEntry = {
+      automation_run_id: runId,
+      automation_id: automation.id,
+      automation_name: automation.name,
+      recipient_name: item.name,
+      recipient_contact: item.phone,
+      channel: automation.channel || 'whatsapp',
+      message_content: item.finalMessage,
+    };
+
+    try {
+      await sendWhatsApp(supabase, tenantId, item.phone.trim(), item.finalMessage);
+      sentPhones.add(item.phone);
+      await supabase.from('automation_message_logs').insert({ ...logEntry, status: 'sent', sent_at: new Date().toISOString() });
+      sent++;
+      logs.push({ staffId: item.staffId, name: item.name, phone: item.phone, status: 'sent' });
+    } catch (err) {
+      await supabase.from('automation_message_logs').insert({ ...logEntry, status: 'failed', error: err.message });
+      failed++;
+      logs.push({ staffId: item.staffId, name: item.name, phone: item.phone, status: 'failed', error: err.message });
+    }
+  }
+
+  return { sent, failed, skipped, logs };
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Orchestration
 // ─────────────────────────────────────────────────────────────────────────
 
 async function executeAutomation(supabase: any, tenantId: string, automation: any, opts: any = {}) {
-  const { triggeredBy, testPhone, dryRun, selectedStaffIds, targetYYYYMM, selectedEventIds } = opts;
+  const { triggeredBy, testPhone, dryRun, selectedStaffIds, targetYYYYMM, selectedEventIds, messageTemplateOverride, targetRoleOverride } = opts;
 
   let runId = 'dryrun';
   if (!dryRun) {
@@ -757,6 +843,7 @@ async function executeAutomation(supabase: any, tenantId: string, automation: an
     if (automation.type === 'payment_reminder') result = await runPaymentReminder(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds });
     if (automation.type === 'album_reminder') result = await runAlbumReminder(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedEventIds });
     if (automation.type === 'questionnaire_send') result = await runQuestionnaireSend(supabase, tenantId, automation, runId, { testPhone, dryRun, targetYYYYMM, selectedEventIds });
+    if (automation.type === 'custom_staff_message') result = await runCustomStaffMessage(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds, messageTemplateOverride, targetRoleOverride });
 
     if (!dryRun) {
       const nextRunAt = calculateNextRun(automation);
@@ -853,6 +940,8 @@ async function handleForTenant(supabase: any, tenantId: string, body: any) {
       selectedStaffIds: body.selectedStaffIds || null,
       targetYYYYMM: body.targetYYYYMM || null,
       selectedEventIds: body.selectedEventIds || null,
+      messageTemplateOverride: body.message_template_override || null,
+      targetRoleOverride: body.target_role_override || null,
     });
     results.push(result);
   }
