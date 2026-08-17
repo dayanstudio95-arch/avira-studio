@@ -151,7 +151,7 @@ async function sendWhatsApp(supabase: any, tenantId: string, phone: string, mess
 // ─────────────────────────────────────────────────────────────────────────
 
 async function runMonthlyStaffSummary(supabase: any, tenantId: string, automation: any, runId: string, opts: any = {}) {
-  const { testPhone, dryRun } = opts;
+  const { testPhone, dryRun, selectedStaffIds } = opts;
 
   const targetMonth = getTargetMonth(automation.target_month_mode || 'next_month');
   const formattedMonth = formatMonthHebrew(targetMonth);
@@ -172,6 +172,13 @@ async function runMonthlyStaffSummary(supabase: any, tenantId: string, automatio
 
   for (const member of allStaff || []) {
     if (Array.isArray(automation.selected_staff_ids) && automation.selected_staff_ids.length > 0 && !automation.selected_staff_ids.includes(member.id)) {
+      skipped++;
+      continue;
+    }
+    // Runtime checkbox selection from the preview modal — only applied when the
+    // caller actually passed a selection (e.g. confirming a manual send). The
+    // scheduler and the initial dry-run preview never pass this, so nothing changes for them.
+    if (Array.isArray(selectedStaffIds) && selectedStaffIds.length > 0 && !selectedStaffIds.includes(member.id)) {
       skipped++;
       continue;
     }
@@ -400,7 +407,7 @@ async function runDailyEventBrief(supabase: any, tenantId: string, automation: a
 }
 
 async function runQuestionnaireReminder(supabase: any, tenantId: string, automation: any, runId: string, opts: any = {}) {
-  const { testPhone, dryRun } = opts;
+  const { testPhone, dryRun, selectedStaffIds } = opts;
 
   const now = new Date();
   const targetStart = new Date(now);
@@ -457,22 +464,30 @@ async function runQuestionnaireReminder(supabase: any, tenantId: string, automat
     return { sent: 0, failed: 0, skipped: 0, pending: 0, logs: pendingMessages, previews };
   }
 
-  if (pendingMessages.length > 0) {
+  // Runtime checkbox selection from the preview modal (keyed by leadId, matching the
+  // `staffId: m.leadId` mapping used to build the dry-run previews above). Only applied
+  // when the caller actually passed a selection — the scheduler sends none, so it still
+  // queues everyone eligible, same as before.
+  const toQueue = Array.isArray(selectedStaffIds) && selectedStaffIds.length > 0
+    ? pendingMessages.filter((m) => selectedStaffIds.includes(m.leadId))
+    : pendingMessages;
+
+  if (toQueue.length > 0) {
     await supabase.from('pending_automations').insert({
       tenant_id: tenantId,
       automation_type: 'questionnaire_reminder',
       automation_name: 'תזכורת שאלון',
       status: 'pending',
-      messages: pendingMessages,
-      total_count: pendingMessages.length,
+      messages: toQueue,
+      total_count: toQueue.length,
     });
   }
 
-  return { sent: 0, failed: 0, skipped: 0, pending: pendingMessages.length, logs: pendingMessages };
+  return { sent: 0, failed: 0, skipped: 0, pending: toQueue.length, logs: toQueue };
 }
 
 async function runPaymentReminder(supabase: any, tenantId: string, automation: any, runId: string, opts: any = {}) {
-  const { testPhone, dryRun } = opts;
+  const { testPhone, dryRun, selectedStaffIds } = opts;
 
   // NOTE: the original Base44 `Automation` entity had no `triggerDays` field either
   // (confirmed against base44/entities/Automation.jsonc — only `event_automations`,
@@ -530,18 +545,26 @@ async function runPaymentReminder(supabase: any, tenantId: string, automation: a
     return { sent: 0, failed: 0, skipped: 0, pending: 0, logs: pendingMessages, previews };
   }
 
-  if (pendingMessages.length > 0) {
+  // Runtime checkbox selection from the preview modal (keyed by eventId, matching the
+  // `staffId: m.eventId` mapping used to build the dry-run previews above). Only applied
+  // when the caller actually passed a selection — the scheduler sends none, so it still
+  // queues everyone eligible, same as before.
+  const toQueue = Array.isArray(selectedStaffIds) && selectedStaffIds.length > 0
+    ? pendingMessages.filter((m) => selectedStaffIds.includes(m.eventId))
+    : pendingMessages;
+
+  if (toQueue.length > 0) {
     await supabase.from('pending_automations').insert({
       tenant_id: tenantId,
       automation_type: 'payment_reminder',
       automation_name: automation.name || 'תזכורת תשלום לאחר אירוע',
       status: 'pending',
-      messages: pendingMessages,
-      total_count: pendingMessages.length,
+      messages: toQueue,
+      total_count: toQueue.length,
     });
   }
 
-  return { sent: 0, failed: 0, skipped: 0, pending: pendingMessages.length, logs: pendingMessages };
+  return { sent: 0, failed: 0, skipped: 0, pending: toQueue.length, logs: toQueue };
 }
 
 async function runAlbumReminder(supabase: any, tenantId: string, automation: any, runId: string, opts: any = {}) {
@@ -728,10 +751,10 @@ async function executeAutomation(supabase: any, tenantId: string, automation: an
   try {
     let result: any = { sent: 0, failed: 0, skipped: 0, logs: [] };
 
-    if (automation.type === 'monthly_staff_summary') result = await runMonthlyStaffSummary(supabase, tenantId, automation, runId, { testPhone, dryRun });
+    if (automation.type === 'monthly_staff_summary') result = await runMonthlyStaffSummary(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds });
     if (automation.type === 'daily_event_brief') result = await runDailyEventBrief(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds });
-    if (automation.type === 'questionnaire_reminder') result = await runQuestionnaireReminder(supabase, tenantId, automation, runId, { testPhone, dryRun });
-    if (automation.type === 'payment_reminder') result = await runPaymentReminder(supabase, tenantId, automation, runId, { testPhone, dryRun });
+    if (automation.type === 'questionnaire_reminder') result = await runQuestionnaireReminder(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds });
+    if (automation.type === 'payment_reminder') result = await runPaymentReminder(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds });
     if (automation.type === 'album_reminder') result = await runAlbumReminder(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedEventIds });
     if (automation.type === 'questionnaire_send') result = await runQuestionnaireSend(supabase, tenantId, automation, runId, { testPhone, dryRun, targetYYYYMM, selectedEventIds });
 
