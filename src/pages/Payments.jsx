@@ -9,6 +9,7 @@ import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { VAT_RATE } from "@/lib/financialCalculations";
 
 export default function Payments() {
     const [events, setEvents] = useState([]);
@@ -278,9 +279,9 @@ export default function Payments() {
                                                 <p className="text-gray-400 text-xs">סה״כ לתשלום</p>
                                                 <p className="text-base font-bold text-red-400">
                                                     ₪{data.total.toLocaleString()}
-                                                    <span className="text-xs font-normal text-gray-500 mr-1 hidden sm:inline">(כולל מע"מ: ₪{Math.round(data.total * 1.18).toLocaleString()})</span>
+                                                    <span className="text-xs font-normal text-gray-500 mr-1 hidden sm:inline">(כולל מע"מ: ₪{Math.round(data.total * VAT_RATE).toLocaleString()})</span>
                                                 </p>
-                                                <p className="text-xs font-normal text-gray-500 sm:hidden">כולל מע"מ: ₪{Math.round(data.total * 1.18).toLocaleString()}</p>
+                                                <p className="text-xs font-normal text-gray-500 sm:hidden">כולל מע"מ: ₪{Math.round(data.total * VAT_RATE).toLocaleString()}</p>
                                             </div>
                                             {(selectedPayments[name] || []).length > 0 && (
                                                <Button

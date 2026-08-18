@@ -457,7 +457,9 @@ async function runQuestionnaireReminder(supabase: any, tenantId: string, automat
   const pendingMessages = [];
   for (const lead of eligible) {
     const phone = testPhone || lead.phone_number;
-    const questionnaireLink = `https://www.avira-studio.com/questionnaire/${lead.id}`;
+    // Was a hardcoded dead domain (avira-studio.com), causing every questionnaire
+    // link sent to couples to 404 — fixed 2026-08-18 to use APP_BASE_URL.
+    const questionnaireLink = `${Deno.env.get('APP_BASE_URL') ?? ''}/questionnaire/${lead.id}`;
 
     const finalMessage = renderTemplate(template, {
       coupleNames: lead.couple_names || '',
@@ -694,7 +696,9 @@ async function runQuestionnaireSend(supabase: any, tenantId: string, automation:
     const validLeadId = event.source_lead_id || event.lead_id;
     if (!validLeadId) continue;
 
-    const questionnaireUrl = `https://www.avira-studio.com/questionnaire/${validLeadId}`;
+    // Was a hardcoded dead domain (avira-studio.com), causing every questionnaire
+    // link sent to couples to 404 — fixed 2026-08-18 to use APP_BASE_URL.
+    const questionnaireUrl = `${Deno.env.get('APP_BASE_URL') ?? ''}/questionnaire/${validLeadId}`;
     const formattedDate = formatDateIL(event.date);
 
     const finalMessage = renderTemplate(template, {

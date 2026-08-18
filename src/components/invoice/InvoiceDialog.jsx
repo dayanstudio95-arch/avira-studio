@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FileText, ExternalLink, Loader2, AlertTriangle, XCircle, Wifi, CalendarCheck } from "lucide-react";
 import { toast } from "sonner";
+import { VAT_RATE } from "@/lib/financialCalculations";
 
 const INVOICE_ITEMS = ["מקדמה", "תשלום יתרה", "תוספת צילום", "אלבומים"];
 
@@ -63,7 +64,10 @@ export default function InvoiceDialog({
   const [latestMorningDate, setLatestMorningDate] = useState(null); // latest issued doc date globally
   const [isFetchingLatestDate, setIsFetchingLatestDate] = useState(false);
 
-  const vatRate = 0.18;
+  // Display-only VAT breakdown preview (the actual charged amount, amountNum, is
+  // unaffected) — centralized on the shared VAT_RATE constant instead of a locally
+  // duplicated magic number, so a future statutory rate change is a one-place fix.
+  const vatRate = VAT_RATE - 1;
   const amountNum = parseFloat(amount) || 0;
   const vatAmount = +(amountNum - amountNum / (1 + vatRate)).toFixed(2);
   const priceBeforeVat = +(amountNum / (1 + vatRate)).toFixed(2);
@@ -308,7 +312,7 @@ export default function InvoiceDialog({
               />
               {amountNum > 0 && (
                 <p className="text-xs text-gray-500 mt-1">
-                  לפני מע"מ: ₪{priceBeforeVat.toLocaleString()} | מע"מ 18%: ₪{vatAmount.toLocaleString()}
+                  לפני מע"מ: ₪{priceBeforeVat.toLocaleString()} | מע"מ {Math.round(vatRate * 100)}%: ₪{vatAmount.toLocaleString()}
                 </p>
               )}
             </div>

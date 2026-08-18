@@ -55,7 +55,10 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: true, message: 'No leads with events next month', results: [] });
     }
 
-    const baseUrl = 'https://www.avira-studio.com';
+    // Was a hardcoded dead domain (avira-studio.com), causing every questionnaire
+    // link sent to couples to 404 — fixed 2026-08-18 to use the same APP_BASE_URL
+    // secret already established by google-calendar-oauth-callback.
+    const baseUrl = Deno.env.get('APP_BASE_URL') ?? '';
     const results: Array<{ leadName: string; success: boolean; error?: string }> = [];
 
     for (const lead of targetLeads) {

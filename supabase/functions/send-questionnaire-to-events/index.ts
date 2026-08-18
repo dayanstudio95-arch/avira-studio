@@ -75,7 +75,10 @@ Deno.serve(async (req) => {
 
         const eventDate = event.date ? new Date(event.date) : null;
         const formattedDate = eventDate ? `${eventDate.getDate()}/${eventDate.getMonth() + 1}/${String(eventDate.getFullYear()).slice(2)}` : '';
-        const questionnaireUrl = `https://www.avira-studio.com/questionnaire/${event.source_lead_id || eventId}`;
+        // Was a hardcoded dead domain (avira-studio.com), causing every questionnaire
+        // link sent to couples to 404 — fixed 2026-08-18 to use APP_BASE_URL.
+        const appBaseUrl = Deno.env.get('APP_BASE_URL') ?? '';
+        const questionnaireUrl = `${appBaseUrl}/questionnaire/${event.source_lead_id || eventId}`;
 
         const message = template
           .replaceAll('{coupleNames}', event.couple_names || '')

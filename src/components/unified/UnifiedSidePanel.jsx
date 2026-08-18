@@ -44,7 +44,6 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
   const [showQuestionnaireTemplateEditor, setShowQuestionnaireTemplateEditor] = useState(false);
   const [questionnaireTemplate, setQuestionnaireTemplate] = useState("");
   const [copiedQLink, setCopiedQLink] = useState(false);
-  const [makeWebhookUrl, setMakeWebhookUrl] = useState("");
   const [paymentMessageText, setPaymentMessageText] = useState("");
   const [isSendingPayment, setIsSendingPayment] = useState(false);
   const [showPaymentSection, setShowPaymentSection] = useState(false);
@@ -62,9 +61,9 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
 
   const getQuestionnaireLink = () => {
     // CHANGED: was hardcoded to 'https://www.avira-studio.com', a domain nothing is
-    // actually hosted on — every generated link 404'd. window.location.origin matches
-    // LeadCardDrawer.jsx's already-correct pattern and always points at wherever the
-    // app is actually running (localhost while testing, the real domain once deployed).
+    // actually hosted on — every generated link 404'd. window.location.origin always
+    // points at wherever the app is actually running (localhost while testing, the
+    // real domain once deployed).
     const baseUrl = window.location.origin;
     return lead?.id
       ? `${baseUrl}/questionnaire/${lead.id}`
@@ -90,8 +89,6 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
 
   useEffect(() => {
     base44.entities.AppSetting.list().then(all => {
-      const webhookSetting = all.find(s => s.key === 'make_webhook_url');
-      if (webhookSetting?.value) setMakeWebhookUrl(webhookSetting.value);
       const contractTpl = all.find(s => s.key === 'template_contract');
       if (contractTpl?.value) setContractTemplate(contractTpl.value);
       const questTpl = all.find(s => s.key === 'template_questionnaire');
