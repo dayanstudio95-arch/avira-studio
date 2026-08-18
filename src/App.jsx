@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/sonner';
@@ -8,28 +9,47 @@ import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import PageNotFound from '@/lib/PageNotFound';
 import Layout from './pages/Layout';
 
-import Dashboard from './pages/Dashboard';
-import Leads from './pages/Leads';
-import Calendar from './pages/Calendar';
-import Events from './pages/Events';
-import Packages from './pages/Packages';
-import TeamMembers from './pages/TeamMembers';
-import StaffScheduling from './pages/StaffScheduling';
-import ProgressStatus from './pages/ProgressStatus';
-import Reports from './pages/Reports';
-import Payments from './pages/Payments';
-import AllInvoicesPage from './pages/AllInvoicesPage';
-import TeamPaymentsPage from './pages/TeamPaymentsPage';
-import ContractPage from './pages/ContractPage';
-import EventQuestionnaire from './pages/EventQuestionnaire';
-import Login from './pages/Login';
-import AcceptInvite from './pages/AcceptInvite';
-import Settings from './pages/Settings';
-import AutomationsDashboard from './pages/AutomationsDashboard';
-import GoogleCalendarSync from './pages/GoogleCalendarSync';
-import AutomationLogs from './pages/AutomationLogs';
-import PendingApprovals from './pages/PendingApprovals';
-import SystemAdvisor from './pages/SystemAdvisor';
+// PERF: every page below used to be a static import, so visiting any single route
+// (including the two public, unauthenticated ones hit by couples with no login --
+// ContractPage and EventQuestionnaire) downloaded one ~2.9MB JS bundle containing the
+// entire admin app (Dashboard, Reports, Settings, every automation page, etc.) plus
+// heavy libs like jsPDF/html2canvas that only ContractPage actually uses. React.lazy
+// below turns each page into its own chunk, fetched only when that route is visited --
+// most importantly, this means the public contract-signing/questionnaire links (the
+// same flow that had the html2canvas hang bug) no longer pull in unrelated admin code,
+// which meaningfully cuts load time+memory pressure on the slower mobile networks/older
+// phones those pages are actually used from.
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Leads = lazy(() => import('./pages/Leads'));
+const Calendar = lazy(() => import('./pages/Calendar'));
+const Events = lazy(() => import('./pages/Events'));
+const Packages = lazy(() => import('./pages/Packages'));
+const TeamMembers = lazy(() => import('./pages/TeamMembers'));
+const StaffScheduling = lazy(() => import('./pages/StaffScheduling'));
+const ProgressStatus = lazy(() => import('./pages/ProgressStatus'));
+const Reports = lazy(() => import('./pages/Reports'));
+const Payments = lazy(() => import('./pages/Payments'));
+const AllInvoicesPage = lazy(() => import('./pages/AllInvoicesPage'));
+const TeamPaymentsPage = lazy(() => import('./pages/TeamPaymentsPage'));
+const ContractPage = lazy(() => import('./pages/ContractPage'));
+const EventQuestionnaire = lazy(() => import('./pages/EventQuestionnaire'));
+const Login = lazy(() => import('./pages/Login'));
+const AcceptInvite = lazy(() => import('./pages/AcceptInvite'));
+const Settings = lazy(() => import('./pages/Settings'));
+const AutomationsDashboard = lazy(() => import('./pages/AutomationsDashboard'));
+const GoogleCalendarSync = lazy(() => import('./pages/GoogleCalendarSync'));
+const AutomationLogs = lazy(() => import('./pages/AutomationLogs'));
+const PendingApprovals = lazy(() => import('./pages/PendingApprovals'));
+const SystemAdvisor = lazy(() => import('./pages/SystemAdvisor'));
+
+// Shared fallback while a lazy page chunk downloads -- matches the existing
+// auth-loading spinner's look (fixed inset-0, same spinner classes) so route-change
+// loading doesn't look visually different from the app's other loading states.
+const PageLoadingFallback = () => (
+  <div className="fixed inset-0 flex items-center justify-center bg-gray-950">
+    <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
+  </div>
+);
 
 
 const AuthenticatedApp = () => {
@@ -73,28 +93,30 @@ const AuthenticatedApp = () => {
 
   return (
     <Layout>
-      <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/Leads" element={<Leads />} />
-        <Route path="/Calendar" element={<Calendar />} />
-        <Route path="/Events" element={<Events />} />
-        <Route path="/Packages" element={<Packages />} />
-        <Route path="/TeamMembers" element={<TeamMembers />} />
-        <Route path="/StaffScheduling" element={<StaffScheduling />} />
-        <Route path="/ProgressStatus" element={<ProgressStatus />} />
-        <Route path="/Reports" element={<Reports />} />
-        <Route path="/Payments" element={<Payments />} />
-        <Route path="/AllInvoicesPage" element={<AllInvoicesPage />} />
-        <Route path="/TeamPaymentsPage" element={<TeamPaymentsPage />} />
-        <Route path="/Settings" element={<Settings />} />
-        <Route path="/AutomationsDashboard" element={<AutomationsDashboard />} />
-        <Route path="/GoogleCalendarSync" element={<GoogleCalendarSync />} />
-        <Route path="/AutomationLogs" element={<AutomationLogs />} />
-        <Route path="/PendingApprovals" element={<PendingApprovals />} />
-        <Route path="/SystemAdvisor" element={<SystemAdvisor />} />
+      <Suspense fallback={<PageLoadingFallback />}>
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/Leads" element={<Leads />} />
+          <Route path="/Calendar" element={<Calendar />} />
+          <Route path="/Events" element={<Events />} />
+          <Route path="/Packages" element={<Packages />} />
+          <Route path="/TeamMembers" element={<TeamMembers />} />
+          <Route path="/StaffScheduling" element={<StaffScheduling />} />
+          <Route path="/ProgressStatus" element={<ProgressStatus />} />
+          <Route path="/Reports" element={<Reports />} />
+          <Route path="/Payments" element={<Payments />} />
+          <Route path="/AllInvoicesPage" element={<AllInvoicesPage />} />
+          <Route path="/TeamPaymentsPage" element={<TeamPaymentsPage />} />
+          <Route path="/Settings" element={<Settings />} />
+          <Route path="/AutomationsDashboard" element={<AutomationsDashboard />} />
+          <Route path="/GoogleCalendarSync" element={<GoogleCalendarSync />} />
+          <Route path="/AutomationLogs" element={<AutomationLogs />} />
+          <Route path="/PendingApprovals" element={<PendingApprovals />} />
+          <Route path="/SystemAdvisor" element={<SystemAdvisor />} />
 
-        <Route path="*" element={<PageNotFound />} />
-      </Routes>
+          <Route path="*" element={<PageNotFound />} />
+        </Routes>
+      </Suspense>
     </Layout>
   );
 };
@@ -104,17 +126,19 @@ function App() {
     <AuthProvider>
       <QueryClientProvider client={queryClientInstance}>
         <BrowserRouter>
-          <Routes>
-            {/* Public routes */}
-            <Route path="/contract/:leadId" element={<ContractPage />} />
-            <Route path="/questionnaire/:id" element={<EventQuestionnaire />} />
-            <Route path="/questionnaire" element={<EventQuestionnaire />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/accept-invite" element={<AcceptInvite />} />
+          <Suspense fallback={<PageLoadingFallback />}>
+            <Routes>
+              {/* Public routes */}
+              <Route path="/contract/:leadId" element={<ContractPage />} />
+              <Route path="/questionnaire/:id" element={<EventQuestionnaire />} />
+              <Route path="/questionnaire" element={<EventQuestionnaire />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/accept-invite" element={<AcceptInvite />} />
 
-            {/* Protected routes */}
-            <Route path="/*" element={<AuthenticatedApp />} />
-          </Routes>
+              {/* Protected routes */}
+              <Route path="/*" element={<AuthenticatedApp />} />
+            </Routes>
+          </Suspense>
           <Toaster />
         </BrowserRouter>
       </QueryClientProvider>
