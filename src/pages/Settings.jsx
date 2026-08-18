@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { DollarSign, Save, Users, Edit, Trash2, Plus, Upload, Download, FileText, Plug, MessageCircle, Building2, History, Bell } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/lib/SupabaseAuthContext";
 import { isAdmin } from "@/lib/permissions";
 import IntegrationsTab from "../components/settings/IntegrationsTab";
@@ -38,9 +39,17 @@ import "react-quill/dist/quill.snow.css";
 import { DEFAULT_CONTRACT_TERMS } from "@/lib/defaultContractTerms";
 import { toast } from "sonner";
 
+const VALID_SETTINGS_TABS = ["workspace", "users", "contract", "pricing", "team", "templates", "integrations", "notifications", "data", "audit"];
+
 export default function Settings() {
   const { user } = useAuth();
   const canViewAuditLog = isAdmin(user);
+  const [searchParams] = useSearchParams();
+  // Lets other pages (e.g. TeamMembers.jsx's "עריכת/הוספת אנשי צוות בהגדרות" button)
+  // deep-link straight into a specific tab via ?tab=team instead of always landing on
+  // "workspace" — falls back to the original default for any unrecognized/missing value.
+  const requestedTab = searchParams.get("tab");
+  const initialTab = VALID_SETTINGS_TABS.includes(requestedTab) ? requestedTab : "workspace";
 
   const [staffMembers, setStaffMembers] = useState([]);
   const [isStaffLoading, setIsStaffLoading] = useState(true);
@@ -194,7 +203,7 @@ export default function Settings() {
           </p>
         </div>
 
-        <Tabs defaultValue="workspace" dir="rtl" className="mb-6">
+        <Tabs defaultValue={initialTab} dir="rtl" className="mb-6">
           <TabsList className="bg-gray-800 border border-gray-700 mb-6 w-full justify-start flex-wrap h-auto">
             <TabsTrigger value="workspace" className="data-[state=active]:bg-yellow-400 data-[state=active]:text-gray-900 text-gray-300">
               <Building2 className="w-4 h-4 ml-1" />

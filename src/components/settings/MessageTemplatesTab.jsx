@@ -94,6 +94,13 @@ const TEMPLATES = [
     defaultValue: `היי {{names}}! ✅\nמצורפת החשבונית עבור התשלום שהתקבל:\n{{invoice_link}}\nתודה רבה!`,
     variables: ["{{names}}", "{{invoice_link}}"],
   },
+  {
+    key: "template_questionnaire_reminder",
+    label: "תזכורת למילוי שאלון הפקה",
+    description: "ההודעה שנשלחת ע\"י supabase/functions/send-questionnaire-reminders לזוגות עם אירוע מתקרב שעדיין לא מילאו שאלון — היתה קודם ניתנת לעריכה רק דרך מסך אוטומציות-צוות המנוטרל בהגדרות; זהו כעת המקום היחיד לעריכתה. שימו לב: תבנית זו משתמשת בתחביר $משתנה (לא {{משתנה}}) כי כך הפונקציה בשרת מחליפה את המשתנים בפועל.",
+    defaultValue: `היי $couple_names, החודש שלכם כבר כמעט כאן! 🎊 נשמח אם תמלאו את השאלון: $questionnaire_link`,
+    variables: ["$couple_names", "$questionnaire_link", "$event_date", "$venue"],
+  },
 ];
 
 export default function MessageTemplatesTab() {

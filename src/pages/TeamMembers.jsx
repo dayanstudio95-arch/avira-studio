@@ -3,8 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Users, Search, X, Camera, Video, Scissors, Palette, TrendingUp, Calendar, DollarSign, AlertCircle, Edit, Trash2, Eye, Mail, Phone } from "lucide-react";
+import { Users, Search, X, Camera, Video, Scissors, Palette, TrendingUp, Calendar, DollarSign, AlertCircle, Settings as SettingsIcon, Eye, Mail, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Link } from "react-router-dom";
@@ -15,9 +14,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { STAFF_JOB_ROLES } from "@/lib/staffRoles";
 
 // Was previously missing "graphic_designer" entirely (a real staff_members.role value,
@@ -36,9 +33,6 @@ export default function TeamMembers() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStaff, setSelectedStaff] = useState(null);
   const [isEventsDialogOpen, setIsEventsDialogOpen] = useState(false);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [editingStaff, setEditingStaff] = useState(null);
 
   useEffect(() => {
     loadData();
@@ -119,46 +113,6 @@ export default function TeamMembers() {
     setIsEventsDialogOpen(true);
   };
 
-  const handleEditStaff = (staff) => {
-    setEditingStaff({ ...staff });
-    setIsEditDialogOpen(true);
-  };
-
-  const handleDeleteStaff = (staff) => {
-    setSelectedStaff(staff);
-    setIsDeleteDialogOpen(true);
-  };
-
-  const confirmDelete = async () => {
-    if (!selectedStaff) return;
-    try {
-      await base44.entities.StaffMember.delete(selectedStaff.id);
-      setIsDeleteDialogOpen(false);
-      setSelectedStaff(null);
-      loadData();
-    } catch (error) {
-      console.error("Error deleting staff:", error);
-    }
-  };
-
-  const saveEdit = async () => {
-    if (!editingStaff) return;
-    try {
-      await base44.entities.StaffMember.update(editingStaff.id, {
-        name: editingStaff.name,
-        role: editingStaff.role,
-        defaultRate: editingStaff.defaultRate,
-        phoneNumber: editingStaff.phoneNumber || undefined,
-        email: editingStaff.email || undefined
-      });
-      setIsEditDialogOpen(false);
-      setEditingStaff(null);
-      loadData();
-    } catch (error) {
-      console.error("Error updating staff:", error);
-    }
-  };
-
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-950 p-4 md:p-8">
@@ -189,6 +143,16 @@ export default function TeamMembers() {
               מעקב ומידע על כל אנשי הצוות שלך
             </p>
           </div>
+          {/* Editing/adding/removing staff members lives in Settings → team, the single
+              source of truth (it also handles per-role pay rates, which this page never
+              did) — this page stays a read-only performance/finance dashboard to avoid
+              two divergent edit surfaces for the same data. */}
+          <Link to={createPageUrl("Settings?tab=team")}>
+            <Button variant="outline" className="border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-yellow-400 hover:border-yellow-400 gap-2">
+              <SettingsIcon className="w-4 h-4" />
+              עריכת/הוספת אנשי צוות בהגדרות
+            </Button>
+          </Link>
         </div>
 
         {/* Search Bar */}
@@ -257,24 +221,6 @@ export default function TeamMembers() {
                              </p>
                            )}
                          </div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleEditStaff(staff)}
-                          className="text-gray-400 hover:text-yellow-400 h-8 w-8 p-0"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleDeleteStaff(staff)}
-                          className="text-gray-400 hover:text-red-400 h-8 w-8 p-0"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
                       </div>
                     </div>
                   </CardHeader>
@@ -409,97 +355,6 @@ export default function TeamMembers() {
                 </Card>
               ))}
             </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* Edit Dialog */}
-        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-          <DialogContent className="bg-gray-900 border-gray-800 text-white">
-            <DialogHeader>
-              <DialogTitle>ערוך איש צוות</DialogTitle>
-            </DialogHeader>
-            {editingStaff && (
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label className="text-gray-300">שם</Label>
-                  <Input
-                    value={editingStaff.name}
-                    onChange={(e) => setEditingStaff({...editingStaff, name: e.target.value})}
-                    className="bg-gray-800 border-gray-700 text-white"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-gray-300">תפקיד</Label>
-                  <Select value={editingStaff.role} onValueChange={(val) => setEditingStaff({...editingStaff, role: val})}>
-                    <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-gray-900 border-gray-700 text-white">
-                      {STAFF_JOB_ROLES.map(r => (
-                        <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                   <Label className="text-gray-300">מחיר ברירת מחדל (₪)</Label>
-                   <Input
-                     type="number"
-                     value={editingStaff.defaultRate || 0}
-                     onChange={(e) => setEditingStaff({...editingStaff, defaultRate: parseFloat(e.target.value) || 0})}
-                     className="bg-gray-800 border-gray-700 text-white"
-                   />
-                 </div>
-                 <div className="space-y-2">
-                   <Label className="text-gray-300">מספר טלפון</Label>
-                   <Input
-                     type="tel"
-                     value={editingStaff.phoneNumber || ""}
-                     onChange={(e) => setEditingStaff({...editingStaff, phoneNumber: e.target.value})}
-                     placeholder="05X-XXXXXXX"
-                     className="bg-gray-800 border-gray-700 text-white"
-                   />
-                 </div>
-                 <div className="space-y-2">
-                   <Label className="text-gray-300">אימייל</Label>
-                   <Input
-                     type="email"
-                     value={editingStaff.email || ""}
-                     onChange={(e) => setEditingStaff({...editingStaff, email: e.target.value})}
-                     placeholder="example@email.com"
-                     className="bg-gray-800 border-gray-700 text-white"
-                   />
-                 </div>
-                </div>
-            )}
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsEditDialogOpen(false)} className="border-gray-700 text-gray-300">
-                ביטול
-              </Button>
-              <Button onClick={saveEdit} className="bg-yellow-400 hover:bg-yellow-500 text-gray-900">
-                שמור שינויים
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Delete Dialog */}
-        <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-          <DialogContent className="bg-gray-900 border-gray-800 text-white">
-            <DialogHeader>
-              <DialogTitle>האם אתה בטוח?</DialogTitle>
-            </DialogHeader>
-            <p className="text-gray-400 py-4">
-              פעולה זו תמחק את {selectedStaff?.name} מרשימת אנשי הצוות. האם להמשיך?
-            </p>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)} className="border-gray-700 text-gray-300">
-                ביטול
-              </Button>
-              <Button variant="destructive" onClick={confirmDelete}>
-                מחק
-              </Button>
-            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>

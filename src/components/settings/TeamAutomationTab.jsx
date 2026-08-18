@@ -17,18 +17,19 @@ export default function TeamAutomationTab() {
   // Automation states — DISABLED: managed exclusively via AutomationsDashboard
   const [monthlySched, setMonthlySched] = useState({ enabled: false });
   const [dailyBrief, setDailyBrief] = useState({ enabled: false });
-  const [questionnaireReminder, setQuestionnaireReminder] = useState({ enabled: false });
   const [isRunningMonthly, setIsRunningMonthly] = useState(false);
   const [isRunningDaily, setIsRunningDaily] = useState(false);
-  const [isRunningQuestionnaire, setIsRunningQuestionnaire] = useState(false);
 
   // Template states
   const [showMonthlyTemplate, setShowMonthlyTemplate] = useState(false);
   const [monthlyTemplate, setMonthlyTemplate] = useState("");
   const [showDailyTemplate, setShowDailyTemplate] = useState(false);
   const [dailyTemplate, setDailyTemplate] = useState("");
-  const [showQuestionnaireTemplate, setShowQuestionnaireTemplate] = useState(false);
-  const [questionnaireTemplate, setQuestionnaireTemplate] = useState("היי $couple_names, החודש שלכם כבר כמעט כאן! 🎊 כדי שנתחיל להיערך, נשמח אם תמלאו את השאלון בקישור: $questionnaire_link");
+  // template_questionnaire_reminder's editor used to live here too, but this whole
+  // card grid is `pointer-events-none` (disabled — see the banner below), making it
+  // permanently unreachable even though the template itself is still live-consumed
+  // by supabase/functions/send-questionnaire-reminders. Moved to the one accessible,
+  // canonical template editor: MessageTemplatesTab.jsx.
 
   // Load data
   useEffect(() => {
@@ -53,10 +54,8 @@ export default function TeamAutomationTab() {
       const settings = await base44.entities.AppSetting.list();
       const monthlyTpl = settings.find(s => s.key === 'template_monthly_schedule')?.value;
       const dailyTpl = settings.find(s => s.key === 'template_daily_brief')?.value;
-      const questTpl = settings.find(s => s.key === 'template_questionnaire_reminder')?.value;
       if (monthlyTpl) setMonthlyTemplate(monthlyTpl);
       if (dailyTpl) setDailyTemplate(dailyTpl);
-      if (questTpl) setQuestionnaireTemplate(questTpl);
     } catch (error) {
       console.error("Error loading templates:", error);
     }
@@ -133,18 +132,16 @@ export default function TeamAutomationTab() {
 
   const handleRunAutomation = async (functionName) => {
     const isMonthly = functionName === "monthly";
-    const isQuestionnaire = functionName === "questionnaire";
     if (isMonthly) setIsRunningMonthly(true);
-    else if (isQuestionnaire) setIsRunningQuestionnaire(true);
     else setIsRunningDaily(true);
 
-    const label = isMonthly ? 'לו"ז חודשי' : isQuestionnaire ? 'שאלון הכנה' : 'סיכום יומי';
+    const label = isMonthly ? 'לו"ז חודשי' : 'סיכום יומי';
     const toastId = toast.loading(`מפעיל ${label}...`);
-    
+
     try {
-      const fnName = isMonthly ? "monthlyCrewSchedule" : isQuestionnaire ? "sendQuestionnaireReminders" : "dailyEventBrief";
+      const fnName = isMonthly ? "monthlyCrewSchedule" : "dailyEventBrief";
       const result = await base44.functions.invoke(fnName, {});
-      
+
       if (result.data?.success) {
         toast.success(`${label} הופעל בהצלחה - נשלח ל-${result.data.results?.length || 0}`, { id: toastId });
       } else {
@@ -154,7 +151,6 @@ export default function TeamAutomationTab() {
       toast.error(`שגיאה: ${error.message || 'בעיה בהרצה'}`, { id: toastId });
     } finally {
       if (isMonthly) setIsRunningMonthly(false);
-      else if (isQuestionnaire) setIsRunningQuestionnaire(false);
       else setIsRunningDaily(false);
     }
   };
@@ -354,54 +350,6 @@ export default function TeamAutomationTab() {
                 <Button
                   size="sm"
                   onClick={() => handleSaveTemplate("template_daily_brief", dailyTemplate)}
-                  className="w-full bg-green-600 hover:bg-green-700 text-white gap-2"
-                >
-                  <Save className="w-3 h-3" />
-                  שמור
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {/* שאלון הכנה לזוגות */}
-          <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="font-semibold text-gray-100">📝 שליחת שאלון הכנה לזוגות</h4>
-              <Switch
-                checked={questionnaireReminder.enabled}
-                onCheckedChange={e => setQuestionnaireReminder({ enabled: e })}
-              />
-            </div>
-            <p className="text-xs text-gray-400">רץ כל 1 לחודש ב-09:00 — שולח לזוגות עם אירוע בחודש הקרוב</p>
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                onClick={() => handleRunAutomation("questionnaire")}
-                disabled={isRunningQuestionnaire}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white gap-2"
-              >
-                <Play className="w-3 h-3" />
-                {isRunningQuestionnaire ? "מריץ..." : "הפעל עכשיו"}
-              </Button>
-              <button
-                onClick={() => setShowQuestionnaireTemplate(!showQuestionnaireTemplate)}
-                className="px-3 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm"
-              >
-                <Settings className="w-4 h-4" />
-              </button>
-            </div>
-            {showQuestionnaireTemplate && (
-              <div className="bg-gray-900 border border-gray-600 rounded p-3 space-y-2">
-                <p className="text-xs text-gray-400">עריכת תבנית הודעה — משתנים: <code>$couple_names</code>, <code>$questionnaire_link</code></p>
-                <textarea
-                  className="w-full bg-gray-950 text-white text-xs border border-gray-700 rounded p-2 resize-none focus:outline-none focus:border-blue-500"
-                  rows={4}
-                  value={questionnaireTemplate}
-                  onChange={e => setQuestionnaireTemplate(e.target.value)}
-                />
-                <Button
-                  size="sm"
-                  onClick={() => handleSaveTemplate("template_questionnaire_reminder", questionnaireTemplate)}
                   className="w-full bg-green-600 hover:bg-green-700 text-white gap-2"
                 >
                   <Save className="w-3 h-3" />
