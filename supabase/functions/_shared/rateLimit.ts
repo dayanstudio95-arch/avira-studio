@@ -27,16 +27,15 @@ function getClientIp(req: Request): string {
 
 export type RateLimitResult = { allowed: boolean; retryAfterSeconds?: number };
 
-// maxHits/windowSeconds defaults: generous enough that a real couple retrying a failed
-// submit a few times, or reloading the page repeatedly, never gets blocked (confirmed
-// against the existing step-tracked retry flow in ContractPage.jsx's handleSign), but
-// tight enough to stop a scripted hammering/enumeration attempt.
-export async function checkRateLimit(
-  req: Request,
-  endpointName: string,
+// Core bucket check/record, keyed by an arbitrary caller-supplied bucketKey — used
+// directly by authenticated, per-user callers (e.g. ai-assistant, bucketed by
+// `ai-assistant:${user.id}` instead of by IP, since office staff can share an IP).
+// checkRateLimit() below is a thin per-IP wrapper over this for the original public,
+// unauthenticated call sites — same table, same fail-open behavior either way.
+export async function checkRateLimitForKey(
+  bucketKey: string,
   { maxHits = 30, windowSeconds = 600 }: { maxHits?: number; windowSeconds?: number } = {}
 ): Promise<RateLimitResult> {
-  const bucketKey = `${endpointName}:${getClientIp(req)}`;
   const windowStartIso = new Date(Date.now() - windowSeconds * 1000).toISOString();
 
   try {
@@ -52,12 +51,12 @@ export async function checkRateLimit(
       // Fail OPEN: a hiccup reading the rate-limit table must never block a real
       // couple from signing their contract. Logged so it's visible in function logs
       // rather than silently degrading protection forever.
-      console.error(`[rateLimit:${endpointName}] count failed, allowing request:`, countError.message);
+      console.error(`[rateLimit:${bucketKey}] count failed, allowing request:`, countError.message);
       return { allowed: true };
     }
 
     if ((count ?? 0) >= maxHits) {
-      console.warn(`[rateLimit:${endpointName}] blocked bucket=${bucketKey} count=${count}`);
+      console.warn(`[rateLimit:${bucketKey}] blocked count=${count}`);
       return { allowed: false, retryAfterSeconds: windowSeconds };
     }
 
@@ -65,7 +64,7 @@ export async function checkRateLimit(
     // that's already been allowed through the count check above.
     const { error: insertError } = await supabase.from('rate_limit_hits').insert({ bucket_key: bucketKey });
     if (insertError) {
-      console.error(`[rateLimit:${endpointName}] failed to record hit:`, insertError.message);
+      console.error(`[rateLimit:${bucketKey}] failed to record hit:`, insertError.message);
     }
 
     // Opportunistic cleanup of this bucket's stale rows (best-effort, ~5% of calls) so
@@ -78,13 +77,25 @@ export async function checkRateLimit(
         .eq('bucket_key', bucketKey)
         .lt('created_at', windowStartIso)
         .then(({ error }) => {
-          if (error) console.error(`[rateLimit:${endpointName}] cleanup failed:`, error.message);
+          if (error) console.error(`[rateLimit:${bucketKey}] cleanup failed:`, error.message);
         });
     }
 
     return { allowed: true };
   } catch (e) {
-    console.error(`[rateLimit:${endpointName}] unexpected error, allowing request:`, e?.message || e);
+    console.error(`[rateLimit:${bucketKey}] unexpected error, allowing request:`, e?.message || e);
     return { allowed: true };
   }
+}
+
+// maxHits/windowSeconds defaults: generous enough that a real couple retrying a failed
+// submit a few times, or reloading the page repeatedly, never gets blocked (confirmed
+// against the existing step-tracked retry flow in ContractPage.jsx's handleSign), but
+// tight enough to stop a scripted hammering/enumeration attempt.
+export async function checkRateLimit(
+  req: Request,
+  endpointName: string,
+  opts: { maxHits?: number; windowSeconds?: number } = {}
+): Promise<RateLimitResult> {
+  return checkRateLimitForKey(`${endpointName}:${getClientIp(req)}`, opts);
 }

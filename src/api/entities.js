@@ -129,4 +129,8 @@ export const entities = {
   // Read-only from the frontend — rows are only ever written by the log_audit_event()
   // trigger (migration 0024_audit_log.sql), never by app code directly.
   AuditLog: createEntity('audit_logs'),
+  // Per-user AI Assistant chat history + pending WhatsApp-action proposals
+  // (migration 0025_ai_assistant_chat.sql). RLS scoped to tenant_id AND
+  // user_id = auth.uid() — each user only ever sees their own conversation.
+  AiAssistantMessage: createEntity('ai_assistant_messages'),
 };

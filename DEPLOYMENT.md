@@ -369,4 +369,59 @@ prerequisites:
 - **AI-powered lead import from screenshot** (`LeadImageImportReviewDialog.jsx`) —
   needs a vision-capable LLM provider (Anthropic/OpenAI/Gemini) and an API key from
   you; currently silently broken (calls a `.integrations.InvokeLLM` that was never
-  ported). Not started — needs a provider decision from you first.
+  ported). Not started — needs a provider decision from you first. **Unrelated** to
+  section 7 below — this is a separate, still-broken feature (parsing a screenshot
+  into a new lead), not the chat assistant.
+
+## 7. AI Assistant — Anthropic Claude setup
+
+The floating "עוזר תפעולי AI" widget (bottom-right on every page) and the
+read-only "שאל את יועץ המערכת" panel (System Advisor page) are now backed by a
+real Claude-powered Edge Function (`supabase/functions/ai-assistant/index.ts`)
+instead of the old unported Base44 stub. It answers questions over live
+events/leads/staff data and can propose WhatsApp sends (raw-to-editor,
+final-to-couple, or a free-form message) — every proposal always requires an
+explicit click on "אשר ובצע" before anything is actually sent; the backend
+itself never sends a WhatsApp message on its own (see the security comment at
+the top of that file).
+
+**7.1 Get an API key**
+
+Sign up / log in at [console.anthropic.com](https://console.anthropic.com),
+create an API key, and make sure the account has billing enabled — each chat
+message can trigger **up to 6 internal Claude calls** (the tool-use loop cap,
+`MAX_TOOL_ITERATIONS` in `ai-assistant/index.ts`), so keep that multiplier in
+mind when watching usage on the Anthropic dashboard.
+
+**7.2 Set the secret and deploy**
+
+```bash
+supabase secrets set ANTHROPIC_API_KEY="sk-ant-..."
+# optional — override the default model without a code change:
+# supabase secrets set ANTHROPIC_MODEL="claude-sonnet-4-5-20250929"
+
+supabase db push          # applies 0025_ai_assistant_chat.sql (new ai_assistant_messages table)
+supabase functions deploy ai-assistant
+```
+
+No `config.toml` entry is needed for this function — it's authenticated
+(`verify_jwt` stays at its default `true`), same as every other non-public Edge
+Function in this project.
+
+**7.3 Verify**
+
+- Open the floating widget and ask something read-only, e.g. "כמה אירועים לא
+  שולמו החודש?" — confirm you get a real, grounded Hebrew answer (not an error).
+- Ask it to send something concrete, e.g. "שלח לעורך של \<שם זוג אמיתי\> את
+  הגלם" — confirm a proposal card appears with the correct couple/editor name
+  already resolved, click "אשר ובצע", and confirm the WhatsApp message actually
+  arrives and the proposal flips to "בוצע בהצלחה". Refresh the page — confirm
+  the executed state persists (proves the DB-backed history in
+  `ai_assistant_messages` is working, not just in-memory state).
+- In the System Advisor page's "שאל את יועץ המערכת" panel, ask the same
+  send-something phrasing — confirm it never proposes an action there (it's
+  wired with `readOnly: true`, which drops the action tools server-side, not
+  just hides the button client-side).
+- Fire off >20 messages in under a minute from one user — confirm the 21st is
+  rejected with a Hebrew rate-limit message instead of hitting the Anthropic API
+  (per-user limit, `_shared/rateLimit.ts`'s `checkRateLimitForKey`).

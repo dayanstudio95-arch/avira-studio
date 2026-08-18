@@ -42,7 +42,7 @@ export default function AskSystemPanelV2() {
       const res = await base44.functions.invoke("aiAssistant", {
         message: userMsg,
         history,
-        read_only: true,
+        readOnly: true,
       });
       const result = res?.data?.result;
 

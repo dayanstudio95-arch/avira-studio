@@ -81,6 +81,12 @@ const FUNCTION_MAP = {
   listTenantUsers: 'list-tenant-users',
   updateTenantUser: 'update-tenant-user',
   createTenant: 'create-tenant',
+
+  // AI Assistant — real Claude-backed Q&A + WhatsApp-send action proposals.
+  // See supabase/functions/ai-assistant/index.ts. Read-only server-side; actual
+  // sends happen client-side via sendToEditor/sendToCouple/sendWhatsAppMessage
+  // above, only after the user explicitly confirms a proposed action.
+  aiAssistant: 'ai-assistant',
 };
 
 // Names that intentionally have NO Edge Function port yet — either confirmed dead
@@ -92,12 +98,12 @@ const FUNCTION_MAP = {
 // clear "not implemented" error instead of a confusing network failure, so it's
 // obvious in the console what's missing rather than looking like a transient bug.
 // (Morning/Green Invoice — checkMorningConnection, generateMorningInvoice,
-// getLatestMorningDocumentDate — was in this set until it was ported; see FUNCTION_MAP.)
+// getLatestMorningDocumentDate — was in this set until it was ported; aiAssistant
+// was in this set until the real Claude-backed port; see FUNCTION_MAP.)
 const KNOWN_UNIMPLEMENTED = new Set([
   'createLeadCalendarEvent',
   'syncEventToLead',
   'sendMakeWebhook',
-  'aiAssistant',
   'cleanupDuplicateEvents',
   'cleanupGoogleCalendarOnlyDuplicates',
 ]);

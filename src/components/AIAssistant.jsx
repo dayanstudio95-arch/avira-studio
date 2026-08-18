@@ -7,6 +7,33 @@ import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import StructuredAnswer from "./AIAssistantStructuredAnswer";
 
+// Reconstructs a persisted DB row (supabase/migrations/0025_ai_assistant_chat.sql,
+// read via base44.entities.AiAssistantMessage) into the same local message shape
+// handleSend produces for a live response, so rendering/executeAction don't need to
+// branch on "loaded from DB" vs "just received". `pending_action` is stored flat
+// ({name, params, description, confirmText}, see supabase/functions/ai-assistant/
+// index.ts's insert) — re-nested here under `action` to match the live shape.
+function rowToMessage(row) {
+  const pendingAction = row.pendingAction;
+  const isLive = pendingAction && row.actionStatus !== "cancelled" && row.actionStatus !== "failed";
+  return {
+    id: row.id,
+    role: row.role,
+    content: row.content,
+    structuredData: row.structuredData || null,
+    actionProposal: isLive
+      ? {
+          description: pendingAction.description,
+          confirmText: pendingAction.confirmText,
+          action: { name: pendingAction.name, params: pendingAction.params },
+          messageId: row.id,
+        }
+      : null,
+    executed: row.actionStatus === "executed",
+    executing: false,
+  };
+}
+
 export default function AIAssistant() {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -17,6 +44,20 @@ export default function AIAssistant() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Load this user's own persisted conversation once on mount (RLS-scoped to
+  // tenant_id + user_id, so this is always just "my" history). Best-effort — a
+  // failed load just means the widget opens with an empty chat, not a hard error.
+  useEffect(() => {
+    (async () => {
+      try {
+        const rows = await base44.entities.AiAssistantMessage.list("-created_date", 50);
+        setMessages([...rows].reverse().map(rowToMessage));
+      } catch (err) {
+        console.error("Failed to load AI assistant history:", err);
+      }
+    })();
+  }, []);
 
   const addMessage = (role, content, actionProposal = null, structuredData = null) => {
     setMessages(prev => [...prev, { role, content, actionProposal, structuredData, id: Date.now() }]);
@@ -30,8 +71,9 @@ export default function AIAssistant() {
     setIsLoading(true);
 
     try {
-      const history = messages.slice(-6).map(m => ({ role: m.role, content: m.content }));
-      const res = await base44.functions.invoke("aiAssistant", { message: userMsg, history });
+      // No history sent — the backend loads its own last-10-message history from
+      // ai_assistant_messages (RLS-scoped to this user), so it can't be spoofed.
+      const res = await base44.functions.invoke("aiAssistant", { message: userMsg });
       const result = res?.data?.result;
 
       if (!result) {
@@ -53,20 +95,8 @@ export default function AIAssistant() {
     }
   };
 
-  // Whitelist of fields the AI is allowed to update directly (defensive, Phase 1)
-  const ALLOWED_UPDATE_FIELDS = [
-    'albumStatus',
-    'raw_sent_to_editor',
-    'raw_done_manual',
-    'final_done_manual',
-    'photographer1_done',
-    'photographer2_done',
-    'video1_done',
-    'editor_done',
-  ];
-
   const executeAction = async (actionProposal, msgId) => {
-    const { action } = actionProposal;
+    const { action, messageId } = actionProposal;
     if (!action) return;
 
     // Mark as executing
@@ -77,29 +107,46 @@ export default function AIAssistant() {
         await base44.functions.invoke("sendToEditor", action.params);
         toast.success("נשלח לעורך בהצלחה ✅");
       } else if (action.name === "send_to_couple") {
-        await base44.functions.invoke("sendMakeWebhook", {
-          action: "send_to_couple",
-          ...action.params,
-        });
+        await base44.functions.invoke("sendToCouple", action.params);
         toast.success("נשלח לזוג בהצלחה ✅");
-      } else if (action.name === "update_field" || action.name === "mark_done") {
-        const { eventId, field, value } = action.params;
-        if (!ALLOWED_UPDATE_FIELDS.includes(field)) {
-          toast.error(`⛔ שדה "${field}" אינו מורשה לעדכון על ידי העוזר`);
-          setMessages(prev => prev.map(m => m.id === msgId ? { ...m, executing: false } : m));
-          return;
-        }
-        await base44.entities.Event.update(eventId, { [field]: value ?? true });
-        toast.success("עודכן בהצלחה ✅");
+      } else if (action.name === "send_whatsapp_message") {
+        await base44.functions.invoke("sendWhatsAppMessage", action.params);
+        toast.success("ההודעה נשלחה בהצלחה ✅");
+      } else {
+        toast.error(`פעולה לא מוכרת: ${action.name}`);
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, executing: false } : m));
+        return;
       }
 
       // Mark as done
       setMessages(prev => prev.map(m =>
         m.id === msgId ? { ...m, executed: true, executing: false } : m
       ));
+
+      // Best-effort persistence so the executed state survives a page refresh —
+      // the WhatsApp message has already been sent above regardless of whether
+      // this write succeeds, so a failure here is logged, not surfaced to the user.
+      if (messageId) {
+        base44.entities.AiAssistantMessage.update(messageId, { actionStatus: "executed" }).catch(err =>
+          console.error("Failed to persist executed action status:", err)
+        );
+      }
     } catch (err) {
       toast.error("שגיאה בביצוע הפעולה: " + (err?.message || ""));
       setMessages(prev => prev.map(m => m.id === msgId ? { ...m, executing: false } : m));
+      if (messageId) {
+        base44.entities.AiAssistantMessage.update(messageId, { actionStatus: "failed" }).catch(() => {});
+      }
+    }
+  };
+
+  const cancelAction = (msg) => {
+    setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, actionProposal: null } : m));
+    const messageId = msg.actionProposal?.messageId;
+    if (messageId) {
+      base44.entities.AiAssistantMessage.update(messageId, { actionStatus: "cancelled" }).catch(err =>
+        console.error("Failed to persist cancelled action status:", err)
+      );
     }
   };
 
@@ -198,7 +245,7 @@ export default function AIAssistant() {
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, actionProposal: null } : m))}
+                              onClick={() => cancelAction(msg)}
                               className="border-gray-600 text-gray-400 text-xs"
                             >
                               ביטול
