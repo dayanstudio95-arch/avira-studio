@@ -4,9 +4,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { DollarSign, Save, Users, Edit, Trash2, Plus, Upload, Download, FileText, Plug, MessageCircle, Building2 } from "lucide-react";
+import { DollarSign, Save, Users, Edit, Trash2, Plus, Upload, Download, FileText, Plug, MessageCircle, Building2, History } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from "@/lib/SupabaseAuthContext";
+import { isAdmin } from "@/lib/permissions";
 import IntegrationsTab from "../components/settings/IntegrationsTab";
+import AuditLogTab from "../components/settings/AuditLogTab";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +38,9 @@ import { DEFAULT_CONTRACT_TERMS } from "@/lib/defaultContractTerms";
 import { toast } from "sonner";
 
 export default function Settings() {
+  const { user } = useAuth();
+  const canViewAuditLog = isAdmin(user);
+
   const [staffMembers, setStaffMembers] = useState([]);
   const [isStaffLoading, setIsStaffLoading] = useState(true);
   const [editingStaff, setEditingStaff] = useState(null);
@@ -221,6 +227,12 @@ export default function Settings() {
               <Upload className="w-4 h-4 ml-1" />
               ייבוא / ייצוא
             </TabsTrigger>
+            {canViewAuditLog && (
+              <TabsTrigger value="audit" className="data-[state=active]:bg-yellow-400 data-[state=active]:text-gray-900 text-gray-300">
+                <History className="w-4 h-4 ml-1" />
+                יומן פעילות
+              </TabsTrigger>
+            )}
           </TabsList>
 
           {/* סביבת עבודה */}
@@ -590,6 +602,13 @@ export default function Settings() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* יומן פעילות */}
+          {canViewAuditLog && (
+            <TabsContent value="audit">
+              <AuditLogTab />
+            </TabsContent>
+          )}
         </Tabs>
 
         {/* Import Dialogs */}

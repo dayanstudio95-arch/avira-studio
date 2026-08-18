@@ -126,4 +126,7 @@ export const entities = {
   AutomationMessageLog: createEntity('automation_message_logs'),
   GoogleCalendarAccount: createEntity('google_calendar_accounts'),
   EventCalendarSync: createEntity('event_calendar_syncs'),
+  // Read-only from the frontend — rows are only ever written by the log_audit_event()
+  // trigger (migration 0024_audit_log.sql), never by app code directly.
+  AuditLog: createEntity('audit_logs'),
 };
