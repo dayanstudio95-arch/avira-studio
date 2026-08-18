@@ -40,7 +40,7 @@ const DEFAULTS = [
     emoji: "💝",
     frequency: "manual",
     channel: "whatsapp",
-    messageTemplate: "שלום {coupleNames}! 💕\nתודה שבחרתם בנו לצלם את היום המיוחד שלכם!\nהאלבום שלכם מוכן 📸✨\nנשמח לשמוע מכם!\nAvira Studio 🖤",
+    messageTemplate: "שלום {coupleNames}! 💕\nתודה שבחרתם בנו לצלם את היום המיוחד שלכם!\nהאלבום שלכם מוכן 📸✨\nנשמח לשמוע מכם!\n{studioName} 🖤",
     isActive: true,
     mediaFileUrl: "",
   },
@@ -51,7 +51,7 @@ const DEFAULTS = [
     frequency: "daily",
     run_time: "10:00",
     channel: "whatsapp",
-    messageTemplate: "שלום {coupleNames} 😊\nתודה שבחרתם בנו לצלם את האירוע המיוחד שלכם!\nלפי הרשומות שלנו, נותר לכם לשלם: {remainingBalance}₪\nנשמח לסגור את התשלום בהקדם 🙏\nAvira Studio",
+    messageTemplate: "שלום {coupleNames} 😊\nתודה שבחרתם בנו לצלם את האירוע המיוחד שלכם!\nלפי הרשומות שלנו, נותר לכם לשלם: {remainingBalance}₪\nנשמח לסגור את התשלום בהקדם 🙏\n{studioName}",
     isActive: true,
   },
   {
@@ -61,7 +61,7 @@ const DEFAULTS = [
     frequency: "daily",
     run_time: "10:00",
     channel: "whatsapp",
-    messageTemplate: "שלום {coupleNames} 😊\nאנחנו מתרגשים לאירוע שלכם ב-{eventDate}!\nכדי שנוכל להיכנס בצורה הטובה ביקשנו למלא את השאלון המצורף:\n{questionnaireLink}\nתודה! 🙏\nAvira Studio",
+    messageTemplate: "שלום {coupleNames} 😊\nאנחנו מתרגשים לאירוע שלכם ב-{eventDate}!\nכדי שנוכל להיכנס בצורה הטובה ביקשנו למלא את השאלון המצורף:\n{questionnaireLink}\nתודה! 🙏\n{studioName}",
     isActive: true,
   },
   {
@@ -72,7 +72,7 @@ const DEFAULTS = [
     run_day: 1,
     months_ahead: 1,
     channel: "whatsapp",
-    messageTemplate: "היי {coupleNames}, ההתרגשות בשיאה! 🥂\nלקראת האירוע שלכם, אנחנו רוצים לוודא שכל הפרטים מסונכרנים אצלנו במערכת. 📋\nנשמח אם תוכלו למלא את השאלון הקצר בקישור הבא כדי שנוכל לתת לכם את השירות הטוב ביותר ❤️\n{questionnaireUrl}\nתודה! אווירה צלמים 📸",
+    messageTemplate: "היי {coupleNames}, ההתרגשות בשיאה! 🥂\nלקראת האירוע שלכם, אנחנו רוצים לוודא שכל הפרטים מסונכרנים אצלנו במערכת. 📋\nנשמח אם תוכלו למלא את השאלון הקצר בקישור הבא כדי שנוכל לתת לכם את השירות הטוב ביותר ❤️\n{questionnaireUrl}\nתודה! {studioName} 📸",
     isActive: false,
   },
   {
@@ -92,9 +92,14 @@ const DEFAULTS = [
 const VARS_BY_TYPE = {
   monthly_staff_summary: ["{staffName}", "{month}", "{eventsList}", "{eventCount}", "{totalDays}"],
   daily_event_brief: ["{staffName}", "{coupleNames}", "{venue}", "{date}", "{time}", "{productionDetails}", "{photographer}", "{videographer}"],
-  album_reminder: ["{coupleNames}", "{albumLink}", "{date}", "{venue}"],
-  payment_reminder: ["{coupleNames}", "{remainingBalance}", "{eventDate}", "{venueName}"],
-  questionnaire_reminder: ["{coupleNames}", "{eventDate}", "{venue}", "{questionnaireLink}"],
+  album_reminder: ["{coupleNames}", "{albumLink}", "{date}", "{venue}", "{studioName}"],
+  payment_reminder: ["{coupleNames}", "{remainingBalance}", "{eventDate}", "{venueName}", "{studioName}"],
+  questionnaire_reminder: ["{coupleNames}", "{eventDate}", "{venue}", "{questionnaireLink}", "{studioName}"],
+  // Added (2026-08-18) — this type was missing from the map entirely (pre-existing gap,
+  // unrelated to the studioName fix), so its merge-field chips were never shown in the
+  // template editor even though the handler (automation-engine's runQuestionnaireSend)
+  // supports all of these.
+  questionnaire_send: ["{coupleNames}", "{venue}", "{date}", "{questionnaireUrl}", "{studioName}"],
 };
 
 const FREQ_LABELS = {

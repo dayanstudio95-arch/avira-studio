@@ -55,6 +55,27 @@ function renderTemplate(template: string, vars: Record<string, unknown>) {
   return result;
 }
 
+// Added (2026-08-18) so outgoing automation messages show each tenant's own studio
+// name instead of a hardcoded "Avira Studio" — critical for multi-tenant use, since
+// a different studio's clients must never see this studio's brand. Same fallback
+// chain as get-lead-public/index.ts and whatsapp-manager/index.ts: an explicitly-set
+// client-facing name first, then the tenant's registered `name` (always set at
+// tenant creation, so this is never another studio's brand), and "Avira Studio" only
+// as a last-resort default if the tenant lookup itself fails. Best-effort — a lookup
+// failure must never block an automation run.
+async function getStudioName(supabase: any, tenantId: string) {
+  try {
+    const { data: tenantRow } = await supabase
+      .from('tenants')
+      .select('name, display_name_to_clients')
+      .eq('id', tenantId)
+      .maybeSingle();
+    return tenantRow?.display_name_to_clients || tenantRow?.name || 'Avira Studio';
+  } catch {
+    return 'Avira Studio';
+  }
+}
+
 function getJerusalemOffsetMinutes(utcDate: Date) {
   const toIntlParts = (tz: string) =>
     new Intl.DateTimeFormat('en-US', {
@@ -429,8 +450,9 @@ async function runQuestionnaireReminder(supabase: any, tenantId: string, automat
     return true;
   });
 
-  const DEFAULT_TEMPLATE = `שלום {coupleNames} 😊\nאנחנו מתרגשים לאירוע שלכם ב-{eventDate}!\nכדי שנוכל להיכנס בצורה הטובה ביקשנו למלא את השאלון המצורף:\n{questionnaireLink}\nתודה! 🙏\nAvira Studio`;
+  const DEFAULT_TEMPLATE = `שלום {coupleNames} 😊\nאנחנו מתרגשים לאירוע שלכם ב-{eventDate}!\nכדי שנוכל להיכנס בצורה הטובה ביקשנו למלא את השאלון המצורף:\n{questionnaireLink}\nתודה! 🙏\n{studioName}`;
   const template = automation.message_template || DEFAULT_TEMPLATE;
+  const studioName = await getStudioName(supabase, tenantId);
 
   const pendingMessages = [];
   for (const lead of eligible) {
@@ -442,6 +464,7 @@ async function runQuestionnaireReminder(supabase: any, tenantId: string, automat
       eventDate: lead.event_date || '',
       venue: lead.venue_name || '',
       questionnaireLink,
+      studioName,
     });
 
     pendingMessages.push({
@@ -503,8 +526,9 @@ async function runPaymentReminder(supabase: any, tenantId: string, automation: a
     return true;
   });
 
-  const DEFAULT_TEMPLATE = `שלום {coupleNames} 😊\nתודה שבחרתם בנו לצלם את האירוע המיוחד שלכם!\nלפי הרשומות שלנו, נותר לכם לשלם: {remainingBalance}₪\nנשמח לסגור את התשלום בהקדם 🙏\nAvira Studio`;
+  const DEFAULT_TEMPLATE = `שלום {coupleNames} 😊\nתודה שבחרתם בנו לצלם את האירוע המיוחד שלכם!\nלפי הרשומות שלנו, נותר לכם לשלם: {remainingBalance}₪\nנשמח לסגור את התשלום בהקדם 🙏\n{studioName}`;
   const template = automation.message_template || DEFAULT_TEMPLATE;
+  const studioName = await getStudioName(supabase, tenantId);
 
   const pendingMessages = [];
   for (const event of eligible) {
@@ -523,6 +547,7 @@ async function runPaymentReminder(supabase: any, tenantId: string, automation: a
       remainingBalance,
       eventDate: event.date || '',
       venueName: event.venue || '',
+      studioName,
     });
 
     pendingMessages.push({
@@ -576,8 +601,9 @@ async function runAlbumReminder(supabase: any, tenantId: string, automation: any
     return true;
   });
 
-  const DEFAULT_TEMPLATE = `היי {coupleNames} 👋\nעבר חודש מהאירוע המדהים שלכם! 📸\nרציתי להזכיר שיש אפשרות להזמין סט 3 אלבומים 📚\nAvira Studio`;
+  const DEFAULT_TEMPLATE = `היי {coupleNames} 👋\nעבר חודש מהאירוע המדהים שלכם! 📸\nרציתי להזכיר שיש אפשרות להזמין סט 3 אלבומים 📚\n{studioName}`;
   const template = automation.message_template || DEFAULT_TEMPLATE;
+  const studioName = await getStudioName(supabase, tenantId);
 
   const pendingMessages = [];
   for (const event of eligible) {
@@ -588,6 +614,7 @@ async function runAlbumReminder(supabase: any, tenantId: string, automation: any
       coupleNames: event.couple_names || '',
       eventDate: event.date || '',
       venueName: event.venue || '',
+      studioName,
     });
 
     pendingMessages.push({
@@ -648,7 +675,7 @@ async function runQuestionnaireSend(supabase: any, tenantId: string, automation:
   const leadsById: Record<string, any> = {};
   for (const lead of allLeads || []) leadsById[lead.id] = lead;
 
-  const DEFAULT_TEMPLATE = `היי {coupleNames}, ההתרגשות בשיאה! 🥂\nלקראת האירוע שלכם, אנחנו רוצים לוודא שכל הפרטים מסונכרנים אצלנו במערכת. 📋\nנשמח אם תוכלו למלא את השאלון הקצר בקישור הבא כדי שנוכל לתת לכם את השירות הטוב ביותר ❤️\n{questionnaireUrl}\nתודה! אווירה צלמים 📸`;
+  const DEFAULT_TEMPLATE = `היי {coupleNames}, ההתרגשות בשיאה! 🥂\nלקראת האירוע שלכם, אנחנו רוצים לוודא שכל הפרטים מסונכרנים אצלנו במערכת. 📋\nנשמח אם תוכלו למלא את השאלון הקצר בקישור הבא כדי שנוכל לתת לכם את השירות הטוב ביותר ❤️\n{questionnaireUrl}\nתודה! {studioName} 📸`;
   const rawTemplate = automation.message_template || DEFAULT_TEMPLATE;
   const template = rawTemplate
     .replace(/\$couple_names/g, '{coupleNames}')
@@ -656,6 +683,7 @@ async function runQuestionnaireSend(supabase: any, tenantId: string, automation:
     .replace(/\$questionnaire_url/g, '{questionnaireUrl}')
     .replace(/\$event_date/g, '{date}')
     .replace(/\$venue/g, '{venue}');
+  const studioName = await getStudioName(supabase, tenantId);
 
   const groups: { readyToSend: any[]; sentNoReply: any[]; completed: any[] } = { readyToSend: [], sentNoReply: [], completed: [] };
   let sent = 0, skipped = 0;
@@ -674,6 +702,7 @@ async function runQuestionnaireSend(supabase: any, tenantId: string, automation:
       venue: event.venue || '',
       date: formattedDate,
       questionnaireUrl,
+      studioName,
     });
 
     const linkedLeadId = event.lead_id || event.source_lead_id || null;
