@@ -2,6 +2,7 @@
 // caller's own tenant. Called from src/components/settings/UsersTab.jsx.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createUserClient, createServiceRoleClient, getRequestUser } from '../_shared/supabaseClients.ts';
+import { getCallerProfile, isAdmin } from '../_shared/permissions.ts';
 
 const ALLOWED_ROLES = ['owner', 'admin', 'studio_manager', 'photographer', 'editor', 'album_manager'];
 
@@ -14,13 +15,9 @@ Deno.serve(async (req) => {
     if (!user) return jsonResponse({ error: 'Unauthorized' }, { status: 401 });
 
     const supabase = createUserClient(req);
-    const { data: callerProfile } = await supabase
-      .from('profiles')
-      .select('role, tenant_id')
-      .eq('id', user.id)
-      .maybeSingle();
+    const callerProfile = await getCallerProfile(supabase, user.id);
 
-    if (!callerProfile || !['owner', 'admin'].includes(callerProfile.role)) {
+    if (!callerProfile || !isAdmin(callerProfile.role)) {
       return jsonResponse({ error: 'Forbidden — רק בעלים או מנהל יכולים לערוך משתמשים' }, { status: 403 });
     }
 

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Trash2, Save, Play, Settings, Edit, X, Check } from "lucide-react";
+import { STAFF_JOB_ROLES } from "@/lib/staffRoles";
 
 export default function TeamAutomationTab() {
   const [staffMembers, setStaffMembers] = useState([]);
@@ -177,10 +178,9 @@ export default function TeamAutomationTab() {
               onChange={e => setNewStaffForm({ ...newStaffForm, role: e.target.value })}
               className="bg-gray-900 text-white border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
             >
-              <option value="photographer">צלם</option>
-              <option value="videographer">וידאו</option>
-              <option value="editor">עורך</option>
-              <option value="lighting">תאורן</option>
+              {STAFF_JOB_ROLES.map(r => (
+                <option key={r.value} value={r.value}>{r.label}</option>
+              ))}
             </select>
             <input
               type="tel"
@@ -224,10 +224,9 @@ export default function TeamAutomationTab() {
                          <td className="px-2 py-1"><input value={editStaffForm.name} onChange={e => setEditStaffForm({...editStaffForm, name: e.target.value})} className="bg-gray-900 text-white border border-gray-600 rounded px-2 py-1 text-sm w-full" /></td>
                          <td className="px-2 py-1">
                            <select value={editStaffForm.role} onChange={e => setEditStaffForm({...editStaffForm, role: e.target.value})} className="bg-gray-900 text-white border border-gray-600 rounded px-2 py-1 text-sm">
-                             <option value="photographer">צלם</option>
-                             <option value="videographer">וידאו</option>
-                             <option value="editor">עורך</option>
-                             <option value="lighting">תאורן</option>
+                             {STAFF_JOB_ROLES.map(r => (
+                               <option key={r.value} value={r.value}>{r.label}</option>
+                             ))}
                            </select>
                          </td>
                          <td className="px-2 py-1"><input type="tel" value={editStaffForm.phoneNumber} onChange={e => setEditStaffForm({...editStaffForm, phoneNumber: e.target.value})} className="bg-gray-900 text-white border border-gray-600 rounded px-2 py-1 text-sm w-full" /></td>

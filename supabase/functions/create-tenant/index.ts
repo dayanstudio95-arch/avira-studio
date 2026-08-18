@@ -14,6 +14,7 @@
 // creating a whole new tenant is a bigger, rarer action than inviting a teammate.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createUserClient, createServiceRoleClient, getRequestUser } from '../_shared/supabaseClients.ts';
+import { getCallerProfile, isOwner } from '../_shared/permissions.ts';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -26,13 +27,9 @@ Deno.serve(async (req) => {
     if (!user) return jsonResponse({ error: 'Unauthorized' }, { status: 401 });
 
     const supabase = createUserClient(req);
-    const { data: callerProfile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .maybeSingle();
+    const callerProfile = await getCallerProfile(supabase, user.id, 'role');
 
-    if (!callerProfile || callerProfile.role !== 'owner') {
+    if (!callerProfile || !isOwner(callerProfile.role)) {
       return jsonResponse({ error: 'Forbidden — רק בעלים יכול ליצור סטודיו חדש' }, { status: 403 });
     }
 

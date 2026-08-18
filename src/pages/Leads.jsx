@@ -3,7 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, X, Trash2, FileText, Receipt, Pencil, RefreshCw, Link, Banknote, MoreHorizontal } from "lucide-react";
+import { Plus, Search, X, Trash2, FileText, Receipt, Pencil, RefreshCw, Link, Banknote, MoreHorizontal, ClipboardList } from "lucide-react";
 import { format } from "date-fns";
 import LeadFormDialog from "../components/leads/LeadFormDialog";
 import ManualPaymentModal from "../components/leads/ManualPaymentModal";
@@ -11,6 +11,7 @@ import LeadCSVImportDialog from "../components/leads/LeadCSVImportDialog";
 import MobileMoreMenu from "../components/leads/MobileMoreMenu";
 import LeadImageImportReviewDialog from "../components/leads/LeadImageImportReviewDialog";
 import LeadContractDialog from "../components/leads/LeadContractDialog";
+import QuestionnaireAnswersDialog from "../components/leads/QuestionnaireAnswersDialog";
 import FollowUpReminderDialog from "../components/leads/FollowUpReminderDialog";
 import UnifiedSidePanel from "../components/unified/UnifiedSidePanel";
 import InvoiceDialog from "../components/invoice/InvoiceDialog";
@@ -42,6 +43,7 @@ export default function Leads() {
   const [editingLead, setEditingLead] = useState(null);
   const [convertingId, setConvertingId] = useState(null);
   const [contractLead, setContractLead] = useState(null);
+  const [questionnaireLead, setQuestionnaireLead] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
   const [invoiceLead, setInvoiceLead] = useState(null);
   const [selectedLead, setSelectedLead] = useState(null);
@@ -78,6 +80,30 @@ export default function Leads() {
       await base44.entities.Lead.update(lead.id, { contractSent: true });
       loadLeads();
     }
+  };
+
+  // The row-level "חוזה" button previously always opened LeadContractDialog (an
+  // internal, unsigned template dialog) even for leads that already signed via
+  // their own public link -- forcing the studio to dig through UnifiedSidePanel to
+  // actually see what was signed. Now: if a signed PDF already exists, open it
+  // directly; only fall back to the manual-sign dialog for not-yet-signed leads.
+  const handleContractButtonClick = (lead) => {
+    if (lead.signedContractPdfUrl) {
+      window.open(lead.signedContractPdfUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    setContractLead(lead);
+  };
+
+  // New row-level "שאלון" button -- opens a read-only viewer of the couple's
+  // actual submitted answers (QuestionnaireAnswersDialog), matching the same
+  // "show me what they actually filled in" intent as handleContractButtonClick.
+  const handleQuestionnaireButtonClick = (lead) => {
+    if (!lead.productionFormFilledAt) {
+      toast.error("הזוג טרם מילא את השאלון");
+      return;
+    }
+    setQuestionnaireLead(lead);
   };
 
   useEffect(() => { loadData(); }, []);
@@ -635,8 +661,11 @@ export default function Leads() {
                             <button onClick={() => { setEditingLead(lead); setIsFormOpen(true); }} title="עריכה" className="p-1 rounded text-gray-400 hover:bg-gray-700 hover:text-white transition-colors">
                               <Pencil className="w-3.5 h-3.5" />
                             </button>
-                            <button onClick={() => setContractLead(lead)} title="חוזה" className="p-1 rounded text-blue-400 hover:bg-blue-500/10 transition-colors">
+                            <button onClick={() => handleContractButtonClick(lead)} title={lead.signedContractPdfUrl ? "צפה בחוזה החתום" : "חוזה"} className="p-1 rounded text-blue-400 hover:bg-blue-500/10 transition-colors">
                               <FileText className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => handleQuestionnaireButtonClick(lead)} title={lead.productionFormFilledAt ? "צפה בתשובות השאלון" : "שאלון"} className="p-1 rounded text-purple-400 hover:bg-purple-500/10 transition-colors">
+                              <ClipboardList className="w-3.5 h-3.5" />
                             </button>
                             <button onClick={() => setInvoiceLead(lead)} title="הפק חשבונית" className="p-1 rounded text-emerald-400 hover:bg-emerald-500/10 transition-colors">
                               <Receipt className="w-3.5 h-3.5" />
@@ -699,7 +728,8 @@ export default function Leads() {
                     </div>
                     <div className="flex gap-2 pt-1">
                       <Button size="sm" onClick={() => { setEditingLead(lead); setIsFormOpen(true); }} className="border-gray-700 text-gray-300 bg-transparent border text-xs">עריכה</Button>
-                      <Button size="sm" onClick={() => setContractLead(lead)} className="text-blue-400 bg-transparent border border-blue-700 text-xs">חוזה</Button>
+                      <Button size="sm" onClick={() => handleContractButtonClick(lead)} className="text-blue-400 bg-transparent border border-blue-700 text-xs">חוזה</Button>
+                      <Button size="sm" onClick={() => handleQuestionnaireButtonClick(lead)} className="text-purple-400 bg-transparent border border-purple-700 text-xs">שאלון</Button>
                       <Button size="sm" onClick={() => setInvoiceLead(lead)} className="text-emerald-400 bg-transparent border border-emerald-700 text-xs">חשבונית</Button>
                       <Button size="sm" onClick={() => handleDelete(lead.id)} className="text-red-400 bg-transparent border border-red-800 text-xs"><Trash2 className="w-3 h-3" /></Button>
                     </div>
@@ -723,6 +753,11 @@ export default function Leads() {
         onClose={() => setContractLead(null)}
         lead={contractLead}
         onSigned={() => { setContractLead(null); loadLeads(); }}
+      />
+      <QuestionnaireAnswersDialog
+        isOpen={!!questionnaireLead}
+        onClose={() => setQuestionnaireLead(null)}
+        lead={questionnaireLead}
       />
       <InvoiceDialog
         isOpen={!!invoiceLead}

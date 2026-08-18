@@ -10,11 +10,13 @@
 // convention app-wide — same gateway/apiKey settings either way, this only changes
 // the wire-format, not user-visible behavior.
 //
-// Role check: original required user.role === 'admin'; 'owner' treated as
-// admin-equivalent (see assign-studio-ids).
+// Role check: uses the shared ADMIN_ROLES set (owner/admin/studio_manager — see
+// _shared/permissions.ts) — studio_manager was previously excluded here, inconsistent
+// with the admin-panel gate itself (src/App.jsx), per the 2026-08-17 security audit.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createUserClient, getRequestUser } from '../_shared/supabaseClients.ts';
 import { sendWhatsApp } from '../_shared/whatsapp.ts';
+import { getCallerProfile, isAdmin } from '../_shared/permissions.ts';
 
 Deno.serve(async (req) => {
   const preflight = handleOptions(req);
@@ -25,8 +27,8 @@ Deno.serve(async (req) => {
     if (!user) return jsonResponse({ error: 'Unauthorized' }, { status: 401 });
 
     const supabase = createUserClient(req);
-    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
-    if (!profile || !['owner', 'admin'].includes(profile.role)) {
+    const profile = await getCallerProfile(supabase, user.id, 'role');
+    if (!profile || !isAdmin(profile.role)) {
       return jsonResponse({ error: 'Forbidden' }, { status: 403 });
     }
 

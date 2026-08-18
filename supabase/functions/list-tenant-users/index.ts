@@ -6,6 +6,7 @@
 // Called from src/components/settings/UsersTab.jsx on mount.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createUserClient, createServiceRoleClient, getRequestUser } from '../_shared/supabaseClients.ts';
+import { getCallerProfile, isAdmin } from '../_shared/permissions.ts';
 
 Deno.serve(async (req) => {
   const preflight = handleOptions(req);
@@ -16,15 +17,11 @@ Deno.serve(async (req) => {
     if (!user) return jsonResponse({ error: 'Unauthorized' }, { status: 401 });
 
     const supabase = createUserClient(req);
-    const { data: callerProfile } = await supabase
-      .from('profiles')
-      .select('role, tenant_id')
-      .eq('id', user.id)
-      .maybeSingle();
+    const callerProfile = await getCallerProfile(supabase, user.id);
 
     // Same gate as the admin panel itself (src/App.jsx) — anyone who can open Settings
     // can see the team list.
-    if (!callerProfile || !['owner', 'admin', 'studio_manager'].includes(callerProfile.role)) {
+    if (!callerProfile || !isAdmin(callerProfile.role)) {
       return jsonResponse({ error: 'Forbidden' }, { status: 403 });
     }
 

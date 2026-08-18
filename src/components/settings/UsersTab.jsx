@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/SupabaseAuthContext";
+import { isAdmin, isOwner } from "@/lib/permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,7 +34,10 @@ const ROLE_OPTIONS = Object.entries(ROLE_LABELS);
 
 export default function UsersTab() {
   const { user } = useAuth();
-  const canManage = ["owner", "admin"].includes(user?.role);
+  // ADMIN_ROLES (owner/admin/studio_manager) — studio_manager was previously excluded
+  // here, inconsistent with the admin-panel gate itself (src/App.jsx), per the
+  // 2026-08-17 security audit's explicit product decision.
+  const canManage = isAdmin(user);
 
   const [users, setUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -238,7 +242,7 @@ export default function UsersTab() {
       </CardContent>
     </Card>
 
-    <CreateStudioDialog canManage={user?.role === "owner"} />
+    <CreateStudioDialog canManage={isOwner(user)} />
     </div>
   );
 }

@@ -4,6 +4,13 @@ import { Button } from "@/components/ui/button";
 import { X, Send, Loader2, Eye, PenLine, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 
+// NOTE: these values intentionally match staff_members.role (STAFF_JOB_ROLES in
+// src/lib/staffRoles.js) — the automation-engine edge function's runCustomStaffMessage
+// filters `staff_members` by this exact field (`m.role !== targetRole`), NOT by the
+// per-event team-assignment role (photographer1/photographer2/etc. in
+// events.team[].role, a different concept — see src/lib/staffRoles.js's header
+// comment). So "photographer" (singular, matching staff_members.role) here is
+// correct, not a mismatch with EVENT_TEAM_ROLES's "photographer1"/"photographer2".
 const ROLE_OPTIONS = [
   { value: "all", label: "כל אנשי הצוות" },
   { value: "photographer", label: "צלמים" },

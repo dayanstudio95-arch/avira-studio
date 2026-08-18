@@ -1,24 +1,23 @@
 import { useLocation } from 'react-router-dom';
-import { base44 } from '@/api/base44Client';
-import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/lib/SupabaseAuthContext';
+import { isAdmin } from '@/lib/permissions';
 
 
 export default function PageNotFound({}) {
     const location = useLocation();
     const pageName = location.pathname.substring(1);
 
-    const { data: authData, isFetched } = useQuery({
-        queryKey: ['user'],
-        queryFn: async () => {
-            try {
-                const user = await base44.auth.me();
-                return { user, isAuthenticated: true };
-            } catch (error) {
-                return { user: null, isAuthenticated: false };
-            }
-        }
-    });
-    
+    // Previously used base44.auth.me() (a react-query call against the dead Base44
+    // backend — src/api/base44Client.js only shims .entities/.functions to Supabase,
+    // not .auth), so this admin note never actually rendered. Fixed to read the real,
+    // live Supabase session via useAuth() — safe here since PageNotFound only ever
+    // renders inside AuthenticatedApp, which is always nested under <AuthProvider>
+    // and already gates out unauthenticated/non-admin users before reaching this
+    // component's route. Also switched from an exact `role === 'admin'` match (which
+    // excluded owner/studio_manager) to the shared ADMIN_ROLES check for consistency
+    // with every other admin gate in the app.
+    const { user, isAuthenticated } = useAuth();
+
     return (
         <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50">
             <div className="max-w-md w-full">
@@ -40,7 +39,7 @@ export default function PageNotFound({}) {
                     </div>
                     
                     {/* Admin Note */}
-                    {isFetched && authData.isAuthenticated && authData.user?.role === 'admin' && (
+                    {isAuthenticated && isAdmin(user) && (
                         <div className="mt-8 p-4 bg-slate-100 rounded-lg border border-slate-200">
                             <div className="flex items-start space-x-3">
                                 <div className="flex-shrink-0 w-5 h-5 rounded-full bg-orange-100 flex items-center justify-center mt-0.5">

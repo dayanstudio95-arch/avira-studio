@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Users, Search, X, Camera, Video, Scissors, TrendingUp, Calendar, DollarSign, AlertCircle, Edit, Trash2, Eye, Mail, Phone } from "lucide-react";
+import { Users, Search, X, Camera, Video, Scissors, Palette, TrendingUp, Calendar, DollarSign, AlertCircle, Edit, Trash2, Eye, Mail, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Link } from "react-router-dom";
@@ -18,12 +18,16 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { STAFF_JOB_ROLES } from "@/lib/staffRoles";
 
-const ROLE_CONFIG = {
-  photographer: { label: 'צלם', icon: Camera, color: 'text-blue-400' },
-  videographer: { label: 'וידאוגרף', icon: Video, color: 'text-purple-400' },
-  editor: { label: 'עורך', icon: Scissors, color: 'text-green-400' }
-};
+// Was previously missing "graphic_designer" entirely (a real staff_members.role value,
+// per the DB check constraint) — a graphic designer's card fell through to the
+// generic Users-icon fallback below instead of getting a real label/icon/color.
+const ROLE_ICONS = { photographer: Camera, videographer: Video, editor: Scissors, graphic_designer: Palette };
+const ROLE_COLORS = { photographer: 'text-blue-400', videographer: 'text-purple-400', editor: 'text-green-400', graphic_designer: 'text-pink-400' };
+const ROLE_CONFIG = Object.fromEntries(
+  STAFF_JOB_ROLES.map(({ value, label }) => [value, { label, icon: ROLE_ICONS[value], color: ROLE_COLORS[value] }])
+);
 
 export default function TeamMembers() {
   const [staffMembers, setStaffMembers] = useState([]);
@@ -431,9 +435,9 @@ export default function TeamMembers() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-gray-900 border-gray-700 text-white">
-                      <SelectItem value="photographer">צלם</SelectItem>
-                      <SelectItem value="videographer">וידאוגרף</SelectItem>
-                      <SelectItem value="editor">עורך</SelectItem>
+                      {STAFF_JOB_ROLES.map(r => (
+                        <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>

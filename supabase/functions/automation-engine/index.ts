@@ -32,14 +32,7 @@
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createServiceRoleClient, getRequestUser } from '../_shared/supabaseClients.ts';
 import { sendWhatsApp as sendWhatsAppGreenApi } from '../_shared/whatsapp.ts';
-
-const ROLE_LABELS: Record<string, string> = {
-  photographer1: 'צלם ראשי',
-  photographer2: 'צלם משני',
-  videographer: 'צלם וידאו',
-  videographer2: 'צלם וידאו 2',
-  editor: 'עורך',
-};
+import { EVENT_TEAM_ROLE_LABELS as ROLE_LABELS } from '../_shared/staffRoles.ts';
 
 function getTargetMonth(mode: string) {
   const now = new Date();

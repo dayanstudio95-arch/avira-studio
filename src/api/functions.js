@@ -125,16 +125,30 @@ export const functions = {
       body: JSON.stringify(payload ?? {}),
     });
 
-    let body;
-    try {
-      body = await res.json();
-    } catch {
-      body = null;
+    const rawText = await res.text();
+    let body = null;
+    let parseError = null;
+    if (rawText) {
+      try {
+        body = JSON.parse(rawText);
+      } catch (e) {
+        parseError = e;
+      }
     }
 
     if (!res.ok) {
       const message = body?.error || `${name} failed (HTTP ${res.status})`;
       throw new Error(message);
+    }
+
+    // A 2xx response whose body isn't valid JSON (e.g. a gateway/CDN error page
+    // slipping through with a 200) is never actually a success. Previously this
+    // was swallowed into `body = null`, so callers like ContractPage.jsx's
+    // 'upload' step read `saveRes?.data?.fileUrl` as null and silently continued
+    // on to the next step as if it had succeeded, instead of surfacing the real
+    // failure through the normal catch/toast path.
+    if (parseError) {
+      throw new Error(`${name} returned an unexpected non-JSON response (HTTP ${res.status})`);
     }
 
     return { data: body };

@@ -23,15 +23,22 @@ import { toast } from "sonner";
 // its own separate Morning account. morning_api_key/morning_api_secret (the old single
 // pair) were renamed to the _sole_prop variants by migration 0011_morning_dual_business.sql;
 // morning_api_key_company/morning_api_secret_company are new and start empty until filled in.
-const INTEGRATION_KEYS = [
-  "whatsapp_gateway_url",
-  "whatsapp_instance_id",
+//
+// CHANGED (2026-08-17 security audit, Step 4): the 5 actual secret values below now live
+// in the dedicated tenant_secrets table (migration 0019_tenant_secrets.sql), which has
+// admin-only RLS covering SELECT too — app_settings' RLS is tenant-only with no role
+// check, so any tenant member could previously read these raw credentials directly. Only
+// whatsapp_gateway_url/whatsapp_instance_id (a URL and an identifier, not credentials)
+// stay in app_settings.
+const NON_SECRET_KEYS = ["whatsapp_gateway_url", "whatsapp_instance_id"];
+const SECRET_KEYS = [
   "whatsapp_api_key",
   "morning_api_key_sole_prop",
   "morning_api_secret_sole_prop",
   "morning_api_key_company",
   "morning_api_secret_company",
 ];
+const INTEGRATION_KEYS = [...NON_SECRET_KEYS, ...SECRET_KEYS];
 
 export default function IntegrationsTab() {
   const [values, setValues] = useState({
@@ -53,11 +60,20 @@ export default function IntegrationsTab() {
 
   const loadIntegrations = async () => {
     try {
-      const all = await base44.entities.AppSetting.list();
+      const [nonSecretRows, secretRows] = await Promise.all([
+        base44.entities.AppSetting.list(),
+        base44.entities.TenantSecret.list(),
+      ]);
       const ids = {};
       const vals = { ...values };
-      all.forEach((s) => {
-        if (INTEGRATION_KEYS.includes(s.key)) {
+      nonSecretRows.forEach((s) => {
+        if (NON_SECRET_KEYS.includes(s.key)) {
+          vals[s.key] = s.value || "";
+          ids[s.key] = s.id;
+        }
+      });
+      secretRows.forEach((s) => {
+        if (SECRET_KEYS.includes(s.key)) {
           vals[s.key] = s.value || "";
           ids[s.key] = s.id;
         }
@@ -75,10 +91,11 @@ export default function IntegrationsTab() {
       await Promise.all(
         INTEGRATION_KEYS.map(async (key) => {
           const val = values[key] || "";
+          const entity = SECRET_KEYS.includes(key) ? base44.entities.TenantSecret : base44.entities.AppSetting;
           if (settingIds[key]) {
-            await base44.entities.AppSetting.update(settingIds[key], { value: val });
+            await entity.update(settingIds[key], { value: val });
           } else {
-            const created = await base44.entities.AppSetting.create({ key, value: val });
+            const created = await entity.create({ key, value: val });
             setSettingIds((prev) => ({ ...prev, [key]: created.id }));
           }
         })

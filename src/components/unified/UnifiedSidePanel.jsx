@@ -11,6 +11,12 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import InvoiceDialog from "@/components/invoice/InvoiceDialog";
+import {
+  PRODUCTION_QUESTIONNAIRE_FIELDS,
+  PRODUCTION_QUESTIONNAIRE_LONG_TEXT_FIELDS,
+  PRODUCTION_QUESTIONNAIRE_BOOLEAN_FIELDS,
+  hasAnyProductionQuestionnaireAnswer,
+} from "@/lib/productionQuestionnaireFields";
 
 export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMembers, onLeadUpdated, onEventUpdated }) {
   // Hard stop: if event.sourceLeadId points to a different lead, discard the event entirely
@@ -18,6 +24,7 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
   const safeEvent = hasLinkMismatch ? null : event;
 
   const eventDate = safeEvent?.date || lead?.eventDate;
+  const hasAnyProductionAnswer = hasAnyProductionQuestionnaireAnswer(lead);
 
   // null = closed, 'sole_prop' | 'company' = which Morning account's invoice dialog is open
   // (green button below = sole_prop / עוסק מורשה, purple button = company / חברה בע״מ)
@@ -636,37 +643,34 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                   {lead && (
                     <div className="space-y-3">
                       <h4 className="text-gray-300 font-semibold text-xs uppercase">פרטי הפקה:</h4>
-                      {lead?.productionBridePhone && (
-                        <div className="flex justify-between text-gray-200 text-sm">
-                          <span className="text-gray-400">נייד כלה:</span>
-                          <span>{lead.productionBridePhone}</span>
-                        </div>
+                      {!hasAnyProductionAnswer && (
+                        <p className="text-gray-500 text-sm">הזוג טרם מילא את השאלון</p>
                       )}
-                      {lead?.productionGroomPhone && (
-                        <div className="flex justify-between text-gray-200 text-sm">
-                          <span className="text-gray-400">נייד חתן:</span>
-                          <span>{lead.productionGroomPhone}</span>
-                        </div>
-                      )}
-                      {lead?.productionBridePrepLocation && (
-                        <div className="flex justify-between text-gray-200 text-sm">
-                          <span className="text-gray-400">התארגנות כלה:</span>
-                          <span>{lead.productionBridePrepLocation}</span>
-                        </div>
-                      )}
-                      {lead?.productionInstagram && (
-                        <div className="flex justify-between text-gray-200 text-sm">
-                          <span className="text-gray-400">אינסטגרם:</span>
-                          <span>{lead.productionInstagram}</span>
-                        </div>
-                      )}
-                      {lead?.productionSpecialRequests && (
-                        <div className="text-gray-200 text-sm">
-                          <span className="text-gray-400">בקשות מיוחדות:</span>
-                          <p className="mt-1 text-xs text-gray-300">{lead.productionSpecialRequests}</p>
-                        </div>
-                      )}
-                      
+                      {PRODUCTION_QUESTIONNAIRE_FIELDS.map(({ key, label, icon }) => (
+                        lead?.[key] ? (
+                          <div key={key} className="flex justify-between gap-3 text-gray-200 text-sm">
+                            <span className="text-gray-400 flex-shrink-0">{icon} {label}:</span>
+                            <span className="text-left">{lead[key]}</span>
+                          </div>
+                        ) : null
+                      ))}
+                      {PRODUCTION_QUESTIONNAIRE_BOOLEAN_FIELDS.map(({ flagKey, label, icon, nameKey, phoneKey }) => (
+                        lead?.[flagKey] ? (
+                          <div key={flagKey} className="flex justify-between gap-3 text-gray-200 text-sm">
+                            <span className="text-gray-400 flex-shrink-0">{icon} {label}:</span>
+                            <span className="text-left">{[lead[nameKey], lead[phoneKey]].filter(Boolean).join(' — ') || '—'}</span>
+                          </div>
+                        ) : null
+                      ))}
+                      {PRODUCTION_QUESTIONNAIRE_LONG_TEXT_FIELDS.map(({ key, label, icon }) => (
+                        lead?.[key] ? (
+                          <div key={key} className="text-gray-200 text-sm">
+                            <span className="text-gray-400">{icon} {label}:</span>
+                            <p className="mt-1 text-xs text-gray-300">{lead[key]}</p>
+                          </div>
+                        ) : null
+                      ))}
+
                       {/* כפתורים לניהול השאלון */}
                       <div className="pt-3 space-y-2 border-t border-gray-700/50">
                         <div className="flex gap-2">
@@ -979,39 +983,33 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
             )}
 
             {/* פרטי הפקה */}
-            {(lead?.productionBridePhone || lead?.productionGroomPhone || lead?.productionBridePrepLocation || lead?.productionInstagram || lead?.productionSpecialRequests) && (
+            {hasAnyProductionAnswer && (
               <div className="space-y-2">
                 <h4 className="text-gray-300 font-semibold text-xs uppercase">פרטי הפקה:</h4>
-                {lead?.productionBridePhone && (
-                  <div className="flex justify-between text-gray-200">
-                    <span className="text-gray-400">נייד כלה:</span>
-                    <span>{lead.productionBridePhone}</span>
-                  </div>
-                )}
-                {lead?.productionGroomPhone && (
-                  <div className="flex justify-between text-gray-200">
-                    <span className="text-gray-400">נייד חתן:</span>
-                    <span>{lead.productionGroomPhone}</span>
-                  </div>
-                )}
-                {lead?.productionBridePrepLocation && (
-                  <div className="flex justify-between text-gray-200">
-                    <span className="text-gray-400">התארגנות כלה:</span>
-                    <span>{lead.productionBridePrepLocation}</span>
-                  </div>
-                )}
-                {lead?.productionInstagram && (
-                  <div className="flex justify-between text-gray-200">
-                    <span className="text-gray-400">אינסטגרם:</span>
-                    <span>{lead.productionInstagram}</span>
-                  </div>
-                )}
-                {lead?.productionSpecialRequests && (
-                  <div className="text-gray-200">
-                    <span className="text-gray-400">בקשות מיוחדות:</span>
-                    <p className="mt-1 text-xs text-gray-300">{lead.productionSpecialRequests}</p>
-                  </div>
-                )}
+                {PRODUCTION_QUESTIONNAIRE_FIELDS.map(({ key, label, icon }) => (
+                  lead?.[key] ? (
+                    <div key={key} className="flex justify-between gap-3 text-gray-200">
+                      <span className="text-gray-400 flex-shrink-0">{icon} {label}:</span>
+                      <span className="text-left">{lead[key]}</span>
+                    </div>
+                  ) : null
+                ))}
+                {PRODUCTION_QUESTIONNAIRE_BOOLEAN_FIELDS.map(({ flagKey, label, icon, nameKey, phoneKey }) => (
+                  lead?.[flagKey] ? (
+                    <div key={flagKey} className="flex justify-between gap-3 text-gray-200">
+                      <span className="text-gray-400 flex-shrink-0">{icon} {label}:</span>
+                      <span className="text-left">{[lead[nameKey], lead[phoneKey]].filter(Boolean).join(' — ') || '—'}</span>
+                    </div>
+                  ) : null
+                ))}
+                {PRODUCTION_QUESTIONNAIRE_LONG_TEXT_FIELDS.map(({ key, label, icon }) => (
+                  lead?.[key] ? (
+                    <div key={key} className="text-gray-200">
+                      <span className="text-gray-400">{icon} {label}:</span>
+                      <p className="mt-1 text-xs text-gray-300">{lead[key]}</p>
+                    </div>
+                  ) : null
+                ))}
               </div>
             )}
           </div>

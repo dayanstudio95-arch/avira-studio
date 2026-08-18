@@ -1,6 +1,9 @@
 // Ports base44/functions/getLatestMorningDocumentDate/entry.ts.
 // Extended for two business entities — accepts `businessType: 'sole_prop' | 'company'`
 // and looks up the latest document date in the matching Morning account. Read-only.
+//
+// CHANGED (2026-08-17 security audit, Step 4): these keys moved out of app_settings into
+// the dedicated tenant_secrets table (migration 0019_tenant_secrets.sql, admin-only RLS).
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createUserClient, getRequestUser } from '../_shared/supabaseClients.ts';
 
@@ -23,7 +26,7 @@ Deno.serve(async (req) => {
     const settingKeys = SETTINGS_KEYS[businessType];
 
     const { data: settings } = await supabase
-      .from('app_settings')
+      .from('tenant_secrets')
       .select('key, value')
       .in('key', [settingKeys.key, settingKeys.secret]);
 

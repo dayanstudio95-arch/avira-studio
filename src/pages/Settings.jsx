@@ -16,6 +16,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { STAFF_JOB_ROLES, staffJobRoleLabel } from "@/lib/staffRoles";
 import CSVImportDialog from "../components/CSVImportDialog";
 import StaffImportDialog from "../components/settings/StaffImportDialog";
 import DiscountForm from "../components/settings/DiscountForm";
@@ -26,6 +27,7 @@ import TeamAutomationTab from "../components/settings/TeamAutomationTab";
 import StaffRatesEditor from "../components/settings/StaffRatesEditor";
 import UsersTab from "../components/settings/UsersTab";
 import WorkspaceTab from "../components/settings/WorkspaceTab";
+import StudioDetailsCard from "../components/settings/StudioDetailsCard";
 import StudioSignatureCard from "../components/settings/StudioSignatureCard";
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
@@ -222,8 +224,9 @@ export default function Settings() {
           </TabsList>
 
           {/* סביבת עבודה */}
-          <TabsContent value="workspace">
+          <TabsContent value="workspace" className="space-y-6">
             <WorkspaceTab />
+            <StudioDetailsCard />
           </TabsContent>
 
           {/* משתמשים */}
@@ -359,10 +362,9 @@ export default function Settings() {
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent className="bg-gray-900 border-gray-700 text-white">
-                                <SelectItem value="photographer">צלם</SelectItem>
-                                <SelectItem value="videographer">וידאוגרף</SelectItem>
-                                <SelectItem value="editor">עורך</SelectItem>
-                                <SelectItem value="graphic_designer">גרפיקאית</SelectItem>
+                                {STAFF_JOB_ROLES.map(r => (
+                                  <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                                ))}
                               </SelectContent>
                             </Select>
                           </div>
@@ -424,10 +426,9 @@ export default function Settings() {
                           <Select value={editStaffData.role} onValueChange={(val) => setEditStaffData({...editStaffData, role: val})}>
                             <SelectTrigger className="bg-gray-800 border-gray-700 text-white"><SelectValue /></SelectTrigger>
                             <SelectContent className="bg-gray-900 border-gray-700 text-white">
-                              <SelectItem value="photographer">צלם</SelectItem>
-                              <SelectItem value="videographer">וידאוגרף</SelectItem>
-                              <SelectItem value="editor">עורך</SelectItem>
-                              <SelectItem value="graphic_designer">גרפיקאית</SelectItem>
+                              {STAFF_JOB_ROLES.map(r => (
+                                <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
                         </div>
@@ -470,7 +471,7 @@ export default function Settings() {
                             <div>
                               <p className="text-white font-medium">{staff.name}</p>
                               <p className="text-sm text-gray-400">
-                                {staff.role === 'photographer' ? 'צלם' : staff.role === 'videographer' ? 'וידאוגרף' : staff.role === 'graphic_designer' ? 'גרפיקאית' : 'עורך'} • ₪{staff.defaultRate?.toLocaleString() || 0}
+                                {staffJobRoleLabel(staff.role)} • ₪{staff.defaultRate?.toLocaleString() || 0}
                                 {staff.phoneNumber && ` • ${staff.phoneNumber}`}
                               </p>
                               {staff.email && <p className="text-xs text-blue-400 mt-0.5">✉ {staff.email}</p>}

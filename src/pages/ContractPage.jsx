@@ -215,7 +215,18 @@ export default function ContractPage() {
 
     let pdfBase64;
     try {
-      const canvas = await html2canvas(container, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+      // html2canvas has no built-in timeout and can hang indefinitely on some mobile
+      // browsers (observed stuck signing flow on mobile Safari) rendering an
+      // off-screen container. Race it against a hard timeout so this step always
+      // either resolves or throws into the outer try/catch in handleSign, instead of
+      // leaving the "שומר ומאמת..." button spinning forever with no error surfaced.
+      const canvas = await Promise.race([
+        html2canvas(container, { scale: 2, backgroundColor: '#ffffff', useCORS: true }),
+        new Promise((_, reject) => setTimeout(
+          () => reject(new Error('יצירת מסמך ה-PDF נתקעה (חריגת זמן) — נסה שוב, ואם הבעיה נמשכת נסה מדפדפן או רשת אחרת')),
+          15000
+        )),
+      ]);
 
       const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
       const pageWidth = 210;

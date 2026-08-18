@@ -1,10 +1,16 @@
 // Shared Green API WhatsApp sender.
 // Replaces the old Base44 Make.com webhook layer (MAKE_WEBHOOK_URL) per explicit
 // user decision: every function that used to POST to Make now calls sendWhatsApp()
-// directly instead. Gateway URL / instance ID / API token are per-tenant, stored in
-// app_settings (keys: whatsapp_gateway_url, whatsapp_instance_id, whatsapp_api_key) --
-// same settings whatsappManager already reads/tests, so the "Test connection" flow
-// and real sends share one source of truth.
+// directly instead. Gateway URL / instance ID are per-tenant, stored in app_settings
+// (keys: whatsapp_gateway_url, whatsapp_instance_id) -- same settings whatsappManager
+// already reads/tests, so the "Test connection" flow and real sends share one source
+// of truth.
+//
+// CHANGED (2026-08-17 security audit, Step 4): the API token itself
+// (whatsapp_api_key) moved out of app_settings into the dedicated tenant_secrets
+// table (migration 0019_tenant_secrets.sql) -- app_settings' RLS is tenant-only with
+// no role check, so any tenant member could previously read the raw token directly;
+// tenant_secrets is admin-only at the RLS layer, covering select too.
 //
 // FIXED (2026-08-13): this used to build URLs like `${gatewayUrl}/sendMessage?apiKey=...`
 // with `{ phone, message }` as the body -- a made-up contract that doesn't match the
@@ -26,20 +32,28 @@ interface WhatsAppSettings {
 //  - a user-scoped client (RLS handles tenant scoping automatically), or
 //  - a service-role client + explicit tenantId (e.g. automationEngine's scheduler runs).
 async function loadWhatsAppSettings(supabase: any, tenantId?: string): Promise<WhatsAppSettings | null> {
-  let query = supabase
+  let settingsQuery = supabase
     .from('app_settings')
     .select('key, value')
-    .in('key', ['whatsapp_gateway_url', 'whatsapp_instance_id', 'whatsapp_api_key']);
+    .in('key', ['whatsapp_gateway_url', 'whatsapp_instance_id']);
+  let secretsQuery = supabase
+    .from('tenant_secrets')
+    .select('key, value')
+    .eq('key', 'whatsapp_api_key');
 
-  if (tenantId) query = query.eq('tenant_id', tenantId);
+  if (tenantId) {
+    settingsQuery = settingsQuery.eq('tenant_id', tenantId);
+    secretsQuery = secretsQuery.eq('tenant_id', tenantId);
+  }
 
-  const { data, error } = await query;
-  if (error || !data) return null;
+  const [{ data: settingsData, error: settingsError }, { data: secretsData, error: secretsError }] =
+    await Promise.all([settingsQuery, secretsQuery]);
+  if (settingsError || !settingsData || secretsError || !secretsData) return null;
 
-  const get = (key: string) => data.find((s: any) => s.key === key)?.value || '';
+  const get = (key: string) => settingsData.find((s: any) => s.key === key)?.value || '';
   let apiUrl = get('whatsapp_gateway_url');
   const instanceId = get('whatsapp_instance_id');
-  const apiToken = get('whatsapp_api_key');
+  const apiToken = secretsData.find((s: any) => s.key === 'whatsapp_api_key')?.value || '';
   if (!apiUrl || !instanceId || !apiToken) return null;
 
   // Normalize: strip trailing slash and any accidental /waInstance... suffix the user

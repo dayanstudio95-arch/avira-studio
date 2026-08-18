@@ -1,13 +1,6 @@
 import React, { useState } from "react";
 import SendStaffScheduleModal from "@/components/staffSchedule/SendStaffScheduleModal";
-
-const ROLE_LABELS = {
-  photographer1: 'צלם 1',
-  photographer2: 'צלם 2',
-  videographer: 'צלם וידאו',
-  videographer2: 'צלם וידאו 2',
-  editor: 'עורך',
-};
+import { EVENT_TEAM_ROLE_LABELS as ROLE_LABELS } from "@/lib/staffRoles";
 
 const MONTH_NAMES_HE = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
 

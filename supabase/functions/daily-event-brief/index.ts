@@ -20,6 +20,7 @@ import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createUserClient, getRequestUser } from '../_shared/supabaseClients.ts';
 import { sendWhatsApp } from '../_shared/whatsapp.ts';
 import { getValidAccessToken } from '../_shared/googleCalendarAuth.ts';
+import { PHOTOGRAPHER_TEAM_ROLES } from '../_shared/staffRoles.ts';
 
 Deno.serve(async (req) => {
   const preflight = handleOptions(req);
@@ -69,7 +70,7 @@ Deno.serve(async (req) => {
     if (leadsErr) return jsonResponse({ error: leadsErr.message }, { status: 500 });
 
     const results: Array<{ eventName: string; crewMember: string; success: boolean; error?: string }> = [];
-    const photographerRoles = ['photographer1', 'photographer2'];
+    const photographerRoles = PHOTOGRAPHER_TEAM_ROLES;
 
     for (const event of tomorrowEvents) {
       const team: Array<{ role?: string; staffMemberName?: string }> = event.team || [];

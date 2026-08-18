@@ -114,6 +114,11 @@ export const entities = {
   Package: createEntity('packages'),
   DiscountPreset: createEntity('discount_presets'),
   AppSetting: createEntity('app_settings'),
+  // True secrets (WhatsApp/Morning API keys) — moved out of app_settings by migration
+  // 0019_tenant_secrets.sql (2026-08-17 security audit, Step 4: app_settings' RLS is
+  // tenant-only with no role check, so any tenant member could read raw credentials;
+  // this table is admin-only at the RLS layer, covering select too).
+  TenantSecret: createEntity('tenant_secrets'),
   Automation: createEntity('automations'),
   EventAutomation: createEntity('event_automations'),
   PendingAutomation: createEntity('pending_automations'),

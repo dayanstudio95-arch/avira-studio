@@ -2,8 +2,6 @@ import React from "react";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { MapPin, Users, Eye, DollarSign } from "lucide-react";
-import { Link } from "react-router-dom";
-import { createPageUrl } from "@/utils";
 
 const paymentLabels = {
   "Paid":         { label: "שולם",   cls: "bg-green-500/20 text-green-400 border-green-500/30" },
@@ -25,7 +23,7 @@ function getTeamSummary(event) {
   return members.map(m => m.staffMemberName).join(", ");
 }
 
-export default function EventMobileCards({ events, isLoading, onOpenDetail, onOpenExpenses }) {
+export default function EventMobileCards({ events, isLoading, onOpenDetail, onOpenTeamAssign, onOpenExpenses }) {
   if (isLoading) {
     return (
       <div className="space-y-3 p-4">
@@ -132,11 +130,12 @@ export default function EventMobileCards({ events, isLoading, onOpenDetail, onOp
                 >
                   <DollarSign className="w-3.5 h-3.5" /> הוצאות
                 </button>
-                <Link to={createPageUrl(`TeamPayments?id=${event.id}`)}>
-                  <button className="flex items-center gap-1 text-xs text-gray-400 hover:text-blue-400 px-2 py-1 rounded-lg hover:bg-blue-500/10 transition-colors">
-                    <Users className="w-3.5 h-3.5" /> צוות
-                  </button>
-                </Link>
+                <button
+                  onClick={() => onOpenTeamAssign?.(event)}
+                  className="flex items-center gap-1 text-xs text-gray-400 hover:text-blue-400 px-2 py-1 rounded-lg hover:bg-blue-500/10 transition-colors"
+                >
+                  <Users className="w-3.5 h-3.5" /> צוות
+                </button>
                 {waPhone && (
                   <a
                     href={`https://wa.me/${waPhone}`}

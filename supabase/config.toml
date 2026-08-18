@@ -11,3 +11,11 @@
 # (see supabase/functions/_shared/googleCalendarAuth.ts verifyState).
 [functions.google-calendar-oauth-callback]
 verify_jwt = false
+
+# calendar-sync-webhook is called by a Postgres trigger (via pg_net, see
+# supabase/migrations/0017_calendar_sync_trigger.sql), which cannot supply a
+# Supabase user JWT. It authenticates itself instead via the x-cron-secret
+# header, checked in the function body (same convention as
+# reconcile-calendar-sync's cron path).
+[functions.calendar-sync-webhook]
+verify_jwt = false

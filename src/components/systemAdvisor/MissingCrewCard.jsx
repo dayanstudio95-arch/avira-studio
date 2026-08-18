@@ -2,15 +2,12 @@ import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Users } from "lucide-react";
+import { EVENT_TEAM_ROLE_LABELS as ROLE_LABELS } from "@/lib/staffRoles";
 
-const ROLE_LABELS = {
-  photographer1: "צלם 1",
-  photographer2: "צלם 2",
-  videographer: "צלם וידאו",
-  videographer2: "צלם וידאו 2",
-  editor: "עורך",
-};
-
+// Intentionally a fixed subset, not "every role in EVENT_TEAM_ROLES" — this card only
+// flags an event as understaffed if it's missing a primary photographer or a
+// videographer; photographer2/videographer2 are optional extras, not baseline
+// requirements (product decision, not a bug — see the deep security audit's finding 6).
 const REQUIRED_ROLES = ["photographer1", "videographer"];
 
 export default function MissingCrewCard({ events }) {

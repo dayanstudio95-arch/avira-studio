@@ -68,8 +68,13 @@ export default function StaffImportDialog({ isOpen, onClose, onSuccess }) {
   const normalizeRole = (roleValue) => {
     if (!roleValue) return 'photographer';
     const normalized = roleValue.toLowerCase().trim();
+    // Was previously missing a graphic_designer branch entirely — any imported row
+    // with a design-related role (e.g. "גרפיקאי"/"designer") silently fell through to
+    // 'photographer'. Order matters: check videographer/editor/graphic_designer before
+    // the photographer fallback.
     if (normalized.includes('video') || normalized.includes('וידאו')) return 'videographer';
     if (normalized.includes('edit') || normalized.includes('עורך')) return 'editor';
+    if (normalized.includes('graphic') || normalized.includes('design') || normalized.includes('גרפיק') || normalized.includes('עיצוב')) return 'graphic_designer';
     return 'photographer';
   };
 

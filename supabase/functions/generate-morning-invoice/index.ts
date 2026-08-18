@@ -2,12 +2,17 @@
 //
 // Extended to support TWO separate Morning/Green Invoice accounts per tenant — the studio
 // owner runs both an עוסק מורשה (sole proprietor) and a חברה בע״מ (Ltd company), each with
-// its own Morning API key+secret, stored under different app_settings keys:
+// its own Morning API key+secret, stored under different keys:
 //   sole_prop: morning_api_key_sole_prop / morning_api_secret_sole_prop
 //   company:   morning_api_key_company   / morning_api_secret_company
 // The caller (InvoiceDialog.jsx) passes `businessType: 'sole_prop' | 'company'` to pick
 // which account issues the document. Defaults to 'sole_prop' if omitted, matching the
 // original single-account behavior so existing callers don't break.
+//
+// CHANGED (2026-08-17 security audit, Step 4): these 4 keys moved out of app_settings
+// into the dedicated tenant_secrets table (migration 0019_tenant_secrets.sql), which has
+// admin-only RLS covering SELECT too — app_settings' RLS is tenant-only with no role
+// check, so any tenant member could previously read these raw credentials directly.
 //
 // Authenticated (Pattern A, like send-to-couple/index.ts): createUserClient forwards the
 // caller's JWT so app_settings/leads queries are automatically scoped by RLS to the
@@ -50,9 +55,10 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'חסרים שם לקוח או סכום' }, { status: 400 });
     }
 
-    // Load Morning credentials for the selected business entity
+    // Load Morning credentials for the selected business entity (tenant_secrets, not
+    // app_settings — see header comment).
     const { data: settings } = await supabase
-      .from('app_settings')
+      .from('tenant_secrets')
       .select('key, value')
       .in('key', [settingKeys.key, settingKeys.secret]);
 

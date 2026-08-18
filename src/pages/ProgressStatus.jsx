@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Calendar, Camera, Video, Scissors, Filter, CalendarDays, CheckSquare } from "lucide-react";
 import ProgressEventMobileCard from "../components/progressStatus/ProgressEventMobileCard";
 import { format } from "date-fns";
+import { EVENT_TEAM_ROLES } from "@/lib/staffRoles";
 
 const HEBREW_MONTHS = [
   'ינואר','פברואר','מרץ','אפריל','מאי','יוני',
@@ -15,12 +16,14 @@ const HEBREW_MONTHS = [
 const formatMonthYear = (date) => `${HEBREW_MONTHS[date.getMonth()]} ${date.getFullYear()}`;
 import { toast } from "sonner";
 
-const ROLE_CONFIG = {
-  photographer1: { label: "צלם 1", icon: Camera, doneField: "photographer1Done" },
-  photographer2: { label: "צלם 2", icon: Camera, doneField: "photographer2Done" },
-  videographer:  { label: "וידאו",  icon: Video,  doneField: "video1Done" },
-  editor:        { label: "עורך",   icon: Scissors, doneField: "editorDone" },
-};
+// Was previously missing "videographer2" entirely (same real bug as
+// ProgressEventMobileCard.jsx — a videographer2 team member got no status button and
+// was silently excluded from the progress % below) — now built from the shared role
+// list so it can't drift out of sync again.
+const ROLE_ICONS = { photographer1: Camera, photographer2: Camera, videographer: Video, videographer2: Video, editor: Scissors };
+const ROLE_CONFIG = Object.fromEntries(
+  EVENT_TEAM_ROLES.map(({ value, label, doneField }) => [value, { label, icon: ROLE_ICONS[value], doneField }])
+);
 
 const isRawCompleted   = (e) => !!(e?.rawLink  || e?.rawDoneManual);
 const isFinalCompleted = (e) => !!(e?.finalLink || e?.finalDoneManual);

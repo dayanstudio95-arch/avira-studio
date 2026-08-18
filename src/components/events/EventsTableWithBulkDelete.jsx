@@ -19,6 +19,7 @@ import UnifiedSidePanel from "../unified/UnifiedSidePanel";
 import EventExpensesEditor from "../eventDetails/EventExpensesEditor";
 import { calculateNetProfit, getProfitColor } from "@/lib/profitCalculations";
 import EventMobileCards from "./EventMobileCards";
+import MobileStaffAssignmentSheet from "./MobileStaffAssignmentSheet";
 
 const paymentStatusConfig = {
   "Paid": { color: "bg-green-500/20 text-green-400 border-green-500/30", icon: "✅" },
@@ -32,8 +33,10 @@ const statusLabels = {
   "Unpaid": "לא שולם"
 };
 
-// Compact staff picker cell
-function StaffPickerCell({ event, role, roleKey, label, color, icon, staffList, events, onRefresh, editingKey, setEditingKey, sendCalendarInviteByName, isWrapped }) {
+// Compact staff picker cell — also reused (via named export) by
+// MobileStaffAssignmentSheet.jsx so the mobile "צוות" sheet uses the exact same
+// selection/conflict-detection/cost-lookup logic as the desktop table.
+export function StaffPickerCell({ event, role, roleKey, label, color, icon, staffList, events, onRefresh, editingKey, setEditingKey, sendCalendarInviteByName, isWrapped }) {
   const member = event.team?.find(m => m.role === roleKey);
 
   const removeMember = async (e) => {
@@ -115,227 +118,6 @@ function StaffPickerCell({ event, role, roleKey, label, color, icon, staffList, 
   return <TableCell className="px-1 py-1">{content}</TableCell>;
 }
 
-// ─── Event Detail Modal ───────────────────────────────────────────────────────
-function EventDetailModal({ event, onClose, onEditLead }) {
-  const [lead, setLead] = React.useState(null);
-  const [message, setMessage] = React.useState("");
-
-  React.useEffect(() => {
-    const leadLinkId = event?.sourceLeadId || event?.leadId;
-    if (event && leadLinkId) {
-      base44.entities.Lead.get(leadLinkId)
-        .then(function(data) { setLead(data); })
-        .catch(function(err) { console.error("Failed to load lead:", err); });
-    }
-  }, [event?.sourceLeadId, event?.leadId]);
-
-  if (!event) return null;
-
-  var phone = event.phoneNumber || (lead && lead.phoneNumber) || "";
-  var phoneClean = phone.replace(/\D/g, "");
-  var waPhone = phoneClean.startsWith("0") ? "972" + phoneClean.slice(1) : phoneClean;
-
-  async function handleSendWhatsApp() {
-    if (!phoneClean) { toast.error('אין מספר טלפון'); return; }
-    if (!message.trim()) { toast.error('כתוב הודעה קודם'); return; }
-    try {
-      // CHANGED: this used to call the retired Make.com webhook function
-      // ('sendMakeWebhook'), which no longer exists now that every WhatsApp send
-      // goes through Green API (see supabase/functions/_shared/whatsapp.ts) — every
-      // click of this button was silently failing. Fixed to call the real
-      // send-whatsapp-message Edge Function (mapped as 'sendWhatsAppMessage' in
-      // src/api/functions.js), same helper WhatsAppPanel's test-send already uses.
-      await base44.functions.invoke('sendWhatsAppMessage', { to: waPhone, message: message.trim() });
-      toast.success('ההודעה נשלחה בהצלחה');
-      setMessage('');
-    } catch(err) {
-      toast.error('שגיאה בשליחת ההודעה: ' + (err.message || ''));
-    }
-  }
-
-  var workSteps = [
-    { label: "צלם 1", done: event.photographer1Done },
-    { label: "צלם 2", done: event.photographer2Done },
-    { label: "וידאו", done: event.video1Done },
-    { label: "עריכה", done: event.editorDone },
-    { label: "גלם הועלה", done: event.rawDoneManual },
-    { label: "גלם לעורך", done: event.rawSentToEditor },
-    { label: "סופי הועלה", done: event.finalDoneManual },
-  ];
-
-  var payStatusMap = {
-    "Paid": { label: "שולם במלואו", cls: "bg-green-900/50 text-green-300 border-green-700" },
-    "Partially Paid": { label: "תשלום חלקי", cls: "bg-yellow-900/50 text-yellow-300 border-yellow-700" },
-    "Unpaid": { label: "לא שולם", cls: "bg-red-900/50 text-red-300 border-red-700" },
-  };
-  var payStatus = payStatusMap[event.clientPaymentStatus] || payStatusMap["Unpaid"];
-
-  var leadStatusColors = {
-    "חוזה": "bg-yellow-900/60 text-yellow-300 border-yellow-700",
-    "נסגר/חתימה": "bg-green-900/60 text-green-300 border-green-700",
-    "חדש": "bg-blue-900/60 text-blue-300 border-blue-700",
-    "נשלחה הצעה": "bg-orange-900/60 text-orange-300 border-orange-700",
-    "פולו-אף": "bg-purple-900/60 text-purple-300 border-purple-700",
-    "לא רלוונטי": "bg-gray-800/60 text-gray-400 border-gray-600",
-  };
-  var leadCls = (lead && lead.status && leadStatusColors[lead.status]) || "bg-gray-800/60 text-gray-400 border-gray-600";
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" dir="rtl">
-      <div className="absolute inset-0 bg-black/75 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl">
-
-        {/* Header */}
-        <div className="sticky top-0 z-10 bg-gray-900/95 backdrop-blur border-b border-gray-700 px-6 py-4 flex items-center justify-between rounded-t-2xl">
-          <div>
-            <h2 className="text-xl font-bold text-white">{event.coupleNames || "אירוע"}</h2>
-            <p className="text-gray-400 text-sm mt-0.5">
-              {event.date ? format(new Date(event.date), "dd/MM/yyyy") : ""}
-              {event.venue ? " • " + event.venue : ""}
-            </p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-gray-800 transition-colors">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="p-5 space-y-4">
-
-          {/* Row 1 */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-
-            {/* Couple / Lead */}
-            <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-white font-semibold text-sm">👫 פרטי הזוג</span>
-                {lead && lead.status && (
-                  <span className={"text-xs px-2 py-0.5 rounded-full border " + leadCls}>{lead.status}</span>
-                )}
-              </div>
-              <div className="space-y-2 text-sm">
-                {phone && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-500 text-xs w-12">טלפון</span>
-                    <a href={"tel:" + phone} className="text-gray-200 hover:text-yellow-400 transition-colors">{phone}</a>
-                    {phoneClean && (
-                      <a href={"https://wa.me/" + waPhone} target="_blank" rel="noreferrer"
-                         className="text-xs px-1.5 py-0.5 bg-green-500/15 border border-green-500/30 text-green-400 rounded hover:bg-green-500/25 transition-colors">WA</a>
-                    )}
-                  </div>
-                )}
-                {lead && lead.email && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-500 text-xs w-12">מייל</span>
-                    <span className="text-gray-200 text-xs truncate">{lead.email}</span>
-                  </div>
-                )}
-                {lead && lead.idNumber && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-500 text-xs w-12">ת.ז</span>
-                    <span className="text-gray-200 text-sm">{lead.idNumber}</span>
-                  </div>
-                )}
-                {lead && lead.signedAt && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-500 text-xs w-12">חתם</span>
-                    <span className="text-gray-300 text-xs">{format(new Date(lead.signedAt), "dd/MM/yyyy HH:mm")}</span>
-                  </div>
-                )}
-                {lead && lead.signedContractPdfUrl && (
-                  <a href={lead.signedContractPdfUrl} target="_blank" rel="noreferrer"
-                     className="flex items-center gap-1.5 text-xs text-yellow-400 hover:text-yellow-300 border border-yellow-700/40 bg-yellow-900/20 rounded-lg px-2.5 py-1.5 w-full transition-colors">
-                    <FileText className="w-3.5 h-3.5 flex-shrink-0" /> 📄 חוזה חתום — לצפייה
-                  </a>
-                )}
-                {lead && lead.coupleNotesSigned && (
-                  <div className="border-t border-gray-700 pt-2 text-xs text-gray-400">
-                    <span className="text-gray-500">הערות חתימה: </span>{lead.coupleNotesSigned}
-                  </div>
-                )}
-              </div>
-              <Button
-                size="sm"
-                onClick={function() { onEditLead && onEditLead(event, lead); }}
-                className="w-full bg-yellow-600/20 hover:bg-yellow-600/35 text-yellow-400 border border-yellow-700/50 hover:border-yellow-600 text-xs h-8"
-              >
-                <Edit3 className="w-3 h-3 ml-1" /> ✏️ ערוך ליד
-              </Button>
-            </div>
-
-            {/* Event info + Payment */}
-            <div className="space-y-3">
-              <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-4">
-                <div className="text-white font-semibold text-sm mb-2">📅 פרטי האירוע</div>
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
-                  <div><span className="text-gray-500">תאריך: </span><span className="text-gray-200">{event.date ? format(new Date(event.date), "dd/MM/yyyy") : "-"}</span></div>
-                  <div><span className="text-gray-500">אולם: </span><span className="text-gray-200">{event.venue || "-"}</span></div>
-                  <div><span className="text-gray-500">צוות: </span><span className="text-gray-200">{event.requiredCrew || "-"} אנשים</span></div>
-                  {event.totalAmountGross && (<div><span className="text-gray-500">מחיר: </span><span className="text-gray-200">₪{event.totalAmountGross.toLocaleString()}</span></div>)}
-                </div>
-              </div>
-              <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-4">
-                <div className="text-white font-semibold text-sm mb-2">💳 סטטוס תשלום</div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className={"text-xs px-2.5 py-1 rounded-full border " + payStatus.cls}>{payStatus.label}</span>
-                  {event.totalAmountGross && (<span className="text-gray-400 text-xs">סה"כ: ₪{event.totalAmountGross.toLocaleString()}</span>)}
-                </div>
-                {lead && lead.manualPayment > 0 && (<div className="mt-1.5 text-xs text-gray-400">שולם: ₪{lead.manualPayment.toLocaleString()}</div>)}
-                {lead && lead.manualPaymentNote && (<div className="mt-1 text-xs text-gray-500">{lead.manualPaymentNote}</div>)}
-              </div>
-            </div>
-          </div>
-
-          {/* Work Status */}
-          <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-4">
-            <div className="text-white font-semibold text-sm mb-3">⚙️ סטטוס עבודה</div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-              {workSteps.map(function(step, i) { return (
-                <div key={i} className={"flex items-center gap-1.5 text-xs px-2 py-1.5 rounded-lg border " + (step.done ? "bg-green-900/30 border-green-700/50 text-green-400" : "bg-gray-700/30 border-gray-600/50 text-gray-500")}>
-                  {step.done ? "✅" : "⬜"} {step.label}
-                </div>
-              ); })}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {event.rawLink && (<a href={event.rawLink} target="_blank" rel="noreferrer" className="text-xs px-2.5 py-1 bg-blue-900/30 border border-blue-700/40 text-blue-400 rounded-lg hover:bg-blue-900/50 transition-colors">🗂️ גלם</a>)}
-              {event.finalLink && (<a href={event.finalLink} target="_blank" rel="noreferrer" className="text-xs px-2.5 py-1 bg-purple-900/30 border border-purple-700/40 text-purple-400 rounded-lg hover:bg-purple-900/50 transition-colors">🎬 סופי</a>)}
-              {event.albumSketchLink && (<a href={event.albumSketchLink} target="_blank" rel="noreferrer" className="text-xs px-2.5 py-1 bg-pink-900/30 border border-pink-700/40 text-pink-400 rounded-lg hover:bg-pink-900/50 transition-colors">🖼️ סקיצת אלבום</a>)}
-            </div>
-          </div>
-
-          {/* Notes */}
-          {(event.notes || (lead && lead.notes)) && (
-            <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-4 space-y-2">
-              <div className="text-white font-semibold text-sm">📝 הערות</div>
-              {event.notes && (<div><div className="text-gray-500 text-xs mb-1">הערות אירוע:</div><p className="text-gray-300 text-sm leading-relaxed">{event.notes}</p></div>)}
-              {lead && lead.notes && (<div className={event.notes ? "border-t border-gray-700 pt-2" : ""}><div className="text-gray-500 text-xs mb-1">הערות ליד:</div><p className="text-gray-300 text-sm leading-relaxed">{lead.notes}</p></div>)}
-            </div>
-          )}
-
-          {/* Send message */}
-          <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-4">
-            <div className="text-white font-semibold text-sm mb-3">💬 שלח הודעה לזוג</div>
-            <textarea
-              value={message}
-              onChange={function(e) { setMessage(e.target.value); }}
-              placeholder="כתוב הודעה לשליחה בוואטסאפ..."
-              className="w-full bg-gray-700/60 border border-gray-600 text-white placeholder-gray-500 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-gray-500 mb-2"
-              rows={3}
-              dir="rtl"
-            />
-            <Button
-              onClick={handleSendWhatsApp}
-              disabled={!message.trim() || !phoneClean}
-              className="w-full bg-green-700 hover:bg-green-600 text-white font-medium h-9 text-sm disabled:opacity-40"
-            >
-              📲 שלח בוואטסאפ
-            </Button>
-          </div>
-
-        </div>
-      </div>
-    </div>
-  );
-}
 export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh }) {
   const { widths, setWidth } = useColumnWidths();
   const tableRef = useRef(null);
@@ -351,10 +133,10 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
   const [selectedEventForDrawer, setSelectedEventForDrawer] = useState(null);
   const [selectedLeadForDrawer, setSelectedLeadForDrawer] = useState(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [selectedEventForModal, setSelectedEventForModal] = useState(null);
   const [expensesSheetOpen, setExpensesSheetOpen] = useState(false);
   const [selectedEventForExpenses, setSelectedEventForExpenses] = useState(null);
   const [syncingEventId, setSyncingEventId] = useState(null);
+  const [selectedEventForTeamSheet, setSelectedEventForTeamSheet] = useState(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -391,9 +173,14 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
       document.removeEventListener('mouseup', handleMouseUp);
     };
   }, [resizingColumn, setWidth]);
-  const handleEditLeadFromModal = (event, lead) => {
-    setSelectedEventForModal(null);
-    setSelectedLeadForDrawer(lead || null);
+  // Shared by both the desktop couple-name click (below, in the table row) and
+  // the mobile card's couple-name/"פרטים" buttons (EventMobileCards' onOpenDetail
+  // prop) so both surfaces open the exact same UnifiedSidePanel with the same
+  // linked-lead resolution, instead of mobile opening a separate, narrower modal.
+  const openUnifiedPanelForEvent = (event) => {
+    let relatedLead = null;
+    if (event.sourceLeadId) relatedLead = leads.find(l => l.id === event.sourceLeadId);
+    setSelectedLeadForDrawer(relatedLead || null);
     setSelectedEventForDrawer(event);
     setIsDrawerOpen(true);
   };
@@ -531,7 +318,8 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
       <EventMobileCards
         events={events}
         isLoading={isLoading}
-        onOpenDetail={(event) => setSelectedEventForModal(event)}
+        onOpenDetail={openUnifiedPanelForEvent}
+        onOpenTeamAssign={(event) => setSelectedEventForTeamSheet(event)}
         onOpenExpenses={(event) => { setSelectedEventForExpenses(event); setExpensesSheetOpen(true); }}
       />
     </div>
@@ -686,13 +474,7 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
                         <TableCell className="px-1 py-1" style={{ width: `${widths.couple}px`, minWidth: `${widths.couple}px` }}>
                           <div className="flex flex-col gap-0.5">
                             <button
-                              onClick={() => {
-                              let relatedLead = null;
-                              if (event.sourceLeadId) relatedLead = leads.find(l => l.id === event.sourceLeadId);
-                              setSelectedLeadForDrawer(relatedLead || null);
-                                setSelectedEventForDrawer(event);
-                                setIsDrawerOpen(true);
-                              }}
+                              onClick={() => openUnifiedPanelForEvent(event)}
                               className="flex items-center gap-1 hover:opacity-80 transition-opacity cursor-pointer text-left"
                             >
                               <div className="font-medium text-white hover:text-yellow-400 truncate" title={event.coupleNames}>{event.coupleNames}</div>
@@ -968,13 +750,6 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
     </Card>
     {/* END desktop table */}
 
-    {selectedEventForModal && (
-      <EventDetailModal
-        event={selectedEventForModal}
-        onClose={function() { setSelectedEventForModal(null); }}
-        onEditLead={handleEditLeadFromModal}
-      />
-    )}
     <UnifiedSidePanel
       isOpen={isDrawerOpen}
       onClose={() => { setIsDrawerOpen(false); setSelectedEventForDrawer(null); setSelectedLeadForDrawer(null); }}
@@ -998,6 +773,16 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
         )}
       </SheetContent>
     </Sheet>
+
+    <MobileStaffAssignmentSheet
+      event={selectedEventForTeamSheet}
+      isOpen={!!selectedEventForTeamSheet}
+      onClose={() => setSelectedEventForTeamSheet(null)}
+      staffMembers={staffMembers}
+      events={events}
+      onRefresh={onRefresh}
+      sendCalendarInviteByName={sendCalendarInviteByName}
+    />
     </>
   );
 }

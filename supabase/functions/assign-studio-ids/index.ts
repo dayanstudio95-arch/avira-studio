@@ -3,16 +3,16 @@
 // 0005_studio_id.sql) for every lead/event in the caller's tenant that's missing one.
 // Called from Leads.jsx as an admin-only maintenance action.
 //
-// Base44's role check was `user.role !== 'admin'`. The new schema has more roles
-// (owner/admin/studio_manager/photographer/editor/album_manager) — 'owner' is
-// treated as admin-equivalent here since it's the highest-privilege role and the
-// original single-tenant app only ever had one "admin".
+// Role check: uses the shared ADMIN_ROLES set (owner/admin/studio_manager — see
+// _shared/permissions.ts) — studio_manager was previously excluded here, inconsistent
+// with the admin-panel gate itself (src/App.jsx), per the 2026-08-17 security audit.
 //
 // Note: matching logic (source_lead_id → lead_id → exact coupleNames+date) is
 // preserved from the original, but field names are adapted to snake_case
 // (couple_names, event_date/date) per 0001_init.sql.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createUserClient, getRequestUser } from '../_shared/supabaseClients.ts';
+import { getCallerProfile, isAdmin } from '../_shared/permissions.ts';
 
 Deno.serve(async (req) => {
   const preflight = handleOptions(req);
@@ -24,8 +24,8 @@ Deno.serve(async (req) => {
 
     const supabase = createUserClient(req);
 
-    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
-    if (!profile || !['owner', 'admin'].includes(profile.role)) {
+    const profile = await getCallerProfile(supabase, user.id, 'role');
+    if (!profile || !isAdmin(profile.role)) {
       return jsonResponse({ error: 'Forbidden' }, { status: 403 });
     }
 

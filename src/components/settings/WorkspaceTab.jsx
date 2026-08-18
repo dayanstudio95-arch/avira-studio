@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/SupabaseAuthContext";
+import { isAdmin } from "@/lib/permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +20,10 @@ const TIMEZONES = ["Asia/Jerusalem", "Europe/London", "America/New_York", "UTC"]
 
 export default function WorkspaceTab() {
   const { user } = useAuth();
-  const canManage = ["owner", "admin"].includes(user?.role);
+  // ADMIN_ROLES (owner/admin/studio_manager) — studio_manager was previously excluded
+  // here, inconsistent with the admin-panel gate itself (src/App.jsx), per the
+  // 2026-08-17 security audit's explicit product decision.
+  const canManage = isAdmin(user);
 
   const [tenant, setTenant] = useState({ name: "", timezone: "Asia/Jerusalem", currency: "ILS" });
   const [isLoading, setIsLoading] = useState(true);

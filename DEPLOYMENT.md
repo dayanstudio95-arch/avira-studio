@@ -29,10 +29,10 @@ functions) — noted inline.
 
 ## 1. Run the pending migrations (in order)
 
-Migrations exist beyond what you've already run, up through `0016`. **Run them in
+Migrations exist beyond what you've already run, up through `0017`. **Run them in
 numeric order** — each may depend on tables/columns from the previous one. The most
-recent one you need for this round is `0016`, which adds the Google Calendar
-dual-account tables (see section 4 below for the full setup that depends on it).
+recent one you need for this round is `0017`, which adds the automatic
+calendar-sync trigger (see section 4 below for the full setup that depends on it).
 
 | # | File | What it does |
 |---|------|---------------|
@@ -42,6 +42,7 @@ dual-account tables (see section 4 below for the full setup that depends on it).
 | 0007 | `0007_media_uploads_storage.sql` | Creates the `media-uploads` Storage bucket + RLS policies (album/automation image uploads) |
 | 0008–0015 | (see `supabase/migrations/`) | Service-role grants, questionnaire fields, social/creator contact, Morning dual-business, workspace/users, lead-status automation, VAT backfill, custom staff-message automation type |
 | 0016 | `0016_google_calendar_accounts.sql` | Adds `google_calendar_accounts` + `event_calendar_syncs` tables (dual-account Google Calendar OAuth + per-event sync tracking), enables `pg_cron`/`pg_net` |
+| 0017 | `0017_calendar_sync_trigger.sql` | Adds a trigger on `events` that automatically calls `calendar-sync-webhook` on every calendar-relevant change — no more manual "sync" clicks needed, see section 4.5 |
 
 **CLI:**
 ```bash
@@ -60,29 +61,36 @@ that didn't change):
 
 ```
 approve-pending-automation, assign-studio-id-to-new-lead, assign-studio-ids,
-automation-engine, cancel-event, daily-event-brief, delete-event-from-calendar,
-delete-google-calendar-event, fix-missing-event-for-lead,
-get-lead-public, google-calendar-oauth-callback, google-calendar-oauth-disconnect,
-google-calendar-oauth-start, monthly-crew-schedule, reconcile-calendar-sync,
-save-signed-contract, send-album-sketch, send-questionnaire-reminders,
-send-questionnaire-to-events, send-staff-invite, send-staff-schedule-message,
-send-to-couple, send-to-editor, send-whatsapp-message, share-event-info-with-team,
-sign-lead-public, submit-production-questionnaire, sync-all-signed-leads,
-sync-event-to-calendar, sync-lead-to-event, whatsapp-manager
+automation-engine, calendar-sync-webhook, cancel-event, daily-event-brief,
+delete-event-from-calendar, delete-google-calendar-event,
+fix-missing-event-for-lead, get-lead-public, google-calendar-oauth-callback,
+google-calendar-oauth-disconnect, google-calendar-oauth-start,
+monthly-crew-schedule, reconcile-calendar-sync, save-signed-contract,
+send-album-sketch, send-questionnaire-reminders, send-questionnaire-to-events,
+send-staff-invite, send-staff-schedule-message, send-to-couple, send-to-editor,
+send-whatsapp-message, share-event-info-with-team, sign-lead-public,
+submit-production-questionnaire, sync-all-signed-leads, sync-event-to-calendar,
+sync-lead-to-event, whatsapp-manager
 ```
 
-**Important — `google-calendar-oauth-callback` must deploy with `verify_jwt=false`.**
-Google's OAuth redirect hits this function with no `Authorization` header at all, so
-the platform's default JWT check would 401 it before your code ever runs. This repo
-already has a `supabase/config.toml` with:
+**Important — `google-calendar-oauth-callback` and `calendar-sync-webhook` must both
+deploy with `verify_jwt=false`.** Google's OAuth redirect hits the first with no
+`Authorization` header at all, and the Postgres trigger (section 4.5) hits the
+second the same way — neither can supply a Supabase user JWT. The platform's
+default JWT check would 401 both before your code ever runs. This repo already has
+a `supabase/config.toml` with:
 ```toml
 [functions.google-calendar-oauth-callback]
 verify_jwt = false
+
+[functions.calendar-sync-webhook]
+verify_jwt = false
 ```
 The CLI reads this automatically on `supabase functions deploy`. If you ever deploy
-that one function by hand instead, pass `--no-verify-jwt` explicitly:
+either function by hand instead, pass `--no-verify-jwt` explicitly:
 ```bash
 supabase functions deploy google-calendar-oauth-callback --no-verify-jwt
+supabase functions deploy calendar-sync-webhook --no-verify-jwt
 ```
 
 **CLI (deploys everything under `supabase/functions/` in one shot):**
@@ -241,7 +249,64 @@ trigger it once manually to confirm it runs clean (either the "סנכרן הכל
 button on `/GoogleCalendarSync`, which calls the same function authenticated, or
 `supabase functions invoke reconcile-calendar-sync`).
 
-### 4.5 Optional cleanup — old static-token settings
+### 4.5 Enable automatic sync on every event change (crew-complete color flip, lead auto-sync, etc.)
+
+Migration `0017_calendar_sync_trigger.sql` (run as part of section 1) adds a
+Postgres trigger on `events` that fires on every insert/update of
+`couple_names`, `date`, `venue`, `phone_number`, `team`, `required_crew`, or
+`notes`, and calls the new `calendar-sync-webhook` function via `pg_net`. This
+is what makes the following fully automatic, with no button click needed:
+- A lead reaching status "נסגר/חתימה" creates its event → calendar entry
+  appears on both accounts within seconds.
+- Assigning/removing crew from **any** screen (Staff Scheduling, the events
+  table, Payments, etc.) → the calendar entry's color flips banana ⇄ basil the
+  moment the crew becomes complete or incomplete again.
+- Editing the couple's name, date, venue, phone, or notes anywhere → the
+  calendar entry updates to match.
+
+The trigger function itself needs the same `CALENDAR_RECONCILE_CRON_SECRET`
+value used in step 4.4, but — like the two `cron.schedule` snippets above — the
+migration file ships with a placeholder rather than a committed real secret.
+**One-time step after running migration `0017`:** in the SQL Editor, run:
+
+```sql
+create or replace function public.trigger_calendar_sync_webhook()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if tg_op = 'UPDATE' then
+    if  new.couple_names   is not distinct from old.couple_names
+    and new.date           is not distinct from old.date
+    and new.venue          is not distinct from old.venue
+    and new.phone_number   is not distinct from old.phone_number
+    and new.team           is not distinct from old.team
+    and new.required_crew  is not distinct from old.required_crew
+    and new.notes          is not distinct from old.notes
+    then
+      return new;
+    end if;
+  end if;
+
+  perform net.http_post(
+    url := 'https://yzurelfhjkgqrluifszz.supabase.co/functions/v1/calendar-sync-webhook',
+    headers := jsonb_build_object('x-cron-secret', '<CALENDAR_RECONCILE_CRON_SECRET value from step 4.2>', 'Content-Type', 'application/json'),
+    body := jsonb_build_object('tenantId', new.tenant_id, 'eventId', new.id)
+  );
+
+  return new;
+end;
+$$;
+```
+
+This replaces only the function body (the `create trigger` itself, from the
+migration, is left untouched and doesn't need re-running). Test it by
+assigning staff to an event until the crew is full and confirming the Google
+Calendar entry turns basil within a few seconds, with no manual sync click.
+
+### 4.6 Optional cleanup — old static-token settings
 
 The previous, non-functional static-token flow stored a couple of now-unused rows
 in the generic `app_settings` table (`google_calendar_access_token`,
@@ -253,7 +318,7 @@ delete from app_settings
 where key in ('google_calendar_access_token', 'google_calendar_id');
 ```
 
-### 4.6 Known limitation — unverified app warning
+### 4.7 Known limitation — unverified app warning
 
 Until you submit the OAuth consent screen for Google's formal verification (a
 review process, optional and only needed if you want to remove the warning

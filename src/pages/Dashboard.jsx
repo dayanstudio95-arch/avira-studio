@@ -183,6 +183,78 @@ export default function Dashboard() {
     };
   }, [events, selectedYear]);
 
+  // Search bar + time filters — rendered twice: once right below the page
+  // header on mobile (md:hidden), once in its original spot on desktop
+  // (hidden md:block). Same searchTerm/timeFilter state either way, just
+  // moved higher up on mobile so it's reachable without scrolling past the
+  // ~8 stacked KPI/summary cards above it.
+  const searchAndFilterBar = (
+    <div className="mb-4">
+      <div className="flex flex-col gap-3">
+        <div className="relative w-full md:max-w-md">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <Input
+            type="text"
+            placeholder="חפש לפי שם הזוג או תאריך..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10 bg-gray-900/50 border-gray-700 text-white placeholder-gray-400 focus:border-yellow-400 focus:ring-yellow-400/20"
+          />
+          {searchTerm && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSearchTerm("")}
+              className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white p-1"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant={timeFilter === "all" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setTimeFilter("all")}
+            className={timeFilter === "all" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500 text-xs" : "border-gray-700 text-gray-300 hover:bg-gray-800 text-xs"}
+          >
+            הכל ({filterCounts.all})
+          </Button>
+          <Button
+            variant={timeFilter === "thisWeek" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setTimeFilter("thisWeek")}
+            className={timeFilter === "thisWeek" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500 text-xs" : "border-gray-700 text-gray-300 hover:bg-gray-800 text-xs"}
+          >
+            השבוע ({filterCounts.thisWeek})
+          </Button>
+          <Button
+            variant={timeFilter === "thisMonth" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setTimeFilter("thisMonth")}
+            className={timeFilter === "thisMonth" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500 text-xs" : "border-gray-700 text-gray-300 hover:bg-gray-800 text-xs"}
+          >
+            החודש ({filterCounts.thisMonth})
+          </Button>
+          <Button
+            variant={timeFilter === "nextMonth" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setTimeFilter("nextMonth")}
+            className={timeFilter === "nextMonth" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500 text-xs" : "border-gray-700 text-gray-300 hover:bg-gray-800 text-xs"}
+          >
+            החודש הבא ({filterCounts.nextMonth})
+          </Button>
+        </div>
+      </div>
+      {searchTerm && (
+        <p className="text-sm text-gray-400 mt-2">
+          נמצאו {filteredEvents.length} תוצאות עבור "{searchTerm}"
+        </p>
+      )}
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-gray-950 p-2 sm:p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
@@ -214,6 +286,10 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+
+        {/* Search bar, mobile-only, moved above the KPI cards so it's reachable
+            without scrolling — see searchAndFilterBar above. */}
+        <div className="md:hidden">{searchAndFilterBar}</div>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-6">
@@ -260,71 +336,9 @@ export default function Dashboard() {
           <DashboardMissingTeamCard events={events} />
         </div>
 
-        {/* Search Bar and Filters */}
-        <div className="mb-4">
-          <div className="flex flex-col gap-3">
-            <div className="relative w-full md:max-w-md">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <Input
-                type="text"
-                placeholder="חפש לפי שם הזוג או תאריך..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 bg-gray-900/50 border-gray-700 text-white placeholder-gray-400 focus:border-yellow-400 focus:ring-yellow-400/20"
-              />
-              {searchTerm && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSearchTerm("")}
-                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white p-1"
-                >
-                  <X className="w-4 h-4" />
-                </Button>
-              )}
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant={timeFilter === "all" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setTimeFilter("all")}
-                className={timeFilter === "all" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500 text-xs" : "border-gray-700 text-gray-300 hover:bg-gray-800 text-xs"}
-              >
-                הכל ({filterCounts.all})
-              </Button>
-              <Button
-                variant={timeFilter === "thisWeek" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setTimeFilter("thisWeek")}
-                className={timeFilter === "thisWeek" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500 text-xs" : "border-gray-700 text-gray-300 hover:bg-gray-800 text-xs"}
-              >
-                השבוע ({filterCounts.thisWeek})
-              </Button>
-              <Button
-                variant={timeFilter === "thisMonth" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setTimeFilter("thisMonth")}
-                className={timeFilter === "thisMonth" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500 text-xs" : "border-gray-700 text-gray-300 hover:bg-gray-800 text-xs"}
-              >
-                החודש ({filterCounts.thisMonth})
-              </Button>
-              <Button
-                variant={timeFilter === "nextMonth" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setTimeFilter("nextMonth")}
-                className={timeFilter === "nextMonth" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500 text-xs" : "border-gray-700 text-gray-300 hover:bg-gray-800 text-xs"}
-              >
-                החודש הבא ({filterCounts.nextMonth})
-              </Button>
-            </div>
-          </div>
-          {searchTerm && (
-            <p className="text-sm text-gray-400 mt-2">
-              נמצאו {filteredEvents.length} תוצאות עבור "{searchTerm}"
-            </p>
-          )}
-        </div>
+        {/* Search Bar and Filters — desktop position (mobile renders this above
+            the KPI cards instead, see searchAndFilterBar above). */}
+        <div className="hidden md:block">{searchAndFilterBar}</div>
 
         {/* Events Table */}
         <EventsTable events={filteredEvents} isLoading={isLoading} onRefresh={loadEvents} />

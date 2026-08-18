@@ -1,10 +1,10 @@
 // Ports base44/functions/whatsappManager/entry.ts.
 // Backs the WhatsApp connection UI (Settings -> Integrations -> WhatsAppPanel.jsx): QR
-// code, connection status check, and a manual test-send -- all against the same Green
-// API gateway_url/instance_id/api_key stored in app_settings that sendWhatsApp() (in
-// _shared/whatsapp.ts) reads for every other function. Kept as its own function (rather
-// than folded into send-whatsapp-message) because get_qr/check_status aren't "sends" at
-// all.
+// code, connection status check, and a manual test-send -- against the same Green API
+// gateway_url/instance_id (app_settings) + api_key (tenant_secrets, admin-only RLS --
+// see migration 0019_tenant_secrets.sql) that sendWhatsApp() (in _shared/whatsapp.ts)
+// reads for every other function. Kept as its own function (rather than folded into
+// send-whatsapp-message) because get_qr/check_status aren't "sends" at all.
 //
 // FIXED (2026-08-13): every endpoint here used to be invented (`/qr?apiKey=`,
 // `/getAccountInfo?apiKey=`, `/sendMessage?apiKey=` with a `{phone,message}` body) and
@@ -33,17 +33,20 @@ Deno.serve(async (req) => {
     const supabase = createUserClient(req);
     const { action, testPhone, testMessage } = await req.json();
 
-    const { data: settingsRows, error: settingsErr } = await supabase
-      .from('app_settings')
-      .select('key, value')
-      .in('key', ['whatsapp_gateway_url', 'whatsapp_instance_id', 'whatsapp_api_key']);
+    // whatsapp_api_key moved out of app_settings into the admin-only tenant_secrets
+    // table (2026-08-17 security audit, Step 4 -- migration 0019_tenant_secrets.sql).
+    const [{ data: settingsRows, error: settingsErr }, { data: secretRows, error: secretErr }] = await Promise.all([
+      supabase.from('app_settings').select('key, value').in('key', ['whatsapp_gateway_url', 'whatsapp_instance_id']),
+      supabase.from('tenant_secrets').select('key, value').eq('key', 'whatsapp_api_key'),
+    ]);
     if (settingsErr) return jsonResponse({ error: settingsErr.message }, { status: 500 });
+    if (secretErr) return jsonResponse({ error: secretErr.message }, { status: 500 });
 
     const getSetting = (key: string) => settingsRows?.find((s) => s.key === key)?.value || '';
 
     let apiUrl = getSetting('whatsapp_gateway_url');
     const instanceId = getSetting('whatsapp_instance_id');
-    const apiToken = getSetting('whatsapp_api_key');
+    const apiToken = secretRows?.find((s) => s.key === 'whatsapp_api_key')?.value || '';
 
     if (!apiUrl || !instanceId || !apiToken) {
       return jsonResponse({ error: 'WhatsApp API URL, Instance ID and API Token are required' }, { status: 400 });

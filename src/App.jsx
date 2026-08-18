@@ -3,6 +3,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/sonner';
 import { queryClientInstance } from '@/lib/query-client';
 import { AuthProvider, useAuth } from '@/lib/SupabaseAuthContext';
+import { isAdmin } from '@/lib/permissions';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import PageNotFound from '@/lib/PageNotFound';
 import Layout from './pages/Layout';
@@ -57,9 +58,9 @@ const AuthenticatedApp = () => {
     return null;
   }
 
-  // Hard block: only owner/admin/studio_manager get the full admin panel;
+  // Hard block: only owner/admin/studio_manager (ADMIN_ROLES) get the full admin panel;
   // other roles (photographer, editor, album_manager) will get scoped views later.
-  if (!isLoadingAuth && isAuthenticated && !['owner', 'admin', 'studio_manager'].includes(user?.role)) {
+  if (!isLoadingAuth && isAuthenticated && !isAdmin(user)) {
     return (
       <div className="fixed inset-0 flex flex-col items-center justify-center bg-gray-950 text-center p-8">
         <div className="text-5xl mb-4">🔒</div>

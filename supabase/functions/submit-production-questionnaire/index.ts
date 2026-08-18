@@ -1,18 +1,22 @@
 // Ports base44/functions/submitProductionQuestionnaire/entry.ts.
 // Public, unauthenticated — service-role client, leadId is the unguessable-UUID
 // security boundary. Saves the questionnaire answers onto the Lead, then makes a
-// best-effort (non-fatal) attempt to append a production summary block onto the
-// matching Google Calendar event's description.
+// best-effort (non-fatal) attempt to push the updated description to the
+// matching Google Calendar event(s).
 //
-// Google Calendar token now comes from the real OAuth flow (primary account,
-// looked up by lead.tenant_id since this is a public/unauthenticated endpoint
-// with no user session) via getValidAccessToken. If the tenant hasn't
-// connected a primary account, or the refresh token is dead, this just skips
-// the calendar update non-fatally — the questionnaire data itself always
-// saves regardless.
+// The calendar update reuses the shared syncEventToAllAccounts helper (same one
+// used everywhere else events get pushed to Google) instead of a bespoke PATCH:
+// this resolves the linked event via events.source_lead_id/lead_id, then lets
+// buildEventPayload build the full description (including this questionnaire's
+// answers, since it re-reads the lead row live) and push it to BOTH connected
+// accounts (primary + backup), not just primary. Previously this function did
+// its own primary-only PATCH keyed off leads.google_calendar_event_id — a
+// column that's never actually written anywhere in the codebase, so that
+// lookup always fell through to an unreliable Google full-text search by
+// couple name.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createServiceRoleClient } from '../_shared/supabaseClients.ts';
-import { getValidAccessToken } from '../_shared/googleCalendarAuth.ts';
+import { syncEventToAllAccounts } from '../_shared/googleCalendarSync.ts';
 
 Deno.serve(async (req) => {
   const preflight = handleOptions(req);
@@ -128,64 +132,23 @@ Deno.serve(async (req) => {
 
     if (updateErr) return jsonResponse({ error: updateErr.message }, { status: 500 });
 
-    // Best-effort Google Calendar description update — never fails the request.
+    // Best-effort Google Calendar sync — never fails the request.
     try {
-      const token = await getValidAccessToken(supabase, lead.tenant_id, 'primary');
-      const accessToken = token?.accessToken;
-      const calendarId = token?.calendarId || 'primary';
+      const { data: linkedEvent } = await supabase
+        .from('events')
+        .select('id')
+        .eq('source_lead_id', leadId)
+        .maybeSingle();
+      const eventId = linkedEvent?.id || (await supabase.from('events').select('id').eq('lead_id', leadId).maybeSingle()).data?.id;
 
-      if (!accessToken) {
-        console.log('Google Calendar not connected for this tenant — skipping calendar update');
+      if (!eventId) {
+        console.log('No linked event found for this lead — skipping calendar update');
       } else {
-        const productionBlock = [
-          '--- פרטי הפקה (מהשאלון) ---',
-          `📍 התארגנות כלה: ${productionBridePrepLocation || '—'}`,
-          `📱 נייד כלה: ${productionBridePhone || '—'}`,
-          `📱 נייד חתן: ${productionGroomPhone || '—'}`,
-          productionInstagram ? `📸 אינסטגרם: ${productionInstagram}` : null,
-          productionSpecialRequests ? `💬 בקשות מיוחדות: ${productionSpecialRequests}` : null,
-        ].filter(Boolean).join('\n');
-
-        let gcEventId: string | null = null;
-
-        if (lead.google_calendar_event_id) {
-          gcEventId = lead.google_calendar_event_id;
+        const { anyConnected, results } = await syncEventToAllAccounts(supabase, lead.tenant_id, eventId);
+        if (!anyConnected) {
+          console.log('Google Calendar not connected for this tenant — skipping calendar update');
         } else {
-          const searchRes = await fetch(
-            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?q=${encodeURIComponent(lead.couple_names)}&maxResults=10`,
-            { headers: { Authorization: `Bearer ${accessToken}` } }
-          );
-          const searchData = await searchRes.json();
-          const gcEvent = searchData.items?.find((e: any) => e.summary?.includes(lead.couple_names));
-          if (gcEvent) gcEventId = gcEvent.id;
-        }
-
-        if (gcEventId) {
-          const evRes = await fetch(
-            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${gcEventId}`,
-            { headers: { Authorization: `Bearer ${accessToken}` } }
-          );
-          const evData = await evRes.json();
-
-          const baseDescription = (evData.description || '')
-            .replace(/\n*--- פרטי הפקה \(מהשאלון\) ---[\s\S]*/g, '')
-            .trimEnd();
-          const newDescription = baseDescription ? `${baseDescription}\n\n${productionBlock}` : productionBlock;
-
-          await fetch(
-            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${gcEventId}`,
-            {
-              method: 'PATCH',
-              headers: {
-                Authorization: `Bearer ${accessToken}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ description: newDescription }),
-            }
-          );
-          console.log('Google Calendar event description updated successfully');
-        } else {
-          console.log('No matching Google Calendar event found');
+          console.log('Google Calendar sync after questionnaire submission:', JSON.stringify(results));
         }
       }
     } catch (gcErr) {

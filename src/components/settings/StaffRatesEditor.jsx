@@ -3,14 +3,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Trash2, Plus } from 'lucide-react';
+import { EVENT_TEAM_ROLES } from '@/lib/staffRoles';
 
-const AVAILABLE_ROLES = [
-  { value: 'photographer1', label: 'צלם 1' },
-  { value: 'photographer2', label: 'צלם 2' },
-  { value: 'videographer', label: 'וידאוגרף' },
-  { value: 'videographer2', label: 'וידאוגרף 2' },
-  { value: 'editor', label: 'עורך' }
-];
+const AVAILABLE_ROLES = EVENT_TEAM_ROLES;
 
 export default function StaffRatesEditor({ staff, onChange }) {
   const [ratesByRole, setRatesByRole] = useState(staff?.ratesByRole || []);

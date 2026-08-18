@@ -1,10 +1,9 @@
 // Shared Google Calendar push/delete logic, used by both connected accounts
 // (primary + backup) for a tenant. Extracted from the old single-account
-// sync-event-to-calendar/index.ts — the description/color/attendee-building
-// logic below is preserved VERBATIM from that original (including the
-// pre-existing "empty=7/complete=10/partial=5" color-id quirk, which doesn't
-// match that file's own header comment but IS what the code actually does —
-// not something introduced here).
+// sync-event-to-calendar/index.ts — the description/attendee-building logic
+// below is preserved from that original. Color is a deliberate 2-state
+// palette: banana (5) by default/partial crew, basil (10) once the crew is
+// fully staffed — see buildEventPayload below.
 //
 // sync-event-to-calendar/index.ts is now a thin wrapper calling
 // syncEventToAllAccounts(..., 'upsert'). delete-event-from-calendar/index.ts
@@ -28,7 +27,12 @@ export async function buildEventPayload(supabase: any, event: any): Promise<Cale
   const nonEditorTeam = team.filter((m) => m.role !== 'editor' && m.staffMemberName);
   const requiredCrew = event.required_crew || 3;
   const teamComplete = nonEditorTeam.length >= requiredCrew;
-  const colorId = nonEditorTeam.length === 0 ? '7' : teamComplete ? '10' : '5';
+  // 2-state palette: banana (5) is the default/normal state — used both when no
+  // crew is assigned yet and when the crew is partial — basil (10) only once the
+  // crew is fully staffed. (Previously had a 3rd "peacock" state for zero-team;
+  // removed per product decision — zero and partial should look identical so the
+  // color only communicates "is the crew complete or not".)
+  const colorId = teamComplete ? '10' : '5';
 
   const teamDetails = nonEditorTeam.map((m) => `• ${m.staffMemberName || '—'} (${m.role})`).join('\n');
 
@@ -38,13 +42,35 @@ export async function buildEventPayload(supabase: any, event: any): Promise<Cale
     if (leadId) {
       const { data: lead } = await supabase.from('leads').select('*').eq('id', leadId).maybeSingle();
       if (lead && lead.production_form_filled_at) {
-        leadDetails =
-          '\n\n--- 📋 פרטי הפקה ---\n' +
-          `📱 נייד כלה: ${lead.production_bride_phone || '—'}\n` +
-          `📱 נייד חתן: ${lead.production_groom_phone || '—'}\n` +
-          `📍 התארגנות כלה: ${lead.production_bride_prep_location || '—'}\n` +
-          `📸 אינסטגרם: ${lead.production_instagram || '—'}\n` +
-          `💬 בקשות מיוחדות: ${lead.production_special_requests || '—'}`;
+        // Every questionnaire field the couple can fill in (see
+        // EventQuestionnaire.jsx / migration 0009_questionnaire_fields.sql),
+        // each included only when actually filled in — no "—" placeholders,
+        // so the description only ever shows real answers.
+        const lines: Array<string | false | null | undefined> = [
+          lead.production_bride_phone && `📱 נייד כלה: ${lead.production_bride_phone}`,
+          lead.production_groom_phone && `📱 נייד חתן: ${lead.production_groom_phone}`,
+          lead.production_companion_name && `🧑‍🤝‍🧑 שם מלווה: ${lead.production_companion_name}`,
+          lead.production_companion_phone && `📱 נייד מלווה: ${lead.production_companion_phone}`,
+          lead.production_bride_prep_location && `📍 מקום התארגנות הכלה: ${lead.production_bride_prep_location}`,
+          lead.production_checkin_time && `🕐 שעת הגעה / קבלת פנים: ${lead.production_checkin_time}`,
+          lead.production_chuppah_time && `💍 שעת חופה משוערת: ${lead.production_chuppah_time}`,
+          lead.production_bride_instagram && `📸 אינסטגרם כלה: ${lead.production_bride_instagram}`,
+          lead.production_groom_instagram && `📸 אינסטגרם חתן: ${lead.production_groom_instagram}`,
+          lead.production_has_social_creator &&
+            `📷 סושיאל קריאייטור באירוע: ${[lead.production_social_creator_name, lead.production_social_creator_phone].filter(Boolean).join(' — ') || '—'}`,
+          lead.production_has_external_planner &&
+            `🗂️ יש מנהל/ת אירוע חיצוני/ת: ${[lead.production_external_planner_name, lead.production_external_planner_phone].filter(Boolean).join(' — ') || '—'}`,
+          lead.production_family_bride && `👪 משפחת הכלה: ${lead.production_family_bride}`,
+          lead.production_family_groom && `👪 משפחת החתן: ${lead.production_family_groom}`,
+          lead.production_important_people && `⭐ אנשים חשובים במיוחד לצלם: ${lead.production_important_people}`,
+          lead.production_family_sensitivities && `⚠️ רגישויות משפחתיות: ${lead.production_family_sensitivities}`,
+          lead.production_planned_surprises && `🎁 הפתעות מתוכננות באירוע: ${lead.production_planned_surprises}`,
+          lead.production_special_requests && `💬 בקשות מיוחדות: ${lead.production_special_requests}`,
+        ];
+        const filled = lines.filter(Boolean) as string[];
+        if (filled.length > 0) {
+          leadDetails = '\n\n--- 📋 פרטי הפקה ---\n' + filled.join('\n');
+        }
       }
     }
   } catch (e) {
