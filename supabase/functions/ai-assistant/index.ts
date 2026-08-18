@@ -337,6 +337,18 @@ Deno.serve(async (req) => {
     const readOnly = body?.readOnly === true;
     if (!message) return jsonResponse({ error: 'message is required' }, { status: 400 });
 
+    // Per-tenant Anthropic key override (Settings -> אינטגרציות), same tenant_secrets
+    // table/pattern as WhatsApp/Morning credentials — see IntegrationsTab.jsx. Falls
+    // back to the platform-wide ANTHROPIC_API_KEY secret inside callClaude() when a
+    // tenant hasn't set their own (undefined here, not queried per-row by tenant_id
+    // since the user-scoped client is already RLS-limited to this tenant).
+    const { data: tenantKeyRow } = await supabase
+      .from('tenant_secrets')
+      .select('value')
+      .eq('key', 'anthropic_api_key')
+      .maybeSingle();
+    const tenantApiKey = tenantKeyRow?.value || undefined;
+
     await supabase.from('ai_assistant_messages').insert({
       tenant_id: profile.tenant_id, user_id: user.id, role: 'user', content: message,
     });
@@ -359,7 +371,7 @@ Deno.serve(async (req) => {
     let result: any = null;
 
     for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
-      const resp = await callClaude({ system, messages: claudeMessages, tools });
+      const resp = await callClaude({ system, messages: claudeMessages, tools, apiKey: tenantApiKey });
       const toolUseBlocks = (resp.content || []).filter((b) => b.type === 'tool_use') as (ClaudeContentBlock & { type: 'tool_use' })[];
       const textBlock = (resp.content || []).find((b) => b.type === 'text') as (ClaudeContentBlock & { type: 'text' }) | undefined;
 

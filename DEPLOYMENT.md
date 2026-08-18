@@ -408,7 +408,24 @@ No `config.toml` entry is needed for this function — it's authenticated
 (`verify_jwt` stays at its default `true`), same as every other non-public Edge
 Function in this project.
 
-**7.3 Verify**
+**7.3 Optional — let individual studios (tenants) use their own Anthropic key**
+
+The `ANTHROPIC_API_KEY` secret above is a single platform-wide fallback shared
+by every tenant. Any tenant can optionally override it with their own key —
+same pattern as the Green API / Morning credentials in Settings → אינטגרציות
+(`tenant_secrets` table, admin-only RLS): a studio owner/admin opens Settings →
+אינטגרציות → "עוזר AI — מפתח Anthropic אישי", pastes their own key from
+console.anthropic.com, and saves. `supabase/functions/ai-assistant/index.ts`
+looks up `tenant_secrets` for `key='anthropic_api_key'` on every request and
+uses it instead of the platform key when present; if the field is left blank
+(the default for every tenant, including ones created before this feature
+existed), the platform-wide `ANTHROPIC_API_KEY` above keeps being used
+automatically — no action required for tenants who don't care about separate
+billing. No extra deploy step is needed for this — it's already live once
+section 7.2 above is done, since `_shared/anthropic.ts`'s `callClaude()` reads
+whichever key `ai-assistant/index.ts` resolved per-request, not a fixed value.
+
+**7.4 Verify**
 
 - Open the floating widget and ask something read-only, e.g. "כמה אירועים לא
   שולמו החודש?" — confirm you get a real, grounded Hebrew answer (not an error).
@@ -425,3 +442,9 @@ Function in this project.
 - Fire off >20 messages in under a minute from one user — confirm the 21st is
   rejected with a Hebrew rate-limit message instead of hitting the Anthropic API
   (per-user limit, `_shared/rateLimit.ts`'s `checkRateLimitForKey`).
+- Per-tenant override (7.3): as owner/admin, paste a *different* valid Anthropic
+  key into Settings → אינטגרציות → "עוזר AI", save, and ask the widget a
+  question — confirm it still answers correctly (now billed to that tenant's
+  own Anthropic account instead of the platform one). Clear the field and save
+  again — confirm it falls back to working via the platform-wide key with no
+  error.

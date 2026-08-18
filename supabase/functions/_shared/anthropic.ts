@@ -5,10 +5,14 @@
 // also raw fetch), and Anthropic's Node SDK isn't a proven-clean fit for the Deno
 // edge runtime -- a REST call is simpler and matches the project's existing style.
 //
-// ANTHROPIC_API_KEY is a platform-wide Edge Function secret (one Anthropic account
-// for the whole system, not per-tenant like WhatsApp/Morning credentials in
-// tenant_secrets) -- see DEPLOYMENT.md's "AI Assistant" setup section.
-const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
+// ANTHROPIC_API_KEY is the platform-wide fallback Edge Function secret, used when a
+// tenant hasn't configured their own key. Tenants can optionally set their own key via
+// Settings -> אינטגרציות (stored in tenant_secrets, key='anthropic_api_key', same pattern
+// as WhatsApp/Morning credentials) -- see ai-assistant/index.ts, which resolves the
+// per-tenant key first and passes it into callClaude()'s `apiKey` param below, falling
+// back to this platform-wide default when the tenant has none. See DEPLOYMENT.md's
+// "AI Assistant" setup section.
+const PLATFORM_ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY');
 const ANTHROPIC_VERSION = '2023-06-01';
 // Verify the current model id at https://docs.anthropic.com/en/docs/about-claude/models
 // before relying on this default long-term -- override anytime via
@@ -26,20 +30,25 @@ export async function callClaude({
   system,
   messages,
   tools,
+  apiKey,
 }: {
   system: string;
   messages: ClaudeMessage[];
   tools?: unknown[];
+  // Optional per-tenant override, resolved by the caller from tenant_secrets. When
+  // omitted (or blank), falls back to the platform-wide PLATFORM_ANTHROPIC_API_KEY.
+  apiKey?: string | null;
 }): Promise<{ content: ClaudeContentBlock[]; stop_reason: string }> {
-  if (!ANTHROPIC_API_KEY) {
-    throw new Error('ANTHROPIC_API_KEY is not configured — run: supabase secrets set ANTHROPIC_API_KEY=...');
+  const resolvedKey = apiKey || PLATFORM_ANTHROPIC_API_KEY;
+  if (!resolvedKey) {
+    throw new Error('לא הוגדר מפתח Anthropic API — ניתן להזין מפתח אישי בהגדרות > אינטגרציות, או להריץ: supabase secrets set ANTHROPIC_API_KEY=...');
   }
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-api-key': ANTHROPIC_API_KEY,
+      'x-api-key': resolvedKey,
       'anthropic-version': ANTHROPIC_VERSION,
     },
     body: JSON.stringify({

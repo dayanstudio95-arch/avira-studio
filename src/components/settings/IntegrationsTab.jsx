@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Save, CheckCircle, MessageCircle, Calendar, FileText, Eye, EyeOff, ArrowLeft } from "lucide-react";
+import { Save, CheckCircle, MessageCircle, Calendar, FileText, Eye, EyeOff, ArrowLeft, Bot } from "lucide-react";
 import WhatsAppPanel from "./WhatsAppPanel";
 import { toast } from "sonner";
 
@@ -30,6 +30,12 @@ import { toast } from "sonner";
 // check, so any tenant member could previously read these raw credentials directly. Only
 // whatsapp_gateway_url/whatsapp_instance_id (a URL and an identifier, not credentials)
 // stay in app_settings.
+// CHANGED: added anthropic_api_key — lets each studio optionally use their own Anthropic
+// account/billing for the AI Assistant (src/components/AIAssistant.jsx), instead of only
+// the platform-wide ANTHROPIC_API_KEY secret. Same tenant_secrets table/admin-only RLS as
+// every other credential here. Read server-side in supabase/functions/ai-assistant/index.ts,
+// which falls back to the platform-wide key automatically when a tenant leaves this blank —
+// so filling this in is entirely optional, not required to use the assistant.
 const NON_SECRET_KEYS = ["whatsapp_gateway_url", "whatsapp_instance_id"];
 const SECRET_KEYS = [
   "whatsapp_api_key",
@@ -37,6 +43,7 @@ const SECRET_KEYS = [
   "morning_api_secret_sole_prop",
   "morning_api_key_company",
   "morning_api_secret_company",
+  "anthropic_api_key",
 ];
 const INTEGRATION_KEYS = [...NON_SECRET_KEYS, ...SECRET_KEYS];
 
@@ -49,6 +56,7 @@ export default function IntegrationsTab() {
     morning_api_secret_sole_prop: "",
     morning_api_key_company: "",
     morning_api_secret_company: "",
+    anthropic_api_key: "",
   });
   const [settingIds, setSettingIds] = useState({});
   const [isSaving, setIsSaving] = useState(false);
@@ -245,6 +253,33 @@ export default function IntegrationsTab() {
         </CardContent>
       </Card>
 
+      {/* Anthropic — עוזר AI (אופציונלי, ברירת מחדל: מפתח כלל-מערכתי משותף) */}
+      <Card className="bg-gray-900/50 border-gray-800">
+        <CardHeader className="border-b border-gray-800 pb-4">
+          <CardTitle className="text-white flex items-center gap-2">
+            <div className="w-8 h-8 bg-indigo-500/20 rounded-lg flex items-center justify-center">
+              <Bot className="w-4 h-4 text-indigo-400" />
+            </div>
+            עוזר AI — מפתח Anthropic אישי
+          </CardTitle>
+          <p className="text-gray-400 text-sm">
+            עוזר ה-AI במערכת עובד כברירת מחדל עם חשבון Anthropic משותף למערכת. אם תרצו
+            שהחיוב על השימוש שלכם ייגבה מחשבון Anthropic משלכם (כמו שעושים ב-Green API),
+            אפשר להזין כאן מפתח API אישי — השדה הזה אופציונלי לגמרי.
+          </p>
+        </CardHeader>
+        <CardContent className="p-6 space-y-4">
+          <div>
+            <Label className="text-gray-300">Anthropic API Key</Label>
+            <SecretInput fieldKey="anthropic_api_key" placeholder="sk-ant-api03-..." />
+          </div>
+          <div className="bg-indigo-900/20 border border-indigo-700/40 rounded-lg p-3 text-xs text-indigo-300">
+            ניתן ליצור מפתח בכתובת console.anthropic.com (Settings → API Keys). אם השדה
+            נשאר ריק, המערכת תמשיך להשתמש במפתח המשותף כרגיל — לא חייבים למלא את זה.
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Status Indicators */}
       <Card className="bg-gray-900/50 border-gray-800">
         <CardHeader className="border-b border-gray-800 pb-3">
@@ -266,6 +301,11 @@ export default function IntegrationsTab() {
               label="Morning — חברה בע״מ"
               active={!!(values.morning_api_key_company && values.morning_api_secret_company)}
               icon={<FileText className="w-3.5 h-3.5" />}
+            />
+            <StatusBadge
+              label="עוזר AI — מפתח אישי"
+              active={!!values.anthropic_api_key}
+              icon={<Bot className="w-3.5 h-3.5" />}
             />
           </div>
         </CardContent>
