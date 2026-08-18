@@ -140,6 +140,7 @@ export default function ContractPage() {
 
     container.innerHTML = `
       <div style="background:#1e1e1e; padding:24px; text-align:center;">
+        ${leadData.studioLogoUrl ? `<img src="${leadData.studioLogoUrl}" style="max-height:60px; max-width:200px; margin-bottom:8px;" />` : ''}
         <div style="color:#ffd700; font-size:26px; font-weight:bold; letter-spacing:2px;">${escapeHtml((leadData.studioDisplayName || 'Avira Studio').toUpperCase())}</div>
         <div style="color:#c8c8c8; font-size:12px; margin-top:4px;">Wedding Photography &amp; Videography Studio</div>
       </div>
@@ -378,11 +379,19 @@ export default function ContractPage() {
             style={{ backgroundImage: "url('https://images.unsplash.com/photo-1519741497674-611481863552?w=900&q=80')", backgroundSize: "cover", backgroundPosition: "center" }}
           />
           <div className="relative z-10 text-center">
-            <div className="flex items-center justify-center gap-2 mb-1">
-              <Heart className="w-5 h-5 text-yellow-400" />
-              <span className="text-yellow-400 text-3xl font-bold tracking-widest">AVIRA</span>
-              <Camera className="w-5 h-5 text-yellow-400" />
-            </div>
+            {lead.studioLogoUrl ? (
+              <img
+                src={lead.studioLogoUrl}
+                alt={lead.studioDisplayName || 'Studio logo'}
+                className="h-16 mx-auto mb-2 object-contain"
+              />
+            ) : (
+              <div className="flex items-center justify-center gap-2 mb-1">
+                <Heart className="w-5 h-5 text-yellow-400" />
+                <span className="text-yellow-400 text-3xl font-bold tracking-widest">{(lead.studioDisplayName || 'AVIRA').toUpperCase()}</span>
+                <Camera className="w-5 h-5 text-yellow-400" />
+              </div>
+            )}
             <p className="text-gray-300 text-sm tracking-wide">Wedding Photography &amp; Videography Studio</p>
           </div>
           <Button

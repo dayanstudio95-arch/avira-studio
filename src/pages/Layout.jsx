@@ -15,9 +15,6 @@ import {
   Users,
   Zap,
   FileText,
-  GripVertical,
-  Eye,
-  EyeOff,
   Edit2,
   X,
   Shield,
@@ -93,6 +90,20 @@ export default function Layout({ children }) {
   useEffect(() => {
     if (isInSecondaryNav) setSecondaryOpen(true);
   }, [location.pathname]);
+
+  // Studio Details settings (logo_url / name) -- previously left unwired on purpose
+  // ("v1/settings-only" pass), now surfaced in the sidebar/mobile header. Best-effort:
+  // a failed or slow branding fetch must never block the app shell from rendering, so
+  // this starts null and the existing hardcoded "Avira" + gradient-icon fallback below
+  // covers both the loading state and any tenant that hasn't uploaded a logo yet.
+  const [tenantBranding, setTenantBranding] = useState(null);
+  useEffect(() => {
+    if (!user?.tenant_id) return;
+    base44.entities.Tenant.get(user.tenant_id)
+      .then((data) => setTenantBranding(data))
+      .catch(() => { /* keep the fallback branding */ });
+  }, [user?.tenant_id]);
+
   const [isEditingMenu, setIsEditingMenu] = useState(false);
   const [menuItems, setMenuItems] = useState(() => {
     try {
@@ -267,13 +278,21 @@ export default function Layout({ children }) {
             <div className="flex items-center justify-between gap-3 w-full">
               <div className="flex items-center gap-3">
               <div className="relative">
-                <div className="w-10 h-10 avira-gradient rounded-xl flex items-center justify-center shadow-lg">
-                  <Heart className="w-5 h-5 text-gray-900" />
-                </div>
+                {tenantBranding?.logo_url ? (
+                  <img
+                    src={tenantBranding.logo_url}
+                    alt={tenantBranding?.name || 'Studio logo'}
+                    className="w-10 h-10 rounded-xl object-cover shadow-lg"
+                  />
+                ) : (
+                  <div className="w-10 h-10 avira-gradient rounded-xl flex items-center justify-center shadow-lg">
+                    <Heart className="w-5 h-5 text-gray-900" />
+                  </div>
+                )}
                 <Camera className="w-4 h-4 text-yellow-400 absolute -top-1 -right-1" />
               </div>
               <div>
-                  <h2 className="font-bold text-xl text-white avira-text-gradient">Avira</h2>
+                  <h2 className="font-bold text-xl text-white avira-text-gradient">{tenantBranding?.name || 'Avira'}</h2>
                   <p className="text-xs text-gray-400">Wedding Finance Studio</p>
                 </div>
               </div>
@@ -460,7 +479,14 @@ export default function Layout({ children }) {
           <header className="bg-gray-900/50 backdrop-blur-sm border-b border-gray-800 px-6 py-4 md:hidden">
             <div className="flex items-center gap-4">
               <SidebarTrigger className="hover:bg-gray-800 p-2 rounded-lg transition-colors duration-200 text-gray-300" />
-              <h1 className="text-xl font-semibold text-white">Avira</h1>
+              {tenantBranding?.logo_url && (
+                <img
+                  src={tenantBranding.logo_url}
+                  alt={tenantBranding?.name || 'Studio logo'}
+                  className="w-8 h-8 rounded-lg object-cover"
+                />
+              )}
+              <h1 className="text-xl font-semibold text-white">{tenantBranding?.name || 'Avira'}</h1>
             </div>
           </header>
 
