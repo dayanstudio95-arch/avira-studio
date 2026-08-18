@@ -7,10 +7,19 @@
 // never overwriting the studio's own working fields.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createServiceRoleClient } from '../_shared/supabaseClients.ts';
+import { checkRateLimit } from '../_shared/rateLimit.ts';
 
 Deno.serve(async (req) => {
   const preflight = handleOptions(req);
   if (preflight) return preflight;
+
+  // Fully public/unauthenticated endpoint -- rate-limited per caller IP since leadId
+  // (an unguessable UUID) is the only real security boundary here. See
+  // _shared/rateLimit.ts / migration 0023 for why this exists.
+  const rateLimit = await checkRateLimit(req, 'sign-lead-public');
+  if (!rateLimit.allowed) {
+    return jsonResponse({ error: 'יותר מדי בקשות, נסה שוב בעוד כמה דקות' }, { status: 429 });
+  }
 
   try {
     const body = await req.json();
