@@ -42,6 +42,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import AIAssistant from "@/components/AIAssistant";
+import NotificationBell from "@/components/notifications/NotificationBell";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/SupabaseAuthContext";
 
@@ -325,15 +326,18 @@ export default function Layout({ children }) {
                   </Button>
                 </div>
               ) : (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setIsEditingMenu(true)}
-                  className="text-gray-400 hover:text-yellow-400 hover:bg-gray-800"
-                  title="עריכת תפריט"
-                >
-                  <Edit2 className="w-5 h-5" />
-                </Button>
+                <div className="flex items-center gap-1">
+                  <NotificationBell />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setIsEditingMenu(true)}
+                    className="text-gray-400 hover:text-yellow-400 hover:bg-gray-800"
+                    title="עריכת תפריט"
+                  >
+                    <Edit2 className="w-5 h-5" />
+                  </Button>
+                </div>
               )}
             </div>
           </SidebarHeader>
@@ -486,7 +490,8 @@ export default function Layout({ children }) {
                   className="w-8 h-8 rounded-lg object-cover"
                 />
               )}
-              <h1 className="text-xl font-semibold text-white">{tenantBranding?.name || 'Avira'}</h1>
+              <h1 className="text-xl font-semibold text-white flex-1">{tenantBranding?.name || 'Avira'}</h1>
+              <NotificationBell />
             </div>
           </header>
 

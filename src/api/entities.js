@@ -133,4 +133,9 @@ export const entities = {
   // (migration 0025_ai_assistant_chat.sql). RLS scoped to tenant_id AND
   // user_id = auth.uid() — each user only ever sees their own conversation.
   AiAssistantMessage: createEntity('ai_assistant_messages'),
+  // In-app + WhatsApp notifications (migration 0026_notifications_trigger.sql), v1
+  // scope: contract-signed only. RLS is admin-only (owner/admin/studio_manager),
+  // same pattern as tenant_secrets — rows are inserted by the DB trigger, never by
+  // frontend code; the frontend only reads/marks-as-read via NotificationBell.jsx.
+  Notification: createEntity('notifications'),
 };

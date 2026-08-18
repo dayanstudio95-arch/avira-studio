@@ -19,3 +19,11 @@ verify_jwt = false
 # reconcile-calendar-sync's cron path).
 [functions.calendar-sync-webhook]
 verify_jwt = false
+
+# contract-signed-webhook is called by a Postgres trigger (via pg_net, see
+# supabase/migrations/0026_notifications_trigger.sql) on leads.signed_at,
+# which cannot supply a Supabase user JWT. Authenticates itself via the
+# x-cron-secret header (own dedicated CONTRACT_NOTIFICATION_CRON_SECRET),
+# same convention as calendar-sync-webhook.
+[functions.contract-signed-webhook]
+verify_jwt = false

@@ -448,3 +448,107 @@ whichever key `ai-assistant/index.ts` resolved per-request, not a fixed value.
   own Anthropic account instead of the platform one). Clear the field and save
   again — confirm it falls back to working via the platform-wide key with no
   error.
+
+## 8. Notifications — contract-signed WhatsApp + in-app alert
+
+New: whenever a lead's contract gets signed (either via the public couple-facing
+link, or the internal manual-sign dialog in the Leads page), the system now
+automatically (a) sends a WhatsApp message to one fixed number you configure, and
+(b) shows an in-app notification (bell icon, top of the sidebar/header) to every
+owner/admin/studio_manager user. v1 scope is contract-signed only — no other
+trigger events yet.
+
+Same trigger architecture as the Google Calendar auto-sync in section 4.5: a
+Postgres trigger on `leads.signed_at` (migration
+`0026_notifications_trigger.sql`) fires a `pg_net` webhook to a new
+`contract-signed-webhook` Edge Function — this is what makes it fire regardless
+of which of the two signing flows was used, with no per-flow code changes needed.
+
+**8.1 Set the secret and deploy**
+
+```bash
+supabase secrets set CONTRACT_NOTIFICATION_CRON_SECRET="<a long random string, e.g. output of: openssl rand -hex 32>"
+
+supabase db push                              # applies 0026_notifications_trigger.sql (new notifications table + trigger)
+supabase functions deploy contract-signed-webhook
+```
+
+`contract-signed-webhook` is deployed with `verify_jwt=false` (handled
+automatically by this repo's `supabase/config.toml`) — like `calendar-sync-webhook`,
+it's called by a DB trigger with no user session, so it authenticates itself via
+the `x-cron-secret` header instead, checked against `CONTRACT_NOTIFICATION_CRON_SECRET`.
+
+**8.2 One-time step after running the migration — paste the real secret into the trigger**
+
+Like `CALENDAR_RECONCILE_CRON_SECRET` in section 4.5, the migration file ships
+with a placeholder rather than a committed real secret (never commit a real
+secret to a migration file). In the Supabase SQL Editor, run:
+
+```sql
+create or replace function public.trigger_contract_signed_notification()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  notif_title text;
+  notif_body text;
+begin
+  if new.signed_at is null then
+    return new;
+  end if;
+
+  if tg_op = 'UPDATE' and old.signed_at is not distinct from new.signed_at then
+    return new;
+  end if;
+
+  notif_title := 'חוזה נחתם: ' || coalesce(new.couple_names, 'ליד ללא שם');
+  notif_body := coalesce(new.couple_names, 'ליד ללא שם')
+    || case when new.venue_name is not null then ' · ' || new.venue_name else '' end
+    || case when new.event_date is not null then ' · ' || to_char(new.event_date, 'DD/MM/YYYY') else '' end;
+
+  insert into notifications (tenant_id, type, title, body, related_lead_id)
+  values (new.tenant_id, 'contract_signed', notif_title, notif_body, new.id);
+
+  perform net.http_post(
+    url := 'https://yzurelfhjkgqrluifszz.supabase.co/functions/v1/contract-signed-webhook',
+    headers := jsonb_build_object('x-cron-secret', '<CONTRACT_NOTIFICATION_CRON_SECRET value from step 8.1>', 'Content-Type', 'application/json'),
+    body := jsonb_build_object('tenantId', new.tenant_id, 'leadId', new.id)
+  );
+
+  return new;
+end;
+$$;
+```
+
+This replaces only the function body (the `create trigger` itself, from the
+migration, is left untouched and doesn't need re-running).
+
+**8.3 Configure the WhatsApp number**
+
+In the app: Settings → **התראות**, fill in the phone number that should receive
+contract-signed WhatsApp alerts, and save. This is a single fixed number for the
+whole tenant (not tied to any particular user's own profile) — stored in
+`app_settings` (key `notification_phone_number`), same non-secret tier as the
+WhatsApp gateway URL/instance ID. If left blank, the in-app notification still
+fires normally; only the WhatsApp send is skipped.
+
+**8.4 Verify**
+
+- Sign a test lead's contract via the public link (`/contract/:leadId`) —
+  confirm within a few seconds: (a) a WhatsApp message arrives at the configured
+  number with the couple's name/venue/date, and (b) the bell icon in the app
+  shows an unread badge for an owner/admin/studio_manager user, with the same
+  details.
+- Sign a different test lead via the internal manual-sign dialog (Leads page →
+  a lead's "חוזה" button) — confirm the same happens, proving the trigger
+  covers both signing paths, not just the public one.
+- As a non-admin role (photographer/editor/album_manager), confirm the bell
+  either doesn't render or shows nothing (RLS on `notifications` is
+  admin-only — matches `tenant_secrets`'s pattern).
+- Click a notification in the bell dropdown — confirm it's marked read (badge
+  count decreases), and confirm "סמן הכל כנקרא" clears all unread state.
+- Leave `notification_phone_number` blank for a tenant, sign a contract, confirm
+  the in-app notification still appears with no error (WhatsApp send is skipped
+  silently, per 8.3).

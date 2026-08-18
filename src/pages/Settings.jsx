@@ -4,12 +4,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { DollarSign, Save, Users, Edit, Trash2, Plus, Upload, Download, FileText, Plug, MessageCircle, Building2, History } from "lucide-react";
+import { DollarSign, Save, Users, Edit, Trash2, Plus, Upload, Download, FileText, Plug, MessageCircle, Building2, History, Bell } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/lib/SupabaseAuthContext";
 import { isAdmin } from "@/lib/permissions";
 import IntegrationsTab from "../components/settings/IntegrationsTab";
 import AuditLogTab from "../components/settings/AuditLogTab";
+import NotificationsSettingsTab from "../components/settings/NotificationsSettingsTab";
 import {
   Dialog,
   DialogContent,
@@ -222,6 +223,10 @@ export default function Settings() {
             <TabsTrigger value="integrations" className="data-[state=active]:bg-yellow-400 data-[state=active]:text-gray-900 text-gray-300">
               <Plug className="w-4 h-4 ml-1" />
               חיבורים
+            </TabsTrigger>
+            <TabsTrigger value="notifications" className="data-[state=active]:bg-yellow-400 data-[state=active]:text-gray-900 text-gray-300">
+              <Bell className="w-4 h-4 ml-1" />
+              התראות
             </TabsTrigger>
             <TabsTrigger value="data" className="data-[state=active]:bg-yellow-400 data-[state=active]:text-gray-900 text-gray-300">
               <Upload className="w-4 h-4 ml-1" />
@@ -528,6 +533,11 @@ export default function Settings() {
             <div className="space-y-6">
               <IntegrationsTab />
             </div>
+          </TabsContent>
+
+          {/* התראות */}
+          <TabsContent value="notifications">
+            <NotificationsSettingsTab />
           </TabsContent>
 
           {/* ייבוא / ייצוא */}
