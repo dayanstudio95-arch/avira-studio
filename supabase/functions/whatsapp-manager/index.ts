@@ -123,7 +123,16 @@ Deno.serve(async (req) => {
     if (action === 'send_test') {
       if (!testPhone) return jsonResponse({ error: 'testPhone is required' }, { status: 400 });
 
-      const message = testMessage || 'הודעת ניסיון מ-Avira Studio 🎉 - החיבור עובד!';
+      // Best-effort — a missing/unset tenant display name must never block the test send.
+      // Falls back to the tenant's registered `name` before the literal "Avira Studio",
+      // so a different studio using this system never sees this studio's brand name.
+      let studioName = 'Avira Studio';
+      try {
+        const { data: tenantRow } = await supabase.from('tenants').select('name, display_name_to_clients').maybeSingle();
+        studioName = tenantRow?.display_name_to_clients || tenantRow?.name || 'Avira Studio';
+      } catch { /* keep default */ }
+
+      const message = testMessage || `הודעת ניסיון מ-${studioName} 🎉 - החיבור עובד!`;
       const chatId = toInternationalIsraeliChatId(testPhone);
       if (!chatId) return jsonResponse({ error: 'Invalid phone number' }, { status: 400 });
       const sendUrl = buildUrl('sendMessage');

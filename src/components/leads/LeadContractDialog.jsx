@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { format } from "date-fns";
 import { Printer, CheckCircle, Camera, Heart } from "lucide-react";
 import { applyContractTermsPrice } from "@/lib/defaultContractTerms";
 import { base44 } from "@/api/base44Client";
+import { useAuth } from "@/lib/SupabaseAuthContext";
 import { toast } from "sonner";
 
 // Renders package details supporting HTML (from ReactQuill) and plain text with bullets/line breaks
@@ -45,6 +46,7 @@ function PackageDetailsRenderer({ html }) {
 }
 
 export default function LeadContractDialog({ isOpen, onClose, lead, onSigned }) {
+  const { user } = useAuth();
   const [clientForm, setClientForm] = useState({
     coupleNamesVerify: "",
     idNumber: "",
@@ -54,6 +56,26 @@ export default function LeadContractDialog({ isOpen, onClose, lead, onSigned }) 
   });
   const [isSigning, setIsSigning] = useState(false);
   const [signed, setSigned] = useState(false);
+  // Studio display name for the "חתימת הסטודיו" block below (see
+  // src/components/settings/StudioDetailsCard.jsx). Falls back to the tenant's
+  // registered `name` (always set at tenant creation, so this is never blank for
+  // any real studio — critical for multi-tenant use, so a studio that hasn't
+  // filled in "שם שיופיע ללקוחות" never shows another studio's brand name to its
+  // own clients) — "Avira Studio" is only a last-resort default if the tenant
+  // lookup itself fails entirely. Tenant.get() returns camelCase keys
+  // (src/api/entities.js), so this reads `displayNameToClients`, not the
+  // snake_case DB column name.
+  const [studioDisplayName, setStudioDisplayName] = useState("Avira Studio");
+
+  useEffect(() => {
+    if (!user?.tenant_id) return;
+    base44.entities.Tenant.get(user.tenant_id)
+      .then((tenant) => {
+        const name = tenant?.displayNameToClients || tenant?.name;
+        if (name) setStudioDisplayName(name);
+      })
+      .catch(() => {}); // best-effort — never blocks the contract dialog
+  }, [user?.tenant_id]);
 
   if (!lead) return null;
 
@@ -282,7 +304,7 @@ export default function LeadContractDialog({ isOpen, onClose, lead, onSigned }) 
             <div className="space-y-6 text-center">
               <p className="font-semibold text-gray-700 text-sm">חתימת הסטודיו</p>
               <div className="border-b-2 border-gray-400 h-10 mx-4"></div>
-              <p className="text-xs text-gray-500">Avira Studio</p>
+              <p className="text-xs text-gray-500">{studioDisplayName}</p>
             </div>
           </div>
         </div>

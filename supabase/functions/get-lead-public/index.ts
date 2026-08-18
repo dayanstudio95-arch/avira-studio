@@ -38,8 +38,36 @@ Deno.serve(async (req) => {
       console.error('[getLeadPublic] Failed to load studio_signature:', sigErr);
     }
 
+    // Added (2026-08-18) so the public contract page can show the studio's own
+    // branding (Settings -> פרטי הסטודיו) instead of the hardcoded "Avira Studio"
+    // text. Same best-effort pattern as studioSignature above — a missing/unset
+    // tenant row must never break loading the contract itself.
+    // Fallback order matters for multi-tenant use: `display_name_to_clients` (if
+    // the studio explicitly set a client-facing name) -> `tenants.name` (always
+    // set at tenant creation, so this is never another studio's brand name) ->
+    // the literal "Avira Studio" only as a last-resort default if the tenant
+    // lookup itself fails.
+    let studioDisplayName = 'Avira Studio';
+    let studioAutoSignature: string | null = null;
+    let studioLogoUrl: string | null = null;
+    try {
+      const { data: tenantRow } = await supabase
+        .from('tenants')
+        .select('name, display_name_to_clients, auto_signature_text, logo_url')
+        .eq('id', lead.tenant_id)
+        .maybeSingle();
+      studioDisplayName = tenantRow?.display_name_to_clients || tenantRow?.name || 'Avira Studio';
+      studioAutoSignature = tenantRow?.auto_signature_text || null;
+      studioLogoUrl = tenantRow?.logo_url || null;
+    } catch (tenantErr) {
+      console.error('[getLeadPublic] Failed to load studio details:', tenantErr);
+    }
+
     return jsonResponse({
       studioSignature,
+      studioDisplayName,
+      studioAutoSignature,
+      studioLogoUrl,
       id: lead.id,
       coupleNames: lead.couple_names,
       eventDate: lead.event_date,

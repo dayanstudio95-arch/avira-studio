@@ -39,6 +39,14 @@ const EMPTY_FORM = FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: "" }), { auto_s
 
 const MAX_LOGO_BYTES = 2 * 1024 * 1024; // 2MB
 
+// base44.entities.Tenant (src/api/entities.js) converts every column to camelCase
+// on read (rowToRecord/snakeToCamel) but accepts snake_case keys on write unchanged
+// (camelToSnake is a no-op on an already-snake string) — so `form`/FIELDS below stay
+// snake_case (matches the DB columns, used directly in Tenant.update()), but reading
+// a freshly-loaded row back must convert each key to camelCase first, or every field
+// silently reads as undefined after a reload despite having saved correctly.
+const toCamelKey = (key) => key.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
+
 export default function StudioDetailsCard() {
   const { user } = useAuth();
   const canManage = isAdmin(user);
@@ -60,10 +68,10 @@ export default function StudioDetailsCard() {
       const data = await base44.entities.Tenant.get(user.tenant_id);
       if (data) {
         const next = { ...EMPTY_FORM };
-        FIELDS.forEach((f) => { next[f.key] = data[f.key] || ""; });
-        next.auto_signature_text = data.auto_signature_text || "";
+        FIELDS.forEach((f) => { next[f.key] = data[toCamelKey(f.key)] || ""; });
+        next.auto_signature_text = data.autoSignatureText || "";
         setForm(next);
-        setLogoUrl(data.logo_url || null);
+        setLogoUrl(data.logoUrl || null);
       }
     } catch (error) {
       toast.error("שגיאה בטעינת פרטי הסטודיו", { description: error.message });

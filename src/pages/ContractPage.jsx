@@ -140,7 +140,7 @@ export default function ContractPage() {
 
     container.innerHTML = `
       <div style="background:#1e1e1e; padding:24px; text-align:center;">
-        <div style="color:#ffd700; font-size:26px; font-weight:bold; letter-spacing:2px;">AVIRA STUDIO</div>
+        <div style="color:#ffd700; font-size:26px; font-weight:bold; letter-spacing:2px;">${escapeHtml((leadData.studioDisplayName || 'Avira Studio').toUpperCase())}</div>
         <div style="color:#c8c8c8; font-size:12px; margin-top:4px;">Wedding Photography &amp; Videography Studio</div>
       </div>
       <div style="padding:28px;">
@@ -200,14 +200,14 @@ export default function ContractPage() {
               ${studioSignatureDataUrl ? `<img src="${studioSignatureDataUrl}" style="max-height:65px; max-width:220px;" />` : ''}
             </div>
             <div style="border-top:2px solid #9ca3af; margin-top:4px; padding-top:6px; font-size:11px;">
-              <div>Avira Studio</div>
+              <div>${escapeHtml(leadData.studioDisplayName || 'Avira Studio')}</div>
               <div style="color:#6b7280;">חתימת הסטודיו</div>
             </div>
           </div>
         </div>
       </div>
       <div style="background:#1e1e1e; color:#b4b4b4; text-align:center; font-size:10px; padding:10px;">
-        Avira Studio | www.avira-studio.com
+        ${escapeHtml(leadData.studioDisplayName || 'Avira Studio')}
       </div>
     `;
 
@@ -561,7 +561,7 @@ export default function ContractPage() {
             <div className="space-y-6 text-center">
               <p className="font-semibold text-gray-700 text-sm">חתימת הסטודיו</p>
               <div className="border-b-2 border-gray-400 h-10 mx-4"></div>
-              <p className="text-xs text-gray-500">Avira Studio</p>
+              <p className="text-xs text-gray-500">{lead.studioDisplayName || 'Avira Studio'}</p>
             </div>
           </div>
         </div>
