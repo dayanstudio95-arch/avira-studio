@@ -6,8 +6,7 @@ import { createPageUrl } from "@/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Eye, Heart, Users, Album, MapPin, UserCheck, AlertTriangle, MessageCircle, Trash2, DollarSign, Copy, RefreshCw, X, FileText, Edit3 } from "lucide-react";
+import { Eye, Heart, Users, Album, MapPin, UserCheck, AlertTriangle, MessageCircle, Trash2, DollarSign, Copy, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -708,7 +707,7 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
                         <TableCell className="px-1 py-1 sticky right-0 bg-gray-800/50" style={{ width: '72px', minWidth: '72px' }}>
                           <div className="flex gap-0.5">
                             <Button variant="ghost" size="sm"
-                              onClick={function() { setSelectedEventForModal(event); }}
+                              onClick={() => openUnifiedPanelForEvent(event)}
                               className="text-gray-400 hover:text-yellow-400 hover:bg-yellow-500/10 h-7 w-7 p-0"
                               title="פרטי אירוע">
                               <Eye className="w-3 h-3" />
