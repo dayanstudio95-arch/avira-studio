@@ -22,7 +22,7 @@ interface CalendarPayload {
   attendees?: Array<{ email: string }>;
 }
 
-export async function buildEventPayload(supabase: any, event: any): Promise<CalendarPayload> {
+export async function buildEventPayload(supabase: any, event: any, accountRole: AccountRole = 'primary'): Promise<CalendarPayload> {
   const team: Array<{ role?: string; staffMemberName?: string }> = event.team || [];
   const nonEditorTeam = team.filter((m) => m.role !== 'editor' && m.staffMemberName);
   const requiredCrew = event.required_crew || 3;
@@ -79,6 +79,34 @@ export async function buildEventPayload(supabase: any, event: any): Promise<Cale
 
   const notesSection = event.notes ? `\n\n--- 📝 הערות ---\n${event.notes}` : '';
 
+  // Backup account only: full financial/package details, absent from the
+  // primary account's description on purpose — the backup exists purely as a
+  // disaster-recovery duplicate, so it carries the extra business info that's
+  // useful if the main system or the primary Google Calendar is ever lost,
+  // while the primary calendar (used operationally, shared via invites)
+  // stays exactly as it was.
+  let backupDetails = '';
+  if (accountRole === 'backup') {
+    const priceLine =
+      event.total_amount_gross != null
+        ? `💰 סכום סגירה: ₪${Number(event.total_amount_gross).toLocaleString('he-IL')}`
+        : null;
+    let packageName: string | null = null;
+    if (event.package_id) {
+      try {
+        const { data: pkg } = await supabase.from('packages').select('name').eq('id', event.package_id).maybeSingle();
+        packageName = pkg?.name || null;
+      } catch (e) {
+        console.log('[googleCalendarSync] Could not load package name:', e.message);
+      }
+    }
+    const packageLine = packageName ? `📦 חבילה: ${packageName}` : null;
+    const backupLines = [priceLine, packageLine].filter(Boolean) as string[];
+    if (backupLines.length > 0) {
+      backupDetails = '\n\n--- 💼 פרטי סגירה (גיבוי בלבד) ---\n' + backupLines.join('\n');
+    }
+  }
+
   const description =
     'פרטי אירוע - Avira Media\n\n' +
     `👰 שמות הזוג: ${event.couple_names}\n` +
@@ -88,19 +116,26 @@ export async function buildEventPayload(supabase: any, event: any): Promise<Cale
     `👥 צוות הצילום:\n${teamDetails || 'טרם הוקצה'}` +
     (teamComplete ? '\n✅ צוות מלא' : '') +
     leadDetails +
+    backupDetails +
     notesSection;
 
+  // Attendees (→ Google calendar invites) are only ever added for the
+  // primary account. The backup account is a pure disaster-recovery
+  // duplicate — it must never notify/invite staff, even when the same crew
+  // is listed in the description above (per explicit product decision).
   let attendees: Array<{ email: string }> = [];
-  try {
-    if (nonEditorTeam.length > 0) {
-      const { data: allStaff } = await supabase.from('staff_members').select('name, email');
-      for (const member of nonEditorTeam) {
-        const staffRecord = allStaff?.find((s: any) => s.name === member.staffMemberName);
-        if (staffRecord?.email) attendees.push({ email: staffRecord.email });
+  if (accountRole !== 'backup') {
+    try {
+      if (nonEditorTeam.length > 0) {
+        const { data: allStaff } = await supabase.from('staff_members').select('name, email');
+        for (const member of nonEditorTeam) {
+          const staffRecord = allStaff?.find((s: any) => s.name === member.staffMemberName);
+          if (staffRecord?.email) attendees.push({ email: staffRecord.email });
+        }
       }
+    } catch (e) {
+      console.log('[googleCalendarSync] Could not load staff emails:', e.message);
     }
-  } catch (e) {
-    console.log('[googleCalendarSync] Could not load staff emails:', e.message);
   }
 
   const startDate = new Date(event.date).toISOString().split('T')[0];
@@ -125,7 +160,21 @@ export async function pushEventToAccount(
 ): Promise<{ action: 'created' | 'updated' | 'cleared_missing_id'; googleEventId: string | null }> {
   const headers = { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' };
   const baseUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`;
-  const sendUpdates = payload.attendees && payload.attendees.length > 0 ? '?sendUpdates=all' : '';
+  // Deliberately never ask Google to email attendees on create/update.
+  // Previously this was '?sendUpdates=all' whenever the event had ≥1
+  // attendee — but syncEventToAllAccounts (via pushEventToAccount) is what
+  // the calendar_sync_webhook_trigger fires on EVERY change to couple_names,
+  // date, venue, phone_number, team, required_crew, OR notes (see
+  // 0017_calendar_sync_trigger.sql) — so any unrelated edit (e.g. changing
+  // venue or notes) was re-emailing "event updated" to every already-
+  // assigned crew member, not just when a new person actually joined the
+  // team. Product decision: staff already get a real assignment email
+  // implicitly (they're added as an attendee so the event still lands on
+  // their own Google Calendar if it's linked) — Google's own extra
+  // notification email on top of that was pure noise/spam, so it's turned
+  // off entirely rather than trying to selectively target only new
+  // attendees (Google's API has no such per-guest option on a single PATCH).
+  const sendUpdates = '';
   const body = JSON.stringify(payload);
 
   const hasRealExistingId = existingGoogleEventId && !existingGoogleEventId.startsWith('creating_');
@@ -194,12 +243,15 @@ export async function syncEventToAllAccounts(
   const connectedAccounts = await getConnectedAccounts(supabase, tenantId);
   if (connectedAccounts.length === 0) return { anyConnected: false, results: [] };
 
-  const payload = await buildEventPayload(supabase, event);
   const results: AccountSyncResult[] = [];
 
   for (const account of connectedAccounts) {
     const role = account.account_role as AccountRole;
     try {
+      // Built per-account (not once and reused) so the backup account can
+      // get its own payload variant — extra financial/package details, no
+      // attendees — independently of what's sent to primary.
+      const payload = await buildEventPayload(supabase, event, role);
       const token = await getValidAccessToken(supabase, tenantId, role);
       if (!token) {
         results.push({ accountRole: role, status: 'skipped', error: 'account needs reauth or is disconnected' });

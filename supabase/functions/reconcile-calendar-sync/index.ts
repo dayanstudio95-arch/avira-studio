@@ -14,7 +14,18 @@ import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createUserClient, createServiceRoleClient, getRequestUser } from '../_shared/supabaseClients.ts';
 import { syncEventToAllAccounts } from '../_shared/googleCalendarSync.ts';
 
-const BATCH_CAP = 50;
+// Previously a hard BATCH_CAP = 50 — meant a tenant with 200+ events needing
+// their first sync to a newly-connected account (e.g. right after connecting
+// a backup account) could only ever clear 50 per run, silently leaving the
+// rest unsynced with no obvious way to tell without reading logs. Replaced
+// with a time budget: keep processing candidates until either none remain or
+// this invocation is close to the platform's function-timeout, so one click
+// of "סנכרן הכל עכשיו" (or one cron tick) clears as much of the backlog as
+// possible instead of always stopping at a fixed count. TIME_BUDGET_MS is
+// kept comfortably under Supabase Edge Functions' wall-clock limit; MAX_PER_RUN
+// is just a sanity ceiling, not expected to be hit in practice.
+const TIME_BUDGET_MS = 100 * 1000; // ~100s
+const MAX_PER_RUN = 2000;
 const STALE_PENDING_MS = 10 * 60 * 1000; // 10 minutes — long enough that a genuinely in-flight sync never gets double-run
 
 async function reconcileTenant(supabase: any, tenantId: string) {
@@ -77,10 +88,13 @@ async function reconcileTenant(supabase: any, tenantId: string) {
     }
   }
 
-  const eventIdsToProcess = [...problemEventIds].slice(0, BATCH_CAP);
+  const eventIdsToProcess = [...problemEventIds];
   const results: Array<{ eventId: string; anyConnected: boolean; error?: string }> = [];
+  const startedAt = Date.now();
 
   for (const eventId of eventIdsToProcess) {
+    if (results.length >= MAX_PER_RUN) break;
+    if (Date.now() - startedAt > TIME_BUDGET_MS) break;
     try {
       const { anyConnected } = await syncEventToAllAccounts(supabase, tenantId, eventId);
       results.push({ eventId, anyConnected });
@@ -89,7 +103,8 @@ async function reconcileTenant(supabase: any, tenantId: string) {
     }
   }
 
-  return { tenantId, processed: results.length, totalCandidates: problemEventIds.size, results };
+  const remaining = problemEventIds.size - results.length;
+  return { tenantId, processed: results.length, totalCandidates: problemEventIds.size, remaining, results };
 }
 
 Deno.serve(async (req) => {
