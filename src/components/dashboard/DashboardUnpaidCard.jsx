@@ -1,11 +1,13 @@
-import React from "react";
+import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { format } from "date-fns";
-import { CreditCard } from "lucide-react";
+import { CreditCard, MessageCircle } from "lucide-react";
 import PaymentStatusSelector from "@/components/common/PaymentStatusSelector";
+import PaymentRequestDialog from "@/components/dashboard/PaymentRequestDialog";
 
 export default function DashboardUnpaidCard({ events, onRefresh }) {
   const now = new Date();
+  const [paymentRequestEvent, setPaymentRequestEvent] = useState(null);
 
   const unpaidEvents = events.filter(
     (e) => new Date(e.date) < now && e.clientPaymentStatus === "Unpaid"
@@ -38,6 +40,14 @@ export default function DashboardUnpaidCard({ events, onRefresh }) {
                   <p className="text-sm font-medium text-white truncate">{event.coupleNames}</p>
                   <p className="text-xs text-gray-400">{format(new Date(event.date), "d/M/yyyy")}</p>
                 </div>
+                <button
+                  onClick={() => setPaymentRequestEvent(event)}
+                  className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap border bg-orange-600/20 text-orange-300 border-orange-500/40 hover:bg-orange-600/30 transition-colors flex-shrink-0"
+                  title="שלח דרישת תשלום בוואטסאפ"
+                >
+                  <MessageCircle className="w-3 h-3" />
+                  דרישת תשלום
+                </button>
                 <PaymentStatusSelector
                   eventId={event.id}
                   currentStatus={event.clientPaymentStatus}
@@ -48,6 +58,13 @@ export default function DashboardUnpaidCard({ events, onRefresh }) {
           </div>
         )}
       </CardContent>
+      <PaymentRequestDialog
+        event={paymentRequestEvent}
+        open={!!paymentRequestEvent}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setPaymentRequestEvent(null);
+        }}
+      />
     </Card>
   );
 }
