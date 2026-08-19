@@ -130,7 +130,12 @@ export default function Payments() {
 
             const eventUpdates = new Map();
             selected.forEach(paymentKey => {
-                const [eventId, memberIndex] = paymentKey.split('-');
+                // eventId is a uuid and already contains hyphens, so the key uses
+                // '::' as a separator (chosen because it can't appear inside a uuid)
+                // and the index is always the last segment.
+                const sepIndex = paymentKey.lastIndexOf('::');
+                const eventId = paymentKey.slice(0, sepIndex);
+                const memberIndex = paymentKey.slice(sepIndex + 2);
                 if (!eventUpdates.has(eventId)) {
                     eventUpdates.set(eventId, []);
                 }
@@ -315,7 +320,7 @@ export default function Payments() {
                                 <AccordionContent className="px-3 md:px-6 pb-4 md:pb-6">
                                     <div className="space-y-2 border-t border-gray-800 pt-3">
                                         {data.events.map((event, index) => {
-                                            const paymentKey = `${event.eventId}-${event.memberIndexInEvent}`;
+                                            const paymentKey = `${event.eventId}::${event.memberIndexInEvent}`;
                                             return (
                                                 <div key={index} className="flex justify-between items-center p-2 md:p-3 rounded-lg bg-gray-800/50 gap-2">
                                                     <div className="flex items-center gap-2 min-w-0 flex-1">

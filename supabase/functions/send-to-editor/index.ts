@@ -13,10 +13,14 @@ const DEFAULT_RAW_LINK_TEMPLATE = `היי {{editor_name}}, מצורף לינק �
 טלפון הזוג: {{couple_phone}}
 לינק לחומרים: {{raw_link}}`;
 
-function formatPhone(p: string | undefined | null) {
+// Formats the couple's phone number for display inside the message body (not
+// the WhatsApp "to" address) — editors expect a local Israeli number they can
+// dial/save directly, e.g. 0535255203, not the international 972535255203
+// form used for the API chatId.
+function formatPhoneForDisplay(p: string | undefined | null) {
   if (!p) return '';
   const clean = p.replace(/[^0-9]/g, '');
-  return clean.startsWith('0') ? '972' + clean.substring(1) : clean;
+  return clean.startsWith('972') ? '0' + clean.substring(3) : clean;
 }
 
 Deno.serve(async (req) => {
@@ -46,7 +50,7 @@ Deno.serve(async (req) => {
       .replace(/{{names}}/g, coupleNames || '')
       .replace(/{{event_date}}/g, formattedDate)
       .replace(/{{venue}}/g, venue || '')
-      .replace(/{{couple_phone}}/g, formatPhone(phoneNumber))
+      .replace(/{{couple_phone}}/g, formatPhoneForDisplay(phoneNumber))
       .replace(/{{raw_link}}/g, rawLink);
 
     const result = await sendWhatsApp(supabase, editorPhone, message);
