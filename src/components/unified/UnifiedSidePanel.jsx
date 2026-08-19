@@ -53,6 +53,9 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
   const [contractTemplateEdit, setContractTemplateEdit] = useState('');
   const [isEditingQuestionnaireTemplate, setIsEditingQuestionnaireTemplate] = useState(false);
   const [questionnaireTemplateEdit, setQuestionnaireTemplateEdit] = useState('');
+  const [scheduleSummerTemplate, setScheduleSummerTemplate] = useState('');
+  const [scheduleWinterTemplate, setScheduleWinterTemplate] = useState('');
+  const [isSendingSchedule, setIsSendingSchedule] = useState(null); // 'summer' | 'winter' | null
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [notesValue, setNotesValue] = useState(hasLinkMismatch ? (lead?.notes || '') : (event?.notes || lead?.notes || ''));
   const [isSavingNotes, setIsSavingNotes] = useState(false);
@@ -93,6 +96,10 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
       if (contractTpl?.value) setContractTemplate(contractTpl.value);
       const questTpl = all.find(s => s.key === 'template_questionnaire');
       if (questTpl?.value) setQuestionnaireTemplate(questTpl.value);
+      const summerTpl = all.find(s => s.key === 'template_schedule_summer');
+      if (summerTpl?.value) setScheduleSummerTemplate(summerTpl.value);
+      const winterTpl = all.find(s => s.key === 'template_schedule_winter');
+      if (winterTpl?.value) setScheduleWinterTemplate(winterTpl.value);
     }).catch(() => {});
   }, []);
 
@@ -302,6 +309,35 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
       toast.error('שגיאה בשליחה');
     } finally {
       setIsSendingQuestionnaire(false);
+    }
+  };
+
+  // Sends the "לוז קיץ" / "לוז חורף" schedule message — templates are edited
+  // in Settings → תבניות הודעה (template_schedule_summer / _winter), same
+  // convention as every other message template in this panel. No hardcoded
+  // fallback text on purpose: the whole point is the studio fills in its own
+  // schedule wording, so an empty template should surface as an explicit
+  // error rather than silently sending a placeholder.
+  const handleSendSchedule = async (season) => {
+    if (!lead?.phoneNumber) {
+      toast.error('אין מספר טלפון');
+      return;
+    }
+    const seasonLabel = season === 'summer' ? 'לוז קיץ' : 'לוז חורף';
+    const rawTemplate = season === 'summer' ? scheduleSummerTemplate : scheduleWinterTemplate;
+    if (!rawTemplate?.trim()) {
+      toast.error(`יש להגדיר קודם את תבנית "${seasonLabel}" בהגדרות → תבניות הודעה`);
+      return;
+    }
+    setIsSendingSchedule(season);
+    try {
+      const message_text = applyVariables(rawTemplate, lead);
+      await sendViaWebhook(season === 'summer' ? 'schedule_summer' : 'schedule_winter', lead.phoneNumber, message_text);
+      toast.success(`${seasonLabel} נשלח בהצלחה`);
+    } catch (error) {
+      toast.error('שגיאה בשליחה');
+    } finally {
+      setIsSendingSchedule(null);
     }
   };
 
@@ -529,17 +565,35 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
               </div>
             )}
 
-            {/* כפתור צפייה בחוזה חתום */}
-            {lead?.signedContractPdfUrl && (
-              <a
-                href={lead.signedContractPdfUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full flex items-center justify-center gap-2 bg-green-700 hover:bg-green-600 text-white font-semibold py-3 rounded-xl text-sm"
-              >
-                <FileDown className="w-5 h-5" />
-                צפה בחוזה החתום (PDF)
-              </a>
+            {/* כפתורי לוז עונתי — נשלחים דרך תבניות template_schedule_summer/_winter
+                שנערכות בהגדרות → תבניות הודעה (ראו handleSendSchedule) */}
+            {lead && (
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => handleSendSchedule('summer')}
+                  disabled={isSendingSchedule === 'summer'}
+                  className="flex-1 flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-800 text-white font-semibold py-3 rounded-xl text-sm"
+                >
+                  {isSendingSchedule === 'summer' ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                  לוז קיץ
+                </Button>
+                <Button
+                  onClick={() => handleSendSchedule('winter')}
+                  disabled={isSendingSchedule === 'winter'}
+                  className="flex-1 flex items-center justify-center gap-2 bg-sky-600 hover:bg-sky-700 disabled:bg-sky-800 text-white font-semibold py-3 rounded-xl text-sm"
+                >
+                  {isSendingSchedule === 'winter' ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                  לוז חורף
+                </Button>
+              </div>
             )}
 
             {/* שורת סטטוסים */}

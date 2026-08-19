@@ -95,6 +95,20 @@ const TEMPLATES = [
     variables: ["{{names}}", "{{invoice_link}}"],
   },
   {
+    key: "template_schedule_summer",
+    label: "לוז קיץ",
+    description: "ההודעה שתישלח כשלוחצים על כפתור 'לוז קיץ' בכרטיס הליד/אירוע",
+    defaultValue: `שלום {{names}} 😊\n\nהנה הלוז המשוער ליום האירוע ({{event_date}}):\n\n[הכניסו כאן את פרטי הלוז]`,
+    variables: ["{{names}}", "{{event_date}}", "{{venue}}"],
+  },
+  {
+    key: "template_schedule_winter",
+    label: "לוז חורף",
+    description: "ההודעה שתישלח כשלוחצים על כפתור 'לוז חורף' בכרטיס הליד/אירוע",
+    defaultValue: `שלום {{names}} 😊\n\nהנה הלוז המשוער ליום האירוע ({{event_date}}):\n\n[הכניסו כאן את פרטי הלוז]`,
+    variables: ["{{names}}", "{{event_date}}", "{{venue}}"],
+  },
+  {
     key: "template_questionnaire_reminder",
     label: "תזכורת למילוי שאלון הפקה",
     description: "ההודעה שנשלחת ע\"י supabase/functions/send-questionnaire-reminders לזוגות עם אירוע מתקרב שעדיין לא מילאו שאלון — היתה קודם ניתנת לעריכה רק דרך מסך אוטומציות-צוות המנוטרל בהגדרות; זהו כעת המקום היחיד לעריכתה. שימו לב: תבנית זו משתמשת בתחביר $משתנה (לא {{משתנה}}) כי כך הפונקציה בשרת מחליפה את המשתנים בפועל.",
