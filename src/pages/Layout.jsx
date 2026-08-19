@@ -59,11 +59,14 @@ const ROLE_LABELS = {
 
 // Scoped roles (lead_coordinator, photographer) get exactly one nav destination and
 // none of the admin-panel chrome (menu editing, quick-stats -- which would otherwise
-// call base44.entities.Event.list() and pull financial columns down to a role that
-// must never see them, since RLS is row-level and can't mask individual columns) or
-// the floating AI assistant (its tools query the same tenant-wide tables).
+// call base44.entities.Event.list() and pull tenant-wide event/financial data down to
+// these roles well beyond what they're scoped to see) or the floating AI assistant
+// (its tools query the same tenant-wide tables). lead_coordinator's one destination is
+// now the full Leads.jsx page (2026-08-20: expanded to full financial-data/all-leads
+// access per product decision, see 0030_lead_coordinator_full_leads_access.sql -- only
+// delete is blocked, enforced via RLS) -- photographer stays read-only/own-events-only.
 const scopedNavItemsByRole = {
-  lead_coordinator: [{ title: "לידים חדשים", url: "/LeadsCoordinator", icon: Heart }],
+  lead_coordinator: [{ title: "לידים", url: "/Leads", icon: Heart }],
   photographer: [{ title: "האירועים שלי", url: "/MyEvents", icon: Camera }],
 };
 

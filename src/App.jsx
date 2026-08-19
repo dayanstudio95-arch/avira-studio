@@ -80,15 +80,20 @@ const AuthenticatedApp = () => {
     return null;
   }
 
-  // Scoped role: lead_coordinator can ONLY create leads + share the contract link --
-  // one dedicated route, nothing else from the admin panel is reachable.
+  // Scoped role: lead_coordinator gets the full Leads page (same one owner/admin use --
+  // all tenant leads, financial fields included, can create/edit) but nothing else from
+  // the admin panel is reachable, and RLS (0030_lead_coordinator_full_leads_access.sql)
+  // blocks lead deletion server-side regardless of what this route shows. The original
+  // narrow LeadsCoordinator.jsx page + coordinator-leads edge function are left in place,
+  // unused, in case this needs reverting.
   if (!isLoadingAuth && isAuthenticated && isLeadCoordinator(user)) {
     return (
       <Layout>
         <Suspense fallback={<PageLoadingFallback />}>
           <Routes>
-            <Route path="/" element={<LeadsCoordinator />} />
-            <Route path="/LeadsCoordinator" element={<LeadsCoordinator />} />
+            <Route path="/" element={<Leads />} />
+            <Route path="/Leads" element={<Leads />} />
+            <Route path="/LeadsCoordinator" element={<Leads />} />
             <Route path="*" element={<PageNotFound />} />
           </Routes>
         </Suspense>
