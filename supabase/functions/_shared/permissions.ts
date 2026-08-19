@@ -4,8 +4,9 @@
 // already documented for src/lib/staffRoles.js / staffRoles.ts and
 // productionQuestionnaireFields.js / googleCalendarSync.ts.
 //
-// profiles.role enum (supabase/migrations/0001_init.sql): owner | admin |
-// studio_manager | photographer | editor | album_manager.
+// profiles.role enum (supabase/migrations/0001_init.sql, extended by
+// 0029_scoped_roles.sql): owner | admin | studio_manager | photographer | editor |
+// album_manager | lead_coordinator.
 //
 // Per explicit product decision (2026-08-17 security audit, question 1): studio_manager
 // is treated as FULLY EQUIVALENT to admin everywhere in this app — there is no
@@ -18,10 +19,17 @@
 // 'owner' remains a separate, strictly higher tier only for create-tenant (creating a
 // brand-new, separate tenant) — see OWNER_ONLY_ROLES.
 //
+// lead_coordinator (added 2026-08-20): a narrow role that can only create leads and share
+// the contract link — reaches the app exclusively through the coordinator-leads edge
+// function (never the general-purpose leads/events edge functions or direct table access
+// from an admin route). See LEAD_COORDINATOR_ROLE.
+//
 // If you change these role sets, mirror the change in src/lib/permissions.js too.
 
 export const OWNER_ONLY_ROLES = ['owner'];
 export const ADMIN_ROLES = ['owner', 'admin', 'studio_manager'];
+export const LEAD_COORDINATOR_ROLE = 'lead_coordinator';
+export const PHOTOGRAPHER_ROLE = 'photographer';
 
 export function isOwner(role: string | null | undefined): boolean {
   return !!role && OWNER_ONLY_ROLES.includes(role);
@@ -29,6 +37,14 @@ export function isOwner(role: string | null | undefined): boolean {
 
 export function isAdmin(role: string | null | undefined): boolean {
   return !!role && ADMIN_ROLES.includes(role);
+}
+
+export function isLeadCoordinator(role: string | null | undefined): boolean {
+  return role === LEAD_COORDINATOR_ROLE;
+}
+
+export function isPhotographer(role: string | null | undefined): boolean {
+  return role === PHOTOGRAPHER_ROLE;
 }
 
 export function hasRole(role: string | null | undefined, allowedRoles: string[]): boolean {

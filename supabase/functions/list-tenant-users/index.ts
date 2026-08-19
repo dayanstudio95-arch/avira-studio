@@ -35,6 +35,16 @@ Deno.serve(async (req) => {
 
     if (profilesError) return jsonResponse({ error: profilesError.message }, { status: 500 });
 
+    // Which staff_members roster row (if any) each profile is linked to — powers the
+    // photographer↔staff_members link picker in UsersTab.jsx (see 0029_scoped_roles.sql,
+    // update-tenant-user/index.ts's staffMemberId handling).
+    const { data: linkedStaff } = await serviceClient
+      .from('staff_members')
+      .select('id, name, profile_id')
+      .eq('tenant_id', callerProfile.tenant_id)
+      .not('profile_id', 'is', null);
+    const staffByProfileId = new Map((linkedStaff || []).map((s) => [s.profile_id, s]));
+
     // listUsers is paginated (default 50/page); a single studio's team is always tiny,
     // but ask for a generous page size so we don't silently drop anyone.
     const { data: authList, error: authError } = await serviceClient.auth.admin.listUsers({ perPage: 1000 });
@@ -56,6 +66,8 @@ Deno.serve(async (req) => {
       createdAt: p.created_at,
       isSelf: p.id === user.id,
       isConfirmed: confirmedById.get(p.id) ?? true,
+      staffMemberId: staffByProfileId.get(p.id)?.id ?? null,
+      staffMemberName: staffByProfileId.get(p.id)?.name ?? null,
     }));
 
     return jsonResponse({ users: result });

@@ -35,7 +35,12 @@ const ROLE_LABELS = {
   photographer: "צלם",
   editor: "עורך",
   album_manager: "מנהל אלבומים",
+  lead_coordinator: "רכז לידים",
 };
+
+// Sentinel used by the staff-link <Select> below since Radix Select doesn't accept an
+// empty-string item value — mapped back to `null` (unlink) before calling the API.
+const NO_STAFF_LINK = "__none__";
 
 const ROLE_OPTIONS = Object.entries(ROLE_LABELS);
 
@@ -47,6 +52,7 @@ export default function UsersTab() {
   const canManage = isAdmin(user);
 
   const [users, setUsers] = useState([]);
+  const [staffMembers, setStaffMembers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [isInviting, setIsInviting] = useState(false);
@@ -66,6 +72,13 @@ export default function UsersTab() {
 
   useEffect(() => {
     loadUsers();
+    // Powers the photographer↔staff_members link picker below — only admins can
+    // manage links, so only fetch this list when the caller can actually use it.
+    if (canManage) {
+      base44.entities.StaffMember.list()
+        .then((list) => setStaffMembers(list || []))
+        .catch(() => {});
+    }
   }, []);
 
   const loadUsers = async () => {
@@ -188,6 +201,24 @@ export default function UsersTab() {
     } catch (error) {
       toast.error("העדכון נכשל", { description: error.message });
       loadUsers();
+    }
+    setUpdatingId(null);
+  };
+
+  const handleStaffLinkChange = async (userId, staffMemberId) => {
+    const resolvedId = staffMemberId === NO_STAFF_LINK ? null : staffMemberId;
+    setUpdatingId(userId);
+    try {
+      await base44.functions.invoke("updateTenantUser", { userId, staffMemberId: resolvedId });
+      const staffRow = staffMembers.find((s) => s.id === resolvedId);
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === userId ? { ...u, staffMemberId: resolvedId, staffMemberName: staffRow?.name ?? null } : u
+        )
+      );
+      toast.success(resolvedId ? "החשבון קושר לאיש הצוות" : "הקישור הוסר");
+    } catch (error) {
+      toast.error("עדכון הקישור נכשל", { description: error.message });
     }
     setUpdatingId(null);
   };
@@ -476,6 +507,26 @@ export default function UsersTab() {
                   )}
                   {canManage ? (
                     <>
+                      {/* Photographer-only: which staff_members roster row this login is
+                          linked to — powers /MyEvents' "which events am I crew on" match
+                          (see supabase/functions/photographer-events/index.ts). */}
+                      {u.role === "photographer" && (
+                        <Select
+                          value={u.staffMemberId || NO_STAFF_LINK}
+                          onValueChange={(val) => handleStaffLinkChange(u.id, val)}
+                          disabled={updatingId === u.id}
+                        >
+                          <SelectTrigger className="bg-gray-800 border-gray-700 text-white w-44">
+                            <SelectValue placeholder="קישור לאיש צוות" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-gray-900 border-gray-700 text-white">
+                            <SelectItem value={NO_STAFF_LINK}>ללא קישור</SelectItem>
+                            {staffMembers.map((s) => (
+                              <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
                       <Select
                         value={u.role}
                         onValueChange={(val) => handleRoleChange(u.id, val)}

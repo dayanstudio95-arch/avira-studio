@@ -26,7 +26,7 @@ import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createUserClient, createServiceRoleClient, getRequestUser } from '../_shared/supabaseClients.ts';
 import { getCallerProfile, isAdmin } from '../_shared/permissions.ts';
 
-const ALLOWED_ROLES = ['owner', 'admin', 'studio_manager', 'photographer', 'editor', 'album_manager'];
+const ALLOWED_ROLES = ['owner', 'admin', 'studio_manager', 'photographer', 'editor', 'album_manager', 'lead_coordinator'];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 Deno.serve(async (req) => {

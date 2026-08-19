@@ -45,6 +45,7 @@ import AIAssistant from "@/components/AIAssistant";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/SupabaseAuthContext";
+import { isLeadCoordinator, isPhotographerRole } from "@/lib/permissions";
 
 const ROLE_LABELS = {
   owner: "בעלים",
@@ -53,6 +54,17 @@ const ROLE_LABELS = {
   photographer: "צלם",
   editor: "עורך",
   album_manager: "מנהל אלבומים",
+  lead_coordinator: "רכז לידים",
+};
+
+// Scoped roles (lead_coordinator, photographer) get exactly one nav destination and
+// none of the admin-panel chrome (menu editing, quick-stats -- which would otherwise
+// call base44.entities.Event.list() and pull financial columns down to a role that
+// must never see them, since RLS is row-level and can't mask individual columns) or
+// the floating AI assistant (its tools query the same tenant-wide tables).
+const scopedNavItemsByRole = {
+  lead_coordinator: [{ title: "לידים חדשים", url: "/LeadsCoordinator", icon: Heart }],
+  photographer: [{ title: "האירועים שלי", url: "/MyEvents", icon: Camera }],
 };
 
 const primaryNavItems = [
@@ -83,6 +95,8 @@ const navigationItems = [...primaryNavItems, ...secondaryNavItems];
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const scopedRole = isLeadCoordinator(user) ? 'lead_coordinator' : isPhotographerRole(user) ? 'photographer' : null;
+  const scopedNavItems = scopedRole ? scopedNavItemsByRole[scopedRole] : null;
   const isInSecondaryNav = secondaryNavItems.some(item =>
     item.url !== '/' && location.pathname === item.url
   );
@@ -137,6 +151,7 @@ export default function Layout({ children }) {
   });
 
   useEffect(() => {
+    if (scopedRole) return; // lead_coordinator/photographer never fetch tenant-wide events (financial columns)
     const loadStats = async () => {
       try {
         const events = await base44.entities.Event.list();
@@ -328,15 +343,17 @@ export default function Layout({ children }) {
               ) : (
                 <div className="flex items-center gap-1">
                   <NotificationBell />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setIsEditingMenu(true)}
-                    className="text-gray-400 hover:text-yellow-400 hover:bg-gray-800"
-                    title="עריכת תפריט"
-                  >
-                    <Edit2 className="w-5 h-5" />
-                  </Button>
+                  {!scopedRole && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setIsEditingMenu(true)}
+                      className="text-gray-400 hover:text-yellow-400 hover:bg-gray-800"
+                      title="עריכת תפריט"
+                    >
+                      <Edit2 className="w-5 h-5" />
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
@@ -350,7 +367,7 @@ export default function Layout({ children }) {
               </SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {primaryNavItems.map((item) => (
+                  {(scopedNavItems || primaryNavItems).map((item) => (
                     <SidebarMenuItem key={item.title}>
                       <SidebarMenuButton
                         asChild
@@ -372,7 +389,8 @@ export default function Layout({ children }) {
               </SidebarGroupContent>
             </SidebarGroup>
 
-            {/* Secondary nav group — collapsible */}
+            {/* Secondary nav group — collapsible (hidden entirely for scoped roles) */}
+            {!scopedRole && (
             <SidebarGroup>
               <button
                 onClick={() => setSecondaryOpen(prev => !prev)}
@@ -410,7 +428,9 @@ export default function Layout({ children }) {
                 </SidebarGroupContent>
               )}
             </SidebarGroup>
+            )}
 
+            {!scopedRole && (
             <SidebarGroup className="mt-8">
               <SidebarGroupLabel className="text-xs font-medium text-gray-500 uppercase tracking-wider px-3 py-2">
                 מבט מהיר
@@ -445,6 +465,7 @@ export default function Layout({ children }) {
                 </div>
               </SidebarGroupContent>
             </SidebarGroup>
+            )}
           </SidebarContent>
 
           <SidebarFooter className="bg-slate-700 p-4 flex flex-col gap-2 border-t border-gray-800">
@@ -500,7 +521,7 @@ export default function Layout({ children }) {
           </div>
         </main>
 
-        <AIAssistant />
+        {!scopedRole && <AIAssistant />}
       </div>
     </SidebarProvider>
   );

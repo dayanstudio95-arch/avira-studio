@@ -4,7 +4,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/sonner';
 import { queryClientInstance } from '@/lib/query-client';
 import { AuthProvider, useAuth } from '@/lib/SupabaseAuthContext';
-import { isAdmin } from '@/lib/permissions';
+import { isAdmin, isLeadCoordinator, isPhotographerRole } from '@/lib/permissions';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import PageNotFound from '@/lib/PageNotFound';
 import Layout from './pages/Layout';
@@ -41,6 +41,8 @@ const GoogleCalendarSync = lazy(() => import('./pages/GoogleCalendarSync'));
 const AutomationLogs = lazy(() => import('./pages/AutomationLogs'));
 const PendingApprovals = lazy(() => import('./pages/PendingApprovals'));
 const SystemAdvisor = lazy(() => import('./pages/SystemAdvisor'));
+const LeadsCoordinator = lazy(() => import('./pages/LeadsCoordinator'));
+const MyEvents = lazy(() => import('./pages/MyEvents'));
 
 // Shared fallback while a lazy page chunk downloads -- matches the existing
 // auth-loading spinner's look (fixed inset-0, same spinner classes) so route-change
@@ -78,8 +80,40 @@ const AuthenticatedApp = () => {
     return null;
   }
 
+  // Scoped role: lead_coordinator can ONLY create leads + share the contract link --
+  // one dedicated route, nothing else from the admin panel is reachable.
+  if (!isLoadingAuth && isAuthenticated && isLeadCoordinator(user)) {
+    return (
+      <Layout>
+        <Suspense fallback={<PageLoadingFallback />}>
+          <Routes>
+            <Route path="/" element={<LeadsCoordinator />} />
+            <Route path="/LeadsCoordinator" element={<LeadsCoordinator />} />
+            <Route path="*" element={<PageNotFound />} />
+          </Routes>
+        </Suspense>
+      </Layout>
+    );
+  }
+
+  // Scoped role: photographer gets a strictly read-only view of only their own
+  // assigned events -- no pricing/payments, one dedicated route.
+  if (!isLoadingAuth && isAuthenticated && isPhotographerRole(user)) {
+    return (
+      <Layout>
+        <Suspense fallback={<PageLoadingFallback />}>
+          <Routes>
+            <Route path="/" element={<MyEvents />} />
+            <Route path="/MyEvents" element={<MyEvents />} />
+            <Route path="*" element={<PageNotFound />} />
+          </Routes>
+        </Suspense>
+      </Layout>
+    );
+  }
+
   // Hard block: only owner/admin/studio_manager (ADMIN_ROLES) get the full admin panel;
-  // other roles (photographer, editor, album_manager) will get scoped views later.
+  // other roles (editor, album_manager) have no scoped view yet, so stay blocked.
   if (!isLoadingAuth && isAuthenticated && !isAdmin(user)) {
     return (
       <div className="fixed inset-0 flex flex-col items-center justify-center bg-gray-950 text-center p-8">

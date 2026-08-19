@@ -6,8 +6,9 @@
 // checks — Deno/React can't share a module across that boundary, same limitation
 // already documented for src/lib/staffRoles.js / staffRoles.ts.
 //
-// profiles.role enum (supabase/migrations/0001_init.sql): owner | admin |
-// studio_manager | photographer | editor | album_manager.
+// profiles.role enum (supabase/migrations/0001_init.sql, extended by
+// 0029_scoped_roles.sql): owner | admin | studio_manager | photographer | editor |
+// album_manager | lead_coordinator.
 //
 // Per explicit product decision (2026-08-17 security audit, question 1): studio_manager
 // is treated as FULLY EQUIVALENT to admin everywhere in this app — there is no
@@ -21,6 +22,14 @@
 // 'owner' remains a separate, strictly higher tier for the one deliberately more
 // sensitive action in the app today — creating a brand-new, separate tenant
 // (create-tenant edge function) — see OWNER_ONLY_ROLES.
+//
+// lead_coordinator and photographer (2026-08-20): the first two non-admin roles to get a
+// real, working login into the app (src/App.jsx). Both are deliberately scoped to a
+// single dedicated page each (LeadsCoordinator / MyEvents), backed by dedicated edge
+// functions that return only a hand-picked safe field subset — see
+// supabase/functions/coordinator-leads and supabase/functions/photographer-events, and
+// supabase/migrations/0029_scoped_roles.sql for the matching RLS changes. editor/
+// album_manager remain fully blocked, unchanged.
 
 import { useAuth } from "@/lib/SupabaseAuthContext";
 
@@ -30,12 +39,23 @@ export const OWNER_ONLY_ROLES = ["owner"];
 // Use this (or the isAdmin() helper below) instead of writing out ['owner','admin'].
 export const ADMIN_ROLES = ["owner", "admin", "studio_manager"];
 
+export const LEAD_COORDINATOR_ROLE = "lead_coordinator";
+export const PHOTOGRAPHER_ROLE = "photographer";
+
 export function isOwner(user) {
   return !!user && OWNER_ONLY_ROLES.includes(user.role);
 }
 
 export function isAdmin(user) {
   return !!user && ADMIN_ROLES.includes(user.role);
+}
+
+export function isLeadCoordinator(user) {
+  return !!user && user.role === LEAD_COORDINATOR_ROLE;
+}
+
+export function isPhotographerRole(user) {
+  return !!user && user.role === PHOTOGRAPHER_ROLE;
 }
 
 // Generic helper for any custom role set a future feature might need, so ad-hoc checks
@@ -55,6 +75,8 @@ export function usePermission() {
     role: user?.role ?? null,
     isOwner: isOwner(user),
     isAdmin: isAdmin(user),
+    isLeadCoordinator: isLeadCoordinator(user),
+    isPhotographerRole: isPhotographerRole(user),
     hasRole: (allowedRoles) => hasRole(user, allowedRoles),
   };
 }

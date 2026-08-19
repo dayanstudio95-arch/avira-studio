@@ -84,6 +84,12 @@ const FUNCTION_MAP = {
   updateTenantUser: 'update-tenant-user',
   createTenant: 'create-tenant',
 
+  // Scoped-role endpoints (2026-08-20) — lead_coordinator / photographer, each the
+  // ONE function their one dedicated page is allowed to call. See
+  // supabase/functions/coordinator-leads/index.ts, photographer-events/index.ts.
+  coordinatorLeads: 'coordinator-leads',
+  photographerEvents: 'photographer-events',
+
   // AI Assistant — real Claude-backed Q&A + WhatsApp-send action proposals.
   // See supabase/functions/ai-assistant/index.ts. Read-only server-side; actual
   // sends happen client-side via sendToEditor/sendToCouple/sendWhatsAppMessage
