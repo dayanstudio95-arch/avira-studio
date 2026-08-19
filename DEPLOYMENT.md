@@ -115,7 +115,16 @@ external trigger on a schedule (it processes due reminders, monthly summaries,
 questionnaire nudges, etc). Two options:
 
 **Option A — `pg_cron` (runs inside Postgres, simplest):**
-In the SQL Editor:
+
+First set a dedicated cron secret (the function's own code requires this header
+whenever the caller isn't a real logged-in user — a bare service-role Bearer token
+alone is **not** enough, since `getRequestUser` rejects it as not being a real user
+session):
+```bash
+supabase secrets set AUTOMATION_ENGINE_CRON_SECRET="<any long random string, e.g. output of: openssl rand -hex 32>"
+```
+
+Then, in the SQL Editor:
 ```sql
 select cron.schedule(
   'automation-engine-hourly',
@@ -123,7 +132,7 @@ select cron.schedule(
   $$
   select net.http_post(
     url := 'https://yzurelfhjkgqrluifszz.supabase.co/functions/v1/automation-engine',
-    headers := jsonb_build_object('Authorization', 'Bearer ' || '<SERVICE_ROLE_KEY>', 'Content-Type', 'application/json'),
+    headers := jsonb_build_object('Authorization', 'Bearer ' || '<SERVICE_ROLE_KEY>', 'x-cron-secret', '<AUTOMATION_ENGINE_CRON_SECRET value from above>', 'Content-Type', 'application/json'),
     body := '{}'::jsonb
   );
   $$
@@ -132,6 +141,18 @@ select cron.schedule(
 Requires the `pg_cron` and `pg_net` extensions enabled (Dashboard → Database →
 Extensions). Put the real service-role key in place of `<SERVICE_ROLE_KEY>` — treat
 it like a password, don't commit it anywhere.
+
+**Important — both headers are required, not just one:** `automation-engine` has
+`verify_jwt = true` (the default — it's not listed in `supabase/config.toml`), so
+the `Authorization: Bearer <SERVICE_ROLE_KEY>` header is what gets the request past
+the platform gateway itself; but a service-role key resolves to no real
+`auth.users` row, so the function's own internal `getRequestUser` check treats it
+as "no user" and then falls through to requiring the separate `x-cron-secret`
+header to match `AUTOMATION_ENGINE_CRON_SECRET`. Missing either header means every
+scheduled run silently 401s forever with no visible symptom other than "the
+automation just never sends" — this exact gap was found and fixed in production on
+2026-08-19; if you're re-provisioning a new environment from this file, make sure
+you copy the full command above, not an older version with only one header.
 
 **Option B — external scheduler** (e.g. a free cron-ping service, or GitHub Actions
 on a schedule) that just does an authenticated `POST` to the same URL. Simpler to
@@ -236,12 +257,19 @@ select cron.schedule(
   $$
   select net.http_post(
     url := 'https://yzurelfhjkgqrluifszz.supabase.co/functions/v1/reconcile-calendar-sync',
-    headers := jsonb_build_object('x-cron-secret', '<CALENDAR_RECONCILE_CRON_SECRET value from step 4.2>', 'Content-Type', 'application/json'),
+    headers := jsonb_build_object('Authorization', 'Bearer ' || '<SERVICE_ROLE_KEY>', 'x-cron-secret', '<CALENDAR_RECONCILE_CRON_SECRET value from step 4.2>', 'Content-Type', 'application/json'),
     body := '{}'::jsonb
   );
   $$
 );
 ```
+**Both headers are required, not just `x-cron-secret`** — `reconcile-calendar-sync`
+is not listed in `supabase/config.toml`'s `verify_jwt = false` exceptions, so it
+defaults to `verify_jwt = true`: the Supabase platform gateway itself rejects any
+request with no `Authorization` header at all before the function's own
+`x-cron-secret` check ever runs. An earlier version of this snippet omitted the
+`Authorization` header, which caused the reconciliation safety net to silently
+401 on every single 20-minute run — found and fixed in production on 2026-08-19.
 
 Put the real `CALENDAR_RECONCILE_CRON_SECRET` value in place of the placeholder —
 treat it like a password, don't commit it anywhere. Before trusting the schedule,

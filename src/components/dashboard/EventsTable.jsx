@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import { calculateNetProfit } from "@/lib/profitCalculations";
 import PaymentStatusSelector, { paymentStatusConfig, statusLabels } from "@/components/common/PaymentStatusSelector";
+import UnifiedSidePanel from "../unified/UnifiedSidePanel";
 const { StaffMember } = base44.entities;
 
 const calcProfit = (event, staffMembers) => calculateNetProfit(event, staffMembers);
@@ -20,18 +21,34 @@ const calcProfit = (event, staffMembers) => calculateNetProfit(event, staffMembe
 export default function EventsTable({ events, isLoading, onRefresh }) {
   const [staffMembers, setStaffMembers] = useState([]);
   const [invoiceEvent, setInvoiceEvent] = useState(null);
+  const [leads, setLeads] = useState([]);
+  const [selectedLeadForDrawer, setSelectedLeadForDrawer] = useState(null);
+  const [selectedEventForDrawer, setSelectedEventForDrawer] = useState(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const members = await base44.entities.StaffMember.list();
+        const [members, leadsList] = await Promise.all([
+          base44.entities.StaffMember.list(),
+          base44.entities.Lead.list(),
+        ]);
         setStaffMembers(members);
+        setLeads(leadsList);
       } catch (error) {
         console.error("Failed to fetch data:", error);
       }
     };
     fetchData();
   }, []);
+
+  const openUnifiedPanelForEvent = (event) => {
+    let relatedLead = null;
+    if (event.sourceLeadId) relatedLead = leads.find(l => l.id === event.sourceLeadId);
+    setSelectedLeadForDrawer(relatedLead || null);
+    setSelectedEventForDrawer(event);
+    setIsDrawerOpen(true);
+  };
 
   const ROLE_DONE_FIELDS = {
     photographer1: 'photographer1Done',
@@ -128,8 +145,8 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
                 <Card key={event.id} className="bg-gray-800/50 border-gray-700">
                   <CardContent className="p-3 space-y-2">
                     <div className="flex justify-between items-start">
-                      <div>
-                        <div className="font-bold text-white text-base">{event.coupleNames}</div>
+                      <div onClick={() => openUnifiedPanelForEvent(event)} className="cursor-pointer">
+                        <div className="font-bold text-white text-base hover:text-yellow-400 transition-colors">{event.coupleNames}</div>
                         <div className="text-gray-400 text-sm">{format(new Date(event.date), "d/M/yyyy")}</div>
                       </div>
                       <PaymentStatusSelector
@@ -226,7 +243,12 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <div className="font-medium text-white">{event.coupleNames}</div>
+                          <div
+                            onClick={() => openUnifiedPanelForEvent(event)}
+                            className="font-medium text-white cursor-pointer hover:text-yellow-400 transition-colors"
+                          >
+                            {event.coupleNames}
+                          </div>
                           {event.phoneNumber && (
                             <a
                               href={`https://wa.me/${(() => {
@@ -373,6 +395,15 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
           if (onRefresh) onRefresh();
         }, 300);
       }}
+      />
+      <UnifiedSidePanel
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        lead={selectedLeadForDrawer}
+        event={selectedEventForDrawer}
+        staffMembers={staffMembers}
+        onLeadUpdated={onRefresh}
+        onEventUpdated={onRefresh}
       />
     </>
   );

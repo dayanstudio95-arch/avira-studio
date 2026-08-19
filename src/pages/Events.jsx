@@ -200,7 +200,18 @@ export default function Events() {
       if (absDiff < Math.abs(closestDiff)) { closest = event; closestDiff = diff; }
     });
     if (!closest) return;
-    const el = document.getElementById(`event-row-${closest.id}`);
+    // Both the mobile card list and the desktop table are always mounted at
+    // once (visibility toggled with CSS classes like `md:hidden`/`hidden
+    // md:block`, not conditional rendering) and both use the same
+    // `event-row-{id}` id for their row/card. document.getElementById always
+    // returns the FIRST matching element in DOM order regardless of which
+    // one is actually visible — on desktop that's the hidden mobile card, so
+    // scrollIntoView() was silently a no-op there. Query every element
+    // sharing that id and scroll to whichever one actually has layout
+    // (offsetParent is null for display:none elements), so this works
+    // correctly on both mobile and desktop without touching the row markup.
+    const candidates = document.querySelectorAll(`[id="event-row-${closest.id}"]`);
+    const el = Array.from(candidates).find((node) => node.offsetParent !== null) || candidates[0];
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 

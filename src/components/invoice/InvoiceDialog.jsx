@@ -51,6 +51,7 @@ export default function InvoiceDialog({
     return "";
   };
 
+  const [clientName, setClientName] = useState(coupleNames || "");
   const [item, setItem] = useState("");
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
@@ -71,6 +72,14 @@ export default function InvoiceDialog({
   const amountNum = parseFloat(amount) || 0;
   const vatAmount = +(amountNum - amountNum / (1 + vatRate)).toFixed(2);
   const priceBeforeVat = +(amountNum / (1 + vatRate)).toFixed(2);
+
+  // Reset the editable client-name field to the couple's real name whenever the
+  // dialog is (re)opened for a given lead/event — keeps it editable per-invoice
+  // (e.g. typing "עדי ואופק כהן" instead of the default) without stale values
+  // leaking into the next invoice opened for a different couple.
+  useEffect(() => {
+    if (isOpen) setClientName(coupleNames || "");
+  }, [isOpen, coupleNames]);
 
   // Fetch latest Morning doc date when dialog opens
   useEffect(() => {
@@ -94,7 +103,7 @@ export default function InvoiceDialog({
       setErrorMsg("חסרים שדות: יש למלא פריט, סכום ואמצעי תשלום");
       return;
     }
-    if (!coupleNames) {
+    if (!clientName.trim()) {
       setErrorMsg("חסרים נתוני הגדרה: שם לקוח חסר");
       return;
     }
@@ -109,7 +118,7 @@ export default function InvoiceDialog({
     try {
       // שלב ב׳ + ג׳ - שליחה לשרת (שם מתבצע אימות הטוקן והפקת המסמך)
       const res = await base44.functions.invoke("generateMorningInvoice", {
-        clientName: coupleNames,
+        clientName: clientName.trim(),
         clientEmail: clientEmail || "avira.media1@gmail.com",
         clientPhone: clientPhone || "",
         itemDescription: item,
@@ -176,6 +185,7 @@ export default function InvoiceDialog({
   };
 
   const handleClose = () => {
+    setClientName(coupleNames || "");
     setItem("");
     setDescription("");
     setAmount("");
@@ -220,9 +230,12 @@ export default function InvoiceDialog({
              {/* שם הלקוח */}
              <div>
                <Label className="text-gray-300 mb-1 block">שם הלקוח *</Label>
-               <div className="bg-gray-800 border border-gray-700 rounded-md p-2 text-white">
-                 {coupleNames || "לא צוין"}
-               </div>
+               <Input
+                 value={clientName}
+                 onChange={(e) => setClientName(e.target.value)}
+                 placeholder="שם הלקוח לחשבונית"
+                 className="bg-gray-800 border-gray-700 text-white"
+               />
              </div>
 
              {/* התראת מייל חסר */}

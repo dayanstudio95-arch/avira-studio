@@ -233,7 +233,15 @@ export default function ProgressStatus() {
       if (absDiff < Math.abs(closestDiff)) { closest = event; closestDiff = diff; }
     });
     if (!closest) return;
-    const el = document.getElementById(`event-row-${closest.id}`);
+    // Same fix as Events.jsx's scrollToClosestEvent: the mobile card list and
+    // the desktop list are both always mounted (visibility toggled via CSS
+    // `md:hidden`/`hidden md:block`, not conditional rendering), and both use
+    // the same `event-row-{id}` id — document.getElementById always returns
+    // the first (mobile) match regardless of which is actually visible, so
+    // scrollIntoView() was a silent no-op on desktop. Query every element
+    // sharing the id and scroll to whichever one actually has layout.
+    const candidates = document.querySelectorAll(`[id="event-row-${closest.id}"]`);
+    const el = Array.from(candidates).find((node) => node.offsetParent !== null) || candidates[0];
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
