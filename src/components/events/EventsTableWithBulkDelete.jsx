@@ -48,7 +48,7 @@ export function StaffPickerCell({ event, role, roleKey, label, color, icon, staf
   const content = (
     <Popover open={editingKey === `${event.id}-${role}`} onOpenChange={(open) => setEditingKey(open ? `${event.id}-${role}` : null)}>
       <PopoverTrigger asChild>
-        <button className="text-left hover:bg-gray-800/30 p-1 rounded transition-colors cursor-pointer w-full">
+        <button className="text-right hover:bg-gray-800/30 p-1 rounded transition-colors cursor-pointer w-full">
           {member?.staffMemberName ? (
             <div className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium border ${color} w-fit hover:opacity-80 transition-opacity max-w-full`}>
               <span>{icon}</span>
@@ -186,8 +186,8 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
 
   const ColumnHeader = ({ column, label, width }) => (
     <TableHead
-      className="text-gray-400 px-1 relative group select-none"
-      style={{ width: `${width}px`, minWidth: `${width}px` }}
+      className="text-gray-400 px-1 relative group select-none overflow-hidden"
+      style={{ width: `${width}px`, minWidth: `${width}px`, maxWidth: `${width}px` }}
       data-column={column}
     >
       {label}
@@ -496,11 +496,11 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
                         </TableCell>
 
                         {/* Venue */}
-                        <TableCell className="px-1 py-1" style={{ width: `${widths.venue}px`, minWidth: `${widths.venue}px` }}>
+                        <TableCell className="px-1 py-1 overflow-hidden" style={{ width: `${widths.venue}px`, minWidth: `${widths.venue}px`, maxWidth: `${widths.venue}px` }}>
                           {event.venue ? (
-                            <div className="flex items-center gap-1 text-gray-300">
+                            <div className="flex items-center gap-1 text-gray-300 min-w-0">
                               <MapPin className="w-3 h-3 text-gray-500 flex-shrink-0" />
-                              <span className="truncate" title={event.venue}>{event.venue}</span>
+                              <span className="truncate min-w-0" title={event.venue}>{event.venue}</span>
                             </div>
                           ) : (
                             <span className="text-gray-600">—</span>
@@ -565,7 +565,7 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
                             return (
                               <Popover open={editingTeamEventId === `${event.id}-editor`} onOpenChange={(open) => setEditingTeamEventId(open ? `${event.id}-editor` : null)}>
                                 <PopoverTrigger asChild>
-                                  <button className="text-left hover:bg-gray-800/30 p-1 rounded transition-colors cursor-pointer w-full">
+                                  <button className="text-right hover:bg-gray-800/30 p-1 rounded transition-colors cursor-pointer w-full">
                                     {videoEditor ? (
                                       <div className="flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium border bg-purple-500/20 text-purple-400 border-purple-500/30 w-fit hover:opacity-80 transition-opacity">
                                         <span>✂️</span>
