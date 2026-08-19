@@ -30,6 +30,7 @@ const FUNCTION_MAP = {
   syncLeadToEvent: 'sync-lead-to-event',
   syncEventToCalendar: 'sync-event-to-calendar',
   cancelEvent: 'cancel-event',
+  cleanupDuplicateEvents: 'cleanup-duplicate-events',
   assignStudioIds: 'assign-studio-ids',
   assignStudioIdToNewLead: 'assign-studio-id-to-new-lead',
   fixMissingEventForLead: 'fix-missing-event-for-lead',
@@ -104,7 +105,6 @@ const KNOWN_UNIMPLEMENTED = new Set([
   'createLeadCalendarEvent',
   'syncEventToLead',
   'sendMakeWebhook',
-  'cleanupDuplicateEvents',
   'cleanupGoogleCalendarOnlyDuplicates',
 ]);
 
