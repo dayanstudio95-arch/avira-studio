@@ -26,7 +26,7 @@ const packagePrices = {
 
 const statusConfig = {
   "חדש":          { badge: "bg-blue-900/60 text-blue-300 border-blue-700",    card: "bg-blue-950/80 border-blue-800",   num: "text-blue-300" },
-  "נשלחה הצעה":  { badge: "bg-yellow-900/60 text-yellow-300 border-yellow-700", card: "bg-yellow-950/80 border-yellow-800", num: "text-yellow-300" },
+  "נשלחה הצעה":  { badge: "bg-pink-900/60 text-pink-300 border-pink-700", card: "bg-pink-950/80 border-pink-800", num: "text-pink-300" },
   "פולו-אפ":      { badge: "bg-orange-900/60 text-orange-300 border-orange-700", card: "bg-orange-950/80 border-orange-800",  num: "text-orange-300" },
   "נסגר/חתימה":  { badge: "bg-green-900/60 text-green-300 border-green-700",  card: "bg-green-950/80 border-green-800",   num: "text-green-300" },
   "חוזה":       { badge: "bg-yellow-900/60 text-yellow-300 border-yellow-700", card: "bg-yellow-950/80 border-yellow-800", num: "text-yellow-300" },
