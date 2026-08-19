@@ -41,6 +41,10 @@ Deno.serve(async (req) => {
     if (authError) return jsonResponse({ error: authError.message }, { status: 500 });
 
     const emailById = new Map((authList?.users || []).map((u) => [u.id, u.email]));
+    // Exposed so the frontend can show a "Resend invite" action only for teammates who
+    // never confirmed their account (never clicked their invite link / never set a
+    // password) — see resend-invite/index.ts.
+    const confirmedById = new Map((authList?.users || []).map((u) => [u.id, !!u.email_confirmed_at]));
 
     const result = (profiles || []).map((p) => ({
       id: p.id,
@@ -51,6 +55,7 @@ Deno.serve(async (req) => {
       isActive: p.is_active,
       createdAt: p.created_at,
       isSelf: p.id === user.id,
+      isConfirmed: confirmedById.get(p.id) ?? true,
     }));
 
     return jsonResponse({ users: result });

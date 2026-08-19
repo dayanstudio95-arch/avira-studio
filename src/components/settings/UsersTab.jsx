@@ -17,9 +17,16 @@ import {
   DialogFooter,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Users, Plus, Mail } from "lucide-react";
+import { Users, Plus, Mail, MessageCircle, Copy, RefreshCw, Eye, EyeOff, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import CreateStudioDialog from "./CreateStudioDialog";
+
+function generateRandomPassword() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+  let out = "";
+  for (let i = 0; i < 10; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
 
 const ROLE_LABELS = {
   owner: "בעלים",
@@ -44,7 +51,18 @@ export default function UsersTab() {
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [isInviting, setIsInviting] = useState(false);
   const [updatingId, setUpdatingId] = useState(null);
-  const [inviteForm, setInviteForm] = useState({ email: "", fullName: "", role: "photographer" });
+  const [inviteForm, setInviteForm] = useState({ email: "", fullName: "", phone: "", role: "photographer" });
+  const [useManualPassword, setUseManualPassword] = useState(false);
+  const [manualPassword, setManualPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [createdCredentials, setCreatedCredentials] = useState(null); // { email, password, phone }
+  const [isSendingCreds, setIsSendingCreds] = useState(false);
+  const [credsPhoneInput, setCredsPhoneInput] = useState("");
+
+  // Resend-invite (for teammates who never confirmed) / reset-access mini dialog.
+  const [resendTarget, setResendTarget] = useState(null); // the user row, or null when closed
+  const [resendPhone, setResendPhone] = useState("");
+  const [isResending, setIsResending] = useState(false);
 
   useEffect(() => {
     loadUsers();
@@ -66,22 +84,83 @@ export default function UsersTab() {
       toast.error("יש להזין כתובת אימייל");
       return;
     }
+    if (useManualPassword && manualPassword.length < 6) {
+      toast.error("הסיסמה חייבת להכיל לפחות 6 תווים");
+      return;
+    }
     setIsInviting(true);
     try {
-      await base44.functions.invoke("inviteUser", {
+      const res = await base44.functions.invoke("inviteUser", {
         email: inviteForm.email,
         fullName: inviteForm.fullName,
+        phone: inviteForm.phone,
         role: inviteForm.role,
+        ...(useManualPassword ? { password: manualPassword } : {}),
         origin: window.location.origin,
       });
-      toast.success("ההזמנה נשלחה בהצלחה");
-      setIsInviteOpen(false);
-      setInviteForm({ email: "", fullName: "", role: "photographer" });
+      if (useManualPassword) {
+        // Keep the dialog open so the admin can copy/send the credentials — nothing else
+        // shows this password again after this point.
+        setCreatedCredentials({ email: inviteForm.email, password: manualPassword, phone: inviteForm.phone });
+        toast.success("המשתמש נוצר בהצלחה");
+      } else {
+        toast.success("ההזמנה נשלחה בהצלחה");
+        setIsInviteOpen(false);
+      }
+      setInviteForm({ email: "", fullName: "", phone: "", role: "photographer" });
+      setUseManualPassword(false);
+      setManualPassword("");
       loadUsers();
     } catch (error) {
       toast.error("שליחת ההזמנה נכשלה", { description: error.message });
     }
     setIsInviting(false);
+  };
+
+  const handleSendCredentialsWhatsApp = async (phoneOverride) => {
+    const phone = phoneOverride || createdCredentials?.phone;
+    if (!phone) {
+      toast.error("יש להזין מספר טלפון כדי לשלוח בוואטסאפ");
+      return;
+    }
+    setIsSendingCreds(true);
+    try {
+      const message = `שלום! נוצר לך משתמש במערכת 😊\nאימייל: ${createdCredentials.email}\nסיסמה: ${createdCredentials.password}\n\nהיכנסו למערכת עם הפרטים האלה.`;
+      const res = await base44.functions.invoke("sendWhatsAppMessage", { to: phone, message });
+      if (res.data?.error) throw new Error(res.data.error);
+      if (phoneOverride) setCreatedCredentials((prev) => (prev ? { ...prev, phone: phoneOverride } : prev));
+      toast.success("פרטי ההתחברות נשלחו בוואטסאפ");
+    } catch (error) {
+      toast.error("שליחת הוואטסאפ נכשלה", { description: error.message });
+    }
+    setIsSendingCreds(false);
+  };
+
+  const handleResendInvite = async (method) => {
+    if (!resendTarget) return;
+    if (method === "whatsapp" && !resendPhone) {
+      toast.error("יש להזין מספר טלפון");
+      return;
+    }
+    setIsResending(true);
+    try {
+      const res = await base44.functions.invoke("resendInvite", {
+        userId: resendTarget.id,
+        method,
+        phone: method === "whatsapp" ? resendPhone : undefined,
+      });
+      if (res.data?.error) throw new Error(res.data.error);
+      if (method === "link" && res.data?.actionLink) {
+        await navigator.clipboard.writeText(res.data.actionLink);
+        toast.success("הקישור הועתק ללוח");
+      } else {
+        toast.success("ההזמנה נשלחה שוב בוואטסאפ");
+        setResendTarget(null);
+      }
+    } catch (error) {
+      toast.error("הפעולה נכשלה", { description: error.message });
+    }
+    setIsResending(false);
   };
 
   const handleRoleChange = async (userId, role) => {
@@ -122,7 +201,22 @@ export default function UsersTab() {
             <p className="text-gray-400 text-sm mt-1">ניהול המשתמשים שיש להם גישה למערכת</p>
           </div>
           {canManage && (
-            <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
+            <Dialog
+              open={isInviteOpen}
+              onOpenChange={(open) => {
+                setIsInviteOpen(open);
+                if (!open) {
+                  // Reset everything when the admin closes the dialog, whether via the
+                  // explicit success path or just clicking away — the password (if any)
+                  // was already shown once, no reason to keep it lingering in state.
+                  setCreatedCredentials(null);
+                  setUseManualPassword(false);
+                  setManualPassword("");
+                  setShowPassword(false);
+                  setInviteForm({ email: "", fullName: "", phone: "", role: "photographer" });
+                }
+              }}
+            >
               <DialogTrigger asChild>
                 <Button size="sm" className="bg-yellow-400 hover:bg-yellow-500 text-gray-900">
                   <Plus className="w-4 h-4 mr-2" />
@@ -130,56 +224,206 @@ export default function UsersTab() {
                 </Button>
               </DialogTrigger>
               <DialogContent className="bg-gray-900 border-gray-800 text-white">
-                <DialogHeader>
-                  <DialogTitle>הזמנת משתמש חדש</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <Label>שם מלא</Label>
-                    <Input
-                      value={inviteForm.fullName}
-                      onChange={(e) => setInviteForm({ ...inviteForm, fullName: e.target.value })}
-                      className="bg-gray-800 border-gray-700 text-white"
-                      placeholder="שם המשתמש"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>אימייל</Label>
-                    <Input
-                      type="email"
-                      value={inviteForm.email}
-                      onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
-                      className="bg-gray-800 border-gray-700 text-white"
-                      placeholder="example@email.com"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>תפקיד</Label>
-                    <Select
-                      value={inviteForm.role}
-                      onValueChange={(val) => setInviteForm({ ...inviteForm, role: val })}
-                    >
-                      <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-gray-900 border-gray-700 text-white">
-                        {ROLE_OPTIONS.map(([value, label]) => (
-                          <SelectItem key={value} value={value}>{label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button
-                    onClick={handleInvite}
-                    disabled={isInviting}
-                    className="bg-yellow-400 hover:bg-yellow-500 text-gray-900"
-                  >
-                    <Mail className="w-4 h-4 mr-2" />
-                    {isInviting ? "שולח..." : "שלח הזמנה"}
-                  </Button>
-                </DialogFooter>
+                {createdCredentials ? (
+                  <>
+                    <DialogHeader>
+                      <DialogTitle>המשתמש נוצר בהצלחה</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <p className="text-sm text-gray-400">
+                        שמרו את הפרטים האלה — הסיסמה לא תוצג שוב. שלחו אותם למשתמש בוואטסאפ או העתיקו ידנית.
+                      </p>
+                      <div className="space-y-2">
+                        <Label>אימייל</Label>
+                        <div className="flex items-center gap-2">
+                          <Input readOnly value={createdCredentials.email} className="bg-gray-800 border-gray-700 text-white" />
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="border-gray-700"
+                            onClick={() => {
+                              navigator.clipboard.writeText(createdCredentials.email);
+                              toast.success("האימייל הועתק");
+                            }}
+                          >
+                            <Copy className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>סיסמה</Label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            readOnly
+                            type={showPassword ? "text" : "password"}
+                            value={createdCredentials.password}
+                            className="bg-gray-800 border-gray-700 text-white"
+                          />
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="border-gray-700"
+                            onClick={() => setShowPassword((v) => !v)}
+                          >
+                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="border-gray-700"
+                            onClick={() => {
+                              navigator.clipboard.writeText(createdCredentials.password);
+                              toast.success("הסיסמה הועתקה");
+                            }}
+                          >
+                            <Copy className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                      {!createdCredentials.phone && (
+                        <div className="space-y-2">
+                          <Label>טלפון לשליחה בוואטסאפ (אופציונלי)</Label>
+                          <Input
+                            value={credsPhoneInput}
+                            onChange={(e) => setCredsPhoneInput(e.target.value)}
+                            className="bg-gray-800 border-gray-700 text-white"
+                            placeholder="05XXXXXXXX"
+                          />
+                        </div>
+                      )}
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        onClick={() => handleSendCredentialsWhatsApp(credsPhoneInput || undefined)}
+                        disabled={isSendingCreds || (!createdCredentials.phone && !credsPhoneInput)}
+                        className="bg-green-600 hover:bg-green-700 text-white"
+                      >
+                        <MessageCircle className="w-4 h-4 mr-2" />
+                        {isSendingCreds ? "שולח..." : "שלח בוואטסאפ"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="border-gray-700"
+                        onClick={() => setIsInviteOpen(false)}
+                      >
+                        סגור
+                      </Button>
+                    </DialogFooter>
+                  </>
+                ) : (
+                  <>
+                    <DialogHeader>
+                      <DialogTitle>הזמנת משתמש חדש</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <Label>שם מלא</Label>
+                        <Input
+                          value={inviteForm.fullName}
+                          onChange={(e) => setInviteForm({ ...inviteForm, fullName: e.target.value })}
+                          className="bg-gray-800 border-gray-700 text-white"
+                          placeholder="שם המשתמש"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>אימייל</Label>
+                        <Input
+                          type="email"
+                          value={inviteForm.email}
+                          onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                          className="bg-gray-800 border-gray-700 text-white"
+                          placeholder="example@email.com"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>טלפון (לשליחת פרטי התחברות בוואטסאפ)</Label>
+                        <Input
+                          value={inviteForm.phone}
+                          onChange={(e) => setInviteForm({ ...inviteForm, phone: e.target.value })}
+                          className="bg-gray-800 border-gray-700 text-white"
+                          placeholder="05XXXXXXXX"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>תפקיד</Label>
+                        <Select
+                          value={inviteForm.role}
+                          onValueChange={(val) => setInviteForm({ ...inviteForm, role: val })}
+                        >
+                          <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="bg-gray-900 border-gray-700 text-white">
+                            {ROLE_OPTIONS.map(([value, label]) => (
+                              <SelectItem key={value} value={value}>{label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="flex items-center justify-between border-t border-gray-800 pt-4">
+                        <div>
+                          <Label>קביעת סיסמה ידנית</Label>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            במקום לשלוח מייל הזמנה — צור את המשתמש מיד עם סיסמה שתגדירו,
+                            ותעבירו אותה בעצמכם.
+                          </p>
+                        </div>
+                        <Switch checked={useManualPassword} onCheckedChange={setUseManualPassword} />
+                      </div>
+
+                      {useManualPassword && (
+                        <div className="space-y-2">
+                          <Label>סיסמה</Label>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type={showPassword ? "text" : "password"}
+                              value={manualPassword}
+                              onChange={(e) => setManualPassword(e.target.value)}
+                              className="bg-gray-800 border-gray-700 text-white"
+                              placeholder="לפחות 6 תווים"
+                            />
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="outline"
+                              className="border-gray-700"
+                              onClick={() => setShowPassword((v) => !v)}
+                            >
+                              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </Button>
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="outline"
+                              className="border-gray-700"
+                              title="צור סיסמה אקראית"
+                              onClick={() => {
+                                setManualPassword(generateRandomPassword());
+                                setShowPassword(true);
+                              }}
+                            >
+                              <Wand2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <DialogFooter>
+                      <Button
+                        onClick={handleInvite}
+                        disabled={isInviting}
+                        className="bg-yellow-400 hover:bg-yellow-500 text-gray-900"
+                      >
+                        {useManualPassword ? <Plus className="w-4 h-4 mr-2" /> : <Mail className="w-4 h-4 mr-2" />}
+                        {isInviting ? "שולח..." : useManualPassword ? "צור משתמש" : "שלח הזמנה"}
+                      </Button>
+                    </DialogFooter>
+                  </>
+                )}
               </DialogContent>
             </Dialog>
           )}
@@ -205,10 +449,27 @@ export default function UsersTab() {
                     <Badge className={u.isActive ? "bg-green-600" : "bg-gray-600"}>
                       {u.isActive ? "פעיל" : "מושבת"}
                     </Badge>
+                    {u.isConfirmed === false && (
+                      <Badge className="bg-orange-600 text-white">טרם התחבר/ה</Badge>
+                    )}
                   </div>
                   <p className="text-sm text-gray-400 truncate">{u.email}</p>
                 </div>
                 <div className="flex items-center gap-3">
+                  {canManage && u.isConfirmed === false && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-orange-500 text-orange-400 hover:bg-orange-500/10"
+                      onClick={() => {
+                        setResendTarget(u);
+                        setResendPhone(u.phone || "");
+                      }}
+                    >
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      שלח שוב
+                    </Button>
+                  )}
                   {canManage ? (
                     <>
                       <Select
@@ -241,6 +502,47 @@ export default function UsersTab() {
         )}
       </CardContent>
     </Card>
+
+    <Dialog open={!!resendTarget} onOpenChange={(open) => { if (!open) { setResendTarget(null); setResendPhone(""); } }}>
+      <DialogContent className="bg-gray-900 border-gray-800 text-white">
+        <DialogHeader>
+          <DialogTitle>שליחת הזמנה מחדש — {resendTarget?.fullName || resendTarget?.email}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <p className="text-sm text-gray-400">
+            המשתמש עדיין לא התחבר למערכת (לא הגדיר סיסמה). אפשר לשלוח קישור חדש בוואטסאפ, או להעתיק את הקישור ולשלוח אותו בעצמכם בכל דרך אחרת.
+          </p>
+          <div className="space-y-2">
+            <Label>טלפון</Label>
+            <Input
+              value={resendPhone}
+              onChange={(e) => setResendPhone(e.target.value)}
+              className="bg-gray-800 border-gray-700 text-white"
+              placeholder="05XXXXXXXX"
+            />
+          </div>
+        </div>
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          <Button
+            onClick={() => handleResendInvite("whatsapp")}
+            disabled={isResending}
+            className="bg-green-600 hover:bg-green-700 text-white"
+          >
+            <MessageCircle className="w-4 h-4 mr-2" />
+            {isResending ? "שולח..." : "שלח בוואטסאפ"}
+          </Button>
+          <Button
+            onClick={() => handleResendInvite("link")}
+            disabled={isResending}
+            variant="outline"
+            className="border-gray-700"
+          >
+            <Copy className="w-4 h-4 mr-2" />
+            העתק קישור
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <CreateStudioDialog canManage={isOwner(user)} />
     </div>

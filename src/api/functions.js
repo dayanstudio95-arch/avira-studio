@@ -79,6 +79,7 @@ const FUNCTION_MAP = {
 
   // Team/user management (Settings → משתמשים)
   inviteUser: 'invite-user',
+  resendInvite: 'resend-invite',
   listTenantUsers: 'list-tenant-users',
   updateTenantUser: 'update-tenant-user',
   createTenant: 'create-tenant',
