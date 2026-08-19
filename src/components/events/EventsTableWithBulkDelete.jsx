@@ -61,8 +61,8 @@ export function StaffPickerCell({ event, role, roleKey, label, color, icon, staf
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-72 bg-gray-900 border-gray-700 text-white p-3" align="start" side="bottom">
-        <div className="space-y-2">
-          <div className="text-sm font-semibold text-gray-400 mb-3">בחר {label}</div>
+        <div className="text-sm font-semibold text-gray-400 mb-3">בחר {label}</div>
+        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
           {staffList.length === 0 ? (
             <div className="text-sm text-gray-500 text-center py-4">אין {label} זמינים</div>
           ) : (
@@ -442,7 +442,7 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
                       )}
                       <TableRow id={`event-row-${event.id}`} className="border-gray-800 hover:bg-gray-800/30 transition-colors duration-200">
                         {/* Checkbox */}
-                        <TableCell className="px-1 py-1">
+                        <TableCell className="px-1 py-1" style={{ width: `${widths.checkbox}px`, minWidth: `${widths.checkbox}px` }}>
                           <Checkbox
                             checked={selectedEvents.includes(event.id)}
                             onCheckedChange={() => handleToggleSelectEvent(event.id)}
@@ -578,8 +578,8 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
                                   </button>
                                 </PopoverTrigger>
                                 <PopoverContent className="w-80 bg-gray-900 border-gray-700 text-white p-3" align="start">
-                                  <div className="space-y-2">
-                                    <div className="text-sm font-semibold text-gray-400 mb-3">בחר עורך וידאו</div>
+                                  <div className="text-sm font-semibold text-gray-400 mb-3">בחר עורך וידאו</div>
+                                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                                     {editors.length === 0 ? (
                                       <div className="text-sm text-gray-500 text-center py-4">אין עורכים זמינים</div>
                                     ) : (

@@ -91,8 +91,8 @@ export default function MobileStaffAssignmentSheet({ event, isOpen, onClose, sta
                 </button>
               </PopoverTrigger>
               <PopoverContent className="w-72 bg-gray-900 border-gray-700 text-white p-3" align="end">
-                <div className="space-y-2">
-                  <div className="text-sm font-semibold text-gray-400 mb-3">בחר עורך וידאו</div>
+                <div className="text-sm font-semibold text-gray-400 mb-3">בחר עורך וידאו</div>
+                <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                   {editors.length === 0 ? (
                     <div className="text-sm text-gray-500 text-center py-4">אין עורכים זמינים</div>
                   ) : (
