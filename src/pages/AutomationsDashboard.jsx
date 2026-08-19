@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-const { Automation, AutomationRun, StaffMember, Event } = base44.entities;
+const { Automation, AutomationRun, StaffMember, Event, Lead } = base44.entities;
 import QuestionnaireSendPreviewModal from "@/components/automations/QuestionnaireSendPreviewModal";
 import AlbumReminderPreviewModal from "@/components/automations/AlbumReminderPreviewModal";
 import CustomStaffMessageModal from "@/components/automations/CustomStaffMessageModal";
@@ -239,9 +239,47 @@ function SettingsModal({ automation, onClose, onSaved }) {
         const staffToShow = (form.selectedStaffIds.length > 0
           ? allStaff.filter(s => form.selectedStaffIds.includes(s.id))
           : allStaff).filter(s => s.role !== 'editor');
+        // Pull real production-questionnaire answers from the linked lead —
+        // matches the exact field list/labels used server-side in
+        // automation-engine/index.ts's runDailyEventBrief and in
+        // _shared/googleCalendarSync.ts's buildEventPayload, so this
+        // "preview with real data" panel shows the same content the real
+        // send would produce (previously used e.notes as a stand-in, which
+        // is a different field entirely and is usually empty).
+        const allLeads = await Lead.list();
+        const buildProductionDetails = (event) => {
+          const lead = allLeads.find(l => l.id === event.sourceLeadId)
+            || allLeads.find(l => l.coupleNames === event.coupleNames);
+          if (!lead) return "";
+          const lines = [
+            lead.productionBridePhone && `📱 נייד כלה: ${lead.productionBridePhone}`,
+            lead.productionGroomPhone && `📱 נייד חתן: ${lead.productionGroomPhone}`,
+            lead.productionCompanionName && `🧑‍🤝‍🧑 שם מלווה: ${lead.productionCompanionName}`,
+            lead.productionCompanionPhone && `📱 נייד מלווה: ${lead.productionCompanionPhone}`,
+            lead.productionBridePrepLocation && `📍 מקום התארגנות הכלה: ${lead.productionBridePrepLocation}`,
+            lead.productionCheckinTime && `🕐 שעת הגעה / קבלת פנים: ${lead.productionCheckinTime}`,
+            lead.productionChuppahTime && `💍 שעת חופה משוערת: ${lead.productionChuppahTime}`,
+            lead.productionBrideInstagram && `📸 אינסטגרם כלה: ${lead.productionBrideInstagram}`,
+            lead.productionGroomInstagram && `📸 אינסטגרם חתן: ${lead.productionGroomInstagram}`,
+            lead.productionHasSocialCreator &&
+              `📷 סושיאל קריאייטור באירוע: ${[lead.productionSocialCreatorName, lead.productionSocialCreatorPhone].filter(Boolean).join(' — ') || '—'}`,
+            lead.productionHasExternalPlanner &&
+              `🗂️ יש מנהל/ת אירוע חיצוני/ת: ${[lead.productionExternalPlannerName, lead.productionExternalPlannerPhone].filter(Boolean).join(' — ') || '—'}`,
+            lead.productionFamilyBride && `👪 משפחת הכלה: ${lead.productionFamilyBride}`,
+            lead.productionFamilyGroom && `👪 משפחת החתן: ${lead.productionFamilyGroom}`,
+            lead.productionImportantPeople && `⭐ אנשים חשובים במיוחד לצלם: ${lead.productionImportantPeople}`,
+            lead.productionFamilySensitivities && `⚠️ רגישויות משפחתיות: ${lead.productionFamilySensitivities}`,
+            lead.productionPlannedSurprises && `🎁 הפתעות מתוכננות באירוע: ${lead.productionPlannedSurprises}`,
+            lead.productionSpecialRequests && `💬 בקשות מיוחדות: ${lead.productionSpecialRequests}`,
+          ].filter(Boolean);
+          return lines.join("\n") || lead.finalTechnicalSummary || "";
+        };
         const previews = [];
         for (const e of monthEvents) {
           const team = e.team || [];
+          const productionDetails = buildProductionDetails(e) || "הזוג טרם מילא שאלון הפקה";
+          const lead = allLeads.find(l => l.id === e.sourceLeadId) || allLeads.find(l => l.coupleNames === e.coupleNames);
+          const eventTime = lead?.productionCheckinTime || lead?.productionChuppahTime || "18:00";
           for (const member of team) {
             const staff = staffToShow.find(s => s.name === member.staffMemberName);
             if (!staff) continue;
@@ -250,8 +288,8 @@ function SettingsModal({ automation, onClose, onSaved }) {
               .replaceAll("{coupleNames}", e.coupleNames || "")
               .replaceAll("{venue}", e.venue || "")
               .replaceAll("{date}", e.date ? format(new Date(e.date), "dd/MM/yyyy") : "")
-              .replaceAll("{time}", "18:00")
-              .replaceAll("{productionDetails}", e.notes || "")
+              .replaceAll("{time}", eventTime)
+              .replaceAll("{productionDetails}", productionDetails)
               .replaceAll("{photographer}", team.find(m => m.role==="photographer1")?.staffMemberName || "")
               .replaceAll("{videographer}", team.find(m => m.role==="videographer")?.staffMemberName || "");
             previews.push({ name: staff.name, phone: staff.phoneNumber || "", event: e.coupleNames, date: e.date, message });
@@ -363,7 +401,7 @@ function SettingsModal({ automation, onClose, onSaved }) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await Automation.update(automation.id, {
+      const updated = await Automation.update(automation.id, {
         frequency: form.frequency,
         run_day: Number(form.run_day),
         run_time: form.run_time,
@@ -373,6 +411,26 @@ function SettingsModal({ automation, onClose, onSaved }) {
         test_mode: form.test_mode,
         selectedStaffIds: form.selectedStaffIds,
       });
+      // Saving frequency/run_day/run_time alone never recomputes next_run_at —
+      // that's only done by the scheduler after an actual run, or by the
+      // separate "סנכרן תזמון" button (handleSyncSchedule). Without this,
+      // an edited run_time silently never takes effect until the automation
+      // happens to run again for some other reason, which can be days away —
+      // so re-sync the schedule automatically right after a successful save,
+      // for any active, non-manual automation, matching what "סנכרן תזמון"
+      // already does today.
+      const isSchedulable = (updated?.isActive ?? automation.isActive) && form.frequency !== 'manual';
+      if (isSchedulable) {
+        try {
+          await base44.functions.invoke('automationEngine', {
+            sync_schedule: true,
+            automation_id: automation.id,
+          });
+        } catch {
+          // Best-effort — the save itself already succeeded; the schedule
+          // will still self-correct on the next real run either way.
+        }
+      }
       toast.success("ההגדרות נשמרו בהצלחה");
       onSaved();
       onClose();
@@ -1038,8 +1096,22 @@ export default function AutomationsDashboard() {
 
   const handleToggle = async (automation) => {
     try {
-      await Automation.update(automation.id, { isActive: !automation.isActive });
-      setAutomations(prev => prev.map(a => a.id === automation.id ? { ...a, isActive: !a.isActive } : a));
+      const turningOn = !automation.isActive;
+      await Automation.update(automation.id, { isActive: turningOn });
+      setAutomations(prev => prev.map(a => a.id === automation.id ? { ...a, isActive: turningOn } : a));
+      // Turning an automation back on can leave a stale/past next_run_at from
+      // before it was switched off — recompute it fresh so it's scheduled
+      // relative to "now", same fix as handleSave applies for a run_time edit.
+      if (turningOn && automation.frequency !== 'manual') {
+        try {
+          await base44.functions.invoke('automationEngine', {
+            sync_schedule: true,
+            automation_id: automation.id,
+          });
+        } catch {
+          // Best-effort — toggling itself already succeeded.
+        }
+      }
     } catch {
       toast.error("שגיאה בעדכון");
     }

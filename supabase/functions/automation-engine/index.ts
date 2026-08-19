@@ -349,25 +349,50 @@ async function runDailyEventBrief(supabase: any, tenantId: string, automation: a
     const photographer2 = photographer2name ? `\n• ${staffNameWithPhone(photographer2name)}` : '';
     const videographer = staffNameWithPhone(firstTeam.find((t: any) => t.role === 'videographer')?.staffMemberName || firstTeam.find((t: any) => t.role === 'videographer2')?.staffMemberName || '');
 
-    let computedProductionBrief = lead?.final_technical_summary || lead?.production_brief || '';
-    if (!computedProductionBrief && lead) {
-      const parts = [];
-      if (lead.production_bride_phone) parts.push(`📱 נייד כלה: ${lead.production_bride_phone}`);
-      if (lead.production_groom_phone) parts.push(`📱 נייד חתן: ${lead.production_groom_phone}`);
-      if (lead.production_bride_prep_location) parts.push(`📍 התארגנות כלה: ${lead.production_bride_prep_location}`);
-      if (lead.production_instagram) parts.push(`📸 אינסטגרם: ${lead.production_instagram}`);
-      if (lead.production_special_requests) parts.push(`💬 בקשות מיוחדות: ${lead.production_special_requests}`);
-      computedProductionBrief = parts.join('\n');
+    // Full questionnaire field list — mirrors _shared/googleCalendarSync.ts's
+    // buildEventPayload leadDetails block exactly (same fields/labels/emoji,
+    // same skip-if-empty rule) so the WhatsApp reminder and the calendar
+    // description never drift out of sync. Keep both in sync manually if
+    // fields are added/removed in either place.
+    let computedProductionDetails = '';
+    if (lead) {
+      const lines: Array<string | false | null | undefined> = [
+        lead.production_bride_phone && `📱 נייד כלה: ${lead.production_bride_phone}`,
+        lead.production_groom_phone && `📱 נייד חתן: ${lead.production_groom_phone}`,
+        lead.production_companion_name && `🧑‍🤝‍🧑 שם מלווה: ${lead.production_companion_name}`,
+        lead.production_companion_phone && `📱 נייד מלווה: ${lead.production_companion_phone}`,
+        lead.production_bride_prep_location && `📍 מקום התארגנות הכלה: ${lead.production_bride_prep_location}`,
+        lead.production_checkin_time && `🕐 שעת הגעה / קבלת פנים: ${lead.production_checkin_time}`,
+        lead.production_chuppah_time && `💍 שעת חופה משוערת: ${lead.production_chuppah_time}`,
+        lead.production_bride_instagram && `📸 אינסטגרם כלה: ${lead.production_bride_instagram}`,
+        lead.production_groom_instagram && `📸 אינסטגרם חתן: ${lead.production_groom_instagram}`,
+        lead.production_has_social_creator &&
+          `📷 סושיאל קריאייטור באירוע: ${[lead.production_social_creator_name, lead.production_social_creator_phone].filter(Boolean).join(' — ') || '—'}`,
+        lead.production_has_external_planner &&
+          `🗂️ יש מנהל/ת אירוע חיצוני/ת: ${[lead.production_external_planner_name, lead.production_external_planner_phone].filter(Boolean).join(' — ') || '—'}`,
+        lead.production_family_bride && `👪 משפחת הכלה: ${lead.production_family_bride}`,
+        lead.production_family_groom && `👪 משפחת החתן: ${lead.production_family_groom}`,
+        lead.production_important_people && `⭐ אנשים חשובים במיוחד לצלם: ${lead.production_important_people}`,
+        lead.production_family_sensitivities && `⚠️ רגישויות משפחתיות: ${lead.production_family_sensitivities}`,
+        lead.production_planned_surprises && `🎁 הפתעות מתוכננות באירוע: ${lead.production_planned_surprises}`,
+        lead.production_special_requests && `💬 בקשות מיוחדות: ${lead.production_special_requests}`,
+      ];
+      computedProductionDetails = (lines.filter(Boolean) as string[]).join('\n');
+    }
+    if (!computedProductionDetails) {
+      computedProductionDetails = lead?.final_technical_summary || lead?.production_brief || 'הזוג טרם מילא שאלון הפקה';
     }
 
     const [ty, tm, td] = tomorrowStr.split('-');
     const formattedDate = `${parseInt(td)}/${parseInt(tm)}/${ty.slice(2)}`;
+    const eventTime = lead?.production_checkin_time || lead?.production_chuppah_time || '';
 
     const finalMessage = renderTemplate(template, {
       staff_name: member.name,
       staffName: member.name,
       tomorrow_date: formattedDate,
       date: formattedDate,
+      time: eventTime,
       daily_events_summary: eventsSummary,
       events_count: String(memberEvents.length),
       coupleNames: firstEvent?.couple_names || '',
@@ -381,7 +406,8 @@ async function runDailyEventBrief(supabase: any, tenantId: string, automation: a
       instagram: lead?.production_instagram || '',
       specialRequests: lead?.production_special_requests || '',
       phoneNumber: firstEvent?.phone_number || '',
-      productionBrief: computedProductionBrief,
+      productionDetails: computedProductionDetails,
+      productionBrief: computedProductionDetails,
       finalTechnicalSummary: lead?.final_technical_summary || '',
     });
 
