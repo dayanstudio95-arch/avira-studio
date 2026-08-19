@@ -57,7 +57,11 @@ Deno.serve(async (req) => {
 
     // 2. Invite the new owner (same auth.admin flow as invite-user — lands on /accept-invite
     //    to set their password).
-    const redirectTo = `${origin || Deno.env.get('SUPABASE_URL') || ''}/accept-invite`;
+    // Always use the fixed production app URL, never the caller-supplied `origin` — if this
+    // is invoked while running the app locally, a client-derived origin would bake an
+    // unreachable `localhost` link into the invite email (see invite-user/index.ts for the
+    // same fix, applied there first after this exact bug was reported in production).
+    const redirectTo = `${Deno.env.get('APP_BASE_URL') || origin || Deno.env.get('SUPABASE_URL') || ''}/accept-invite`;
     const { data: inviteData, error: inviteError } = await serviceClient.auth.admin.inviteUserByEmail(email, {
       data: { full_name: fullName || null },
       redirectTo,

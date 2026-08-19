@@ -39,7 +39,12 @@ Deno.serve(async (req) => {
     }
 
     const serviceClient = createServiceRoleClient();
-    const redirectTo = `${origin || Deno.env.get('SUPABASE_URL') || ''}/accept-invite`;
+    // Always use the fixed production app URL for the invite email's link — never trust
+    // the caller-supplied `origin`. If the admin sends an invite while running the app
+    // locally (localhost dev server), a client-derived origin would bake a `localhost`
+    // link into the email, which is unreachable for the invited teammate. `origin` is
+    // kept as a last-resort fallback only in case APP_BASE_URL is ever unset.
+    const redirectTo = `${Deno.env.get('APP_BASE_URL') || origin || Deno.env.get('SUPABASE_URL') || ''}/accept-invite`;
 
     const { data: inviteData, error: inviteError } = await serviceClient.auth.admin.inviteUserByEmail(email, {
       data: { full_name: fullName || null },
