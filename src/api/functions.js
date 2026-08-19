@@ -82,6 +82,7 @@ const FUNCTION_MAP = {
   resendInvite: 'resend-invite',
   listTenantUsers: 'list-tenant-users',
   updateTenantUser: 'update-tenant-user',
+  deleteTenantUser: 'delete-tenant-user',
   createTenant: 'create-tenant',
 
   // Scoped-role endpoints (2026-08-20) — lead_coordinator / photographer, each the

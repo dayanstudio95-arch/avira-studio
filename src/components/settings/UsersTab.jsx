@@ -17,7 +17,7 @@ import {
   DialogFooter,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Users, Plus, Mail, MessageCircle, Copy, RefreshCw, Eye, EyeOff, Wand2 } from "lucide-react";
+import { Users, Plus, Mail, MessageCircle, Copy, RefreshCw, Eye, EyeOff, Wand2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import CreateStudioDialog from "./CreateStudioDialog";
 
@@ -219,6 +219,22 @@ export default function UsersTab() {
       toast.success(resolvedId ? "החשבון קושר לאיש הצוות" : "הקישור הוסר");
     } catch (error) {
       toast.error("עדכון הקישור נכשל", { description: error.message });
+    }
+    setUpdatingId(null);
+  };
+
+  const handleDeleteUser = async (u) => {
+    const confirmed = window.confirm(
+      `למחוק לצמיתות את המשתמש "${u.fullName || u.email || "ללא שם"}"? הפעולה בלתי הפיכה — החשבון וההרשאות שלו יימחקו, וכל הקישורים אליו (איש צוות מקושר וכו') יתנתקו.`
+    );
+    if (!confirmed) return;
+    setUpdatingId(u.id);
+    try {
+      await base44.functions.invoke("deleteTenantUser", { userId: u.id });
+      setUsers((prev) => prev.filter((x) => x.id !== u.id));
+      toast.success("המשתמש נמחק");
+    } catch (error) {
+      toast.error("מחיקת המשתמש נכשלה", { description: error.message });
     }
     setUpdatingId(null);
   };
@@ -546,6 +562,18 @@ export default function UsersTab() {
                         disabled={u.isSelf || updatingId === u.id}
                         onCheckedChange={(checked) => handleToggleActive(u.id, checked)}
                       />
+                      {!u.isSelf && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-red-500 text-red-400 hover:bg-red-500/10"
+                          disabled={updatingId === u.id}
+                          onClick={() => handleDeleteUser(u)}
+                          title="מחק משתמש"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
                     </>
                   ) : (
                     <span className="text-sm text-gray-400">{ROLE_LABELS[u.role] || u.role}</span>
