@@ -102,7 +102,11 @@ export default function UsersTab() {
         // Keep the dialog open so the admin can copy/send the credentials — nothing else
         // shows this password again after this point.
         setCreatedCredentials({ email: inviteForm.email, password: manualPassword, phone: inviteForm.phone });
-        toast.success("המשתמש נוצר בהצלחה");
+        toast.success(
+          res.data?.recoveredExistingUser
+            ? "נמצא משתמש קיים עם אימייל זה — הסיסמה שלו עודכנה"
+            : "המשתמש נוצר בהצלחה"
+        );
       } else {
         toast.success("ההזמנה נשלחה בהצלחה");
         setIsInviteOpen(false);
