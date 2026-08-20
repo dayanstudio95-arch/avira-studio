@@ -37,6 +37,7 @@ export default function AlbumOrderDetail() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
   const [expandedVersionId, setExpandedVersionId] = useState(null);
   const [versionPreviews, setVersionPreviews] = useState({}); // versionId -> [{sequenceNumber, url}]
   const [newPortalToken, setNewPortalToken] = useState(null); // raw token, shown once
@@ -107,6 +108,8 @@ export default function AlbumOrderDetail() {
     e.target.value = "";
     if (files.length === 0) return;
     setIsUploading(true);
+    const sorted = [...files].sort((a, b) => a.name.localeCompare(b.name));
+    setUploadProgress({ current: 0, total: sorted.length });
     try {
       const nextVersionNumber = (versions[0]?.versionNumber || 0) + 1;
       const newVersion = await base44.entities.AlbumVersion.create({
@@ -114,7 +117,6 @@ export default function AlbumOrderDetail() {
         versionNumber: nextVersionNumber,
       });
 
-      const sorted = [...files].sort((a, b) => a.name.localeCompare(b.name));
       for (let i = 0; i < sorted.length; i++) {
         const file = sorted[i];
         const sequenceNumber = i + 1;
@@ -127,6 +129,7 @@ export default function AlbumOrderDetail() {
           fileKey: path,
           processingStatus: "ready",
         });
+        setUploadProgress({ current: i + 1, total: sorted.length });
       }
 
       await base44.entities.AlbumOrder.update(orderId, {
@@ -142,6 +145,7 @@ export default function AlbumOrderDetail() {
       toast.error(err.message || "שגיאה בהעלאת הסקיצה");
     } finally {
       setIsUploading(false);
+      setUploadProgress({ current: 0, total: 0 });
     }
   };
 
@@ -305,8 +309,18 @@ export default function AlbumOrderDetail() {
               <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFilesSelected} />
               <Button onClick={handleUploadClick} disabled={isUploading} className="bg-yellow-400 text-gray-900 hover:bg-yellow-500">
                 {isUploading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
-                העלאת גרסה חדשה
+                {isUploading && uploadProgress.total > 0
+                  ? `מעלה קובץ ${uploadProgress.current} מתוך ${uploadProgress.total}...`
+                  : "העלאת גרסה חדשה"}
               </Button>
+              {isUploading && uploadProgress.total > 0 && (
+                <div className="mt-2 w-48 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-yellow-400 transition-all duration-200"
+                    style={{ width: `${Math.round((uploadProgress.current / uploadProgress.total) * 100)}%` }}
+                  />
+                </div>
+              )}
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
