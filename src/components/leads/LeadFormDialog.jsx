@@ -322,7 +322,7 @@ export default function LeadFormDialog({ isOpen, onClose, lead, packagePrices, o
         </div>
 
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={onClose} className="border-gray-700 text-gray-300">ביטול</Button>
+          <Button variant="outline" onClick={onClose} className="border-gray-700 bg-gray-800 text-gray-300">ביטול</Button>
           <Button onClick={handleSave} disabled={isSaving} className="bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-semibold">
             {isSaving ? "שומר..." : "שמור"}
           </Button>

@@ -37,7 +37,7 @@ function NavigateAction({ icon, label, description, target, badge }) {
       <Button
         size="sm"
         variant="outline"
-        className="shrink-0 border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white gap-1"
+        className="shrink-0 border-gray-600 bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white gap-1"
         onClick={() => navigate(NAVIGATE_TARGETS[target])}
       >
         <ExternalLink className="w-3.5 h-3.5" />
@@ -72,7 +72,7 @@ function DraftAction({ icon, label, description, draftText, disabled }) {
         <Button
           size="sm"
           variant="outline"
-          className="shrink-0 border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white gap-1"
+          className="shrink-0 border-gray-600 bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white gap-1"
           onClick={() => setOpen(o => !o)}
           disabled={disabled}
         >

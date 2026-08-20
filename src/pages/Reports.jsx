@@ -175,7 +175,7 @@ export default function Reports() {
               <Button
                 onClick={() => exportToCSV('monthly')}
                 variant="outline"
-                className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
                 disabled={filterEventsByPeriod('monthly').length === 0}
               >
                 <Download className="w-4 h-4 mr-2" />
@@ -209,7 +209,7 @@ export default function Reports() {
               <Button
                 onClick={() => exportToCSV('daily')}
                 variant="outline"
-                className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
                 disabled={filterEventsByPeriod('daily').length === 0}
               >
                 <Download className="w-4 h-4 mr-2" />
@@ -240,7 +240,7 @@ export default function Reports() {
               <Button
                 onClick={() => exportToCSV('annual')}
                 variant="outline"
-                className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
                 disabled={filterEventsByPeriod('annual').length === 0}
               >
                 <Download className="w-4 h-4 mr-2" />

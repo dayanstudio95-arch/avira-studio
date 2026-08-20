@@ -292,7 +292,7 @@ export default function UsersTab() {
                             type="button"
                             size="icon"
                             variant="outline"
-                            className="border-gray-700"
+                            className="border-gray-700 bg-gray-800"
                             onClick={() => {
                               navigator.clipboard.writeText(createdCredentials.email);
                               toast.success("האימייל הועתק");
@@ -315,7 +315,7 @@ export default function UsersTab() {
                             type="button"
                             size="icon"
                             variant="outline"
-                            className="border-gray-700"
+                            className="border-gray-700 bg-gray-800"
                             onClick={() => setShowPassword((v) => !v)}
                           >
                             {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -324,7 +324,7 @@ export default function UsersTab() {
                             type="button"
                             size="icon"
                             variant="outline"
-                            className="border-gray-700"
+                            className="border-gray-700 bg-gray-800"
                             onClick={() => {
                               navigator.clipboard.writeText(createdCredentials.password);
                               toast.success("הסיסמה הועתקה");
@@ -357,7 +357,7 @@ export default function UsersTab() {
                       </Button>
                       <Button
                         variant="outline"
-                        className="border-gray-700"
+                        className="border-gray-700 bg-gray-800"
                         onClick={() => setIsInviteOpen(false)}
                       >
                         סגור
@@ -441,7 +441,7 @@ export default function UsersTab() {
                               type="button"
                               size="icon"
                               variant="outline"
-                              className="border-gray-700"
+                              className="border-gray-700 bg-gray-800"
                               onClick={() => setShowPassword((v) => !v)}
                             >
                               {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -450,7 +450,7 @@ export default function UsersTab() {
                               type="button"
                               size="icon"
                               variant="outline"
-                              className="border-gray-700"
+                              className="border-gray-700 bg-gray-800"
                               title="צור סיסמה אקראית"
                               onClick={() => {
                                 setManualPassword(generateRandomPassword());
@@ -496,7 +496,7 @@ export default function UsersTab() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-white font-medium">{u.fullName || "ללא שם"}</p>
-                    {u.isSelf && <Badge variant="outline" className="border-yellow-400 text-yellow-400 text-xs">אתה</Badge>}
+                    {u.isSelf && <Badge variant="outline" className="border-yellow-400 bg-yellow-950/20 text-yellow-400 text-xs">אתה</Badge>}
                     <Badge className={u.isActive ? "bg-green-600" : "bg-gray-600"}>
                       {u.isActive ? "פעיל" : "מושבת"}
                     </Badge>
@@ -511,7 +511,7 @@ export default function UsersTab() {
                     <Button
                       size="sm"
                       variant="outline"
-                      className="border-orange-500 text-orange-400 hover:bg-orange-500/10"
+                      className="border-orange-500 bg-orange-950/40 text-orange-400 hover:bg-orange-500/10"
                       onClick={() => {
                         setResendTarget(u);
                         setResendPhone(u.phone || "");
@@ -566,7 +566,7 @@ export default function UsersTab() {
                         <Button
                           size="sm"
                           variant="outline"
-                          className="border-red-500 text-red-400 hover:bg-red-500/10"
+                          className="border-red-500 bg-red-950/40 text-red-400 hover:bg-red-500/10"
                           disabled={updatingId === u.id}
                           onClick={() => handleDeleteUser(u)}
                           title="מחק משתמש"
@@ -618,7 +618,7 @@ export default function UsersTab() {
             onClick={() => handleResendInvite("link")}
             disabled={isResending}
             variant="outline"
-            className="border-gray-700"
+            className="border-gray-700 bg-gray-800"
           >
             <Copy className="w-4 h-4 mr-2" />
             העתק קישור

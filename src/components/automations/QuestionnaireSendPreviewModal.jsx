@@ -264,7 +264,7 @@ export default function QuestionnaireSendPreviewModal({ automation, onClose, onS
               : ''}
           </span>
           <div className="flex gap-3">
-            <Button variant="outline" onClick={onClose} className="border-gray-600 text-gray-300 hover:bg-gray-800">ביטול</Button>
+            <Button variant="outline" onClick={onClose} className="border-gray-600 bg-gray-800 text-gray-300 hover:bg-gray-700">ביטול</Button>
             <Button
               onClick={handleSend}
               disabled={sending || totalSelected === 0 || !groups}

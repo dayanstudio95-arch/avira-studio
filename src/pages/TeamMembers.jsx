@@ -148,7 +148,7 @@ export default function TeamMembers() {
               did) — this page stays a read-only performance/finance dashboard to avoid
               two divergent edit surfaces for the same data. */}
           <Link to={createPageUrl("Settings?tab=team")}>
-            <Button variant="outline" className="border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-yellow-400 hover:border-yellow-400 gap-2">
+            <Button variant="outline" className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-yellow-400 hover:border-yellow-400 gap-2">
               <SettingsIcon className="w-4 h-4" />
               עריכת/הוספת אנשי צוות בהגדרות
             </Button>
@@ -283,7 +283,7 @@ export default function TeamMembers() {
                         <Button
                           onClick={() => handleViewEvents(staff)}
                           variant="outline"
-                          className="w-full border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-yellow-400 hover:border-yellow-400"
+                          className="w-full border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-yellow-400 hover:border-yellow-400"
                         >
                           <Eye className="w-4 h-4 mr-2" />
                           צפה בכל האירועים ({stats.totalEvents})

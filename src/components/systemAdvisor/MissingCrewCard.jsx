@@ -57,12 +57,12 @@ export default function MissingCrewCard({ events }) {
                 </div>
                 <div className="flex gap-2 mt-1.5 flex-wrap">
                   {e.missingRoles.map(r => (
-                    <Badge key={r} variant="outline" className="border-red-700 text-red-400 text-xs">
+                    <Badge key={r} variant="outline" className="border-red-700 bg-red-950/20 text-red-400 text-xs">
                       חסר: {ROLE_LABELS[r] || r}
                     </Badge>
                   ))}
                   {e.assignedCount < e.requiredCrew && (
-                    <Badge variant="outline" className="border-yellow-700 text-yellow-400 text-xs">
+                    <Badge variant="outline" className="border-yellow-700 bg-yellow-950/20 text-yellow-400 text-xs">
                       {e.assignedCount}/{e.requiredCrew} משובצים
                     </Badge>
                   )}

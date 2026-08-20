@@ -750,7 +750,7 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                           onClick={handleCopyQuestionnaireLink}
                           disabled={!lead.phoneNumber}
                           variant="outline"
-                          className="w-full text-gray-300 border-gray-700 hover:bg-gray-700 py-2 rounded-lg gap-2 text-sm"
+                          className="w-full text-gray-300 border-gray-700 bg-gray-800 hover:bg-gray-700 py-2 rounded-lg gap-2 text-sm"
                         >
                           {copiedQLink ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                           {copiedQLink ? 'הועתק!' : 'העתק לינק'}
@@ -976,7 +976,7 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
             <Button
               variant="outline"
               onClick={() => setIsEditingContractTemplate(false)}
-              className="border-gray-700 text-gray-300"
+              className="border-gray-700 bg-gray-800 text-gray-300"
             >
               ביטול
             </Button>
@@ -1069,7 +1069,7 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
             <Button
               variant="outline"
               onClick={() => setIsEditingQuestionnaireTemplate(false)}
-              className="border-gray-700 text-gray-300 w-full"
+              className="border-gray-700 bg-gray-800 text-gray-300 w-full"
             >
               סגור
             </Button>
@@ -1120,7 +1120,7 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
               variant="outline"
               onClick={() => setShowCancelConfirm(false)}
               disabled={isCancelingEvent}
-              className="border-gray-700 text-gray-300"
+              className="border-gray-700 bg-gray-800 text-gray-300"
             >
               ביטול
             </Button>

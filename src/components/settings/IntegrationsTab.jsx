@@ -203,7 +203,7 @@ export default function IntegrationsTab() {
         </CardHeader>
         <CardContent className="p-6">
           <Link to="/GoogleCalendarSync">
-            <Button variant="outline" className="border-gray-700 text-gray-200 hover:bg-gray-800 gap-2 w-full justify-between">
+            <Button variant="outline" className="border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700 gap-2 w-full justify-between">
               <span>ניהול חיבור יומן Google ובריאות סנכרון</span>
               <ArrowLeft className="w-4 h-4" />
             </Button>

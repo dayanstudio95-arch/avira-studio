@@ -137,7 +137,7 @@ export default function ManualPaymentModal({ isOpen, onClose, lead, onSaved }) {
             >
               {isLoading ? "שומר..." : "אישור ועדכון"}
             </Button>
-            <Button variant="outline" onClick={handleClose} className="border-gray-600 text-gray-300">
+            <Button variant="outline" onClick={handleClose} className="border-gray-600 bg-gray-800 text-gray-300">
               ביטול
             </Button>
           </div>

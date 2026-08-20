@@ -474,7 +474,7 @@ export default function Settings() {
                       </div>
                     )}
                     <DialogFooter>
-                      <Button variant="outline" onClick={() => setIsEditStaffDialogOpen(false)} className="border-gray-700 text-gray-300">ביטול</Button>
+                      <Button variant="outline" onClick={() => setIsEditStaffDialogOpen(false)} className="border-gray-700 bg-gray-800 text-gray-300">ביטול</Button>
                       <Button onClick={() => handleUpdateStaff(editStaffData.id, editStaffData)} className="bg-yellow-400 hover:bg-yellow-500 text-gray-900">שמור</Button>
                     </DialogFooter>
                   </DialogContent>
@@ -566,7 +566,7 @@ export default function Settings() {
                       <Button
                         onClick={() => setIsEventImportOpen(true)}
                         variant="outline"
-                        className="border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-yellow-400 hover:border-yellow-400 h-auto py-4"
+                        className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-yellow-400 hover:border-yellow-400 h-auto py-4"
                       >
                         <div className="flex flex-col items-center gap-2 w-full">
                           <Upload className="w-8 h-8" />
@@ -578,7 +578,7 @@ export default function Settings() {
                       <Button
                         onClick={() => setIsStaffImportOpen(true)}
                         variant="outline"
-                        className="border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-yellow-400 hover:border-yellow-400 h-auto py-4"
+                        className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-yellow-400 hover:border-yellow-400 h-auto py-4"
                       >
                         <div className="flex flex-col items-center gap-2 w-full">
                           <Upload className="w-8 h-8" />
@@ -595,7 +595,7 @@ export default function Settings() {
                       <Button
                         onClick={handleExportEvents}
                         variant="outline"
-                        className="border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-green-400 hover:border-green-400 h-auto py-4"
+                        className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-green-400 hover:border-green-400 h-auto py-4"
                       >
                         <div className="flex flex-col items-center gap-2 w-full">
                           <Download className="w-8 h-8" />
@@ -607,7 +607,7 @@ export default function Settings() {
                       <Button
                         onClick={handleExportStaff}
                         variant="outline"
-                        className="border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-green-400 hover:border-green-400 h-auto py-4"
+                        className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-green-400 hover:border-green-400 h-auto py-4"
                       >
                         <div className="flex flex-col items-center gap-2 w-full">
                           <Download className="w-8 h-8" />

@@ -40,7 +40,7 @@ const PaginationLink = ({
     className={cn(buttonVariants({
       variant: isActive ? "outline" : "ghost",
       size,
-    }), className)}
+    }), isActive ? "bg-gray-800" : "", className)}
     {...props} />
 )
 PaginationLink.displayName = "PaginationLink"

@@ -799,7 +799,7 @@ export default function ProgressStatus() {
               </div>
             </div>
             <div className="flex gap-3 justify-end">
-              <Button variant="outline" className="border-gray-600 text-gray-300" onClick={() => setShowAlbumSettings(false)}>ביטול</Button>
+              <Button variant="outline" className="border-gray-600 bg-gray-800 text-gray-300" onClick={() => setShowAlbumSettings(false)}>ביטול</Button>
               <Button className="bg-yellow-500 text-black hover:bg-yellow-400" onClick={saveAlbumSettings} disabled={albumSaving}>{albumSaving ? '...' : 'שמור'}</Button>
             </div>
           </div>
@@ -867,7 +867,7 @@ export default function ProgressStatus() {
               </div>
             )}
             <div className="flex gap-3 justify-end mt-4">
-              <Button variant="outline" className="border-gray-600 text-gray-300" onClick={() => setShowAlbumSend(false)}>ביטול</Button>
+              <Button variant="outline" className="border-gray-600 bg-gray-800 text-gray-300" onClick={() => setShowAlbumSend(false)}>ביטול</Button>
               <Button className="bg-purple-600 text-white hover:bg-purple-500" onClick={sendAlbumReminders} disabled={albumSending || selectedAlbumEventIds.size === 0}>
                 {albumSending ? 'שולח...' : `שלח ${selectedAlbumEventIds.size}`}
               </Button>

@@ -857,7 +857,7 @@ function SettingsModal({ automation, onClose, onSaved }) {
 
         {/* Footer */}
         <div className="sticky bottom-0 bg-gray-900/95 backdrop-blur border-t border-gray-700 px-5 py-4 flex gap-3 rounded-b-2xl">
-          <Button variant="outline" onClick={onClose} className="flex-1 border-gray-600 text-gray-300">ביטול</Button>
+          <Button variant="outline" onClick={onClose} className="flex-1 border-gray-600 bg-gray-800 text-gray-300">ביטול</Button>
           <Button onClick={handleSave} disabled={saving} className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">
             {saving ? <Loader2 className="w-4 h-4 animate-spin ml-2" /> : null}
             שמור הגדרות
@@ -984,7 +984,7 @@ function AutomationCard({ automation, onToggle, onSettings, onManualRun, onSyncS
           size="sm"
           variant="outline"
           onClick={() => onSettings(automation)}
-          className="flex-1 border-indigo-700/50 text-indigo-300 hover:bg-indigo-900/30 hover:border-indigo-600 text-xs h-8"
+          className="flex-1 border-indigo-700/50 bg-indigo-950/40 text-indigo-300 hover:bg-indigo-900/30 hover:border-indigo-600 text-xs h-8"
         >
           <Settings className="w-3.5 h-3.5 ml-1" />
           הגדרות
@@ -1414,7 +1414,7 @@ export default function AutomationsDashboard() {
                 {selectedRecipients.size === 0 ? '⚠️ לא נבחר אף אחד' : `✓ ${selectedRecipients.size} מ-${previewModal.previews.length} נבחרו`}
               </span>
               <div className="flex gap-3">
-                <Button variant="outline" onClick={() => setPreviewModal(null)} className="border-gray-600 text-gray-300 hover:bg-gray-800">ביטול</Button>
+                <Button variant="outline" onClick={() => setPreviewModal(null)} className="border-gray-600 bg-gray-800 text-gray-300 hover:bg-gray-700">ביטול</Button>
                 <Button onClick={handleConfirmSend} disabled={sendingAll || selectedRecipients.size === 0} className="bg-green-600 hover:bg-green-700 text-white font-semibold gap-2">
                   {sendingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                   אשר ושלח {selectedRecipients.size} הודעות

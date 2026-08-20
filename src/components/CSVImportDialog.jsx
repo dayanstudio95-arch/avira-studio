@@ -182,7 +182,7 @@ export default function CSVImportDialog({ isOpen, onClose, onSuccess }) {
                 id="csv-upload"
               />
               <label htmlFor="csv-upload">
-                <Button variant="outline" className="border-gray-700 cursor-pointer" asChild>
+                <Button variant="outline" className="border-gray-700 bg-gray-800 cursor-pointer" asChild>
                   <span>
                     <FileText className="w-4 h-4 mr-2" />
                     העלה קובץ
@@ -261,7 +261,7 @@ export default function CSVImportDialog({ isOpen, onClose, onSuccess }) {
         <DialogFooter>
           {step === 2 && (
             <>
-              <Button variant="outline" onClick={() => setStep(1)} className="border-gray-700">
+              <Button variant="outline" onClick={() => setStep(1)} className="border-gray-700 bg-gray-800">
                 חזור
               </Button>
               <Button

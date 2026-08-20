@@ -542,13 +542,13 @@ export default function StaffScheduling() {
               {format(currentMonth, "MMMM yyyy")}
             </CardTitle>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="border-gray-700 text-gray-300 hover:bg-gray-800">
+              <Button variant="outline" size="sm" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">
                 <ChevronRight className="w-4 h-4" />
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setCurrentMonth(new Date())} className="border-gray-700 text-gray-300 hover:bg-gray-800">
+              <Button variant="outline" size="sm" onClick={() => setCurrentMonth(new Date())} className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">
                 היום
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="border-gray-700 text-gray-300 hover:bg-gray-800">
+              <Button variant="outline" size="sm" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">
                 <ChevronLeft className="w-4 h-4" />
               </Button>
             </div>
@@ -642,7 +642,7 @@ export default function StaffScheduling() {
             <Button
               variant={viewMode === "list" ? "default" : "outline"}
               onClick={() => setViewMode("list")}
-              className={viewMode === "list" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500" : "border-gray-700 text-gray-300 hover:bg-gray-800"}
+              className={viewMode === "list" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500" : "border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"}
             >
               <List className="w-4 h-4 mr-2" />
               רשימה
@@ -650,7 +650,7 @@ export default function StaffScheduling() {
             <Button
               variant={viewMode === "calendar" ? "default" : "outline"}
               onClick={() => setViewMode("calendar")}
-              className={viewMode === "calendar" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500" : "border-gray-700 text-gray-300 hover:bg-gray-800"}
+              className={viewMode === "calendar" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500" : "border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"}
             >
               <Calendar className="w-4 h-4 mr-2" />
               לוח שנה

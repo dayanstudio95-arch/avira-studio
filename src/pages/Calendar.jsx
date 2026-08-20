@@ -323,7 +323,7 @@ export default function Calendar() {
               variant={view === "month" ? "default" : "outline"}
               size="sm"
               onClick={() => setView("month")}
-              className={view === "month" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500" : "border-gray-700 text-gray-300 hover:bg-gray-800"}
+              className={view === "month" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500" : "border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"}
             >
               חודש
             </Button>
@@ -331,7 +331,7 @@ export default function Calendar() {
               variant={view === "week" ? "default" : "outline"}
               size="sm"
               onClick={() => setView("week")}
-              className={view === "week" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500" : "border-gray-700 text-gray-300 hover:bg-gray-800"}
+              className={view === "week" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500" : "border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"}
             >
               שבוע
             </Button>
@@ -339,7 +339,7 @@ export default function Calendar() {
               variant={view === "day" ? "default" : "outline"}
               size="sm"
               onClick={() => setView("day")}
-              className={view === "day" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500" : "border-gray-700 text-gray-300 hover:bg-gray-800"}
+              className={view === "day" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500" : "border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"}
             >
               יום
             </Button>
@@ -352,7 +352,7 @@ export default function Calendar() {
               variant="outline"
               size="sm"
               onClick={handlePrevious}
-              className="border-gray-700 text-gray-300 hover:bg-gray-800"
+              className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
             >
               <ChevronRight className="w-4 h-4" />
             </Button>
@@ -367,7 +367,7 @@ export default function Calendar() {
                 variant="outline"
                 size="sm"
                 onClick={handleToday}
-                className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
               >
                 היום
               </Button>
@@ -377,7 +377,7 @@ export default function Calendar() {
               variant="outline"
               size="sm"
               onClick={handleNext}
-              className="border-gray-700 text-gray-300 hover:bg-gray-800"
+              className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
             >
               <ChevronLeft className="w-4 h-4" />
             </Button>

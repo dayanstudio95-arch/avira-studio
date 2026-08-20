@@ -211,7 +211,7 @@ export default function CustomStaffMessageModal({ automation, onClose, onSent })
             </>
           ) : (
             <>
-              <Button variant="outline" onClick={() => setStep("compose")} className="border-gray-600 text-gray-300 hover:bg-gray-800 gap-1.5">
+              <Button variant="outline" onClick={() => setStep("compose")} className="border-gray-600 bg-gray-800 text-gray-300 hover:bg-gray-700 gap-1.5">
                 <ArrowRight className="w-3.5 h-3.5" />
                 חזרה לעריכה
               </Button>

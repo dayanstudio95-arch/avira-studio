@@ -42,6 +42,7 @@ export default function SystemHeader({ score, openIssues, activeAutomations, tot
             size="sm"
             onClick={onRefresh}
             disabled={loading}
+            className="border-gray-700 bg-gray-800 text-gray-400 hover:text-white text-xs gap-1.5"
             className="border-gray-700 text-gray-400 hover:text-white text-xs gap-1.5"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />

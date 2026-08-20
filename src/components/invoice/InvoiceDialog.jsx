@@ -221,7 +221,7 @@ export default function InvoiceDialog({
               </Button>
             </a>
             <p className="text-gray-400 text-xs break-all">{invoiceUrl}</p>
-            <Button variant="outline" onClick={handleClose} className="w-full border-gray-600 text-gray-300">
+            <Button variant="outline" onClick={handleClose} className="w-full border-gray-600 bg-gray-800 text-gray-300">
               סגור
             </Button>
           </div>
@@ -369,12 +369,12 @@ export default function InvoiceDialog({
                 variant="outline"
                 onClick={handleCheckConnection}
                 disabled={isCheckingConnection}
-                className="border-gray-600 text-gray-300 text-xs px-3"
+                className="border-gray-600 bg-gray-800 text-gray-300 text-xs px-3"
                 title="בדוק חיבור למורנינג"
               >
                 {isCheckingConnection ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wifi className="w-3 h-3" />}
               </Button>
-              <Button variant="outline" onClick={handleClose} className="border-gray-600 text-gray-300">
+              <Button variant="outline" onClick={handleClose} className="border-gray-600 bg-gray-800 text-gray-300">
                 ביטול
               </Button>
             </div>

@@ -18,8 +18,8 @@ export default function OpenDebtsCard({ events }) {
   };
 
   const statusColor = (s) => {
-    if (s === "Partially Paid") return "border-yellow-700 text-yellow-400";
-    return "border-red-700 text-red-400";
+    if (s === "Partially Paid") return "border-yellow-700 bg-yellow-950/20 text-yellow-400";
+    return "border-red-700 bg-red-950/20 text-red-400";
   };
 
   const statusLabel = (s) => {

@@ -303,7 +303,7 @@ export default function GoogleCalendarSync() {
         <Button
           variant="outline"
           onClick={() => setSyncDialogOpen(true)}
-          className="border-gray-700 text-gray-200 hover:bg-gray-800 gap-1.5"
+          className="border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700 gap-1.5"
         >
           <CalendarSync className="w-4 h-4" />
           סנכרן אירועים
@@ -412,7 +412,7 @@ export default function GoogleCalendarSync() {
                               variant="outline"
                               disabled={retryingId === row.eventId}
                               onClick={() => handleRetry(row.eventId)}
-                              className="border-gray-700 text-gray-300 hover:bg-gray-800 gap-1.5"
+                              className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 gap-1.5"
                             >
                               {retryingId === row.eventId ? (
                                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -581,7 +581,7 @@ export default function GoogleCalendarSync() {
               onClick={() => handleRunMonthSync(false)}
               disabled={syncRunning || eventsInSelectedMonth.length === 0}
               variant="outline"
-              className="w-full border-gray-700 text-gray-200 hover:bg-gray-800 gap-1.5"
+              className="w-full border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700 gap-1.5"
             >
               {syncRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
               סנכרן בלבד (ללא זימון)

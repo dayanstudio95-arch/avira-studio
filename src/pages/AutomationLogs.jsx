@@ -67,7 +67,7 @@ export default function AutomationLogs() {
             <h1 className="text-2xl font-bold text-white">📋 לוגים של אוטומציות</h1>
             <p className="text-gray-400 text-sm mt-1">היסטוריית ריצות והודעות שנשלחו</p>
           </div>
-          <Button onClick={load} variant="outline" className="border-gray-700 text-gray-300 gap-2">
+          <Button onClick={load} variant="outline" className="border-gray-700 bg-gray-800 text-gray-300 gap-2">
             <RefreshCw className="w-4 h-4" /> רענן
           </Button>
         </div>

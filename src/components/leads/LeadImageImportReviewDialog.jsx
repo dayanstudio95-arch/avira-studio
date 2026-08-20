@@ -192,7 +192,7 @@ export default function LeadImageImportReviewDialog({ isOpen, onClose, onSuccess
 
             <div className="flex gap-3 mt-2">
               <Button onClick={() => decide('skip')} variant="outline"
-                className="flex-1 border-red-700 text-red-400 hover:bg-red-900/20 gap-2">
+                className="flex-1 border-red-700 bg-red-950/40 text-red-400 hover:bg-red-900/20 gap-2">
                 <XCircle className="w-4 h-4" /> דלג
               </Button>
               <Button onClick={() => decide('approve')}
@@ -238,7 +238,7 @@ export default function LeadImageImportReviewDialog({ isOpen, onClose, onSuccess
             <h3 className="text-xl font-bold">הושלם!</h3>
             <p className="text-gray-300">יובאו {importedCount} לידים בהצלחה</p>
             <div className="flex gap-2 justify-center mt-4">
-              <Button onClick={() => { setStep('upload'); setLeads([]); setDecisions({}); }} variant="outline" className="border-gray-700">
+              <Button onClick={() => { setStep('upload'); setLeads([]); setDecisions({}); }} variant="outline" className="border-gray-700 bg-gray-800">
                 העלה תמונה נוספת
               </Button>
               <Button onClick={handleClose} className="bg-yellow-400 hover:bg-yellow-500 text-gray-900">סגור</Button>

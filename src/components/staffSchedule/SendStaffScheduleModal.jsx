@@ -133,7 +133,7 @@ export default function SendStaffScheduleModal({ data, onClose }) {
         {!sent ? (
           <div className="flex gap-2 justify-end">
             <Button variant="outline" onClick={onClose} disabled={sending}
-              className="border-gray-600 text-gray-300 hover:bg-gray-700">
+              className="border-gray-600 bg-gray-800 text-gray-300 hover:bg-gray-700">
               ביטול
             </Button>
             <Button

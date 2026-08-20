@@ -102,7 +102,7 @@ export default function AuditLogTab() {
           </CardTitle>
           <p className="text-gray-400 text-sm mt-1">מי שינה מה — משתמשים, הגדרות, תמחור וצוות (200 האחרונים)</p>
         </div>
-        <Button onClick={load} variant="outline" size="sm" className="border-gray-700 text-gray-300 gap-2">
+        <Button onClick={load} variant="outline" size="sm" className="border-gray-700 bg-gray-800 text-gray-300 gap-2">
           <RefreshCw className="w-4 h-4" /> רענן
         </Button>
       </CardHeader>

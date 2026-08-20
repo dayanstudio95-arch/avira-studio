@@ -146,7 +146,7 @@ export default function SyncStatusTable({ events, leads, syncing, loading, onSyn
               className={
                 filter === opt.key
                   ? "bg-blue-600 hover:bg-blue-700 text-white"
-                  : "border-gray-700 text-gray-400 hover:text-white hover:bg-gray-800"
+                  : "border-gray-700 bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700"
               }
             >
               {opt.label}
@@ -282,7 +282,7 @@ function SyncRow({ event, syncing, onSync }) {
             size="sm"
             onClick={() => onSync(e.id)}
             disabled={isSyncing}
-            className="border-gray-700 text-gray-300 hover:bg-blue-600 hover:text-white hover:border-blue-600 text-xs"
+            className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-blue-600 hover:text-white hover:border-blue-600 text-xs"
           >
             <RefreshCw className={`w-3 h-3 ml-1 ${isSyncing ? "animate-spin" : ""}`} />
             {e.hasCal ? "עדכון" : "סנכרן"}

@@ -362,7 +362,7 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
               variant="outline"
               size="sm"
               onClick={onRefresh}
-              className="border-gray-700 text-gray-300 hover:bg-gray-800"
+              className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
             >
               רענן
             </Button>

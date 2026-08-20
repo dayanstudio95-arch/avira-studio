@@ -182,7 +182,7 @@ export default function LeadCSVImportDialog({ isOpen, onClose, onSuccess }) {
               <p className="text-gray-300 mb-4">בחר קובץ CSV או TSV (ייצוא מאקסל)</p>
               <input type="file" accept=".csv,.tsv,.txt" onChange={handleFileUpload} className="hidden" id="lead-csv-upload" />
               <label htmlFor="lead-csv-upload">
-                <Button variant="outline" className="border-gray-700 cursor-pointer" asChild>
+                <Button variant="outline" className="border-gray-700 bg-gray-800 cursor-pointer" asChild>
                   <span><FileText className="w-4 h-4 ml-2" />העלה קובץ</span>
                 </Button>
               </label>
@@ -273,7 +273,7 @@ export default function LeadCSVImportDialog({ isOpen, onClose, onSuccess }) {
               >
                 התחל ייבוא ({csvData?.rows.length} שורות)
               </Button>
-              <Button variant="outline" onClick={() => setStep(1)} className="border-gray-700">חזור</Button>
+              <Button variant="outline" onClick={() => setStep(1)} className="border-gray-700 bg-gray-800">חזור</Button>
             </>
           )}
           {step === 4 && (

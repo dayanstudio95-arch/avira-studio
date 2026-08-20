@@ -88,7 +88,7 @@ export default function RescheduleConfirmModal({ data, onConfirm, onCancel }) {
           <Button
             onClick={() => onConfirm({ updateLead: false })}
             variant="outline"
-            className="w-full border-gray-600 text-gray-200 hover:bg-gray-800"
+            className="w-full border-gray-600 bg-gray-800 text-gray-200 hover:bg-gray-700"
           >
             עדכן אירוע בלבד
           </Button>

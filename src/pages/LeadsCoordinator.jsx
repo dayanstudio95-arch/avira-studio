@@ -141,7 +141,7 @@ export default function LeadsCoordinator() {
               <Button
                 variant="outline"
                 onClick={() => handleCopyLink(lead)}
-                className="gap-2 border-gray-700 text-gray-200 hover:bg-gray-800"
+                className="gap-2 border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700"
               >
                 <LinkIcon className="w-4 h-4" />
                 {copiedId === lead.id ? "הועתק!" : "העתק קישור לחוזה"}

@@ -115,7 +115,7 @@ export default function GoogleCalendarAccountCard({ accountRole, account, onChan
               disabled={savingCalendarId || calendarIdInput.trim() === (account?.calendarId || "primary")}
               size="sm"
               variant="outline"
-              className="border-gray-700 text-gray-300 hover:bg-gray-800 h-8 px-2.5"
+              className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 h-8 px-2.5"
             >
               {savingCalendarId ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
             </Button>
@@ -148,7 +148,7 @@ export default function GoogleCalendarAccountCard({ accountRole, account, onChan
             disabled={disconnecting}
             variant="outline"
             size="sm"
-            className="border-red-800 text-red-400 hover:bg-red-900/20 gap-1.5"
+            className="border-red-800 bg-red-950/40 text-red-400 hover:bg-red-900/20 gap-1.5"
           >
             {disconnecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Unlink className="w-3.5 h-3.5" />}
             נתק

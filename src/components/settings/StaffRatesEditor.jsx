@@ -81,7 +81,7 @@ export default function StaffRatesEditor({ staff, onChange }) {
                 size="sm"
                 variant="outline"
                 onClick={() => handleAddRole(role.value)}
-                className="border-gray-700 text-gray-400 hover:bg-yellow-400/10 hover:text-yellow-400 hover:border-yellow-400"
+                className="border-gray-700 bg-gray-800 text-gray-400 hover:bg-yellow-400/10 hover:text-yellow-400 hover:border-yellow-400"
               >
                 <Plus className="w-4 h-4 mr-1" />
                 הוסף {role.label}

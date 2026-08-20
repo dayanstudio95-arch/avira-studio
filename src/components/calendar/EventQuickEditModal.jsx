@@ -246,7 +246,7 @@ export default function EventQuickEditModal({ event, isOpen, onClose, onUpdate }
           <Button
             onClick={onClose}
             variant="outline"
-            className="flex-1 border-gray-700 text-gray-300 hover:bg-gray-800"
+            className="flex-1 border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
             disabled={isSaving}
           >
             <X className="w-4 h-4 mr-2" />

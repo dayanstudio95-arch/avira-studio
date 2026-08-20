@@ -280,7 +280,7 @@ export default function AutomationEditDrawer({ isOpen, onClose, automation, onSa
               {isSaving ? "שומר..." : "שמור"}
             </Button>
             {automation?.id && (
-              <Button onClick={handleDelete} disabled={isDeleting} variant="outline" className="border-red-700 text-red-400 hover:bg-red-500/10 gap-2">
+              <Button onClick={handleDelete} disabled={isDeleting} variant="outline" className="border-red-700 bg-red-950/40 text-red-400 hover:bg-red-500/10 gap-2">
                 <Trash2 className="w-4 h-4" />
                 {isDeleting ? "מוחק..." : "מחק"}
               </Button>

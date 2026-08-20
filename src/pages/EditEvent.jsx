@@ -252,7 +252,7 @@ export default function EditEvent() {
     <div className="min-h-screen bg-gray-950 p-4 md:p-8">
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center gap-4 mb-8">
-          <Button variant="outline" size="icon" onClick={() => navigate(createPageUrl(`EventDetails?id=${eventId}`))} className="border-gray-700 text-gray-300 hover:bg-gray-800"><ArrowLeft className="w-4 h-4" /></Button>
+          <Button variant="outline" size="icon" onClick={() => navigate(createPageUrl(`EventDetails?id=${eventId}`))} className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"><ArrowLeft className="w-4 h-4" /></Button>
           <div>
             <h1 className="text-3xl font-bold text-white">עריכת אירוע</h1>
             <p className="text-gray-400">{eventData.coupleNames}</p>
@@ -272,7 +272,7 @@ export default function EditEvent() {
         </Card>
 
         <div className="flex justify-between mt-8">
-          <Button variant="outline" onClick={handleBack} disabled={currentStep === 1} className="border-gray-700 text-gray-300 hover:bg-gray-800 disabled:opacity-50 flex items-center gap-2"><ArrowRight className="w-4 h-4" />חזור</Button>
+          <Button variant="outline" onClick={handleBack} disabled={currentStep === 1} className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 disabled:opacity-50 flex items-center gap-2"><ArrowRight className="w-4 h-4" />חזור</Button>
           {currentStep < 3 ? (
             <Button onClick={handleNext} disabled={!isStepValid()} className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-gray-900 font-semibold disabled:opacity-50 flex items-center gap-2"><ArrowLeft className="w-4 h-4" />הבא</Button>
           ) : (

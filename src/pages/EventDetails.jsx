@@ -131,7 +131,7 @@ export default function EventDetails() {
               variant="outline"
               size="icon"
               onClick={() => navigate(createPageUrl("Dashboard"))}
-              className="border-gray-700 text-gray-300 hover:bg-gray-800"
+              className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
             >
               <ArrowLeft className="w-4 h-4" />
             </Button>
@@ -144,13 +144,13 @@ export default function EventDetails() {
           </div>
           <div className="flex items-center gap-2">
             <Link to={createPageUrl(`TeamPayments?id=${event.id}`)}>
-              <Button variant="outline" className="border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-white flex items-center gap-2">
+              <Button variant="outline" className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white flex items-center gap-2">
                 <Users className="w-4 h-4" />
                 תשלומי צוות
               </Button>
             </Link>
             <Link to={createPageUrl(`EditEvent?id=${event.id}`)}>
-              <Button variant="outline" className="border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-white flex items-center gap-2">
+              <Button variant="outline" className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white flex items-center gap-2">
                 <Edit className="w-4 h-4" />
                 ערוך
               </Button>
@@ -170,7 +170,7 @@ export default function EventDetails() {
                   </DialogDescription>
                 </DialogHeader>
                 <DialogFooter className="gap-2 sm:justify-start">
-                  <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)} className="border-gray-700 text-gray-300 hover:bg-gray-800">
+                  <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)} className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">
                     ביטול
                   </Button>
                   <Button variant="destructive" onClick={handleDelete}>
@@ -260,7 +260,7 @@ export default function EventDetails() {
                             <Button size="sm" onClick={updatePaymentStatus}>
                               <Check className="w-4 h-4" />
                             </Button>
-                            <Button size="sm" variant="outline" onClick={() => setIsEditingStatus(false)}>
+                            <Button size="sm" variant="outline" onClick={() => setIsEditingStatus(false)} className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">
                               <X className="w-4 h-4" />
                             </Button>
                           </div>

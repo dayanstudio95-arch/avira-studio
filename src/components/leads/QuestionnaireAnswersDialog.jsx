@@ -63,7 +63,7 @@ export default function QuestionnaireAnswersDialog({ isOpen, onClose, lead }) {
           <Button
             variant="outline"
             onClick={onClose}
-            className="border-gray-700 text-gray-300 w-full"
+            className="border-gray-700 bg-gray-800 text-gray-300 w-full"
           >
             סגור
           </Button>

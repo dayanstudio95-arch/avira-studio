@@ -189,7 +189,7 @@ export default function StudioDetailsCard() {
                   variant="outline"
                   disabled={isUploadingLogo}
                   onClick={() => fileInputRef.current?.click()}
-                  className="border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-yellow-400"
+                  className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-yellow-400"
                 >
                   {isUploadingLogo ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <Upload className="w-4 h-4 ml-2" />}
                   {isUploadingLogo ? "מעלה..." : logoUrl ? "החלף לוגו" : "העלה לוגו"}

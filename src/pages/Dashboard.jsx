@@ -217,7 +217,7 @@ export default function Dashboard() {
             variant={timeFilter === "all" ? "default" : "outline"}
             size="sm"
             onClick={() => setTimeFilter("all")}
-            className={timeFilter === "all" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500 text-xs" : "border-gray-700 text-gray-300 hover:bg-gray-800 text-xs"}
+            className={timeFilter === "all" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500 text-xs" : "border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 text-xs"}
           >
             הכל ({filterCounts.all})
           </Button>
@@ -225,7 +225,7 @@ export default function Dashboard() {
             variant={timeFilter === "thisWeek" ? "default" : "outline"}
             size="sm"
             onClick={() => setTimeFilter("thisWeek")}
-            className={timeFilter === "thisWeek" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500 text-xs" : "border-gray-700 text-gray-300 hover:bg-gray-800 text-xs"}
+            className={timeFilter === "thisWeek" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500 text-xs" : "border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 text-xs"}
           >
             השבוע ({filterCounts.thisWeek})
           </Button>
@@ -233,7 +233,7 @@ export default function Dashboard() {
             variant={timeFilter === "thisMonth" ? "default" : "outline"}
             size="sm"
             onClick={() => setTimeFilter("thisMonth")}
-            className={timeFilter === "thisMonth" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500 text-xs" : "border-gray-700 text-gray-300 hover:bg-gray-800 text-xs"}
+            className={timeFilter === "thisMonth" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500 text-xs" : "border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 text-xs"}
           >
             החודש ({filterCounts.thisMonth})
           </Button>
@@ -241,7 +241,7 @@ export default function Dashboard() {
             variant={timeFilter === "nextMonth" ? "default" : "outline"}
             size="sm"
             onClick={() => setTimeFilter("nextMonth")}
-            className={timeFilter === "nextMonth" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500 text-xs" : "border-gray-700 text-gray-300 hover:bg-gray-800 text-xs"}
+            className={timeFilter === "nextMonth" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500 text-xs" : "border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 text-xs"}
           >
             החודש הבא ({filterCounts.nextMonth})
           </Button>

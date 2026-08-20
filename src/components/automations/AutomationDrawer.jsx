@@ -207,7 +207,7 @@ export default function AutomationDrawer({ isOpen, onClose, automation, onSave }
                   variant="outline"
                   size="sm"
                   onClick={() => handleCopyVariable(variable.key)}
-                  className="border-gray-700 text-gray-300 hover:bg-gray-800 h-auto py-2 justify-start text-left"
+                  className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 h-auto py-2 justify-start text-left"
                 >
                   <div className="flex flex-col gap-1 w-full">
                     <code className="text-xs text-yellow-400 font-mono">
@@ -258,7 +258,7 @@ export default function AutomationDrawer({ isOpen, onClose, automation, onSave }
             <Button
               variant="outline"
               onClick={onClose}
-              className="flex-1 border-gray-700 text-gray-300 hover:bg-gray-800"
+              className="flex-1 border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
             >
               ביטול
             </Button>

@@ -101,7 +101,7 @@ export default function StudioSignatureCard() {
             <Button
               variant="outline"
               onClick={() => setIsEditing(true)}
-              className="border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-yellow-400"
+              className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-yellow-400"
             >
               <PenTool className="w-4 h-4 ml-2" />
               עדכן חתימה

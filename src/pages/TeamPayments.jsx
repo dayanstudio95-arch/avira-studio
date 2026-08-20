@@ -83,7 +83,7 @@ export default function TeamPayments() {
             variant="outline"
             size="icon"
             onClick={() => navigate(createPageUrl(`EventDetails?id=${event.id}`))}
-            className="border-gray-700 text-gray-300 hover:bg-gray-800"
+            className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
           >
             <ArrowLeft className="w-4 h-4" />
           </Button>

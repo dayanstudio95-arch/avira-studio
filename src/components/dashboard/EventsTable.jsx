@@ -114,7 +114,7 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
             variant="outline" 
             size="sm"
             onClick={onRefresh}
-            className="border-gray-700 text-gray-300 hover:bg-gray-800"
+            className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
           >
             רענן
           </Button>
@@ -185,13 +185,13 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
 
                     <div className="flex gap-2 pt-2">
                       <Link to={createPageUrl(`EventDetails?id=${event.id}`)} className="flex-1">
-                        <Button variant="outline" size="sm" className="w-full border-gray-700 text-gray-300 hover:bg-gray-700">
+                        <Button variant="outline" size="sm" className="w-full border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">
                           <Eye className="w-4 h-4 mr-2" />
                           צפה
                         </Button>
                       </Link>
                       <Link to={createPageUrl(`TeamPayments?id=${event.id}`)}>
-                        <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:bg-gray-700">
+                        <Button variant="outline" size="sm" className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">
                           <Users className="w-4 h-4" />
                         </Button>
                       </Link>

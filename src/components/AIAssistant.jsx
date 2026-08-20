@@ -246,7 +246,7 @@ export default function AIAssistant() {
                               size="sm"
                               variant="outline"
                               onClick={() => cancelAction(msg)}
-                              className="border-gray-600 text-gray-400 text-xs"
+                              className="border-gray-600 bg-gray-800 text-gray-400 text-xs"
                             >
                               ביטול
                             </Button>

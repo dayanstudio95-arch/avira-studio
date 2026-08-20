@@ -94,7 +94,7 @@ export default function AutomationsStatusCard({ automations, runs }) {
               </span>
               <Badge
                 variant="outline"
-                className={a.isActive ? "border-green-700 text-green-400" : "border-gray-700 text-gray-600"}
+                className={a.isActive ? "border-green-700 bg-green-950/20 text-green-400" : "border-gray-700 bg-gray-800 text-gray-600"}
               >
                 {a.isActive ? "פעיל" : "כבוי"}
               </Badge>
