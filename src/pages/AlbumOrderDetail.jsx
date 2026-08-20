@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { supabase } from "@/api/supabaseClient";
@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   ArrowRight, Upload, Copy, Link2, Ban, RefreshCw, ImageIcon, CheckCircle2,
-  CreditCard, Printer, Loader2, ChevronDown, ChevronUp,
+  CreditCard, Printer, Loader2, ChevronDown, ChevronUp, AlertTriangle, ExternalLink,
 } from "lucide-react";
 import { WORKFLOW_STATUS_LABELS, WORKFLOW_STATUS_COLORS, PAYMENT_STATUS_LABELS } from "./AlbumOrders";
 
@@ -39,9 +39,14 @@ export default function AlbumOrderDetail() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
   const [expandedVersionId, setExpandedVersionId] = useState(null);
-  const [versionPreviews, setVersionPreviews] = useState({}); // versionId -> [{sequenceNumber, url}]
+  const [versionPreviews, setVersionPreviews] = useState({}); // versionId -> [{id, sequenceNumber, fileKey, url}]
+  const [showOnlyFlagged, setShowOnlyFlagged] = useState({}); // versionId -> bool
   const [newPortalToken, setNewPortalToken] = useState(null); // raw token, shown once
   const [newPrintToken, setNewPrintToken] = useState(null);
+  const replaceFileInputRef = useRef(null);
+  const [replaceTarget, setReplaceTarget] = useState(null); // {spreadId, versionId, sequenceNumber, oldFileKey}
+  const [replacingSpreadId, setReplacingSpreadId] = useState(null);
+  const [sendingMessageType, setSendingMessageType] = useState(null);
 
   const invalidateOrder = () => queryClient.invalidateQueries({ queryKey: ["albumOrder", orderId] });
 
@@ -166,8 +171,59 @@ export default function AlbumOrderDetail() {
     }
     setVersionPreviews((prev) => ({
       ...prev,
-      [version.id]: spreads.map((s, i) => ({ sequenceNumber: s.sequenceNumber, url: data[i]?.signedUrl })),
+      [version.id]: spreads.map((s, i) => ({ id: s.id, sequenceNumber: s.sequenceNumber, fileKey: s.fileKey, url: data[i]?.signedUrl })),
     }));
+  };
+
+  // Auto-expand the version currently shown to the couple, once, on load --
+  // so the studio sees the actual preview thumbnails without an extra click.
+  useEffect(() => {
+    if (order?.currentVersionId && !expandedVersionId) {
+      const v = versions.find((ver) => ver.id === order.currentVersionId);
+      if (v) toggleExpandVersion(v);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order?.currentVersionId, versions.length]);
+
+  // --- Single-spread replace (fix one page without re-uploading the whole version) ---
+  const handleReplaceClick = (versionId, spread) => {
+    setReplaceTarget({ spreadId: spread.id, versionId, sequenceNumber: spread.sequenceNumber, oldFileKey: spread.fileKey });
+    replaceFileInputRef.current?.click();
+  };
+
+  const handleReplaceFileSelected = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !replaceTarget) return;
+    const { spreadId, versionId, sequenceNumber, oldFileKey } = replaceTarget;
+    setReplacingSpreadId(spreadId);
+    try {
+      const path = `${user.tenant_id}/${orderId}/${versionId}/spread-${String(sequenceNumber).padStart(2, "0")}-replaced-${Date.now()}-${sanitizeFileName(file.name)}`;
+      const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: false });
+      if (uploadError) throw uploadError;
+      await base44.entities.AlbumSpread.update(spreadId, { fileKey: path, processingStatus: "ready" });
+      if (order?.workflowStatus !== "in_review") {
+        await base44.entities.AlbumOrder.update(orderId, { workflowStatus: "in_review" });
+      }
+      if (oldFileKey) {
+        supabase.storage.from(BUCKET).remove([oldFileKey]).catch(() => {});
+      }
+      const { data: signedData } = await supabase.storage.from(BUCKET).createSignedUrl(path, 60 * 10);
+      setVersionPreviews((prev) => ({
+        ...prev,
+        [versionId]: (prev[versionId] || []).map((p) =>
+          p.id === spreadId ? { ...p, fileKey: path, url: signedData?.signedUrl || p.url } : p
+        ),
+      }));
+      queryClient.invalidateQueries({ queryKey: ["albumSpreadCounts", orderId] });
+      invalidateOrder();
+      toast.success("הכפולה הוחלפה בהצלחה");
+    } catch (err) {
+      toast.error(err.message || "שגיאה בהחלפת הקובץ");
+    } finally {
+      setReplacingSpreadId(null);
+      setReplaceTarget(null);
+    }
   };
 
   const approveVersionMutation = useMutation({
@@ -273,6 +329,47 @@ export default function AlbumOrderDetail() {
 
   const portalLink = newPortalToken ? `${window.location.origin}/album/${newPortalToken}` : null;
 
+  // Which spreads (in the version currently shown to the couple) were flagged
+  // "needs_revision" in the latest review round for that version -- used to
+  // highlight/filter the preview grid so the studio can find them at a glance.
+  const currentVersionLatestRound = reviewRounds.find((r) => r.versionId === order.currentVersionId);
+  const flaggedSpreadIds = new Set(
+    currentVersionLatestRound
+      ? (decisionsByRound[currentVersionLatestRound.id] || [])
+          .filter((d) => d.decision === "needs_revision")
+          .map((d) => d.spreadId)
+      : []
+  );
+
+  // spreadId -> sequenceNumber, across every version -- lets the review-rounds
+  // history show "עמוד X" instead of a meaningless truncated UUID.
+  const spreadSeqById = {};
+  Object.values(spreadCounts).forEach((arr) => {
+    (arr || []).forEach((s) => { spreadSeqById[s.id] = s.sequenceNumber; });
+  });
+
+  const buildAlbumMessage = (type) => {
+    const linkLine = portalLink ? `\nלצפייה ואישור: ${portalLink}` : "";
+    if (type === "sketch") return `שלום! הכנו עבורכם תצוגה מקדימה של האלבום לבדיקה ואישור 💛${linkLine}`;
+    if (type === "fix") return `שלום! ביצענו את התיקונים שביקשתם באלבום, אפשר לבדוק שוב 🙏${linkLine}`;
+    return "";
+  };
+
+  const handleSendWhatsApp = async (type) => {
+    if (!displayPhone) return;
+    setSendingMessageType(type);
+    try {
+      const message = buildAlbumMessage(type);
+      const result = await base44.functions.invoke("sendWhatsAppMessage", { to: displayPhone, message });
+      if (result?.data?.error) throw new Error(result.data.error);
+      toast.success("ההודעה נשלחה");
+    } catch (err) {
+      toast.error(err.message || "שגיאה בשליחת ההודעה");
+    } finally {
+      setSendingMessageType(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-950 p-4 md:p-8" dir="rtl">
       <div className="max-w-4xl mx-auto space-y-6">
@@ -324,6 +421,7 @@ export default function AlbumOrderDetail() {
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
+            <input ref={replaceFileInputRef} type="file" accept="image/*" className="hidden" onChange={handleReplaceFileSelected} />
             {versions.length === 0 ? (
               <p className="text-gray-500 text-sm">עדיין לא הועלתה סקיצה</p>
             ) : (
@@ -332,6 +430,9 @@ export default function AlbumOrderDetail() {
                 const isExpanded = expandedVersionId === v.id;
                 const isApproved = order.approvedVersionId === v.id;
                 const isCurrent = order.currentVersionId === v.id;
+                const versionFlagged = isCurrent ? flaggedSpreadIds : new Set();
+                const filterOn = isCurrent && showOnlyFlagged[v.id];
+                const previews = (versionPreviews[v.id] || []).filter((p) => !filterOn || versionFlagged.has(p.id));
                 return (
                   <div key={v.id} className="border border-gray-800 rounded-lg overflow-hidden">
                     <button
@@ -348,13 +449,54 @@ export default function AlbumOrderDetail() {
                     </button>
                     {isExpanded && (
                       <div className="p-3 border-t border-gray-800 space-y-3">
+                        {isCurrent && flaggedSpreadIds.size > 0 && (
+                          <div className="flex items-center justify-between">
+                            <p className="text-red-400 text-sm flex items-center gap-1.5">
+                              <AlertTriangle className="w-4 h-4" />
+                              {flaggedSpreadIds.size} כפולות דורשות תיקון בסבב הבדיקה האחרון
+                            </p>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setShowOnlyFlagged((prev) => ({ ...prev, [v.id]: !prev[v.id] }))}
+                              className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                            >
+                              {filterOn ? "הצג הכל" : "הצג רק דורשים תיקון"}
+                            </Button>
+                          </div>
+                        )}
                         <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
-                          {(versionPreviews[v.id] || []).map((p) => (
-                            <a key={p.sequenceNumber} href={p.url} target="_blank" rel="noreferrer" className="block">
-                              <img src={p.url} alt={`עמוד ${p.sequenceNumber}`} className="w-full aspect-square object-cover rounded-lg border border-gray-800" />
-                              <span className="text-gray-500 text-xs">{p.sequenceNumber}</span>
-                            </a>
-                          ))}
+                          {previews.map((p) => {
+                            const isFlagged = versionFlagged.has(p.id);
+                            const isReplacing = replacingSpreadId === p.id;
+                            return (
+                              <div
+                                key={p.id || p.sequenceNumber}
+                                className={`rounded-lg border overflow-hidden ${isFlagged ? "border-red-500 ring-1 ring-red-500/50" : "border-gray-800"}`}
+                              >
+                                <a href={p.url} target="_blank" rel="noreferrer" className="block">
+                                  <img src={p.url} alt={`עמוד ${p.sequenceNumber}`} className="w-full aspect-square object-cover" />
+                                </a>
+                                <div className="flex items-center justify-between px-1.5 py-1">
+                                  <span className="text-gray-500 text-xs">עמוד {p.sequenceNumber}</span>
+                                  {isFlagged && (
+                                    <span className="flex items-center gap-0.5 text-red-400 text-[10px]">
+                                      <AlertTriangle className="w-3 h-3" /> תיקון
+                                    </span>
+                                  )}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleReplaceClick(v.id, p)}
+                                  disabled={isReplacing}
+                                  className="w-full text-[11px] font-medium py-1 bg-gray-800 text-gray-300 hover:bg-gray-700 disabled:opacity-60 flex items-center justify-center gap-1"
+                                >
+                                  {isReplacing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                                  {isReplacing ? "מעלה..." : "החלף קובץ"}
+                                </button>
+                              </div>
+                            );
+                          })}
                         </div>
                         {!isApproved && (
                           <Button
@@ -390,7 +532,10 @@ export default function AlbumOrderDetail() {
                 <p className="text-amber-400 text-sm">הקישור מוצג פעם אחת בלבד -- העתק ושלח לזוג עכשיו.</p>
                 <div className="flex gap-2">
                   <Input readOnly value={portalLink} className="bg-gray-900 border-gray-700 text-white text-sm" />
-                  <Button size="icon" variant="outline" onClick={() => copyToClipboard(portalLink)} className="border-gray-700 shrink-0">
+                  <Button size="icon" variant="outline" onClick={() => window.open(portalLink, "_blank")} title="פתח קישור" className="border-gray-700 shrink-0">
+                    <ExternalLink className="w-4 h-4" />
+                  </Button>
+                  <Button size="icon" variant="outline" onClick={() => copyToClipboard(portalLink)} title="העתק קישור" className="border-gray-700 shrink-0">
                     <Copy className="w-4 h-4" />
                   </Button>
                 </div>
@@ -412,6 +557,39 @@ export default function AlbumOrderDetail() {
                 <RefreshCw className="w-4 h-4 mr-2" />
                 {order.portalTokenHash ? "צור קישור חדש" : "צור קישור"}
               </Button>
+            </div>
+
+            <div className="border-t border-gray-800 pt-3 space-y-2">
+              <p className="text-gray-400 text-sm">שליחת הודעה לזוג בוואטסאפ</p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!displayPhone || !!sendingMessageType}
+                  onClick={() => handleSendWhatsApp("sketch")}
+                  className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                >
+                  {sendingMessageType === "sketch" ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                  📩 שלח קישור לבדיקה
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!displayPhone || !!sendingMessageType}
+                  onClick={() => handleSendWhatsApp("fix")}
+                  className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                >
+                  {sendingMessageType === "fix" ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                  🔧 עדכון: התיקון בוצע
+                </Button>
+              </div>
+              {!portalLink && order.portalTokenHash && !order.portalTokenRevokedAt && (
+                <p className="text-gray-500 text-xs">
+                  שימו לב: הקישור המדויק לא זמין כרגע (הוא מוצג פעם אחת בלבד בעת היצירה) -- ההודעה תישלח בלי קישור מוטבע.
+                  כדי לשלוח הודעה עם קישור, לחצו למעלה על &quot;צור קישור חדש&quot; (פעולה זו מבטלת את הקישור הקיים שביד הזוג).
+                </p>
+              )}
+              {!displayPhone && <p className="text-gray-500 text-xs">לא נמצא מספר טלפון להזמנה זו -- לא ניתן לשלוח הודעה.</p>}
             </div>
           </CardContent>
         </Card>
@@ -438,7 +616,7 @@ export default function AlbumOrderDetail() {
                       <div className="space-y-1">
                         {needsRevision.map((d) => (
                           <p key={d.id} className="text-gray-400 text-sm">
-                            כפולה {d.spreadId?.slice(0, 8)}{d.comment ? `: ${d.comment}` : ""}
+                            עמוד {spreadSeqById[d.spreadId] ?? d.spreadId?.slice(0, 8)}{d.comment ? `: ${d.comment}` : ""}
                           </p>
                         ))}
                       </div>
