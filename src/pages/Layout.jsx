@@ -88,6 +88,7 @@ const primaryNavItems = [
   { title: "שיבוץ צוות",      url: createPageUrl("StaffScheduling"), icon: Users },
   { title: "🤖 לוח אוטומציות", url: "/AutomationsDashboard",         icon: Zap },
   { title: "📅 יומן Google",   url: "/GoogleCalendarSync",           icon: Calendar },
+  { title: "📷 הזמנות אלבומים", url: "/AlbumOrders",                  icon: BookImage },
   { title: "🛡️ יועץ מערכת",   url: "/SystemAdvisor",                 icon: Shield },
   { title: "הגדרות מערכת",    url: createPageUrl("Settings"),        icon: Settings },
 ];
@@ -96,6 +97,7 @@ const secondaryNavItems = [
   { title: "יומן אירועים",       url: createPageUrl("Calendar"),            icon: Calendar },
   { title: "אנשי צוות",         url: createPageUrl("TeamMembers"),         icon: Camera },
   { title: "חבילות ומחירים",    url: createPageUrl("Packages"),            icon: Camera },
+  { title: "קטלוג אלבומים",     url: "/AlbumCatalogSettings",              icon: Settings },
   { title: "ניהול חשבוניות",    url: createPageUrl("AllInvoicesPage"),     icon: FileText },
   { title: "אישור הודעות",      url: "/PendingApprovals",                  icon: Bell },
 ];
