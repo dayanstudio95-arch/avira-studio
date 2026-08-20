@@ -389,7 +389,7 @@ export default function AlbumOrderDetail() {
             <Badge className={WORKFLOW_STATUS_COLORS[order.workflowStatus] || "bg-gray-500/20 text-gray-400 border-gray-500/30"}>
               {WORKFLOW_STATUS_LABELS[order.workflowStatus] || order.workflowStatus}
             </Badge>
-            <Badge variant="outline" className="border-gray-700 text-gray-400">
+            <Badge variant="outline" className="border-gray-700 bg-gray-800 text-gray-400">
               {PAYMENT_STATUS_LABELS[order.paymentStatus]}
             </Badge>
           </div>
@@ -459,7 +459,7 @@ export default function AlbumOrderDetail() {
                               size="sm"
                               variant="outline"
                               onClick={() => setShowOnlyFlagged((prev) => ({ ...prev, [v.id]: !prev[v.id] }))}
-                              className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                              className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
                             >
                               {filterOn ? "הצג הכל" : "הצג רק דורשים תיקון"}
                             </Button>
@@ -503,7 +503,7 @@ export default function AlbumOrderDetail() {
                             size="sm"
                             variant="outline"
                             onClick={() => approveVersionMutation.mutate(v.id)}
-                            className="border-teal-700 text-teal-400 hover:bg-teal-500/10"
+                            className="border-teal-700 bg-teal-950/40 text-teal-400 hover:bg-teal-500/20"
                           >
                             <CheckCircle2 className="w-4 h-4 mr-2" />
                             סמן כגרסה מאושרת ידנית
@@ -532,10 +532,10 @@ export default function AlbumOrderDetail() {
                 <p className="text-amber-400 text-sm">הקישור מוצג פעם אחת בלבד -- העתק ושלח לזוג עכשיו.</p>
                 <div className="flex gap-2">
                   <Input readOnly value={portalLink} className="bg-gray-900 border-gray-700 text-white text-sm" />
-                  <Button size="icon" variant="outline" onClick={() => window.open(portalLink, "_blank")} title="פתח קישור" className="border-gray-700 shrink-0">
+                  <Button size="icon" variant="outline" onClick={() => window.open(portalLink, "_blank")} title="פתח קישור" className="border-gray-700 bg-gray-800 hover:bg-gray-700 shrink-0">
                     <ExternalLink className="w-4 h-4" />
                   </Button>
-                  <Button size="icon" variant="outline" onClick={() => copyToClipboard(portalLink)} title="העתק קישור" className="border-gray-700 shrink-0">
+                  <Button size="icon" variant="outline" onClick={() => copyToClipboard(portalLink)} title="העתק קישור" className="border-gray-700 bg-gray-800 hover:bg-gray-700 shrink-0">
                     <Copy className="w-4 h-4" />
                   </Button>
                 </div>
@@ -545,13 +545,13 @@ export default function AlbumOrderDetail() {
               {order.portalTokenHash && !order.portalTokenRevokedAt ? (
                 <>
                   <Badge className="bg-green-500/20 text-green-400 border-green-500/30">קיים קישור פעיל</Badge>
-                  <Button size="sm" variant="outline" onClick={() => revokePortalLinkMutation.mutate()} className="border-red-800 text-red-400 hover:bg-red-500/10">
+                  <Button size="sm" variant="outline" onClick={() => revokePortalLinkMutation.mutate()} className="border-red-800 bg-red-950/40 text-red-400 hover:bg-red-500/20">
                     <Ban className="w-4 h-4 mr-2" />
                     בטל קישור
                   </Button>
                 </>
               ) : (
-                <Badge variant="outline" className="border-gray-700 text-gray-500">אין קישור פעיל</Badge>
+                <Badge variant="outline" className="border-gray-700 bg-gray-800 text-gray-500">אין קישור פעיל</Badge>
               )}
               <Button size="sm" onClick={() => generatePortalLinkMutation.mutate()} className="bg-yellow-400 text-gray-900 hover:bg-yellow-500">
                 <RefreshCw className="w-4 h-4 mr-2" />
@@ -567,7 +567,7 @@ export default function AlbumOrderDetail() {
                   variant="outline"
                   disabled={!displayPhone || !!sendingMessageType}
                   onClick={() => handleSendWhatsApp("sketch")}
-                  className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                  className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
                 >
                   {sendingMessageType === "sketch" ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
                   📩 שלח קישור לבדיקה
@@ -577,7 +577,7 @@ export default function AlbumOrderDetail() {
                   variant="outline"
                   disabled={!displayPhone || !!sendingMessageType}
                   onClick={() => handleSendWhatsApp("fix")}
-                  className="border-gray-700 text-gray-300 hover:bg-gray-800"
+                  className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
                 >
                   {sendingMessageType === "fix" ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
                   🔧 עדכון: התיקון בוצע
@@ -608,7 +608,7 @@ export default function AlbumOrderDetail() {
                   <div key={round.id} className="border border-gray-800 rounded-lg p-3">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-white font-medium">סבב {round.roundNumber}</span>
-                      <Badge variant="outline" className="border-gray-700 text-gray-400 text-xs">
+                      <Badge variant="outline" className="border-gray-700 bg-gray-800 text-gray-400 text-xs">
                         {needsRevision.length === 0 ? "כל הכפולות אושרו" : `${needsRevision.length} כפולות דורשות תיקון`}
                       </Badge>
                     </div>
@@ -643,10 +643,10 @@ export default function AlbumOrderDetail() {
             </div>
             <div className="flex items-center justify-between">
               <span className="text-gray-400">סטטוס תשלום</span>
-              <Badge variant="outline" className="border-gray-700 text-gray-300">{PAYMENT_STATUS_LABELS[order.paymentStatus]}</Badge>
+              <Badge variant="outline" className="border-gray-700 bg-gray-800 text-gray-300">{PAYMENT_STATUS_LABELS[order.paymentStatus]}</Badge>
             </div>
             {order.transferProofFileKey && (
-              <Button size="sm" variant="outline" onClick={viewTransferProof} className="border-gray-700 text-gray-300 hover:bg-gray-800">
+              <Button size="sm" variant="outline" onClick={viewTransferProof} className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">
                 צפייה באסמכתת העברה
               </Button>
             )}
@@ -684,7 +684,7 @@ export default function AlbumOrderDetail() {
                 <p className="text-amber-400 text-sm">הקישור מוצג פעם אחת בלבד -- העתק ושלח למעבדת ההדפסה עכשיו.</p>
                 <div className="flex gap-2">
                   <Input readOnly value={`${window.location.origin}/print-access/${newPrintToken}`} className="bg-gray-900 border-gray-700 text-white text-sm" />
-                  <Button size="icon" variant="outline" onClick={() => copyToClipboard(`${window.location.origin}/print-access/${newPrintToken}`)} className="border-gray-700 shrink-0">
+                  <Button size="icon" variant="outline" onClick={() => copyToClipboard(`${window.location.origin}/print-access/${newPrintToken}`)} className="border-gray-700 bg-gray-800 hover:bg-gray-700 shrink-0">
                     <Copy className="w-4 h-4" />
                   </Button>
                 </div>
