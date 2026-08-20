@@ -218,8 +218,9 @@ function ReviewGallery({ token, order, onReloaded }) {
   return (
     <div className="space-y-4">
       <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 text-sm text-gray-300">
-        עברו על כל עמוד (כפולה). לחצו על "נדרש תיקון" עבור עמוד שדורש שינוי, לחצו במקום המדויק בתמונה
-        וכתבו הערה. סבב התיקונים הראשון חינם.
+        כל עמוד (כפולה) מסומן כברירת מחדל כ״מאושר״ — אם הכול נראה טוב אין צורך לגעת בכלום.
+        עבור עמוד שדורש שינוי: לחצו על הכפתור ליד העמוד כדי להפוך אותו ל״נדרש תיקון״, ואז לחצו
+        במקום המדויק בתמונה וכתבו הערה. סבב התיקונים הראשון חינם.
       </div>
 
       <div className="space-y-6">
@@ -238,9 +239,15 @@ function ReviewGallery({ token, order, onReloaded }) {
                     size="sm"
                     variant={needsRevision ? "destructive" : "outline"}
                     onClick={() => toggleNeedsRevision(spread.id)}
-                    className={!needsRevision ? "border-gray-700 text-gray-300" : ""}
+                    title="לחצו כדי לשנות את הסטטוס של העמוד הזה"
+                    className={`gap-1.5 ${!needsRevision ? "border-gray-600 text-gray-300 hover:border-yellow-400 hover:text-yellow-400" : ""}`}
                   >
-                    {needsRevision ? "נדרש תיקון" : "מאושר"}
+                    {needsRevision ? (
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                    ) : (
+                      <CheckCircle className="w-3.5 h-3.5" />
+                    )}
+                    {needsRevision ? "נדרש תיקון" : "מאושר · לחצו לשינוי"}
                   </Button>
                 </div>
                 <div className="relative bg-black">
