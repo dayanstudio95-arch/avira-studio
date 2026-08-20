@@ -612,7 +612,7 @@ function PurchaseWizard({ token, order, onReloaded }) {
       )}
 
       <div className="flex items-center justify-between pt-2">
-        <Button type="button" variant="outline" disabled={stepIndex === 0} onClick={goBack} className="border-gray-700 text-gray-300">
+        <Button type="button" variant="outline" disabled={stepIndex === 0} onClick={goBack} className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">
           הקודם
         </Button>
         {step !== "payment" && (

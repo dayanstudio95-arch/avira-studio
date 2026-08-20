@@ -224,7 +224,7 @@ export default function AlbumOrders() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-white font-semibold text-lg">{displayName(order)}</span>
                       {!order.eventId && (
-                        <Badge variant="outline" className="border-gray-700 text-gray-500 text-xs">ללא אירוע מקושר</Badge>
+                        <Badge variant="outline" className="border-gray-700 bg-gray-800 text-gray-500 text-xs">ללא אירוע מקושר</Badge>
                       )}
                     </div>
                     <p className="text-gray-500 text-sm mt-1">
@@ -237,7 +237,7 @@ export default function AlbumOrders() {
                       {WORKFLOW_STATUS_LABELS[order.workflowStatus] || order.workflowStatus}
                     </Badge>
                     {order.paymentStatus !== "unpaid" && (
-                      <Badge variant="outline" className="border-gray-700 text-gray-400 text-xs">
+                      <Badge variant="outline" className="border-gray-700 bg-gray-800 text-gray-400 text-xs">
                         {PAYMENT_STATUS_LABELS[order.paymentStatus]}
                       </Badge>
                     )}
@@ -259,7 +259,7 @@ export default function AlbumOrders() {
                 <Button
                   variant={linkMode === "event" ? "default" : "outline"}
                   onClick={() => setLinkMode("event")}
-                  className={linkMode === "event" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500 flex-1" : "border-gray-700 text-gray-300 hover:bg-gray-800 flex-1"}
+                  className={linkMode === "event" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500 flex-1" : "border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 flex-1"}
                 >
                   <Link2 className="w-4 h-4 mr-2" />
                   קישור לאירוע קיים
@@ -267,7 +267,7 @@ export default function AlbumOrders() {
                 <Button
                   variant={linkMode === "manual" ? "default" : "outline"}
                   onClick={() => setLinkMode("manual")}
-                  className={linkMode === "manual" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500 flex-1" : "border-gray-700 text-gray-300 hover:bg-gray-800 flex-1"}
+                  className={linkMode === "manual" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500 flex-1" : "border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 flex-1"}
                 >
                   <PenLine className="w-4 h-4 mr-2" />
                   הזנה ידנית
@@ -333,7 +333,7 @@ export default function AlbumOrders() {
             </div>
 
             <DialogFooter>
-              <Button variant="outline" onClick={handleCloseDialog} className="border-gray-700 text-gray-300 hover:bg-gray-800">
+              <Button variant="outline" onClick={handleCloseDialog} className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">
                 ביטול
               </Button>
               <Button onClick={handleCreate} disabled={createMutation.isPending} className="bg-yellow-400 text-gray-900 hover:bg-yellow-500">

@@ -174,7 +174,7 @@ function CatalogTab({ catalogKey, canManage }) {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-white font-semibold truncate">{item.name}</span>
-                    {!item.active && <Badge variant="outline" className="border-gray-700 text-gray-500 text-xs">מוסתר</Badge>}
+                    {!item.active && <Badge variant="outline" className="border-gray-700 bg-gray-800 text-gray-500 text-xs">מוסתר</Badge>}
                   </div>
                   {item.description && <p className="text-gray-400 text-sm mt-1">{item.description}</p>}
                   <div className="flex items-center gap-3 mt-2">
@@ -300,7 +300,7 @@ function CatalogTab({ catalogKey, canManage }) {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={handleCloseDialog} className="border-gray-700 text-gray-300 hover:bg-gray-800">
+            <Button variant="outline" onClick={handleCloseDialog} className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">
               ביטול
             </Button>
             <Button onClick={handleSubmit} className="bg-yellow-400 text-gray-900 hover:bg-yellow-500">
