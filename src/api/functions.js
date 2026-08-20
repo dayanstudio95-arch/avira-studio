@@ -96,6 +96,16 @@ const FUNCTION_MAP = {
   // sends happen client-side via sendToEditor/sendToCouple/sendWhatsAppMessage
   // above, only after the user explicitly confirms a proposed action.
   aiAssistant: 'ai-assistant',
+
+  // Wedding Albums module — the 2 public, token-based Edge Functions (see
+  // supabase/migrations/0031_wedding_albums.sql + CLAUDE.md's "Wedding Albums module"
+  // section). Both take { token, action, ...params } and never trust a real Supabase
+  // session — the raw token is the caller's only credential, hashed+looked-up
+  // server-side on every request. Everything else in this module (order CRUD, catalog
+  // management, sketch-upload metadata registration) goes through entities.js directly
+  // under normal RLS, since those are all authenticated admin/album_manager actions.
+  albumPortal: 'album-portal',
+  albumPrintAccess: 'album-print-access',
 };
 
 // Names that intentionally have NO Edge Function port yet — either confirmed dead

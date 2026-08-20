@@ -30,6 +30,10 @@ export const OWNER_ONLY_ROLES = ['owner'];
 export const ADMIN_ROLES = ['owner', 'admin', 'studio_manager'];
 export const LEAD_COORDINATOR_ROLE = 'lead_coordinator';
 export const PHOTOGRAPHER_ROLE = 'photographer';
+export const ALBUM_MANAGER_ROLE = 'album_manager';
+// Catalog/print-link writes in the Wedding Albums module are gated to admin-equivalent
+// roles plus album_manager — see supabase/migrations/0031_wedding_albums.sql's RLS.
+export const ALBUM_MANAGER_ROLES = [...ADMIN_ROLES, ALBUM_MANAGER_ROLE];
 
 export function isOwner(role: string | null | undefined): boolean {
   return !!role && OWNER_ONLY_ROLES.includes(role);
@@ -45,6 +49,10 @@ export function isLeadCoordinator(role: string | null | undefined): boolean {
 
 export function isPhotographer(role: string | null | undefined): boolean {
   return role === PHOTOGRAPHER_ROLE;
+}
+
+export function isAlbumManager(role: string | null | undefined): boolean {
+  return role === ALBUM_MANAGER_ROLE;
 }
 
 export function hasRole(role: string | null | undefined, allowedRoles: string[]): boolean {

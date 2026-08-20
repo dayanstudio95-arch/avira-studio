@@ -41,6 +41,7 @@ export const ADMIN_ROLES = ["owner", "admin", "studio_manager"];
 
 export const LEAD_COORDINATOR_ROLE = "lead_coordinator";
 export const PHOTOGRAPHER_ROLE = "photographer";
+export const ALBUM_MANAGER_ROLE = "album_manager";
 
 export function isOwner(user) {
   return !!user && OWNER_ONLY_ROLES.includes(user.role);
@@ -56,6 +57,10 @@ export function isLeadCoordinator(user) {
 
 export function isPhotographerRole(user) {
   return !!user && user.role === PHOTOGRAPHER_ROLE;
+}
+
+export function isAlbumManagerRole(user) {
+  return !!user && user.role === ALBUM_MANAGER_ROLE;
 }
 
 // Generic helper for any custom role set a future feature might need, so ad-hoc checks
@@ -77,6 +82,7 @@ export function usePermission() {
     isAdmin: isAdmin(user),
     isLeadCoordinator: isLeadCoordinator(user),
     isPhotographerRole: isPhotographerRole(user),
+    isAlbumManagerRole: isAlbumManagerRole(user),
     hasRole: (allowedRoles) => hasRole(user, allowedRoles),
   };
 }

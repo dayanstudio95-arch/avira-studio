@@ -4,7 +4,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/sonner';
 import { queryClientInstance } from '@/lib/query-client';
 import { AuthProvider, useAuth } from '@/lib/SupabaseAuthContext';
-import { isAdmin, isLeadCoordinator, isPhotographerRole } from '@/lib/permissions';
+import { isAdmin, isLeadCoordinator, isPhotographerRole, isAlbumManagerRole } from '@/lib/permissions';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import PageNotFound from '@/lib/PageNotFound';
 import Layout from './pages/Layout';
@@ -43,6 +43,15 @@ const PendingApprovals = lazy(() => import('./pages/PendingApprovals'));
 const SystemAdvisor = lazy(() => import('./pages/SystemAdvisor'));
 const LeadsCoordinator = lazy(() => import('./pages/LeadsCoordinator'));
 const MyEvents = lazy(() => import('./pages/MyEvents'));
+
+// Wedding Albums module (see CLAUDE.md's "Wedding Albums module" section) — admin
+// pages for the album_manager scoped role + full admin access, and the two public
+// no-login pages (portal + print-shop delivery), lazy-loaded like every other route.
+const AlbumOrders = lazy(() => import('./pages/AlbumOrders'));
+const AlbumOrderDetail = lazy(() => import('./pages/AlbumOrderDetail'));
+const AlbumCatalogSettings = lazy(() => import('./pages/AlbumCatalogSettings'));
+const AlbumPortal = lazy(() => import('./pages/AlbumPortal'));
+const AlbumPrintAccess = lazy(() => import('./pages/AlbumPrintAccess'));
 
 // Shared fallback while a lazy page chunk downloads -- matches the existing
 // auth-loading spinner's look (fixed inset-0, same spinner classes) so route-change
@@ -117,8 +126,28 @@ const AuthenticatedApp = () => {
     );
   }
 
+  // Scoped role: album_manager (Wedding Albums module) gets order list + order detail
+  // + catalog settings -- nothing else from the admin panel. Fully separate module,
+  // see CLAUDE.md's "Wedding Albums module" section; RLS (0031_wedding_albums.sql)
+  // independently enforces the same scope regardless of what this route shows.
+  if (!isLoadingAuth && isAuthenticated && isAlbumManagerRole(user)) {
+    return (
+      <Layout>
+        <Suspense fallback={<PageLoadingFallback />}>
+          <Routes>
+            <Route path="/" element={<AlbumOrders />} />
+            <Route path="/AlbumOrders" element={<AlbumOrders />} />
+            <Route path="/AlbumOrders/:orderId" element={<AlbumOrderDetail />} />
+            <Route path="/AlbumCatalogSettings" element={<AlbumCatalogSettings />} />
+            <Route path="*" element={<PageNotFound />} />
+          </Routes>
+        </Suspense>
+      </Layout>
+    );
+  }
+
   // Hard block: only owner/admin/studio_manager (ADMIN_ROLES) get the full admin panel;
-  // other roles (editor, album_manager) have no scoped view yet, so stay blocked.
+  // other roles (editor) have no scoped view yet, so stay blocked.
   if (!isLoadingAuth && isAuthenticated && !isAdmin(user)) {
     return (
       <div className="fixed inset-0 flex flex-col items-center justify-center bg-gray-950 text-center p-8">
@@ -153,6 +182,12 @@ const AuthenticatedApp = () => {
           <Route path="/PendingApprovals" element={<PendingApprovals />} />
           <Route path="/SystemAdvisor" element={<SystemAdvisor />} />
 
+          {/* Wedding Albums module admin pages -- also reachable by full admin/owner/
+              studio_manager, not just the scoped album_manager role above. */}
+          <Route path="/AlbumOrders" element={<AlbumOrders />} />
+          <Route path="/AlbumOrders/:orderId" element={<AlbumOrderDetail />} />
+          <Route path="/AlbumCatalogSettings" element={<AlbumCatalogSettings />} />
+
           <Route path="*" element={<PageNotFound />} />
         </Routes>
       </Suspense>
@@ -173,6 +208,13 @@ function App() {
               <Route path="/questionnaire" element={<EventQuestionnaire />} />
               <Route path="/login" element={<Login />} />
               <Route path="/accept-invite" element={<AcceptInvite />} />
+
+              {/* Wedding Albums module -- public, no-login pages (couple review/purchase
+                  portal + print-shop delivery), token-validated server-side on every
+                  request via album-portal / album-print-access Edge Functions. See
+                  CLAUDE.md's "Wedding Albums module" section. */}
+              <Route path="/album/:token" element={<AlbumPortal />} />
+              <Route path="/print-access/:token" element={<AlbumPrintAccess />} />
 
               {/* Protected routes */}
               <Route path="/*" element={<AuthenticatedApp />} />

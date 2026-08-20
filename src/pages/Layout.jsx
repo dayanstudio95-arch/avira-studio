@@ -19,6 +19,7 @@ import {
   X,
   Shield,
   LogOut,
+  BookImage,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -45,7 +46,7 @@ import AIAssistant from "@/components/AIAssistant";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/SupabaseAuthContext";
-import { isLeadCoordinator, isPhotographerRole } from "@/lib/permissions";
+import { isLeadCoordinator, isPhotographerRole, isAlbumManagerRole } from "@/lib/permissions";
 
 const ROLE_LABELS = {
   owner: "בעלים",
@@ -57,17 +58,24 @@ const ROLE_LABELS = {
   lead_coordinator: "רכז לידים",
 };
 
-// Scoped roles (lead_coordinator, photographer) get exactly one nav destination and
-// none of the admin-panel chrome (menu editing, quick-stats -- which would otherwise
-// call base44.entities.Event.list() and pull tenant-wide event/financial data down to
-// these roles well beyond what they're scoped to see) or the floating AI assistant
-// (its tools query the same tenant-wide tables). lead_coordinator's one destination is
-// now the full Leads.jsx page (2026-08-20: expanded to full financial-data/all-leads
-// access per product decision, see 0030_lead_coordinator_full_leads_access.sql -- only
-// delete is blocked, enforced via RLS) -- photographer stays read-only/own-events-only.
+// Scoped roles (lead_coordinator, photographer, album_manager) get exactly one small
+// nav destination set and none of the admin-panel chrome (menu editing, quick-stats --
+// which would otherwise call base44.entities.Event.list() and pull tenant-wide
+// event/financial data down to these roles well beyond what they're scoped to see) or
+// the floating AI assistant (its tools query the same tenant-wide tables).
+// lead_coordinator's one destination is now the full Leads.jsx page (2026-08-20:
+// expanded to full financial-data/all-leads access per product decision, see
+// 0030_lead_coordinator_full_leads_access.sql -- only delete is blocked, enforced via
+// RLS) -- photographer stays read-only/own-events-only. album_manager (Wedding Albums
+// module, see CLAUDE.md) gets the order list + catalog settings; order detail is
+// reached by clicking into a row on the order list, not a separate nav entry.
 const scopedNavItemsByRole = {
   lead_coordinator: [{ title: "לידים", url: "/Leads", icon: Heart }],
   photographer: [{ title: "האירועים שלי", url: "/MyEvents", icon: Camera }],
+  album_manager: [
+    { title: "הזמנות אלבומים", url: "/AlbumOrders", icon: BookImage },
+    { title: "קטלוג אלבומים", url: "/AlbumCatalogSettings", icon: Settings },
+  ],
 };
 
 const primaryNavItems = [
@@ -98,7 +106,7 @@ const navigationItems = [...primaryNavItems, ...secondaryNavItems];
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
   const location = useLocation();
-  const scopedRole = isLeadCoordinator(user) ? 'lead_coordinator' : isPhotographerRole(user) ? 'photographer' : null;
+  const scopedRole = isLeadCoordinator(user) ? 'lead_coordinator' : isPhotographerRole(user) ? 'photographer' : isAlbumManagerRole(user) ? 'album_manager' : null;
   const scopedNavItems = scopedRole ? scopedNavItemsByRole[scopedRole] : null;
   const isInSecondaryNav = secondaryNavItems.some(item =>
     item.url !== '/' && location.pathname === item.url

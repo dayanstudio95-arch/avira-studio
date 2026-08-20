@@ -27,3 +27,17 @@ verify_jwt = false
 # same convention as calendar-sync-webhook.
 [functions.contract-signed-webhook]
 verify_jwt = false
+
+# album-portal and album-print-access back the Wedding Albums module's public,
+# no-login pages (/album/:token, /print-access/:token — see App.jsx and
+# CLAUDE.md's "Wedding Albums module" section). The couple / print shop never
+# has a Supabase session; the raw token from the URL is their only credential,
+# hashed and validated against album_orders.portal_token_hash /
+# print_access_links.token_hash on every single request inside the function
+# body itself. Must have JWT verification disabled at the platform level or
+# every request would 401 before that validation ever runs.
+[functions.album-portal]
+verify_jwt = false
+
+[functions.album-print-access]
+verify_jwt = false

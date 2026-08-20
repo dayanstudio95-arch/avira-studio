@@ -138,4 +138,21 @@ export const entities = {
   // same pattern as tenant_secrets — rows are inserted by the DB trigger, never by
   // frontend code; the frontend only reads/marks-as-read via NotificationBell.jsx.
   Notification: createEntity('notifications'),
+  // Wedding Albums module (migration 0031_wedding_albums.sql) — fully separate from
+  // the pre-existing simple album marker on `events` (album_status etc.), see
+  // CLAUDE.md's "Wedding Albums module" section. RLS: standard tenant-isolation on
+  // most of these; album_products/album_covers/album_addons/print_access_links have
+  // open SELECT + owner/admin/studio_manager/album_manager-gated writes.
+  AlbumOrder: createEntity('album_orders'),
+  AlbumVersion: createEntity('album_versions'),
+  AlbumSpread: createEntity('album_spreads'),
+  AlbumReviewRound: createEntity('album_review_rounds'),
+  AlbumSpreadDecision: createEntity('album_spread_decisions'),
+  AlbumProduct: createEntity('album_products'),
+  AlbumCover: createEntity('album_covers'),
+  AlbumAddon: createEntity('album_addons'),
+  AlbumOrderSelection: createEntity('album_order_selections'),
+  AlbumOrderAddon: createEntity('album_order_addons'),
+  PrintAccessLink: createEntity('print_access_links'),
+  PrintAccessEvent: createEntity('print_access_events'),
 };
