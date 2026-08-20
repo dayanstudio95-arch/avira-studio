@@ -237,10 +237,10 @@ function ReviewGallery({ token, order, onReloaded }) {
                   <Button
                     type="button"
                     size="sm"
-                    variant={needsRevision ? "destructive" : "outline"}
+                    variant={needsRevision ? "destructive" : "default"}
                     onClick={() => toggleNeedsRevision(spread.id)}
                     title="לחצו כדי לשנות את הסטטוס של העמוד הזה"
-                    className={`gap-1.5 ${!needsRevision ? "border-gray-600 text-gray-300 hover:border-yellow-400 hover:text-yellow-400" : ""}`}
+                    className={`gap-1.5 font-bold ${!needsRevision ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500" : ""}`}
                   >
                     {needsRevision ? (
                       <AlertTriangle className="w-3.5 h-3.5" />
