@@ -6,6 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Loader2,
   CheckCircle2,
@@ -18,6 +21,9 @@ import {
   Upload,
   CheckCircle,
   Clock,
+  Plus,
+  Minus,
+  X,
 } from "lucide-react";
 
 // Public, no-login couple-facing wedding album portal -- /album/:token.
@@ -25,10 +31,71 @@ import {
 // (dir="rtl", dark theme, loading/error/success branches, base44.functions.invoke
 // against a dedicated Edge Function). No Supabase session ever exists here --
 // see CLAUDE.md's "Wedding Albums module" section.
+//
+// Redesigned to match the studio's old system's portal (reference screenshots,
+// reconciled with the user) -- branded header + status badge, richer pill
+// stepper, per-card product notes, filterable cover grid, and a fuller
+// engraving step (type/scope/1-2 lines) backed by migration 0035.
 
 const REVIEW_STATUSES = ["sketch_uploaded", "in_review", "revision_requested"];
 const PURCHASE_STATUSES = ["approved", "product_selected", "awaiting_payment"];
 const POST_PAYMENT_STATUSES = ["paid", "in_print", "delivered", "completed"];
+
+const COVER_TYPE_LABELS = {
+  denim: "ג'ינס",
+  linen: "פשתן",
+  faux_leather: "עור סינטטי",
+  other: "אחר",
+};
+const COVER_TYPE_ORDER = ["denim", "linen", "faux_leather", "other"];
+
+const ADDON_CATEGORY_LABELS = {
+  glass: "זכוכית",
+  canvas: "קנבס",
+  mini_album: "מיני אלבום",
+  parent_album: "אלבום הורים",
+  extra_pages: "עמודים נוספים",
+  other: "אחר",
+};
+
+const ENGRAVING_TYPE_OPTIONS = [
+  { id: "colored", label: "חריטה צבעונית", description: "צבע בולט על גבי הכריכה" },
+  { id: "blind", label: "הטבעה שקופה (ללא צבע)", description: "מומלץ בעיקר לכריכת עור סינטטי" },
+];
+
+const ENGRAVING_SCOPE_OPTIONS = [
+  { id: "main_only", label: "אלבום ראשי בלבד" },
+  { id: "full_set", label: "כל סט האלבומים" },
+];
+
+// Flat pricing matrix for engraving (there is no catalog table for this -- engraving
+// type/scope are fixed studio options, not editable catalog rows, same as the
+// hardcoded option lists above). Kept in sync manually with the identical matrix in
+// supabase/functions/album-portal/index.ts, which is the authoritative, server-side
+// computation -- this copy is display-only (estimatedTotal preview).
+const ENGRAVING_PRICES = {
+  colored: { main_only: 110, full_set: 220 },
+  blind: { main_only: 100, full_set: 130 },
+};
+function getEngravingPrice(type, scope) {
+  return ENGRAVING_PRICES[type]?.[scope] ?? 0;
+}
+// Blind (colorless) engraving only looks right on a faux-leather ("עור סינטטי") base
+// cover -- enforced as a hard restriction (disabled option), not just a warning.
+const BLIND_ENGRAVING_ALLOWED_COVER_TYPE = "faux_leather";
+
+const STATUS_INFO = {
+  sketch_uploaded: { label: "סקיצה מוכנה לצפייה", className: "bg-blue-500/15 text-blue-300 border-blue-500/30" },
+  in_review: { label: "בבדיקה על ידכם", className: "bg-blue-500/15 text-blue-300 border-blue-500/30" },
+  revision_requested: { label: "ממתין לתיקונים מהצוות", className: "bg-orange-500/15 text-orange-300 border-orange-500/30" },
+  approved: { label: "מאושר · בחרו מוצר", className: "bg-green-500/15 text-green-300 border-green-500/30" },
+  product_selected: { label: "השלימו את ההזמנה", className: "bg-yellow-500/15 text-yellow-300 border-yellow-500/30" },
+  awaiting_payment: { label: "ממתין לתשלום", className: "bg-yellow-500/15 text-yellow-300 border-yellow-500/30" },
+  paid: { label: "התשלום התקבל", className: "bg-green-500/15 text-green-300 border-green-500/30" },
+  in_print: { label: "בהדפסה", className: "bg-purple-500/15 text-purple-300 border-purple-500/30" },
+  delivered: { label: "נשלח אליכם", className: "bg-purple-500/15 text-purple-300 border-purple-500/30" },
+  completed: { label: "הושלם", className: "bg-green-500/15 text-green-300 border-green-500/30" },
+};
 
 function formatCurrency(amount) {
   if (amount === null || amount === undefined) return "";
@@ -93,17 +160,10 @@ export default function AlbumPortal() {
     );
   }
 
-  const displayName = order.coupleNamesManual || "האלבום שלכם";
-
   return (
     <div className="min-h-screen bg-gray-950 py-8 px-4" dir="rtl">
       <div className="max-w-3xl mx-auto space-y-6">
-        <div className="text-center space-y-1">
-          <h1 className="text-2xl font-bold text-white">{displayName}</h1>
-          {order.weddingDateManual && (
-            <p className="text-gray-400 text-sm">{formatDate(order.weddingDateManual)}</p>
-          )}
-        </div>
+        <PortalHeader order={order} />
 
         {REVIEW_STATUSES.includes(order.workflowStatus) && (
           <ReviewGallery token={token} order={order} onReloaded={setOrder} />
@@ -114,6 +174,41 @@ export default function AlbumPortal() {
         )}
 
         {POST_PAYMENT_STATUSES.includes(order.workflowStatus) && <PostPaymentStatus order={order} />}
+      </div>
+    </div>
+  );
+}
+
+// -------------------- Branded header --------------------
+
+function PortalHeader({ order }) {
+  const displayName = order.coupleNamesManual || "האלבום שלכם";
+  const status = STATUS_INFO[order.workflowStatus];
+  const versionNumber = order.currentVersion?.versionNumber;
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+      <div className="bg-gradient-to-l from-yellow-500/10 via-gray-900 to-gray-900 px-5 py-3 border-b border-gray-800 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-yellow-400 font-bold text-sm tracking-wide">Avira Album</p>
+          <p className="text-gray-500 text-xs">פורטל הזוג</p>
+        </div>
+        {status && (
+          <Badge variant="outline" className={`border shrink-0 ${status.className}`}>
+            {status.label}
+          </Badge>
+        )}
+      </div>
+      <div className="px-5 py-4 text-center space-y-1">
+        <p className="text-gray-400 text-sm">ברוכים הבאים,</p>
+        <h1 className="text-2xl font-bold text-white">{displayName}</h1>
+        {(order.weddingDateManual || versionNumber) && (
+          <div className="flex items-center justify-center gap-2 text-gray-500 text-xs">
+            {order.weddingDateManual && <span>{formatDate(order.weddingDateManual)}</span>}
+            {order.weddingDateManual && versionNumber && <span>·</span>}
+            {versionNumber && <span>גרסה {versionNumber}</span>}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -306,17 +401,36 @@ function ReviewGallery({ token, order, onReloaded }) {
 // -------------------- Purchase wizard phase --------------------
 
 const STEPS = ["product", "cover", "engraving", "addons", "shipping", "payment"];
+const STEP_LABELS = ["מוצר", "כריכה", "חריטה", "תוספות", "משלוח", "תשלום"];
+const NEXT_LABELS = {
+  product: "המשך לכריכה",
+  cover: "המשך לחריטה",
+  addons: "המשך למשלוח",
+  shipping: "המשך לתשלום",
+};
 
 function PurchaseWizard({ token, order, onReloaded }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [catalog, setCatalog] = useState({ products: [], covers: [], addons: [] });
+  const [catalog, setCatalog] = useState({ products: [], covers: [], addons: [], engravingColors: [], engravingFonts: [] });
 
   const [stepIndex, setStepIndex] = useState(0);
   const [selectedProductId, setSelectedProductId] = useState(null);
   const [selectedCoverId, setSelectedCoverId] = useState(null);
+  const [coverFilter, setCoverFilter] = useState("all");
+
+  const [engravingEnabled, setEngravingEnabled] = useState(false);
+  const [engravingLines, setEngravingLines] = useState(1);
   const [engravingText, setEngravingText] = useState("");
+  const [engravingTextLine2, setEngravingTextLine2] = useState("");
+  const [engravingType, setEngravingType] = useState("colored");
+  const [engravingScope, setEngravingScope] = useState("main_only");
+  const [selectedEngravingColorId, setSelectedEngravingColorId] = useState(null);
+  const [selectedEngravingFontId, setSelectedEngravingFontId] = useState(null);
+
   const [selectedAddons, setSelectedAddons] = useState({}); // addonId -> quantity
+  const [addonImages, setAddonImages] = useState({}); // addonId -> [{path, previewUrl, uploading}]
+  const [addonUploadError, setAddonUploadError] = useState({}); // addonId -> message
   const [shipping, setShipping] = useState({ name: "", phone: "", address: "", notes: "" });
 
   const [submitting, setSubmitting] = useState(false);
@@ -344,28 +458,107 @@ function PurchaseWizard({ token, order, onReloaded }) {
 
   const selectedProduct = catalog.products.find((p) => p.id === selectedProductId);
   const selectedCover = catalog.covers.find((c) => c.id === selectedCoverId);
+  const selectedEngravingColor = (catalog.engravingColors || []).find((c) => c.id === selectedEngravingColorId);
+  const selectedEngravingFont = (catalog.engravingFonts || []).find((f) => f.id === selectedEngravingFontId);
+  const extraPagesAddon = catalog.addons.find((a) => a.category === "extra_pages");
+
+  const coverTypesPresent = COVER_TYPE_ORDER.filter((t) => catalog.covers.some((c) => c.coverType === t));
+  const filteredCovers = coverFilter === "all" ? catalog.covers : catalog.covers.filter((c) => c.coverType === coverFilter);
+
+  const blindEngravingAllowed = selectedCover?.coverType === BLIND_ENGRAVING_ALLOWED_COVER_TYPE;
+  const engravingPrice = engravingEnabled ? getEngravingPrice(engravingType, engravingScope) : 0;
+
+  // If the couple picks "blind" engraving and then goes back and changes the cover
+  // to something other than faux-leather, silently fall back to "colored" rather than
+  // leaving an invalid combination selected (hard restriction, not just a warning).
+  useEffect(() => {
+    if (engravingType === "blind" && !blindEngravingAllowed) {
+      setEngravingType("colored");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blindEngravingAllowed]);
 
   const estimatedTotal = useMemo(() => {
     let total = selectedProduct ? Number(selectedProduct.basePrice) : 0;
     if (selectedCover) total += Number(selectedCover.priceDelta || 0);
+    if (engravingEnabled) total += getEngravingPrice(engravingType, engravingScope);
     Object.entries(selectedAddons).forEach(([addonId, qty]) => {
       const addon = catalog.addons.find((a) => a.id === addonId);
       if (addon && qty > 0) total += Number(addon.price) * qty;
     });
     return total;
-  }, [selectedProduct, selectedCover, selectedAddons, catalog.addons]);
+  }, [selectedProduct, selectedCover, engravingEnabled, engravingType, engravingScope, selectedAddons, catalog.addons]);
 
-  const toggleAddon = (addonId) => {
-    setSelectedAddons((prev) => {
-      const next = { ...prev };
-      if (next[addonId]) delete next[addonId];
-      else next[addonId] = 1;
-      return next;
-    });
+  // Addons flagged requiresUpload must have at least one uploaded image before the
+  // couple can move past the addons step (mirrors the product/cover step's own
+  // required-selection gating).
+  const addonUploadsMissing = Object.entries(selectedAddons).some(([addonId, qty]) => {
+    if (!qty) return false;
+    const addon = catalog.addons.find((a) => a.id === addonId);
+    if (!addon?.requiresUpload) return false;
+    const images = (addonImages[addonId] || []).filter((img) => img.path && !img.uploading);
+    return images.length === 0;
+  });
+
+  const handleAddonFileSelected = async (addon, fileList) => {
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    const toUpload = addon.allowsMultipleImages ? files : [files[0]];
+    setAddonUploadError((prev) => ({ ...prev, [addon.id]: "" }));
+    for (const file of toUpload) {
+      const localId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const previewUrl = URL.createObjectURL(file);
+      setAddonImages((prev) => {
+        const existing = addon.allowsMultipleImages ? prev[addon.id] || [] : [];
+        return { ...prev, [addon.id]: [...existing, { localId, previewUrl, path: null, uploading: true }] };
+      });
+      try {
+        const createRes = await base44.functions.invoke("albumPortal", {
+          token,
+          action: "createAddonUploadUrl",
+          addonId: addon.id,
+          fileName: file.name,
+        });
+        const { path, token: uploadToken } = createRes.data;
+        const { error: uploadError } = await supabase.storage.from("album-files").uploadToSignedUrl(path, uploadToken, file);
+        if (uploadError) throw new Error(uploadError.message || "העלאת התמונה נכשלה");
+        setAddonImages((prev) => ({
+          ...prev,
+          [addon.id]: (prev[addon.id] || []).map((img) => (img.localId === localId ? { ...img, path, uploading: false } : img)),
+        }));
+      } catch (e) {
+        setAddonUploadError((prev) => ({ ...prev, [addon.id]: e?.message || "שגיאה בהעלאת התמונה" }));
+        setAddonImages((prev) => ({
+          ...prev,
+          [addon.id]: (prev[addon.id] || []).filter((img) => img.localId !== localId),
+        }));
+      }
+    }
   };
 
-  const setAddonQty = (addonId, qty) => {
-    setSelectedAddons((prev) => ({ ...prev, [addonId]: Math.max(1, qty) }));
+  const removeAddonImage = (addonId, localId) => {
+    setAddonImages((prev) => ({ ...prev, [addonId]: (prev[addonId] || []).filter((img) => img.localId !== localId) }));
+  };
+
+  const incrementAddon = (addonId) => {
+    setSelectedAddons((prev) => ({ ...prev, [addonId]: (prev[addonId] || 0) + 1 }));
+  };
+
+  const decrementAddon = (addonId) => {
+    setSelectedAddons((prev) => {
+      const current = prev[addonId] || 1;
+      if (current <= 1) {
+        const next = { ...prev };
+        delete next[addonId];
+        setAddonImages((imgPrev) => {
+          const nextImgs = { ...imgPrev };
+          delete nextImgs[addonId];
+          return nextImgs;
+        });
+        return next;
+      }
+      return { ...prev, [addonId]: current - 1 };
+    });
   };
 
   const goNext = () => setStepIndex((i) => Math.min(i + 1, STEPS.length - 1));
@@ -375,13 +568,22 @@ function PurchaseWizard({ token, order, onReloaded }) {
     setSubmitting(true);
     setSubmitError("");
     try {
-      const addonsPayload = Object.entries(selectedAddons).map(([addonId, quantity]) => ({ addonId, quantity }));
+      const addonsPayload = Object.entries(selectedAddons).map(([addonId, quantity]) => ({
+        addonId,
+        quantity,
+        imageKeys: (addonImages[addonId] || []).filter((img) => img.path).map((img) => img.path),
+      }));
       const res = await base44.functions.invoke("albumPortal", {
         token,
         action: "submitPurchase",
         productId: selectedProductId,
         coverId: selectedCoverId,
-        engravingText,
+        engravingText: engravingEnabled ? engravingText : "",
+        engravingTextLine2: engravingEnabled && engravingLines === 2 ? engravingTextLine2 : "",
+        engravingType: engravingEnabled ? engravingType : null,
+        engravingScope: engravingEnabled ? engravingScope : null,
+        engravingColorId: engravingEnabled ? selectedEngravingColorId : null,
+        engravingFontId: engravingEnabled ? selectedEngravingFontId : null,
         addons: addonsPayload,
         shipping,
       });
@@ -414,6 +616,8 @@ function PurchaseWizard({ token, order, onReloaded }) {
   }
 
   const step = STEPS[stepIndex];
+  const nextLabel =
+    step === "engraving" ? (engravingEnabled ? "המשך לתוספות" : "דלג והמשך") : NEXT_LABELS[step] || "המשך";
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 space-y-5">
@@ -441,6 +645,10 @@ function PurchaseWizard({ token, order, onReloaded }) {
                   <span className="text-yellow-400 font-bold">{formatCurrency(p.basePrice)}</span>
                 </div>
                 {p.description && <p className="text-gray-400 text-sm mt-1">{p.description}</p>}
+                <p className="text-gray-500 text-xs mt-1.5">
+                  כולל 30 עמודים
+                  {extraPagesAddon ? ` · עמוד נוסף ${formatCurrency(extraPagesAddon.price)}` : ""}
+                </p>
               </button>
             ))}
             {!catalog.products.length && (
@@ -453,31 +661,46 @@ function PurchaseWizard({ token, order, onReloaded }) {
       {step === "cover" && (
         <div className="space-y-3">
           <h3 className="text-white font-bold">בחירת כריכה</h3>
-          <div className="grid gap-3">
-            <button
-              type="button"
-              onClick={() => setSelectedCoverId(null)}
-              className={`text-right p-4 rounded-xl border transition ${
-                !selectedCoverId ? "border-yellow-400 bg-yellow-400/10" : "border-gray-700 bg-gray-800/50"
-              }`}
-            >
-              <span className="text-white">ללא תוספת כריכה</span>
-            </button>
-            {catalog.covers.map((c) => (
+
+          {!!coverTypesPresent.length && (
+            <Tabs value={coverFilter} onValueChange={setCoverFilter}>
+              <TabsList className="flex-wrap h-auto gap-1 bg-gray-800/70">
+                <TabsTrigger value="all">הכל</TabsTrigger>
+                {coverTypesPresent.map((t) => (
+                  <TabsTrigger key={t} value={t}>
+                    {COVER_TYPE_LABELS[t] || t}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          )}
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {filteredCovers.map((c) => (
               <button
                 key={c.id}
                 type="button"
                 onClick={() => setSelectedCoverId(c.id)}
-                className={`text-right p-4 rounded-xl border transition ${
+                className={`rounded-xl border overflow-hidden text-center transition ${
                   selectedCoverId === c.id
-                    ? "border-yellow-400 bg-yellow-400/10"
+                    ? "border-yellow-400 ring-2 ring-yellow-400/40"
                     : "border-gray-700 bg-gray-800/50 hover:border-gray-600"
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <span className="text-white">{c.name}</span>
+                <div className="aspect-square bg-gray-800 flex items-center justify-center overflow-hidden">
+                  {c.previewImageUrl ? (
+                    <img src={c.previewImageUrl} alt={c.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <ImageOff className="w-6 h-6 text-gray-600" />
+                  )}
+                </div>
+                <div className="p-2 space-y-0.5">
+                  <p className="text-white text-xs font-medium truncate">{c.name}</p>
+                  {c.coverType && (
+                    <p className="text-gray-500 text-[10px]">{COVER_TYPE_LABELS[c.coverType] || c.coverType}</p>
+                  )}
                   {Number(c.priceDelta) > 0 && (
-                    <span className="text-yellow-400 text-sm">{formatCurrency(c.priceDelta)}+</span>
+                    <p className="text-yellow-400 text-[11px] font-medium">{formatCurrency(c.priceDelta)}+</p>
                   )}
                 </div>
               </button>
@@ -487,17 +710,187 @@ function PurchaseWizard({ token, order, onReloaded }) {
       )}
 
       {step === "engraving" && (
-        <div className="space-y-3">
-          <h3 className="text-white font-bold flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-yellow-400" /> הקדשה לחריטה (אופציונלי)
-          </h3>
-          <Textarea
-            value={engravingText}
-            onChange={(e) => setEngravingText(e.target.value)}
-            placeholder="טקסט לחריטה על כריכת האלבום..."
-            className="bg-gray-800 border-gray-700 text-white"
-            rows={3}
-          />
+        <div className="space-y-5">
+          <div className="flex items-center justify-between">
+            <h3 className="text-white font-bold flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-yellow-400" /> חריטה על הכריכה
+            </h3>
+            <div className="flex items-center gap-2">
+              <span className="text-gray-400 text-xs">{engravingEnabled ? "עם חריטה" : "ללא חריטה"}</span>
+              <Switch checked={engravingEnabled} onCheckedChange={setEngravingEnabled} />
+            </div>
+          </div>
+
+          {!engravingEnabled ? (
+            <p className="text-gray-500 text-sm">
+              לא תתווסף חריטה לאלבום. ניתן להפעיל את המתג למעלה כדי להוסיף הקדשה.
+            </p>
+          ) : (
+            <div className="space-y-5">
+              <div>
+                <p className="text-gray-400 text-sm mb-2">סוג החריטה</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {ENGRAVING_TYPE_OPTIONS.map((opt) => {
+                    const isBlindDisabled = opt.id === "blind" && !blindEngravingAllowed;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        disabled={isBlindDisabled}
+                        onClick={() => !isBlindDisabled && setEngravingType(opt.id)}
+                        className={`text-right p-3 rounded-xl border transition ${
+                          isBlindDisabled
+                            ? "border-gray-800 bg-gray-800/20 opacity-50 cursor-not-allowed"
+                            : engravingType === opt.id
+                            ? "border-yellow-400 bg-yellow-400/10"
+                            : "border-gray-700 bg-gray-800/50 hover:border-gray-600"
+                        }`}
+                      >
+                        <span className="text-white text-sm font-medium block">{opt.label}</span>
+                        <span className="text-gray-500 text-xs">{opt.description}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {!blindEngravingAllowed && (
+                  <p className="text-orange-400 text-xs mt-2 flex items-start gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    הטבעה שקופה (ללא צבע) אפשרית רק על כריכות בסיס מסוג עור סינטטי — לא זמינה עבור הכריכה שנבחרה.
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <p className="text-gray-400 text-sm mb-2">היקף החריטה</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {ENGRAVING_SCOPE_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setEngravingScope(opt.id)}
+                      className={`text-right p-3 rounded-xl border transition ${
+                        engravingScope === opt.id
+                          ? "border-yellow-400 bg-yellow-400/10"
+                          : "border-gray-700 bg-gray-800/50 hover:border-gray-600"
+                      }`}
+                    >
+                      <span className="text-white text-sm font-medium block">{opt.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between rounded-xl border border-yellow-400/30 bg-yellow-400/5 px-4 py-3">
+                <span className="text-gray-300 text-sm">תוספת עבור החריטה</span>
+                <span className="text-yellow-400 font-bold">{formatCurrency(engravingPrice)}</span>
+              </div>
+
+              <div>
+                <p className="text-gray-400 text-sm mb-2">מספר שורות</p>
+                <Tabs value={String(engravingLines)} onValueChange={(v) => setEngravingLines(Number(v))}>
+                  <TabsList className="bg-gray-800/70">
+                    <TabsTrigger value="1">שורה אחת</TabsTrigger>
+                    <TabsTrigger value="2">שתי שורות</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-gray-400 text-xs flex items-center justify-between">
+                    <span>שורה 1</span>
+                    <span>{engravingText.length}/30</span>
+                  </Label>
+                  <Input
+                    value={engravingText}
+                    maxLength={30}
+                    onChange={(e) => setEngravingText(e.target.value)}
+                    placeholder="לדוגמה: דנה ומיקי"
+                    className="bg-gray-800 border-gray-700 text-white"
+                  />
+                </div>
+                {engravingLines === 2 && (
+                  <div className="space-y-1.5">
+                    <Label className="text-gray-400 text-xs flex items-center justify-between">
+                      <span>שורה 2</span>
+                      <span>{engravingTextLine2.length}/30</span>
+                    </Label>
+                    <Input
+                      value={engravingTextLine2}
+                      maxLength={30}
+                      onChange={(e) => setEngravingTextLine2(e.target.value)}
+                      placeholder="לדוגמה: 12.06.2026"
+                      className="bg-gray-800 border-gray-700 text-white"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {!!(catalog.engravingColors || []).length && (
+                <div>
+                  <p className="text-gray-400 text-sm mb-2">צבע החריטה</p>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                    {catalog.engravingColors.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setSelectedEngravingColorId((prev) => (prev === c.id ? null : c.id))}
+                        className={`flex flex-col items-center gap-1 p-1.5 rounded-lg border transition ${
+                          selectedEngravingColorId === c.id
+                            ? "border-yellow-400 bg-yellow-400/10"
+                            : "border-gray-700 bg-gray-800/50"
+                        }`}
+                        title={c.name}
+                      >
+                        {c.previewImageUrl ? (
+                          <img src={c.previewImageUrl} alt={c.name} className="w-full h-9 rounded object-cover" />
+                        ) : (
+                          <span className="w-full h-9 rounded bg-gray-950 border border-gray-700 flex items-center justify-center">
+                            <span className="text-base font-serif" style={{ color: c.hexColor || "#ffffff" }}>
+                              Aa
+                            </span>
+                          </span>
+                        )}
+                        <span className="text-gray-400 text-[10px] truncate w-full text-center">{c.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!!(catalog.engravingFonts || []).length && (
+                <div>
+                  <p className="text-gray-400 text-sm mb-2">פונט החריטה</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {catalog.engravingFonts.map((f) => (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => setSelectedEngravingFontId((prev) => (prev === f.id ? null : f.id))}
+                        className={`flex flex-col items-center gap-1.5 text-center p-2 rounded-xl border transition ${
+                          selectedEngravingFontId === f.id
+                            ? "border-yellow-400 bg-yellow-400/10"
+                            : "border-gray-700 bg-gray-800/50 hover:border-gray-600"
+                        }`}
+                      >
+                        {f.previewImageUrl ? (
+                          <img src={f.previewImageUrl} alt={f.name} className="w-full h-10 rounded object-cover" />
+                        ) : (
+                          <span
+                            className="w-full h-10 rounded bg-gray-950 border border-gray-700 flex items-center justify-center text-white text-sm"
+                            style={f.cssFontFamily ? { fontFamily: f.cssFontFamily } : undefined}
+                          >
+                            Aa
+                          </span>
+                        )}
+                        <span className="text-gray-400 text-[10px] truncate w-full">{f.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -506,26 +899,125 @@ function PurchaseWizard({ token, order, onReloaded }) {
           <h3 className="text-white font-bold">תוספות</h3>
           <div className="grid gap-3">
             {catalog.addons.map((a) => {
-              const checked = !!selectedAddons[a.id];
+              const qty = selectedAddons[a.id];
+              const checked = !!qty;
+              const images = addonImages[a.id] || [];
+              const hasUploadedImage = images.some((img) => img.path && !img.uploading);
               return (
                 <div
                   key={a.id}
-                  className={`p-4 rounded-xl border flex items-center justify-between ${
+                  className={`p-3 rounded-xl border ${
                     checked ? "border-yellow-400 bg-yellow-400/10" : "border-gray-700 bg-gray-800/50"
                   }`}
                 >
-                  <button type="button" onClick={() => toggleAddon(a.id)} className="text-right flex-1">
-                    <span className="text-white">{a.name}</span>
-                    <span className="text-yellow-400 text-sm block">{formatCurrency(a.price)}</span>
-                  </button>
-                  {checked && (
-                    <Input
-                      type="number"
-                      min={1}
-                      value={selectedAddons[a.id]}
-                      onChange={(e) => setAddonQty(a.id, Number(e.target.value) || 1)}
-                      className="w-16 bg-gray-800 border-gray-700 text-white text-center"
-                    />
+                  <div className="flex items-center gap-3">
+                    {a.previewImageUrl && (
+                      <img src={a.previewImageUrl} alt={a.name} className="w-16 h-16 rounded-lg object-cover shrink-0 border border-gray-700" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <span className="text-white block">{a.name}</span>
+                      {a.description && <span className="text-gray-500 text-xs block mt-0.5">{a.description}</span>}
+                      <span className="text-yellow-400 text-sm block mt-0.5">
+                        {formatCurrency(a.price)}
+                        {a.priceType === "per_unit" ? " / יחידה" : ""}
+                      </span>
+                      {(a.category || a.requiresUpload) && (
+                        <span className="text-gray-500 text-xs block mt-0.5">
+                          {a.category ? ADDON_CATEGORY_LABELS[a.category] || a.category : ""}
+                          {a.category && a.requiresUpload ? " · " : ""}
+                          {a.requiresUpload ? `דורש העלאת תמונה${a.allowsMultipleImages ? " (כמה תמונות)" : ""}` : ""}
+                        </span>
+                      )}
+                    </div>
+                    <div className="shrink-0">
+                      {!checked ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => incrementAddon(a.id)}
+                          className="bg-yellow-400 text-gray-900 hover:bg-yellow-500 font-bold gap-1"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> הוסף
+                        </Button>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            onClick={() => decrementAddon(a.id)}
+                            className="w-7 h-7 border-gray-700 text-gray-300 hover:bg-gray-700"
+                          >
+                            <Minus className="w-3.5 h-3.5" />
+                          </Button>
+                          <span className="text-white text-sm w-5 text-center">{qty}</span>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            onClick={() => incrementAddon(a.id)}
+                            className="w-7 h-7 border-gray-700 text-gray-300 hover:bg-gray-700"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {checked && a.requiresUpload && (
+                    <div className="mt-3 pt-3 border-t border-gray-700/50 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-300 text-xs font-medium">
+                          תמונה להגדלה {a.allowsMultipleImages ? "" : "(תמונה אחת)"}
+                        </span>
+                        <label className="cursor-pointer text-yellow-400 text-xs font-medium flex items-center gap-1">
+                          <Upload className="w-3.5 h-3.5" />
+                          העלה תמונה
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple={!!a.allowsMultipleImages}
+                            className="hidden"
+                            onChange={(e) => {
+                              handleAddonFileSelected(a, e.target.files);
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      </div>
+                      {images.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {images.map((img) => (
+                            <div
+                              key={img.localId}
+                              className="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-700 shrink-0"
+                            >
+                              <img src={img.previewUrl} alt="" className="w-full h-full object-cover" />
+                              {img.uploading ? (
+                                <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                                  <Loader2 className="w-4 h-4 text-yellow-400 animate-spin" />
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => removeAddonImage(a.id, img.localId)}
+                                  className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/70 flex items-center justify-center"
+                                >
+                                  <X className="w-2.5 h-2.5 text-white" />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {addonUploadError[a.id] && <p className="text-red-400 text-xs">{addonUploadError[a.id]}</p>}
+                      {!hasUploadedImage && (
+                        <p className="text-orange-400 text-xs flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3 shrink-0" /> יש להעלות תמונה כדי להמשיך
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
               );
@@ -582,6 +1074,19 @@ function PurchaseWizard({ token, order, onReloaded }) {
                 <span>{formatCurrency(selectedCover.priceDelta)}</span>
               </div>
             )}
+            {engravingEnabled && (
+              <div className="flex justify-between text-gray-300">
+                <span>
+                  חריטה
+                  {` · ${engravingType === "colored" ? "צבעונית" : "הטבעה שקופה"}`}
+                  {` · ${engravingScope === "main_only" ? "אלבום ראשי" : "כל הסט"}`}
+                  {engravingLines === 2 ? " · שתי שורות" : " · שורה אחת"}
+                  {selectedEngravingFont ? ` · ${selectedEngravingFont.name}` : ""}
+                  {selectedEngravingColor ? ` · ${selectedEngravingColor.name}` : ""}
+                </span>
+                <span>{formatCurrency(engravingPrice)}</span>
+              </div>
+            )}
             {Object.entries(selectedAddons).map(([addonId, qty]) => {
               const addon = catalog.addons.find((a) => a.id === addonId);
               if (!addon) return null;
@@ -612,17 +1117,27 @@ function PurchaseWizard({ token, order, onReloaded }) {
       )}
 
       <div className="flex items-center justify-between pt-2">
-        <Button type="button" variant="outline" disabled={stepIndex === 0} onClick={goBack} className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">
-          הקודם
+        <Button
+          type="button"
+          variant="outline"
+          disabled={stepIndex === 0}
+          onClick={goBack}
+          className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
+        >
+          חזרה
         </Button>
         {step !== "payment" && (
           <Button
             type="button"
-            disabled={step === "product" && !selectedProductId}
+            disabled={
+              (step === "product" && !selectedProductId) ||
+              (step === "cover" && !selectedCoverId) ||
+              (step === "addons" && addonUploadsMissing)
+            }
             onClick={goNext}
             className="bg-yellow-400 text-gray-900 hover:bg-yellow-500"
           >
-            הבא
+            {nextLabel}
           </Button>
         )}
       </div>
@@ -631,14 +1146,35 @@ function PurchaseWizard({ token, order, onReloaded }) {
 }
 
 function WizardHeader({ stepIndex }) {
-  const labels = ["מוצר", "כריכה", "חריטה", "תוספות", "משלוח", "תשלום"];
   return (
-    <div className="flex items-center justify-between text-xs text-gray-500">
-      {labels.map((label, i) => (
-        <span key={label} className={i === stepIndex ? "text-yellow-400 font-bold" : ""}>
-          {label}
-        </span>
-      ))}
+    <div className="flex items-start">
+      {STEP_LABELS.map((label, i) => {
+        const isDone = i < stepIndex;
+        const isCurrent = i === stepIndex;
+        return (
+          <div key={label} className="flex items-center flex-1 last:flex-none">
+            <div className="flex flex-col items-center gap-1">
+              <div
+                className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                  isCurrent
+                    ? "bg-yellow-400 text-gray-900"
+                    : isDone
+                    ? "bg-green-500 text-white"
+                    : "bg-gray-800 text-gray-500 border border-gray-700"
+                }`}
+              >
+                {isDone ? <CheckCircle2 className="w-4 h-4" /> : i + 1}
+              </div>
+              <span className={`text-[10px] whitespace-nowrap ${isCurrent ? "text-yellow-400 font-bold" : "text-gray-500"}`}>
+                {label}
+              </span>
+            </div>
+            {i < STEP_LABELS.length - 1 && (
+              <div className={`h-0.5 flex-1 mx-1 mt-3.5 ${isDone ? "bg-green-500" : "bg-gray-800"}`} />
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -118,6 +118,22 @@ export default function Leads() {
 
   useEffect(() => { loadData(); }, []);
 
+  // Global search "jump to" support (2026-08-21) -- src/components/layout/GlobalSearch.jsx
+  // navigates here with ?openLeadId=<id>; once leads are loaded, auto-open that lead's
+  // UnifiedSidePanel the same way clicking its name would, then strip the param so a
+  // refresh/back-nav doesn't reopen it.
+  useEffect(() => {
+    if (isLoading || leads.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    const openLeadId = params.get('openLeadId');
+    if (!openLeadId) return;
+    const lead = leads.find(l => l.id === openLeadId);
+    if (lead) setSelectedLead(lead);
+    params.delete('openLeadId');
+    const newSearch = params.toString();
+    window.history.replaceState({}, '', window.location.pathname + (newSearch ? `?${newSearch}` : ''));
+  }, [leads, isLoading]);
+
   const loadData = async () => {
     setIsLoading(true);
     try {

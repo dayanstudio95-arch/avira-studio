@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import {
   ArrowRight, Upload, Copy, Link2, Ban, RefreshCw, ImageIcon, CheckCircle2,
   CreditCard, Printer, Loader2, ChevronDown, ChevronUp, AlertTriangle, ExternalLink,
+  Package, Gift, Download, Eye,
 } from "lucide-react";
 import { WORKFLOW_STATUS_LABELS, WORKFLOW_STATUS_COLORS, PAYMENT_STATUS_LABELS } from "./AlbumOrders";
 
@@ -26,6 +27,9 @@ import { WORKFLOW_STATUS_LABELS, WORKFLOW_STATUS_COLORS, PAYMENT_STATUS_LABELS }
 // dedicated Edge Function needed for any of these admin actions.
 
 const BUCKET = "album-files";
+
+const ENGRAVING_TYPE_LABELS = { colored: "צבעונית", blind: "שקופה (ללא צבע)" };
+const ENGRAVING_SCOPE_LABELS = { main_only: "אלבום ראשי בלבד", full_set: "כל הסט" };
 
 function sanitizeFileName(name) {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -99,6 +103,17 @@ export default function AlbumOrderDetail() {
   const { data: printLinks = [] } = useQuery({
     queryKey: ["printAccessLinks", orderId],
     queryFn: () => base44.entities.PrintAccessLink.filter({ albumOrderId: orderId }, "-createdDate"),
+  });
+
+  const { data: selections = [] } = useQuery({
+    queryKey: ["albumOrderSelections", orderId],
+    queryFn: () => base44.entities.AlbumOrderSelection.filter({ albumOrderId: orderId }),
+  });
+  const selection = selections[0] || null;
+
+  const { data: orderAddons = [] } = useQuery({
+    queryKey: ["albumOrderAddons", orderId],
+    queryFn: () => base44.entities.AlbumOrderAddon.filter({ albumOrderId: orderId }),
   });
 
   const displayName = order?.eventId ? event?.coupleNames : order?.coupleNamesManual;
@@ -271,6 +286,42 @@ export default function AlbumOrderDetail() {
     }
     setProofUrl(data.signedUrl);
     window.open(data.signedUrl, "_blank");
+  };
+
+  // --- Addon-uploaded images (e.g. canvas/glass enlargement source photo) ----
+  // Admin-authenticated session, direct Storage calls (same pattern as viewTransferProof
+  // above) -- no dedicated Edge Function needed since album-files bucket policies already
+  // gate access to owner/admin/studio_manager/album_manager.
+  const viewAddonImage = async (path) => {
+    const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, 60 * 10);
+    if (error) {
+      toast.error("שגיאה בטעינת התמונה");
+      return;
+    }
+    window.open(data.signedUrl, "_blank");
+  };
+
+  const downloadAddonImage = async (path) => {
+    const fileName = path.split("/").pop() || "image";
+    const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, 60 * 10, { download: fileName });
+    if (error) {
+      toast.error("שגיאה בהורדת התמונה");
+      return;
+    }
+    window.open(data.signedUrl, "_blank");
+  };
+
+  const createAddonImagePrintLink = async (path) => {
+    // A long-lived signed URL handed to the print shop -- simple, no new DB row needed
+    // (unlike the order-wide print_access_links flow below, which covers approved
+    // spreads). 30 days is generous enough for a print shop to pick up the file.
+    const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, 60 * 60 * 24 * 30);
+    if (error) {
+      toast.error("שגיאה ביצירת קישור");
+      return;
+    }
+    copyToClipboard(data.signedUrl);
+    toast.success("קישור לבית הדפוס הועתק ללוח");
   };
 
   const markPaidMutation = useMutation({
@@ -624,6 +675,150 @@ export default function AlbumOrderDetail() {
                   </div>
                 );
               })}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Purchase selections -- what the couple actually chose in the wizard */}
+        {(selection || orderAddons.length > 0) && (
+          <Card className="bg-gray-900/50 border-gray-800">
+            <CardHeader>
+              <CardTitle className="text-white text-lg flex items-center gap-2">
+                <Package className="w-5 h-5 text-yellow-400" />
+                פרטי ההזמנה שנבחרו
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {selection ? (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                    <div className="flex items-center justify-between border-b border-gray-800 pb-2">
+                      <span className="text-gray-400">מוצר</span>
+                      <span className="text-white font-medium">
+                        {selection.productNameSnapshot || "—"}
+                        {selection.productPriceSnapshot != null && (
+                          <span className="text-gray-400"> · ₪{Number(selection.productPriceSnapshot).toLocaleString()}</span>
+                        )}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between border-b border-gray-800 pb-2">
+                      <span className="text-gray-400">כריכה</span>
+                      <span className="text-white font-medium">
+                        {selection.coverNameSnapshot || "—"}
+                        {!!selection.coverPriceDeltaSnapshot && (
+                          <span className="text-gray-400"> · +₪{Number(selection.coverPriceDeltaSnapshot).toLocaleString()}</span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+
+                  {selection.engravingType ? (
+                    <div className="bg-gray-800/50 p-3 rounded-lg space-y-1.5">
+                      <p className="text-gray-300 text-sm font-medium mb-1 flex items-center justify-between">
+                        <span>חריטה</span>
+                        {selection.engravingPriceSnapshot != null && (
+                          <span className="text-yellow-400">+₪{Number(selection.engravingPriceSnapshot).toLocaleString()}</span>
+                        )}
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                        <p className="text-gray-400">
+                          סוג: <span className="text-white">{ENGRAVING_TYPE_LABELS[selection.engravingType] || selection.engravingType}</span>
+                        </p>
+                        <p className="text-gray-400">
+                          היקף: <span className="text-white">{ENGRAVING_SCOPE_LABELS[selection.engravingScope] || selection.engravingScope || "—"}</span>
+                        </p>
+                        {selection.engravingColorNameSnapshot && (
+                          <p className="text-gray-400">
+                            צבע: <span className="text-white">{selection.engravingColorNameSnapshot}</span>
+                          </p>
+                        )}
+                        {selection.engravingFontNameSnapshot && (
+                          <p className="text-gray-400">
+                            פונט: <span className="text-white">{selection.engravingFontNameSnapshot}</span>
+                          </p>
+                        )}
+                      </div>
+                      {selection.engravingText && (
+                        <p className="text-gray-400 text-sm">
+                          שורה 1: <span className="text-white">{selection.engravingText}</span>
+                        </p>
+                      )}
+                      {selection.engravingTextLine2 && (
+                        <p className="text-gray-400 text-sm">
+                          שורה 2: <span className="text-white">{selection.engravingTextLine2}</span>
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-gray-500 text-sm">ללא חריטה</p>
+                  )}
+                </>
+              ) : (
+                <p className="text-gray-500 text-sm">טרם נבחר מוצר</p>
+              )}
+
+              {orderAddons.length > 0 && (
+                <div className="border-t border-gray-800 pt-3 space-y-2">
+                  <p className="text-gray-300 text-sm font-medium flex items-center gap-1.5">
+                    <Gift className="w-4 h-4 text-yellow-400" />
+                    תוספות
+                  </p>
+                  {orderAddons.map((a) => (
+                    <div key={a.id} className="space-y-1.5">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-400">
+                          {a.addonNameSnapshot} {a.quantity > 1 ? `× ${a.quantity}` : ""}
+                        </span>
+                        <span className="text-white">
+                          ₪{Number((a.addonPriceSnapshot || 0) * (a.quantity || 1)).toLocaleString()}
+                        </span>
+                      </div>
+                      {Array.isArray(a.uploadedFileKeys) && a.uploadedFileKeys.length > 0 && (
+                        <div className="flex flex-wrap gap-2 pr-1">
+                          {a.uploadedFileKeys.map((path) => (
+                            <div
+                              key={path}
+                              className="flex items-center gap-1 bg-gray-800/70 border border-gray-700 rounded-lg px-2 py-1"
+                            >
+                              <ImageIcon className="w-3.5 h-3.5 text-yellow-400 shrink-0" />
+                              <span className="text-gray-400 text-xs max-w-[120px] truncate" title={path}>
+                                {path.split("/").pop()}
+                              </span>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                title="צפייה"
+                                onClick={() => viewAddonImage(path)}
+                                className="w-6 h-6 text-gray-300 hover:bg-gray-700"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                title="הורדה"
+                                onClick={() => downloadAddonImage(path)}
+                                className="w-6 h-6 text-gray-300 hover:bg-gray-700"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                title="צור קישור לבית דפוס"
+                                onClick={() => createAddonImagePrintLink(path)}
+                                className="w-6 h-6 text-gray-300 hover:bg-gray-700"
+                              >
+                                <Link2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

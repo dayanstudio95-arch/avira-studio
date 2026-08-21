@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/SupabaseAuthContext";
-import { isAdmin, isOwner } from "@/lib/permissions";
+import { isAdmin, isOwner, CREW_ROLES } from "@/lib/permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -523,10 +523,12 @@ export default function UsersTab() {
                   )}
                   {canManage ? (
                     <>
-                      {/* Photographer-only: which staff_members roster row this login is
-                          linked to — powers /MyEvents' "which events am I crew on" match
-                          (see supabase/functions/photographer-events/index.ts). */}
-                      {u.role === "photographer" && (
+                      {/* Crew roles only (photographer/editor — CREW_ROLES): which
+                          staff_members roster row this login is linked to — powers
+                          /MyEvents' "which events am I crew on" match (see
+                          supabase/functions/photographer-events/index.ts, shared by
+                          both roles). */}
+                      {CREW_ROLES.includes(u.role) && (
                         <Select
                           value={u.staffMemberId || NO_STAFF_LINK}
                           onValueChange={(val) => handleStaffLinkChange(u.id, val)}

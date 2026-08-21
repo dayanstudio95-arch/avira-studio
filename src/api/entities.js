@@ -151,6 +151,10 @@ export const entities = {
   AlbumProduct: createEntity('album_products'),
   AlbumCover: createEntity('album_covers'),
   AlbumAddon: createEntity('album_addons'),
+  // Added in 0033_album_catalog_richness.sql — dedicated engraving catalogs
+  // (color swatches / font previews), imported from the old system's real data.
+  AlbumEngravingColor: createEntity('album_engraving_colors'),
+  AlbumEngravingFont: createEntity('album_engraving_fonts'),
   AlbumOrderSelection: createEntity('album_order_selections'),
   AlbumOrderAddon: createEntity('album_order_addons'),
   PrintAccessLink: createEntity('print_access_links'),

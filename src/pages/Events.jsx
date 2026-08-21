@@ -31,6 +31,10 @@ export default function Events() {
   // Check for filter parameter
   const urlParams = new URLSearchParams(window.location.search);
   const filterParam = urlParams.get('filter');
+  // Global search "jump to" support (2026-08-21) -- src/components/layout/GlobalSearch.jsx
+  // navigates here with ?openEventId=<id>; passed down to EventsTableWithBulkDelete, which
+  // auto-opens that event's UnifiedSidePanel once events are loaded.
+  const autoOpenEventId = urlParams.get('openEventId');
 
   useEffect(() => {
     loadEvents();
@@ -409,7 +413,7 @@ export default function Events() {
         )}
 
         {/* Events Table */}
-        <EventsTableWithBulkDelete events={filteredEvents} isLoading={isLoading} onRefresh={loadEvents} />
+        <EventsTableWithBulkDelete events={filteredEvents} isLoading={isLoading} onRefresh={loadEvents} autoOpenEventId={autoOpenEventId} />
 
         {/* CSV Import Dialog */}
         <CSVImportDialog 

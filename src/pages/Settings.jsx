@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { DollarSign, Save, Users, Edit, Trash2, Plus, Upload, Download, FileText, Plug, MessageCircle, Building2, History, Bell } from "lucide-react";
+import { DollarSign, Save, Users, Edit, Trash2, Plus, Upload, Download, FileText, Plug, MessageCircle, Building2, History, Bell, ShieldCheck, Loader2 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/lib/SupabaseAuthContext";
@@ -37,6 +37,7 @@ import StudioSignatureCard from "../components/settings/StudioSignatureCard";
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 import { DEFAULT_CONTRACT_TERMS } from "@/lib/defaultContractTerms";
+import { downloadEventsBackupPdf } from "@/lib/eventsBackupPdf";
 import { toast } from "sonner";
 
 const VALID_SETTINGS_TABS = ["workspace", "users", "contract", "pricing", "team", "templates", "integrations", "notifications", "data", "audit"];
@@ -189,6 +190,26 @@ export default function Settings() {
     } catch (error) {
       console.error("Export error:", error);
     }
+  };
+
+  // "Safety net" PDF: full upcoming-events list including the assigned team
+  // (date, couple, venue, phone, and every crew member) — so there's always an
+  // offline-readable copy on your own device even if the live system is ever
+  // unreachable. See src/lib/eventsBackupPdf.js for the generator; the
+  // automatic weekly WhatsApp version of this same idea is documented in
+  // DEPLOYMENT.md section 9.
+  const [isExportingBackup, setIsExportingBackup] = useState(false);
+  const handleExportEventsBackupPdf = async () => {
+    setIsExportingBackup(true);
+    try {
+      const events = await base44.entities.Event.list();
+      await downloadEventsBackupPdf(events);
+      toast.success("קובץ הגיבוי הורד בהצלחה");
+    } catch (error) {
+      console.error("Backup PDF export error:", error);
+      toast.error("שגיאה ביצירת קובץ הגיבוי");
+    }
+    setIsExportingBackup(false);
   };
 
   return (
@@ -616,6 +637,26 @@ export default function Settings() {
                         </div>
                       </Button>
                     </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-400 mb-3">רשת ביטחון — גיבוי אירועים</h3>
+                    <p className="text-xs text-gray-500 mb-3">
+                      קובץ PDF עם כל האירועים העתידיים, כולל הזוג, הטלפון, המקום וכל חברי הצוות המשובצים —
+                      כדאי להוריד מדי פעם ולשמור על הטלפון/מחשב, כדי שתמיד תדעו איפה אתם עובדים גם אם המערכת
+                      לא זמינה. בנוסף, המערכת יכולה לשלוח עדכון דומה אוטומטית כל שבוע בוואטסאפ — ראו הגדרות → התראות.
+                    </p>
+                    <Button
+                      onClick={handleExportEventsBackupPdf}
+                      disabled={isExportingBackup}
+                      variant="outline"
+                      className="border-yellow-400/50 bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-yellow-400 hover:border-yellow-400 h-auto py-4 w-full md:w-auto md:px-8"
+                    >
+                      <div className="flex items-center gap-2">
+                        {isExportingBackup ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5" />}
+                        <span className="font-semibold">{isExportingBackup ? "יוצר קובץ..." : "הורד רשימת גיבוי מלאה (PDF)"}</span>
+                      </div>
+                    </Button>
                   </div>
                 </div>
               </CardContent>

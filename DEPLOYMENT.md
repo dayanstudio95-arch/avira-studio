@@ -580,3 +580,295 @@ fires normally; only the WhatsApp send is skipped.
 - Leave `notification_phone_number` blank for a tenant, sign a contract, confirm
   the in-app notification still appears with no error (WhatsApp send is skipped
   silently, per 8.3).
+
+## 9. Monthly events backup — "safety net" email + on-demand PDF
+
+New: a "safety net" so the studio owner always has a recent, offline-readable
+copy of "what's coming up and who's on each event," even if the live system is
+ever unreachable. Two halves:
+
+- **Manual, on-demand:** Settings → ייבוא/ייצוא (`data` tab) → "הורד רשימת גיבוי
+  מלאה (PDF)" button. Generates a real PDF, client-side in the browser (same
+  html2canvas + jsPDF pattern already used for signed contracts), listing every
+  upcoming event with date, couple, venue, phone, and the full assigned team.
+  No deployment needed for this half — it's pure frontend, ships with the
+  regular `vercel deploy`.
+- **Automatic, monthly:** a `monthly-events-backup` Edge Function, scheduled
+  via `pg_cron`, emails the same information (date/couple/venue/phone/team for
+  every upcoming event) as one HTML email to the address configured in
+  Settings → התראות → "גיבוי חודשי של אירועים — במייל" (`app_settings` key
+  `events_backup_email` — separate from `notification_phone_number`).
+
+**Why email, not WhatsApp, for the automatic half:** an earlier version of
+this sent a weekly WhatsApp text via Green API instead. Reverted per explicit
+user request — a large recurring automated message through Green API risks
+the studio's WhatsApp number getting flagged/blocked by WhatsApp, unlike the
+low-volume, event-triggered contract-signed alert in section 8. Email carries
+no such risk, and unlike the earlier WhatsApp version, needs no
+message-splitting — one email holds the whole list as real HTML (Hebrew
+renders fine here; the "no Hebrew-capable PDF library in Deno" limitation
+from section 9's original design is specific to generating an actual **PDF
+file** server-side, not to HTML email text — which is why the manual button
+above still does its PDF generation client-side in the browser, and the
+automatic email is HTML body text, not a PDF attachment).
+
+**Email provider: Resend**, called via plain `fetch` from
+`supabase/functions/_shared/email.ts` (no SDK, matching this codebase's style
+for every other external API). Uses Resend's shared sandbox sender
+(`onboarding@resend.dev`) by default, which requires **zero domain setup** but
+only delivers to the email address that owns the Resend account — this is
+fine for this feature's actual use case (the studio owner receiving their own
+monthly backup at the same address they signed up with). If you ever need
+this to reach a different/additional address, verify a real sending domain in
+the Resend dashboard and set the `RESEND_FROM_EMAIL` secret to an address on
+that domain.
+
+**9.1 Get a Resend API key and set secrets**
+
+1. Sign up free at [resend.com](https://resend.com) (no credit card required
+   for the free tier — 3,000 emails/month).
+2. In the Resend dashboard → API Keys → create a new key, copy it.
+3. Set the secrets and deploy:
+
+```bash
+supabase secrets set RESEND_API_KEY="<the key from resend.com>"
+supabase secrets set MONTHLY_EVENTS_BACKUP_CRON_SECRET="<a long random string, e.g. output of: openssl rand -hex 32>"
+
+supabase functions deploy monthly-events-backup
+```
+
+`monthly-events-backup` is deployed with `verify_jwt=false` (handled
+automatically by this repo's `supabase/config.toml`) — like
+`contract-signed-webhook`, it's called by `pg_cron` with no user session, so it
+authenticates itself via the `x-cron-secret` header instead, checked against
+`MONTHLY_EVENTS_BACKUP_CRON_SECRET`. Since it's listed in the `verify_jwt=false`
+exceptions, only the `x-cron-secret` header is required — no `Authorization`
+header needed (unlike `reconcile-calendar-sync` in section 4.4, which is not on
+that exceptions list).
+
+**9.2 Schedule the monthly run**
+
+In the Supabase SQL Editor, run once (put the real
+`MONTHLY_EVENTS_BACKUP_CRON_SECRET` value from 9.1 in place of the placeholder —
+treat it like a password, don't commit it anywhere):
+
+```sql
+select cron.schedule(
+  'monthly-events-backup',
+  '0 6 1 * *',  -- 06:00 UTC on the 1st of every month = ~08:00/09:00 Israel time
+  $$
+  select net.http_post(
+    url := 'https://yzurelfhjkgqrluifszz.supabase.co/functions/v1/monthly-events-backup',
+    headers := jsonb_build_object('x-cron-secret', '<MONTHLY_EVENTS_BACKUP_CRON_SECRET value from step 9.1>', 'Content-Type', 'application/json'),
+    body := '{}'::jsonb
+  );
+  $$
+);
+```
+
+Adjust the day/hour in the cron expression to taste (`pg_cron` runs in UTC, so
+Israel time is UTC+2 in winter / UTC+3 in summer). Before trusting the
+schedule, trigger it once manually to confirm it runs clean:
+
+```bash
+curl -X POST 'https://yzurelfhjkgqrluifszz.supabase.co/functions/v1/monthly-events-backup' \
+  -H 'x-cron-secret: <MONTHLY_EVENTS_BACKUP_CRON_SECRET value from step 9.1>'
+```
+
+**9.3 Configure the backup email address**
+
+In the app: Settings → **התראות**, second card "גיבוי חודשי של אירועים —
+במייל", fill in the email address that should receive the monthly backup, and
+save — stored in `app_settings` (key `events_backup_email`), same non-secret
+tier as `notification_phone_number`. If left blank, the function skips that
+tenant cleanly (no error, just a "no events_backup_email configured" log
+line).
+
+**9.4 Verify**
+
+- After the manual `curl` test above, confirm one email arrives at the
+  configured `events_backup_email`, listing every upcoming event with
+  couple/date/venue/phone/team, formatted as HTML.
+- If `events_backup_email` is blank for a tenant, confirm the function skips
+  that tenant cleanly (check the function logs for
+  `"no events_backup_email configured"`) rather than erroring.
+- If a tenant has zero upcoming events, confirm it's skipped cleanly too
+  (`"no upcoming events"` in the logs) — no empty email sent.
+- Click the manual "הורד רשימת גיבוי מלאה (PDF)" button in Settings and confirm
+  a real PDF downloads with the same event details, independent of the email
+  automation.
+
+**9.5 Migrating off the old weekly WhatsApp version**
+
+If `WEEKLY_EVENTS_BACKUP_CRON_SECRET`/the `weekly-events-backup` function/its
+`weekly-events-backup` cron job were ever actually deployed and scheduled
+before this section was rewritten, clean them up once:
+
+```sql
+select cron.unschedule('weekly-events-backup');  -- no-op / harmless if it was never scheduled
+```
+
+```bash
+supabase functions delete weekly-events-backup   -- no-op / harmless if it was never deployed
+supabase secrets unset WEEKLY_EVENTS_BACKUP_CRON_SECRET
+```
+
+## 10. Disaster Recovery Runbook — backup inventory, restore procedure, and test drill results
+
+This section documents, honestly and as of 2026-08-21, what backup/restore
+capability actually exists in this system today, how to actually restore data
+if something goes wrong, and the results of a real end-to-end test drill
+performed against the live production database to prove the procedure works
+— not just a theoretical writeup.
+
+### 10.1 What backup capability actually exists today (verified against the code)
+
+| Mechanism | Covers | Status | Where |
+|---|---|---|---|
+| On-demand PDF export | All events (couple/date/venue/phone/team) | **Live, deployed, needs no setup** | Settings → ייבוא/ייצוא → "הורד רשימת גיבוי מלאה (PDF)" button (`src/lib/eventsBackupPdf.js`) |
+| CSV export — Events | All events, all columns | **Live, deployed** | Settings → data tab |
+| CSV export — Staff | All staff members | **Live, deployed** | Settings → data tab |
+| CSV import (restore) — Events | Recreates event rows from a CSV | **Live, deployed** | `src/components/events/CSVImportDialog.jsx`, Settings → data tab |
+| CSV import (restore) — Staff | Recreates staff rows from a CSV | **Live, deployed** | `src/components/settings/StaffImportDialog.jsx` |
+| CSV import (restore) — Leads | Recreates lead rows from a CSV | **Live, deployed** | `src/components/leads/LeadCSVImportDialog.jsx` |
+| CSV export — Leads | — | **Does not exist.** Leads can be imported but not exported today. | — (gap, see 10.4) |
+| Monthly automated email backup | All upcoming events, sent to a configured address every month | **Code-complete, NOT yet deployed** — `RESEND_API_KEY`/`MONTHLY_EVENTS_BACKUP_CRON_SECRET` secrets, `supabase functions deploy monthly-events-backup`, and the one-time `cron.schedule(...)` step in section 9.2 above have not been executed yet. Uncommitted in git as of this writing. | `supabase/functions/monthly-events-backup/`, section 9 above |
+| Supabase platform-level backups (PITR, automatic snapshots, Storage versioning) | Whatever Supabase's own plan tier provides | **Not documented or configured anywhere in this repo.** Whether Point-In-Time-Recovery is enabled depends entirely on the Supabase project's billing plan, set directly in the Supabase dashboard — outside this codebase. **Action item: check the Supabase dashboard → Database → Backups tab directly and note the plan's actual PITR/backup retention window here once confirmed.** | Supabase dashboard, not this repo |
+
+**Important distinction:** the CSV export→import round trip is **not a
+byte-for-byte restore** — confirmed via code read of all 3 import dialogs
+(`CSVImportDialog.jsx`, `StaffImportDialog.jsx`, `LeadCSVImportDialog.jsx`):
+every import path calls `.create()`, which always generates a **fresh** row
+`id` (UUID) on restore. Field *values* (couple names, dates, prices, team
+assignments, etc.) are fully preserved; the original primary key is not.
+Anything that referenced the old `id` directly (e.g. a Google Calendar sync
+row, a public token link tied to that specific event) would need to be
+re-created/re-synced after a CSV-based restore — this is expected and
+matches how every CSV-based restore in this app has always worked, not a new
+limitation introduced by this runbook.
+
+### 10.2 Restore procedure (what to actually do if data is lost)
+
+**Scenario: some or all events/staff/leads data is lost or corrupted.**
+
+1. **Stop.** Before restoring anything, confirm the actual scope of data loss
+   (which tenant, which table, which date range) — don't restore blind.
+2. **Locate the most recent backup available**:
+   - Check for the most recent PDF export (Settings → ייבוא/ייצוא) if one was
+     manually downloaded and saved somewhere (email, local disk, cloud
+     drive) — this is a read reference only, not directly re-importable
+     (PDF, not CSV).
+   - Check for the most recent CSV export (Settings → data tab), same
+     manual-download caveat.
+   - Check the monthly email backup inbox (`events_backup_email`, section
+     9.3) **once that feature is actually deployed** (see 10.1 gap above) —
+     until then, this source does not exist yet.
+   - As a last resort, check the Supabase dashboard's own backup/PITR tab if
+     the project's plan tier includes it (see 10.1) — this can restore the
+     entire database to a point in time, but is an all-or-nothing operation
+     at the infrastructure level, not a per-record restore; only use this if
+     app-level CSV/PDF backups are unavailable or insufficient.
+3. **Restore via CSV import**, per table, in this order (respects foreign-key
+   dependencies — staff and packages should exist before events reference
+   them):
+   - Staff: Settings → data tab → import staff CSV.
+   - Leads: Leads page → import leads CSV (if leads were also lost).
+   - Events: Settings → data tab → import events CSV.
+4. **Verify** the restored records against whatever reference backup (PDF,
+   email, or memory of the missing data) is available — spot-check a handful
+   of couple names/dates/amounts, not just row counts.
+5. **Re-link anything keyed to the old row IDs**, since restored rows get new
+   IDs (see the "important distinction" note in 10.1): re-run Google Calendar
+   sync for restored events (existing "sync to calendar" action already
+   handles create-if-missing), regenerate any public links that were tied to
+   the old event/lead ID (contract link, questionnaire link, album portal
+   link if applicable).
+6. **Document the incident** — what was lost, when, how it was restored, and
+   what backup source was used — so gaps in the backup story (like the ones
+   listed in 10.4) get prioritized based on real incidents, not just theory.
+
+### 10.3 Test restore drill — performed 2026-08-21, results
+
+A real restore was tested end-to-end against the live, linked production
+Supabase project (`yzurelfhjkgqrluifszz`) to confirm the procedure in 10.2
+actually works, not just that it reads plausibly. Performed via direct SQL
+(`supabase db query --linked`) rather than a full browser UI walkthrough,
+since no browser/computer-use tool access was available in this session —
+the SQL operations mirror exactly what the CSV import/export code path does
+(`.create()` with fresh IDs, full field-value preservation), so this is a
+faithful simulation of the real restore procedure, not a shortcut around it.
+
+**Steps performed:**
+
+1. **Simulated "having a backup"**: inserted a synthetic, clearly-marked test
+   event into the real `events` table — `id = 27a2fed9-a43f-4927-ab1a-ee9909929649`,
+   `couple_names = '__DR_TEST__ בדיקת שחזור - אל תיגע'`, tenant
+   `708d9428-f1df-4b8f-86c5-4ef84a161f2b` (the studio's real, only tenant) —
+   with a full set of realistic field values (date, venue, phone, team JSON,
+   pricing/VAT fields, payment status). The returned row served as the
+   "captured backup" data.
+   - One real issue was hit and fixed here: the first insert attempt used
+     `client_payment_status = 'ממתין לתשלום'` and failed with Postgres error
+     `23514` (check constraint violation). Queried the actual constraint
+     definition and found the real allowed values are `'Paid' |
+     'Partially Paid' | 'Unpaid'` (not free-text Hebrew) — corrected to
+     `'Unpaid'` and the insert succeeded. This is a useful finding on its own:
+     **any future CSV restore must use these exact English constraint
+     values for `client_payment_status`**, not Hebrew display labels.
+2. **Simulated data loss**: deleted that row, then ran a `SELECT` confirming
+   zero rows matched — i.e., genuinely gone, not just hidden.
+3. **Simulated the restore**: inserted a **new** row (`id =
+   af1309fa-a057-4b7e-b81d-4f4b65f06f54` — deliberately a different UUID,
+   matching exactly how the real CSV importers behave via `.create()`) using
+   the exact field values captured in step 1, including recomputing the
+   derived financial fields (`vatable_amount = round(gross / 1.18, 2)`,
+   `vat_amount = round(gross - gross/1.18, 2)`) the same way the app's own
+   `calculateEventFinancials()` logic does during a real import — not just
+   copying numbers blindly.
+4. **Verified**: compared the restored row's values against the originally
+   captured values field-for-field — **exact match** on every field except
+   `id` (expected and correct, per the "important distinction" in 10.1).
+5. **Cleaned up**: deleted the restored test row, then ran
+   `select count(*) from events where couple_names like '%DR_TEST%';` —
+   returned `count = 0`, confirming **zero trace** was left in production
+   data after the drill.
+
+**Result: PASS.** The restore procedure in 10.2 (recreate rows from captured
+field values, accept new IDs, recompute derived fields) works correctly
+against the real production schema and constraints, and leaves no residue
+when cleaned up properly.
+
+**Caveat, stated plainly:** this drill exercised the *data-restoration logic*
+directly at the database level, which is the part of the CSV import pipeline
+that actually matters for data integrity. It did **not** click through the
+actual Settings → data tab UI/file-upload flow in a browser, since no browser
+tool was available this session. Recommended follow-up: once convenient,
+someone should do one real click-through of an actual CSV export → import
+round trip in the live app UI (not SQL) to confirm the UI layer itself has no
+separate bugs (e.g. a CSV-parsing edge case) — this drill proves the backend
+logic is sound, not that the file-upload UI has zero bugs of its own.
+
+### 10.4 Known gaps and recommendations
+
+1. **No Leads CSV export exists** — leads can be restored from a CSV but
+   never exported to one in the first place. If leads data is lost with no
+   external backup, there is currently no in-app way to have had a backup of
+   it at all. Recommend adding a "export leads CSV" button mirroring the
+   existing events/staff export buttons.
+2. **Monthly automated email backup is code-complete but not deployed** —
+   the single highest-value fix available right now, since it's already
+   built (see section 9 above) and just needs the deploy steps in 9.1-9.2
+   run once. Until deployed, the only backups that exist are whichever manual
+   PDF/CSV exports someone happened to download and save externally.
+3. **No documented Supabase-platform-level backup/PITR configuration** — this
+   should be checked directly in the Supabase dashboard (Database → Backups)
+   and the actual retention window recorded here, since it may already
+   provide a safety net independent of anything in this app's own code.
+4. **No automated recurring test-restore drill** — this runbook's drill was a
+   one-time manual exercise. Recommend repeating a lightweight version of
+   10.3 (or the real UI click-through follow-up noted above) after any future
+   schema migration that touches the `events`/`staff_members`/`leads` tables,
+   since a constraint change (like the exact one caught in step 1 above) is
+   precisely the kind of thing that can silently break a restore path.
+
+

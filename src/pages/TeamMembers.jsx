@@ -113,6 +113,22 @@ export default function TeamMembers() {
     setIsEventsDialogOpen(true);
   };
 
+  // Global search "jump to" support (2026-08-21) -- src/components/layout/GlobalSearch.jsx
+  // navigates here with ?openStaffId=<id>; once staff are loaded, auto-open that staff
+  // member's events dialog the same way clicking "צפה באירועים" would, then strip the param.
+  useEffect(() => {
+    if (isLoading || staffMembers.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    const openStaffId = params.get('openStaffId');
+    if (!openStaffId) return;
+    const staff = staffMembers.find(s => s.id === openStaffId);
+    if (staff) handleViewEvents(staff);
+    params.delete('openStaffId');
+    const newSearch = params.toString();
+    window.history.replaceState({}, '', window.location.pathname + (newSearch ? `?${newSearch}` : ''));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [staffMembers, isLoading]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-950 p-4 md:p-8">

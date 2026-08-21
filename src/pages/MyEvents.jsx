@@ -1,10 +1,14 @@
-// The ONE page the "photographer" role can reach (see src/App.jsx's restructured
-// gate) — a strictly READ-ONLY view of only the events this photographer is
-// personally assigned to as crew. Never shows pricing/payments/financial data: the
-// backing edge function (supabase/functions/photographer-events/index.ts) strips
-// financial sub-fields out of `team` server-side before this page ever sees them,
-// and RLS (0029_scoped_roles.sql) additionally scopes this role's SELECT on `events`
-// to only rows where it's actually assigned crew.
+// The ONE page the "photographer" AND "editor" roles can reach (see src/App.jsx's
+// restructured gate — both roles route here, see CREW_ROLES in
+// src/lib/permissions.js) — a strictly READ-ONLY view of only the events this crew
+// member is personally assigned to. Never shows pricing/payments/financial data: the
+// backing edge function (supabase/functions/photographer-events/index.ts, now shared
+// by both roles via isCrewRole) strips financial sub-fields out of `team` server-side
+// before this page ever sees them, and RLS (0029_scoped_roles.sql) additionally scopes
+// this role's SELECT on `events` to only rows where it's actually assigned crew.
+// There is deliberately no separate "videographer" role — a videographer already gets
+// full access today by logging in with the photographer role, since crew matching is
+// by staff name (team[].staffMemberName), not by the literal team[].role string.
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { Camera, MapPin, Clock, Users, Loader2 } from "lucide-react";

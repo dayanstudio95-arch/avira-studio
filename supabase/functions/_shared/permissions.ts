@@ -30,7 +30,17 @@ export const OWNER_ONLY_ROLES = ['owner'];
 export const ADMIN_ROLES = ['owner', 'admin', 'studio_manager'];
 export const LEAD_COORDINATOR_ROLE = 'lead_coordinator';
 export const PHOTOGRAPHER_ROLE = 'photographer';
+export const EDITOR_ROLE = 'editor';
 export const ALBUM_MANAGER_ROLE = 'album_manager';
+
+// "Crew" scoped roles (2026-08-21, mirrors src/lib/permissions.js's CREW_ROLES): the two
+// non-admin roles that share the "האירועים שלי" mobile schedule view, gated by crew-name
+// matching (team[].staffMemberName === staff_members.name via staff_members.profile_id)
+// rather than anything role-specific. There is deliberately no separate "videographer"
+// role in the profiles.role enum — a videographer already gets full access today by
+// logging in with the photographer role, since crew matching is by staff name, not by
+// the literal team[].role string.
+export const CREW_ROLES = [PHOTOGRAPHER_ROLE, EDITOR_ROLE];
 // Catalog/print-link writes in the Wedding Albums module are gated to admin-equivalent
 // roles plus album_manager — see supabase/migrations/0031_wedding_albums.sql's RLS.
 export const ALBUM_MANAGER_ROLES = [...ADMIN_ROLES, ALBUM_MANAGER_ROLE];
@@ -49,6 +59,15 @@ export function isLeadCoordinator(role: string | null | undefined): boolean {
 
 export function isPhotographer(role: string | null | undefined): boolean {
   return role === PHOTOGRAPHER_ROLE;
+}
+
+export function isEditor(role: string | null | undefined): boolean {
+  return role === EDITOR_ROLE;
+}
+
+// True for any "crew" scoped role (photographer or editor) — see CREW_ROLES above.
+export function isCrewRole(role: string | null | undefined): boolean {
+  return !!role && CREW_ROLES.includes(role);
 }
 
 export function isAlbumManager(role: string | null | undefined): boolean {

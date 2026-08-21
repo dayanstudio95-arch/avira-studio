@@ -4,7 +4,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/sonner';
 import { queryClientInstance } from '@/lib/query-client';
 import { AuthProvider, useAuth } from '@/lib/SupabaseAuthContext';
-import { isAdmin, isLeadCoordinator, isPhotographerRole, isAlbumManagerRole } from '@/lib/permissions';
+import { isAdmin, isLeadCoordinator, isPhotographerRole, isAlbumManagerRole, isEditorRole } from '@/lib/permissions';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import PageNotFound from '@/lib/PageNotFound';
 import Layout from './pages/Layout';
@@ -113,6 +113,26 @@ const AuthenticatedApp = () => {
   // Scoped role: photographer gets a strictly read-only view of only their own
   // assigned events -- no pricing/payments, one dedicated route.
   if (!isLoadingAuth && isAuthenticated && isPhotographerRole(user)) {
+    return (
+      <Layout>
+        <Suspense fallback={<PageLoadingFallback />}>
+          <Routes>
+            <Route path="/" element={<MyEvents />} />
+            <Route path="/MyEvents" element={<MyEvents />} />
+            <Route path="*" element={<PageNotFound />} />
+          </Routes>
+        </Suspense>
+      </Layout>
+    );
+  }
+
+  // Scoped role: editor (2026-08-21) -- same read-only "my schedule" view as
+  // photographer, same page/route/edge function (photographer-events now accepts both
+  // roles via isCrewRole -- see supabase/functions/_shared/permissions.ts). There is
+  // deliberately no separate "videographer" role: videographers already get full access
+  // today via the photographer role above, since crew matching is by staff name, not by
+  // the literal team[].role string.
+  if (!isLoadingAuth && isAuthenticated && isEditorRole(user)) {
     return (
       <Layout>
         <Suspense fallback={<PageLoadingFallback />}>

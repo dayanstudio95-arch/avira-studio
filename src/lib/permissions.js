@@ -41,7 +41,18 @@ export const ADMIN_ROLES = ["owner", "admin", "studio_manager"];
 
 export const LEAD_COORDINATOR_ROLE = "lead_coordinator";
 export const PHOTOGRAPHER_ROLE = "photographer";
+export const EDITOR_ROLE = "editor";
 export const ALBUM_MANAGER_ROLE = "album_manager";
+
+// "Crew" scoped roles (2026-08-21): the two non-admin roles that get the shared
+// "האירועים שלי" mobile schedule view (src/pages/MyEvents.jsx), gated by crew-name
+// matching (team[].staffMemberName === staff_members.name via staff_members.profile_id)
+// rather than by anything role-specific. There is deliberately no separate
+// "videographer" role in the profiles.role enum — a videographer already gets full
+// access today by logging in with the photographer role, since crew matching is by
+// staff name, not by the literal team[].role string. Mirror any change here in
+// supabase/functions/_shared/permissions.ts's CREW_ROLES/isCrewRole.
+export const CREW_ROLES = [PHOTOGRAPHER_ROLE, EDITOR_ROLE];
 
 export function isOwner(user) {
   return !!user && OWNER_ONLY_ROLES.includes(user.role);
@@ -61,6 +72,15 @@ export function isPhotographerRole(user) {
 
 export function isAlbumManagerRole(user) {
   return !!user && user.role === ALBUM_MANAGER_ROLE;
+}
+
+export function isEditorRole(user) {
+  return !!user && user.role === EDITOR_ROLE;
+}
+
+// True for any "crew" scoped role (photographer or editor) — see CREW_ROLES above.
+export function isCrewRole(user) {
+  return !!user && CREW_ROLES.includes(user.role);
 }
 
 // Generic helper for any custom role set a future feature might need, so ad-hoc checks
@@ -83,6 +103,8 @@ export function usePermission() {
     isLeadCoordinator: isLeadCoordinator(user),
     isPhotographerRole: isPhotographerRole(user),
     isAlbumManagerRole: isAlbumManagerRole(user),
+    isEditorRole: isEditorRole(user),
+    isCrewRole: isCrewRole(user),
     hasRole: (allowedRoles) => hasRole(user, allowedRoles),
   };
 }

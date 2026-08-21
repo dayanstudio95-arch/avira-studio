@@ -117,7 +117,7 @@ export function StaffPickerCell({ event, role, roleKey, label, color, icon, staf
   return <TableCell className="px-1 py-1">{content}</TableCell>;
 }
 
-export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh }) {
+export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh, autoOpenEventId }) {
   const { widths, setWidth } = useColumnWidths();
   const tableRef = useRef(null);
   const [resizingColumn, setResizingColumn] = useState(null);
@@ -183,6 +183,21 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
     setSelectedEventForDrawer(event);
     setIsDrawerOpen(true);
   };
+
+  // Global search "jump to" support (2026-08-21) -- src/pages/Events.jsx forwards
+  // ?openEventId=<id> (set by src/components/layout/GlobalSearch.jsx) down as this prop;
+  // once events (and the leads needed to resolve the linked lead) are loaded, auto-open
+  // the same UnifiedSidePanel a couple-name click would, then strip the param.
+  useEffect(() => {
+    if (!autoOpenEventId || isLoading || !events || events.length === 0) return;
+    const event = events.find(e => e.id === autoOpenEventId);
+    if (event) openUnifiedPanelForEvent(event);
+    const params = new URLSearchParams(window.location.search);
+    params.delete('openEventId');
+    const newSearch = params.toString();
+    window.history.replaceState({}, '', window.location.pathname + (newSearch ? `?${newSearch}` : ''));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpenEventId, events, isLoading, leads]);
 
   const ColumnHeader = ({ column, label, width }) => (
     <TableHead

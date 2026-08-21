@@ -19,6 +19,21 @@ import { hashToken } from '../_shared/albumTokens.ts';
 const BUCKET = 'album-files';
 const SIGNED_URL_TTL_SECONDS = 60 * 30; // 30 min — long enough to browse a full gallery
 
+// Authoritative, server-side engraving pricing matrix. Kept in sync manually with the
+// identical (display-only) copy in src/pages/AlbumPortal.jsx — this copy is the one that
+// actually determines what gets charged and snapshotted, never trust the client's total.
+const ENGRAVING_PRICES: Record<string, Record<string, number>> = {
+  colored: { main_only: 110, full_set: 220 },
+  blind: { main_only: 100, full_set: 130 },
+};
+function getEngravingPrice(type: string | null, scope: string | null): number {
+  if (!type || !scope) return 0;
+  return ENGRAVING_PRICES[type]?.[scope] ?? 0;
+}
+// Blind (colorless) engraving is only allowed on faux-leather base covers — hard
+// restriction, enforced here (not just hinted at in the UI).
+const BLIND_ENGRAVING_ALLOWED_COVER_TYPE = 'faux_leather';
+
 async function resolveOrderByToken(supabase: any, token: string) {
   if (!token || typeof token !== 'string') return { error: 'טוקן חסר', status: 400 };
   const tokenHash = await hashToken(token);
@@ -205,15 +220,48 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'getCatalog') {
-      const [{ data: products }, { data: covers }, { data: addons }] = await Promise.all([
+      const [{ data: products }, { data: covers }, { data: addons }, { data: engravingColors }, { data: engravingFonts }] = await Promise.all([
         supabase.from('album_products').select('*').eq('tenant_id', order.tenant_id).eq('active', true).order('sort_order'),
         supabase.from('album_covers').select('*').eq('tenant_id', order.tenant_id).eq('active', true).order('sort_order'),
         supabase.from('album_addons').select('*').eq('tenant_id', order.tenant_id).eq('active', true).order('sort_order'),
+        supabase.from('album_engraving_colors').select('*').eq('tenant_id', order.tenant_id).eq('active', true).order('sort_order'),
+        supabase.from('album_engraving_fonts').select('*').eq('tenant_id', order.tenant_id).eq('active', true).order('sort_order'),
       ]);
       return jsonResponse({
         products: (products ?? []).map((p: any) => ({ id: p.id, name: p.name, description: p.description, basePrice: p.base_price, albumCount: p.album_count })),
-        covers: (covers ?? []).map((c: any) => ({ id: c.id, name: c.name, priceDelta: c.price_delta })),
-        addons: (addons ?? []).map((a: any) => ({ id: a.id, name: a.name, price: a.price })),
+        covers: (covers ?? []).map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          description: c.description,
+          coverType: c.cover_type,
+          previewImageUrl: c.preview_image_url,
+          priceDelta: c.price_delta,
+        })),
+        addons: (addons ?? []).map((a: any) => ({
+          id: a.id,
+          name: a.name,
+          description: a.description,
+          category: a.category,
+          previewImageUrl: a.preview_image_url,
+          allowsMultipleImages: a.allows_multiple_images,
+          requiresUpload: a.requires_upload,
+          price: a.price,
+          priceType: a.price_type,
+        })),
+        engravingColors: (engravingColors ?? []).map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          hexColor: c.hex_color,
+          previewImageUrl: c.preview_image_url,
+        })),
+        engravingFonts: (engravingFonts ?? []).map((f: any) => ({
+          id: f.id,
+          name: f.name,
+          cssFontFamily: f.css_font_family,
+          previewImageUrl: f.preview_image_url,
+          previewImageDeboss: f.preview_image_deboss,
+          previewImageColor: f.preview_image_color,
+        })),
       });
     }
 
@@ -223,8 +271,22 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: 'לא ניתן לבצע רכישה במצב הנוכחי של ההזמנה' }, { status: 400 });
       }
 
-      const { productId, coverId, engravingText, addons, shipping } = body;
+      const {
+        productId,
+        coverId,
+        engravingText,
+        engravingTextLine2,
+        engravingType,
+        engravingScope,
+        engravingColorId,
+        engravingFontId,
+        addons,
+        shipping,
+      } = body;
       if (!productId) return jsonResponse({ error: 'נא לבחור מוצר' }, { status: 400 });
+
+      const validEngravingType = engravingType === 'colored' || engravingType === 'blind' ? engravingType : null;
+      const validEngravingScope = engravingScope === 'main_only' || engravingScope === 'full_set' ? engravingScope : null;
 
       const { data: product } = await supabase
         .from('album_products')
@@ -234,15 +296,42 @@ Deno.serve(async (req) => {
         .maybeSingle();
       if (!product) return jsonResponse({ error: 'מוצר לא נמצא' }, { status: 404 });
 
-      let cover: any = null;
-      if (coverId) {
-        const { data: coverRow } = await supabase
-          .from('album_covers')
+      // A cover selection is now mandatory — "no cover" is not a real-world option.
+      if (!coverId) return jsonResponse({ error: 'נא לבחור כריכה' }, { status: 400 });
+      const { data: coverRow } = await supabase
+        .from('album_covers')
+        .select('*')
+        .eq('id', coverId)
+        .eq('tenant_id', order.tenant_id)
+        .maybeSingle();
+      if (!coverRow) return jsonResponse({ error: 'כריכה לא נמצאה' }, { status: 404 });
+      const cover: any = coverRow;
+
+      // Hard restriction: blind (colorless) engraving is only valid on faux-leather covers.
+      if (validEngravingType === 'blind' && cover.cover_type !== BLIND_ENGRAVING_ALLOWED_COVER_TYPE) {
+        return jsonResponse({ error: 'הטבעת שמות ללא צבע אפשרית רק על כריכת עור סינטטי' }, { status: 400 });
+      }
+
+      let engravingColor: any = null;
+      if (engravingColorId) {
+        const { data: colorRow } = await supabase
+          .from('album_engraving_colors')
           .select('*')
-          .eq('id', coverId)
+          .eq('id', engravingColorId)
           .eq('tenant_id', order.tenant_id)
           .maybeSingle();
-        cover = coverRow ?? null;
+        engravingColor = colorRow ?? null;
+      }
+
+      let engravingFont: any = null;
+      if (engravingFontId) {
+        const { data: fontRow } = await supabase
+          .from('album_engraving_fonts')
+          .select('*')
+          .eq('id', engravingFontId)
+          .eq('tenant_id', order.tenant_id)
+          .maybeSingle();
+        engravingFont = fontRow ?? null;
       }
 
       const addonInputs = Array.isArray(addons) ? addons : [];
@@ -253,13 +342,23 @@ Deno.serve(async (req) => {
         addonRows = data ?? [];
       }
 
-      let total = Number(product.base_price) + (cover ? Number(cover.price_delta) : 0);
+      const engravingPrice = getEngravingPrice(validEngravingType, validEngravingScope);
+
+      let total = Number(product.base_price) + Number(cover.price_delta) + engravingPrice;
       const orderAddonRows = addonInputs
         .map((input: any) => {
           const catalogRow = addonRows.find((a) => a.id === input.addonId);
           if (!catalogRow) return null;
           const quantity = Number(input.quantity) > 0 ? Number(input.quantity) : 1;
           total += Number(catalogRow.price) * quantity;
+
+          // Validate any uploaded image keys belong to this order + this addon, so a
+          // client can never attach someone else's uploaded file to their order.
+          const expectedPrefix = `${order.tenant_id}/${order.id}/addons/${catalogRow.id}/`;
+          const rawKeys = Array.isArray(input.imageKeys) ? input.imageKeys : [];
+          let imageKeys = rawKeys.filter((k: any) => typeof k === 'string' && k.startsWith(expectedPrefix));
+          if (!catalogRow.allows_multiple_images) imageKeys = imageKeys.slice(0, 1);
+
           return {
             tenant_id: order.tenant_id,
             album_order_id: order.id,
@@ -267,9 +366,20 @@ Deno.serve(async (req) => {
             addon_name_snapshot: catalogRow.name,
             addon_price_snapshot: catalogRow.price,
             quantity,
+            uploaded_file_keys: imageKeys,
+            _requiresUpload: catalogRow.requires_upload,
+            _addonName: catalogRow.name,
           };
         })
         .filter(Boolean);
+
+      // Addons flagged requires_upload must have at least one validated image key —
+      // enforced server-side, not just as a UI gate.
+      const missingUpload = orderAddonRows.find((r: any) => r._requiresUpload && (!r.uploaded_file_keys || r.uploaded_file_keys.length === 0));
+      if (missingUpload) {
+        return jsonResponse({ error: `יש להעלות תמונה עבור התוספת: ${missingUpload._addonName}` }, { status: 400 });
+      }
+      const insertableAddonRows = orderAddonRows.map(({ _requiresUpload, _addonName, ...rest }: any) => rest);
 
       const { error: selectionError } = await supabase.from('album_order_selections').insert({
         tenant_id: order.tenant_id,
@@ -277,15 +387,23 @@ Deno.serve(async (req) => {
         product_id: product.id,
         product_name_snapshot: product.name,
         product_price_snapshot: product.base_price,
-        cover_id: cover?.id ?? null,
-        cover_name_snapshot: cover?.name ?? null,
-        cover_price_delta_snapshot: cover?.price_delta ?? null,
-        engraving_text: engravingText || null,
+        cover_id: cover.id,
+        cover_name_snapshot: cover.name,
+        cover_price_delta_snapshot: cover.price_delta,
+        engraving_text: engravingText ? String(engravingText).slice(0, 30) : null,
+        engraving_text_line2: engravingTextLine2 ? String(engravingTextLine2).slice(0, 30) : null,
+        engraving_type: validEngravingType,
+        engraving_scope: validEngravingScope,
+        engraving_price_snapshot: engravingPrice,
+        engraving_color_id: engravingColor?.id ?? null,
+        engraving_color_name_snapshot: engravingColor?.name ?? null,
+        engraving_font_id: engravingFont?.id ?? null,
+        engraving_font_name_snapshot: engravingFont?.name ?? null,
       });
       if (selectionError) return jsonResponse({ error: selectionError.message }, { status: 500 });
 
-      if (orderAddonRows.length) {
-        const { error: addonsError } = await supabase.from('album_order_addons').insert(orderAddonRows);
+      if (insertableAddonRows.length) {
+        const { error: addonsError } = await supabase.from('album_order_addons').insert(insertableAddonRows);
         if (addonsError) return jsonResponse({ error: addonsError.message }, { status: 500 });
       }
 
@@ -303,6 +421,25 @@ Deno.serve(async (req) => {
       if (updateError) return jsonResponse({ error: updateError.message }, { status: 500 });
 
       return jsonResponse({ workflowStatus: 'awaiting_payment', totalAmount: total });
+    }
+
+    if (action === 'createAddonUploadUrl') {
+      // Validate addonId against a real album_addons row scoped to this order's tenant,
+      // so the storage path can't be built from an arbitrary client-supplied string
+      // (prevents path injection / writing into another addon's/order's folder).
+      const { data: addonRow } = await supabase
+        .from('album_addons')
+        .select('id')
+        .eq('id', body.addonId)
+        .eq('tenant_id', order.tenant_id)
+        .maybeSingle();
+      if (!addonRow) return jsonResponse({ error: 'תוספת לא נמצאה' }, { status: 404 });
+
+      const fileName = (body.fileName || 'image').replace(/[^a-zA-Z0-9._-]/g, '_');
+      const path = `${order.tenant_id}/${order.id}/addons/${addonRow.id}/${Date.now()}-${fileName}`;
+      const { data, error } = await supabase.storage.from(BUCKET).createSignedUploadUrl(path);
+      if (error) return jsonResponse({ error: error.message }, { status: 500 });
+      return jsonResponse({ path: data.path, token: data.token });
     }
 
     if (action === 'createTransferProofUploadUrl') {

@@ -41,3 +41,11 @@ verify_jwt = false
 
 [functions.album-print-access]
 verify_jwt = false
+
+# monthly-events-backup is called on a monthly pg_cron schedule (see
+# DEPLOYMENT.md section 9), which cannot supply a Supabase user JWT.
+# Authenticates itself via the x-cron-secret header (own dedicated
+# MONTHLY_EVENTS_BACKUP_CRON_SECRET), same convention as
+# contract-signed-webhook / calendar-sync-webhook.
+[functions.monthly-events-backup]
+verify_jwt = false

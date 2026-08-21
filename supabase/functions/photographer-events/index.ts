@@ -5,6 +5,14 @@
 // src/pages/MyEvents.jsx — the ONE page this role can reach (see src/App.jsx's
 // restructured gate).
 //
+// 2026-08-21: extended to also serve the "editor" role (isCrewRole/CREW_ROLES in
+// _shared/permissions.ts) — same page, same query, same sanitization. There is
+// deliberately no separate "videographer" role in the profiles.role enum; a
+// videographer already gets full access today by logging in with the photographer
+// role, since crew matching below is by staff name, not by the literal team[].role
+// string. Function name/route kept as "photographer-events" for both roles to avoid
+// churn on every existing caller/deploy reference.
+//
 // Uses the service-role client (bypasses RLS) so it can pick exactly which columns to
 // return, rather than relying on RLS alone to hide the financial columns on `events`
 // (Postgres RLS is row-level only — it cannot mask individual columns). The RLS policy
@@ -21,7 +29,7 @@
 // which an admin sets once per photographer via src/components/settings/UsersTab.jsx.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createUserClient, createServiceRoleClient, getRequestUser } from '../_shared/supabaseClients.ts';
-import { getCallerProfile, isPhotographer } from '../_shared/permissions.ts';
+import { getCallerProfile, isCrewRole } from '../_shared/permissions.ts';
 
 // Whatever `team[]` entries carry for operational (non-financial) purposes — cost/isPaid
 // are deliberately dropped before this ever reaches the response.
@@ -45,8 +53,8 @@ Deno.serve(async (req) => {
     const supabase = createUserClient(req);
     const callerProfile = await getCallerProfile(supabase, user.id);
 
-    if (!callerProfile || !isPhotographer(callerProfile.role)) {
-      return jsonResponse({ error: 'Forbidden — עמוד זה מיועד לצלמים בלבד' }, { status: 403 });
+    if (!callerProfile || !isCrewRole(callerProfile.role)) {
+      return jsonResponse({ error: 'Forbidden — עמוד זה מיועד לצוות ההפקה בלבד' }, { status: 403 });
     }
 
     const serviceClient = createServiceRoleClient();

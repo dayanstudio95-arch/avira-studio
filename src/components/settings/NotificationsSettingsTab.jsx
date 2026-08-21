@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Save, Bell, FileCheck } from "lucide-react";
+import { Save, Bell, FileCheck, Mail } from "lucide-react";
 import { toast } from "sonner";
 
 // Settings > התראות — configures the single fixed WhatsApp number that receives
@@ -17,13 +17,26 @@ import { toast } from "sonner";
 // tenant_secrets. Read server-side by contract-signed-webhook/index.ts.
 const SETTING_KEY = "notification_phone_number";
 
+// Second, separate setting: the email address that receives the monthly
+// full-events backup (see supabase/functions/monthly-events-backup/index.ts).
+// Deliberately email, not WhatsApp, for this one — sending a large recurring
+// automated WhatsApp message through Green API risks the number getting
+// flagged/blocked, unlike the low-volume, event-triggered contract-signed
+// WhatsApp alert above. Same app_settings (non-secret) storage convention.
+const BACKUP_EMAIL_SETTING_KEY = "events_backup_email";
+
 export default function NotificationsSettingsTab() {
   const [phone, setPhone] = useState("");
   const [settingId, setSettingId] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  const [backupEmail, setBackupEmail] = useState("");
+  const [backupEmailSettingId, setBackupEmailSettingId] = useState(null);
+  const [isSavingBackupEmail, setIsSavingBackupEmail] = useState(false);
+
   useEffect(() => {
     load();
+    loadBackupEmail();
   }, []);
 
   const load = async () => {
@@ -52,6 +65,34 @@ export default function NotificationsSettingsTab() {
       toast.error("שגיאה בשמירת הגדרות ההתראות");
     }
     setIsSaving(false);
+  };
+
+  const loadBackupEmail = async () => {
+    try {
+      const rows = await base44.entities.AppSetting.filter({ key: BACKUP_EMAIL_SETTING_KEY });
+      if (rows?.[0]) {
+        setBackupEmail(rows[0].value || "");
+        setBackupEmailSettingId(rows[0].id);
+      }
+    } catch (e) {
+      console.error("Error loading backup email setting:", e);
+    }
+  };
+
+  const handleSaveBackupEmail = async () => {
+    setIsSavingBackupEmail(true);
+    try {
+      if (backupEmailSettingId) {
+        await base44.entities.AppSetting.update(backupEmailSettingId, { value: backupEmail.trim() });
+      } else {
+        const created = await base44.entities.AppSetting.create({ key: BACKUP_EMAIL_SETTING_KEY, value: backupEmail.trim() });
+        setBackupEmailSettingId(created.id);
+      }
+      toast.success("כתובת המייל לגיבוי נשמרה בהצלחה");
+    } catch (e) {
+      toast.error("שגיאה בשמירת כתובת המייל");
+    }
+    setIsSavingBackupEmail(false);
   };
 
   return (
@@ -94,6 +135,42 @@ export default function NotificationsSettingsTab() {
           >
             <Save className="w-4 h-4 ml-2" />
             {isSaving ? "שומר..." : "שמור"}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-gray-900/50 border-gray-800">
+        <CardHeader className="border-b border-gray-800 pb-4">
+          <CardTitle className="text-white flex items-center gap-2">
+            <div className="w-8 h-8 bg-yellow-500/20 rounded-lg flex items-center justify-center">
+              <Mail className="w-4 h-4 text-yellow-400" />
+            </div>
+            גיבוי חודשי של אירועים — במייל
+          </CardTitle>
+          <p className="text-gray-400 text-sm">
+            אחת לחודש תישלח לכתובת שתגדירו כאן רשימה מלאה של כל האירועים העתידיים — תאריך, זוג, מקום, טלפון
+            וכל חברי הצוות המשובצים — כדי שתמיד יהיה עותק עדכני זמין גם אם המערכת אינה נגישה.
+          </p>
+        </CardHeader>
+        <CardContent className="p-6 space-y-4">
+          <div>
+            <Label className="text-gray-300">כתובת מייל לקבלת הגיבוי החודשי</Label>
+            <Input
+              value={backupEmail}
+              onChange={(e) => setBackupEmail(e.target.value)}
+              placeholder="you@example.com"
+              className="bg-gray-800 border-gray-700 text-white mt-1"
+              dir="ltr"
+              type="email"
+            />
+          </div>
+          <Button
+            onClick={handleSaveBackupEmail}
+            disabled={isSavingBackupEmail}
+            className="bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-semibold"
+          >
+            <Save className="w-4 h-4 ml-2" />
+            {isSavingBackupEmail ? "שומר..." : "שמור"}
           </Button>
         </CardContent>
       </Card>

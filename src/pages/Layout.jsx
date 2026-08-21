@@ -44,9 +44,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import AIAssistant from "@/components/AIAssistant";
 import NotificationBell from "@/components/notifications/NotificationBell";
+import GlobalSearch from "@/components/layout/GlobalSearch";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/SupabaseAuthContext";
-import { isLeadCoordinator, isPhotographerRole, isAlbumManagerRole } from "@/lib/permissions";
+import { isLeadCoordinator, isPhotographerRole, isAlbumManagerRole, isEditorRole } from "@/lib/permissions";
 
 const ROLE_LABELS = {
   owner: "בעלים",
@@ -69,9 +70,12 @@ const ROLE_LABELS = {
 // RLS) -- photographer stays read-only/own-events-only. album_manager (Wedding Albums
 // module, see CLAUDE.md) gets the order list + catalog settings; order detail is
 // reached by clicking into a row on the order list, not a separate nav entry.
+// editor (2026-08-21) shares photographer's exact "האירועים שלי" destination -- same
+// crew-scoped read-only schedule view, see src/App.jsx / photographer-events edge fn.
 const scopedNavItemsByRole = {
   lead_coordinator: [{ title: "לידים", url: "/Leads", icon: Heart }],
   photographer: [{ title: "האירועים שלי", url: "/MyEvents", icon: Camera }],
+  editor: [{ title: "האירועים שלי", url: "/MyEvents", icon: Camera }],
   album_manager: [
     { title: "הזמנות אלבומים", url: "/AlbumOrders", icon: BookImage },
     { title: "קטלוג אלבומים", url: "/AlbumCatalogSettings", icon: Settings },
@@ -108,7 +112,7 @@ const navigationItems = [...primaryNavItems, ...secondaryNavItems];
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
   const location = useLocation();
-  const scopedRole = isLeadCoordinator(user) ? 'lead_coordinator' : isPhotographerRole(user) ? 'photographer' : isAlbumManagerRole(user) ? 'album_manager' : null;
+  const scopedRole = isLeadCoordinator(user) ? 'lead_coordinator' : isPhotographerRole(user) ? 'photographer' : isEditorRole(user) ? 'editor' : isAlbumManagerRole(user) ? 'album_manager' : null;
   const scopedNavItems = scopedRole ? scopedNavItemsByRole[scopedRole] : null;
   const isInSecondaryNav = secondaryNavItems.some(item =>
     item.url !== '/' && location.pathname === item.url
@@ -356,6 +360,7 @@ export default function Layout({ children }) {
               ) : (
                 <div className="flex items-center gap-1">
                   <NotificationBell />
+                  {!scopedRole && <GlobalSearch />}
                   {!scopedRole && (
                     <Button
                       variant="ghost"
@@ -526,6 +531,7 @@ export default function Layout({ children }) {
               )}
               <h1 className="text-xl font-semibold text-white flex-1">{tenantBranding?.name || 'Avira'}</h1>
               <NotificationBell />
+              {!scopedRole && <GlobalSearch />}
             </div>
           </header>
 
