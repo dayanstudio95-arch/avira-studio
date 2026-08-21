@@ -13,6 +13,7 @@
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createUserClient, getRequestUser } from '../_shared/supabaseClients.ts';
 import { sendWhatsApp } from '../_shared/whatsapp.ts';
+import { loadQuietHoursSettings, isInQuietHoursNow, wasAlreadySentToday } from '../_shared/automationGuards.ts';
 
 Deno.serve(async (req) => {
   const preflight = handleOptions(req);
@@ -53,16 +54,51 @@ Deno.serve(async (req) => {
 
     const { data: matchingAutomation } = await supabase
       .from('automations')
-      .select('id')
+      .select('id, test_mode')
       .eq('type', record.automation_type)
       .limit(1)
       .maybeSingle();
 
+    // Same 3 send-guards as automation-engine's direct-send handlers (test mode / quiet
+    // hours / same-day dedup) -- this is the actual send point for questionnaire_reminder
+    // and payment_reminder, the 2 automation types that only ever queue-then-approve, so
+    // the guards have to live here rather than in automation-engine itself. record.tenant_id
+    // is always set -- automation-engine inserts every pending_automations row with it.
+    const quietHours = await loadQuietHoursSettings(supabase, record.tenant_id);
+
     let sent = 0;
     let failed = 0;
+    let skipped = 0;
 
     for (const msg of messages) {
-      const result = await sendWhatsApp(supabase, msg.phoneNumber, msg.messageText);
+      let guardSkipReason: string | null = null;
+      if (matchingAutomation?.test_mode) {
+        guardSkipReason = 'מצב בדיקה — לא נשלחה הודעה אמיתית';
+      } else if (isInQuietHoursNow(quietHours)) {
+        guardSkipReason = 'שעות שקטות';
+      } else if (await wasAlreadySentToday(supabase, matchingAutomation?.id, msg.phoneNumber)) {
+        guardSkipReason = 'כבר נשלח היום';
+      }
+
+      if (guardSkipReason) {
+        if (matchingAutomation?.id) {
+          await supabase.from('automation_message_logs').insert({
+            automation_id: matchingAutomation.id,
+            automation_name: record.automation_name,
+            recipient_name: msg.coupleNames || msg.leadId || '',
+            recipient_contact: msg.phoneNumber,
+            channel: 'whatsapp',
+            message_content: msg.messageText,
+            status: 'skipped',
+            error: guardSkipReason,
+          });
+        }
+        skipped++;
+        console.log(`[approvePendingAutomation] skipped ${msg.phoneNumber}: ${guardSkipReason}`);
+        continue;
+      }
+
+      const result = await sendWhatsApp(supabase, msg.phoneNumber, msg.messageText, record.tenant_id);
 
       if (matchingAutomation?.id) {
         await supabase.from('automation_message_logs').insert({
@@ -101,7 +137,7 @@ Deno.serve(async (req) => {
       .eq('id', pending_id);
     if (updateErr) return jsonResponse({ error: updateErr.message }, { status: 500 });
 
-    return jsonResponse({ success: true, action: 'approved', pending_id, sent, failed, total: messages.length });
+    return jsonResponse({ success: true, action: 'approved', pending_id, sent, failed, skipped, total: messages.length });
   } catch (error) {
     console.error(`[approvePendingAutomation] error: ${error.message}`);
     return jsonResponse({ error: error.message }, { status: 500 });

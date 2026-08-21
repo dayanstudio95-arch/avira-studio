@@ -70,6 +70,20 @@ Deno.serve(async (req) => {
       console.log(`[syncLeadToEvent] No linked event found. Creating new Event for lead ${lead.id}`);
       const requiredCrew = await resolveRequiredCrew();
 
+      // Tenant's default VAT %, read at insert time only -- never re-applied on
+      // the syncData update block below, so editing the tenant default later
+      // never retroactively changes an already-created event's vat_percent
+      // (same snapshot discipline as the rest of this codebase's financial data).
+      let vatPercent: number | undefined;
+      if (lead.tenant_id) {
+        const { data: tenantRow } = await supabase
+          .from('tenants')
+          .select('default_vat_percent')
+          .eq('id', lead.tenant_id)
+          .maybeSingle();
+        if (tenantRow?.default_vat_percent != null) vatPercent = tenantRow.default_vat_percent;
+      }
+
       const { data: created, error: createErr } = await supabase
         .from('events')
         .insert({
@@ -82,6 +96,7 @@ Deno.serve(async (req) => {
           phone_number: lead.phone_number || '',
           package_id: lead.package_id || null,
           required_crew: requiredCrew,
+          ...(vatPercent != null ? { vat_percent: vatPercent } : {}),
         })
         .select()
         .single();

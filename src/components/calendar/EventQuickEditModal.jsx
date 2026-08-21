@@ -8,8 +8,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Heart, Banknote, X, Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/lib/SupabaseAuthContext";
 
 export default function EventQuickEditModal({ event, isOpen, onClose, onUpdate }) {
+  const { tenantDefaults } = useAuth();
+  const defaultVatPercent = tenantDefaults?.defaultVatPercent ?? 18;
   const [formData, setFormData] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [packages, setPackages] = useState([]);
@@ -42,7 +45,7 @@ export default function EventQuickEditModal({ event, isOpen, onClose, onUpdate }
       const vatableAmount = (formData.vatableAmount > 0 && formData.vatableAmount <= totalAmountGross)
         ? formData.vatableAmount
         : totalAmountGross;
-      const vatRate = (formData.vatPercent || 18) / 100;
+      const vatRate = (formData.vatPercent || defaultVatPercent) / 100;
       const vatOnVatablePart = vatableAmount - (vatableAmount / (1 + vatRate));
       const vatAmount = vatOnVatablePart;
       const amountBeforeVat = totalAmountGross - vatAmount;
@@ -175,8 +178,8 @@ export default function EventQuickEditModal({ event, isOpen, onClose, onUpdate }
               <Label className="text-gray-400">אחוז מע״מ</Label>
               <Input
                 type="number"
-                value={formData.vatPercent || 18}
-                onChange={(e) => setFormData({...formData, vatPercent: parseFloat(e.target.value) || 18})}
+                value={formData.vatPercent || defaultVatPercent}
+                onChange={(e) => setFormData({...formData, vatPercent: parseFloat(e.target.value) || defaultVatPercent})}
                 className="bg-gray-800 border-gray-700 text-white"
               />
             </div>

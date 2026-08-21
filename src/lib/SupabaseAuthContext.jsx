@@ -17,6 +17,12 @@ export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [authError, setAuthError] = useState(null);
+  // Tenant-level financial defaults (VAT %/deposit amount) -- loaded alongside
+  // the profile so every consuming component reads them the same way user/profile
+  // are already read elsewhere, instead of each form doing its own Tenant.get().
+  // Read-at-use-time only -- see FinancialDefaultsCard.jsx's own comment for the
+  // snapshot-discipline rationale (never joined back live into existing records).
+  const [tenantDefaults, setTenantDefaults] = useState({ defaultVatPercent: 18, defaultDepositAmount: 500 });
 
   useEffect(() => {
     if (isPublicRoute()) {
@@ -58,6 +64,25 @@ export const AuthProvider = ({ children }) => {
       setIsAuthenticated(true);
       setAuthError(null);
       setIsLoadingAuth(false);
+
+      // Best-effort, non-blocking: fetch the tenant's financial defaults.
+      // Never blocks/fails auth if this errors (e.g. RLS edge cases) -- falls
+      // back to the same 18/500 hardcoded defaults used throughout the app.
+      if (profile.tenant_id) {
+        supabase
+          .from('tenants')
+          .select('default_vat_percent, default_deposit_amount')
+          .eq('id', profile.tenant_id)
+          .maybeSingle()
+          .then(({ data }) => {
+            if (!mounted || !data) return;
+            setTenantDefaults({
+              defaultVatPercent: data.default_vat_percent ?? 18,
+              defaultDepositAmount: data.default_deposit_amount ?? 500,
+            });
+          })
+          .catch(() => {});
+      }
     };
 
     supabase.auth.getSession().then(({ data: { session } }) => loadSession(session));
@@ -93,6 +118,7 @@ export const AuthProvider = ({ children }) => {
       isLoadingAuth,
       isLoadingPublicSettings: false,
       authError,
+      tenantDefaults,
       appPublicSettings: null,
       logout,
       navigateToLogin,

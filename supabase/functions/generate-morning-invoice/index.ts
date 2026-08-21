@@ -82,9 +82,22 @@ Deno.serve(async (req) => {
       ? String(documentDate).substring(0, 10)
       : new Date().toISOString().substring(0, 10);
 
+    // Studio display name for invoice descriptions -- same fallback chain as
+    // automation-engine/index.ts's getStudioName() (display_name_to_clients ->
+    // name -> 'Avira Media'), copied inline since this function doesn't import
+    // from automation-engine. clientEmail's hardcoded fallback above is left
+    // untouched -- that's a functional mailbox address, not display branding.
+    const { data: tenantRow } = await supabase
+      .from('tenants')
+      .select('display_name_to_clients, name')
+      .eq('id', user.tenant_id)
+      .maybeSingle();
+    const studioName = tenantRow?.display_name_to_clients || tenantRow?.name || 'Avira Media';
+    const defaultServiceDescription = `שירותי צילום - ${studioName}`;
+
     const clientEmail = body.clientEmail || 'avira.media1@gmail.com';
     const paymentType = Number(paymentMethodType) || 4;
-    const incomeDescription = String(itemDescription || 'שירותי צילום - Avira Media');
+    const incomeDescription = String(itemDescription || defaultServiceDescription);
 
     const eventDateStr = body.eventDate ? String(body.eventDate).substring(0, 10) : '';
     const docDescParts = [clientName, eventDateStr, itemNotes || itemDescription].filter(Boolean);
@@ -162,7 +175,7 @@ Deno.serve(async (req) => {
           id: invoice.id,
           number: String(invoice.number),
           date: normalizedDate,
-          description: itemDescription || 'שירותי צילום - Avira Media',
+          description: itemDescription || defaultServiceDescription,
           amount: exactAmount,
           url: invoiceUrl,
           businessType,

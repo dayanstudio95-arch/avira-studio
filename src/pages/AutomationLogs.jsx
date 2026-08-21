@@ -178,7 +178,7 @@ export default function AutomationLogs() {
                                 <td className="px-4 py-2 text-gray-400 text-xs">{msg.recipientContact}</td>
                                 <td className="px-4 py-2 text-gray-400">{msg.channel}</td>
                                 <td className={`px-4 py-2 font-medium ${msgStatusColor[msg.status]}`}>
-                                  {msg.status === "sent" ? "✓ נשלח" : msg.status === "failed" ? `✗ נכשל${msg.error ? ": " + msg.error : ""}` : "דולג"}
+                                  {msg.status === "sent" ? "✓ נשלח" : msg.status === "failed" ? `✗ נכשל${msg.error ? ": " + msg.error : ""}` : `דולג${msg.error ? ": " + msg.error : ""}`}
                                 </td>
                                 <td className="px-4 py-2 text-gray-500 text-xs max-w-xs truncate">{msg.messageContent?.substring(0, 80)}...</td>
                               </tr>

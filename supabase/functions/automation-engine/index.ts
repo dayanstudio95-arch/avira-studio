@@ -33,6 +33,7 @@ import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createServiceRoleClient, getRequestUser } from '../_shared/supabaseClients.ts';
 import { sendWhatsApp as sendWhatsAppGreenApi } from '../_shared/whatsapp.ts';
 import { EVENT_TEAM_ROLE_LABELS as ROLE_LABELS } from '../_shared/staffRoles.ts';
+import { loadQuietHoursSettings, isInQuietHoursNow, wasAlreadySentToday, type QuietHoursSettings } from '../_shared/automationGuards.ts';
 
 function getTargetMonth(mode: string) {
   const now = new Date();
@@ -160,12 +161,24 @@ async function sendWhatsApp(supabase: any, tenantId: string, phone: string, mess
   if (!result.success) throw new Error(result.error || 'שליחת WhatsApp נכשלה');
 }
 
+// Checked immediately before every real send in each of the 5 direct-send handlers
+// below. Returns a Hebrew skip reason if the send should NOT go out, or null if it's
+// clear to send. Order matters: test mode always wins (nothing real ever goes out
+// while it's on), then quiet hours, then same-day dedup -- cheapest/most-certain
+// checks first, the one DB round-trip (wasAlreadySentToday) last.
+async function checkSendGuards(supabase: any, automation: any, quietHours: QuietHoursSettings, phone: string): Promise<string | null> {
+  if (automation.test_mode) return 'מצב בדיקה — לא נשלחה הודעה אמיתית';
+  if (isInQuietHoursNow(quietHours)) return 'שעות שקטות';
+  if (await wasAlreadySentToday(supabase, automation.id, phone)) return 'כבר נשלח היום';
+  return null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Automation type handlers
 // ─────────────────────────────────────────────────────────────────────────
 
 async function runMonthlyStaffSummary(supabase: any, tenantId: string, automation: any, runId: string, opts: any = {}) {
-  const { testPhone, dryRun, selectedStaffIds } = opts;
+  const { testPhone, dryRun, selectedStaffIds, quietHours } = opts;
 
   const targetMonth = getTargetMonth(automation.target_month_mode || 'next_month');
   const formattedMonth = formatMonthHebrew(targetMonth);
@@ -262,6 +275,14 @@ async function runMonthlyStaffSummary(supabase: any, tenantId: string, automatio
       continue;
     }
 
+    const guardSkipReason = await checkSendGuards(supabase, automation, quietHours, phone.trim());
+    if (guardSkipReason) {
+      await supabase.from('automation_message_logs').insert({ ...logEntry, status: 'skipped', error: guardSkipReason });
+      skipped++;
+      logs.push({ staffId: member.id, name: member.name, status: 'skipped', reason: guardSkipReason });
+      continue;
+    }
+
     try {
       if ((automation.channel || 'whatsapp') === 'whatsapp') {
         await sendWhatsApp(supabase, tenantId, phone.trim(), finalMessage);
@@ -281,7 +302,7 @@ async function runMonthlyStaffSummary(supabase: any, tenantId: string, automatio
 }
 
 async function runDailyEventBrief(supabase: any, tenantId: string, automation: any, runId: string, opts: any = {}) {
-  const { testPhone, dryRun, selectedStaffIds } = opts;
+  const { testPhone, dryRun, selectedStaffIds, quietHours } = opts;
 
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
@@ -430,6 +451,14 @@ async function runDailyEventBrief(supabase: any, tenantId: string, automation: a
 
     if (dryRun) {
       logs.push({ staffId: member.id, name: member.name, phone, finalMessage, eventsCount: memberEvents.length, status: 'preview' });
+      continue;
+    }
+
+    const guardSkipReason = await checkSendGuards(supabase, automation, quietHours, phone.trim());
+    if (guardSkipReason) {
+      await supabase.from('automation_message_logs').insert({ ...logEntry, status: 'skipped', error: guardSkipReason });
+      skipped++;
+      logs.push({ staffId: member.id, name: member.name, status: 'skipped', reason: guardSkipReason });
       continue;
     }
 
@@ -617,7 +646,7 @@ async function runPaymentReminder(supabase: any, tenantId: string, automation: a
 }
 
 async function runAlbumReminder(supabase: any, tenantId: string, automation: any, runId: string, opts: any = {}) {
-  const { testPhone, dryRun, selectedEventIds } = opts;
+  const { testPhone, dryRun, selectedEventIds, quietHours } = opts;
 
   const { data: allEvents } = await supabase.from('events').select('*').eq('tenant_id', tenantId).order('date', { ascending: false });
 
@@ -670,23 +699,52 @@ async function runAlbumReminder(supabase: any, tenantId: string, automation: any
 
   const toSend = selectedEventIds ? pendingMessages.filter((m) => selectedEventIds.includes(m.eventId)) : [];
 
-  let sent = 0, failed = 0;
+  let sent = 0, failed = 0, skipped = 0;
+  const logs: any[] = [];
   for (const item of toSend) {
-    if (!item.phoneNumber) { failed++; continue; }
+    const logEntry = {
+      automation_run_id: runId,
+      automation_id: automation.id,
+      automation_name: automation.name,
+      recipient_name: item.coupleNames,
+      recipient_contact: item.phoneNumber,
+      channel: automation.channel || 'whatsapp',
+      message_content: item.messageText,
+    };
+
+    if (!item.phoneNumber) {
+      await supabase.from('automation_message_logs').insert({ ...logEntry, status: 'failed', error: 'אין מספר טלפון' });
+      failed++;
+      logs.push({ eventId: item.eventId, name: item.coupleNames, status: 'failed', error: 'no_phone' });
+      continue;
+    }
+
+    const guardSkipReason = await checkSendGuards(supabase, automation, quietHours, item.phoneNumber.trim());
+    if (guardSkipReason) {
+      await supabase.from('automation_message_logs').insert({ ...logEntry, status: 'skipped', error: guardSkipReason });
+      skipped++;
+      logs.push({ eventId: item.eventId, name: item.coupleNames, status: 'skipped', reason: guardSkipReason });
+      continue;
+    }
+
     try {
       await sendWhatsApp(supabase, tenantId, item.phoneNumber.trim(), item.messageText);
       await supabase.from('events').update({ album_reminder_sent: true, album_reminder_sent_at: new Date().toISOString() }).eq('id', item.eventId);
+      await supabase.from('automation_message_logs').insert({ ...logEntry, status: 'sent', sent_at: new Date().toISOString() });
       sent++;
-    } catch {
+      logs.push({ eventId: item.eventId, name: item.coupleNames, status: 'sent' });
+    } catch (err) {
+      await supabase.from('automation_message_logs').insert({ ...logEntry, status: 'failed', error: err.message });
       failed++;
+      logs.push({ eventId: item.eventId, name: item.coupleNames, status: 'failed', error: err.message });
     }
   }
 
-  return { sent, failed, skipped: 0, logs: toSend };
+  return { sent, failed, skipped, logs };
 }
 
 async function runQuestionnaireSend(supabase: any, tenantId: string, automation: any, runId: string, opts: any = {}) {
-  const { testPhone, dryRun, targetYYYYMM: targetYYYYMMOverride, selectedEventIds } = opts;
+  const { testPhone, dryRun, targetYYYYMM: targetYYYYMMOverride, selectedEventIds, quietHours } = opts;
 
   let targetYYYYMM = targetYYYYMMOverride;
   if (!targetYYYYMM) {
@@ -765,18 +823,47 @@ async function runQuestionnaireSend(supabase: any, tenantId: string, automation:
     ? [...groups.readyToSend, ...groups.sentNoReply].filter((e) => selectedEventIds.includes(e.eventId))
     : groups.readyToSend;
 
+  const logs: any[] = [];
   for (const item of toSend) {
-    if (!item.staffPhone) { skipped++; continue; }
+    const logEntry = {
+      automation_run_id: runId,
+      automation_id: automation.id,
+      automation_name: automation.name,
+      recipient_name: item.name,
+      recipient_contact: item.staffPhone,
+      channel: automation.channel || 'whatsapp',
+      message_content: item.message,
+    };
+
+    if (!item.staffPhone) {
+      await supabase.from('automation_message_logs').insert({ ...logEntry, status: 'skipped', error: 'אין מספר טלפון' });
+      skipped++;
+      logs.push({ eventId: item.eventId, name: item.name, status: 'skipped', reason: 'no_phone' });
+      continue;
+    }
+
+    const guardSkipReason = await checkSendGuards(supabase, automation, quietHours, item.staffPhone.trim());
+    if (guardSkipReason) {
+      await supabase.from('automation_message_logs').insert({ ...logEntry, status: 'skipped', error: guardSkipReason });
+      skipped++;
+      logs.push({ eventId: item.eventId, name: item.name, status: 'skipped', reason: guardSkipReason });
+      continue;
+    }
+
     try {
       await sendWhatsApp(supabase, tenantId, item.staffPhone.trim(), item.message);
       await supabase.from('events').update({ questionnaire_sent_at: new Date().toISOString() }).eq('id', item.eventId);
+      await supabase.from('automation_message_logs').insert({ ...logEntry, status: 'sent', sent_at: new Date().toISOString() });
       sent++;
-    } catch {
-      // matches original: swallow and move on, no failed counter for this handler
+      logs.push({ eventId: item.eventId, name: item.name, status: 'sent' });
+    } catch (err) {
+      await supabase.from('automation_message_logs').insert({ ...logEntry, status: 'failed', error: err.message });
+      logs.push({ eventId: item.eventId, name: item.name, status: 'failed', error: err.message });
+      // matches original: no failed counter for this handler, but now logged in DB
     }
   }
 
-  return { sent, skipped };
+  return { sent, skipped, logs };
 }
 
 // Free-text WhatsApp broadcast to staff filtered by role. Unlike the other handlers,
@@ -786,7 +873,7 @@ async function runQuestionnaireSend(supabase: any, tenantId: string, automation:
 // automation type is "compose something new right now", not a recurring saved template.
 // (Falling back to the persisted columns is still supported for robustness / future reuse.)
 async function runCustomStaffMessage(supabase: any, tenantId: string, automation: any, runId: string, opts: any = {}) {
-  const { testPhone, dryRun, selectedStaffIds, messageTemplateOverride, targetRoleOverride } = opts;
+  const { testPhone, dryRun, selectedStaffIds, messageTemplateOverride, targetRoleOverride, quietHours } = opts;
 
   const template = (messageTemplateOverride ?? automation.message_template ?? '').trim();
   const targetRole = targetRoleOverride || automation.filter_logic || 'all';
@@ -846,6 +933,14 @@ async function runCustomStaffMessage(supabase: any, tenantId: string, automation
       message_content: item.finalMessage,
     };
 
+    const guardSkipReason = await checkSendGuards(supabase, automation, quietHours, item.phone.trim());
+    if (guardSkipReason) {
+      await supabase.from('automation_message_logs').insert({ ...logEntry, status: 'skipped', error: guardSkipReason });
+      skipped++;
+      logs.push({ staffId: item.staffId, name: item.name, status: 'skipped', reason: guardSkipReason });
+      continue;
+    }
+
     try {
       await sendWhatsApp(supabase, tenantId, item.phone.trim(), item.finalMessage);
       sentPhones.add(item.phone);
@@ -889,13 +984,19 @@ async function executeAutomation(supabase: any, tenantId: string, automation: an
   try {
     let result: any = { sent: 0, failed: 0, skipped: 0, logs: [] };
 
-    if (automation.type === 'monthly_staff_summary') result = await runMonthlyStaffSummary(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds });
-    if (automation.type === 'daily_event_brief') result = await runDailyEventBrief(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds });
+    // Loaded once per run (not once per recipient) and threaded into every direct-send
+    // handler below -- runQuestionnaireReminder/runPaymentReminder don't need it since they
+    // only ever queue into pending_automations; the actual send for those 2 types happens in
+    // approve-pending-automation/index.ts, which loads its own copy at that later send point.
+    const quietHours = await loadQuietHoursSettings(supabase, tenantId);
+
+    if (automation.type === 'monthly_staff_summary') result = await runMonthlyStaffSummary(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds, quietHours });
+    if (automation.type === 'daily_event_brief') result = await runDailyEventBrief(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds, quietHours });
     if (automation.type === 'questionnaire_reminder') result = await runQuestionnaireReminder(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds });
     if (automation.type === 'payment_reminder') result = await runPaymentReminder(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds });
-    if (automation.type === 'album_reminder') result = await runAlbumReminder(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedEventIds });
-    if (automation.type === 'questionnaire_send') result = await runQuestionnaireSend(supabase, tenantId, automation, runId, { testPhone, dryRun, targetYYYYMM, selectedEventIds });
-    if (automation.type === 'custom_staff_message') result = await runCustomStaffMessage(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds, messageTemplateOverride, targetRoleOverride });
+    if (automation.type === 'album_reminder') result = await runAlbumReminder(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedEventIds, quietHours });
+    if (automation.type === 'questionnaire_send') result = await runQuestionnaireSend(supabase, tenantId, automation, runId, { testPhone, dryRun, targetYYYYMM, selectedEventIds, quietHours });
+    if (automation.type === 'custom_staff_message') result = await runCustomStaffMessage(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds, messageTemplateOverride, targetRoleOverride, quietHours });
 
     if (!dryRun) {
       const nextRunAt = calculateNextRun(automation);

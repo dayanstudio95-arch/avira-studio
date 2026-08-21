@@ -22,6 +22,8 @@
 // Green-API dashboard) -- apiUrl alone is not enough, hence the new whatsapp_instance_id
 // setting.
 
+import { fetchWithRetry } from './retry.ts';
+
 interface WhatsAppSettings {
   apiUrl: string;
   instanceId: string;
@@ -119,7 +121,7 @@ export async function sendWhatsApp(
   const sendUrl = buildUrl(settings, 'sendMessage');
 
   try {
-    const res = await fetch(sendUrl, {
+    const res = await fetchWithRetry(sendUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chatId, message }),

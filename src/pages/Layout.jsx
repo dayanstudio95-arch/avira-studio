@@ -311,9 +311,9 @@ export default function Layout({ children }) {
             <div className="flex items-center justify-between gap-3 w-full">
               <div className="flex items-center gap-3">
               <div className="relative">
-                {tenantBranding?.logo_url ? (
+                {tenantBranding?.logoUrl ? (
                   <img
-                    src={tenantBranding.logo_url}
+                    src={tenantBranding.logoUrl}
                     alt={tenantBranding?.name || 'Studio logo'}
                     className="w-10 h-10 rounded-xl object-cover shadow-lg"
                   />
@@ -522,9 +522,9 @@ export default function Layout({ children }) {
           <header className="bg-gray-900/50 backdrop-blur-sm border-b border-gray-800 px-6 py-4 md:hidden">
             <div className="flex items-center gap-4">
               <SidebarTrigger className="hover:bg-gray-800 p-2 rounded-lg transition-colors duration-200 text-gray-300" />
-              {tenantBranding?.logo_url && (
+              {tenantBranding?.logoUrl && (
                 <img
-                  src={tenantBranding.logo_url}
+                  src={tenantBranding.logoUrl}
                   alt={tenantBranding?.name || 'Studio logo'}
                   className="w-8 h-8 rounded-lg object-cover"
                 />

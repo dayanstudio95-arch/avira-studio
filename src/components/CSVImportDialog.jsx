@@ -7,8 +7,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Upload, FileText, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { calculateEventFinancials } from "@/lib/financialCalculations";
+import { useAuth } from "@/lib/SupabaseAuthContext";
 
 export default function CSVImportDialog({ isOpen, onClose, onSuccess }) {
+  const { tenantDefaults } = useAuth();
+  const defaultVatPercent = tenantDefaults?.defaultVatPercent ?? 18;
   const [file, setFile] = useState(null);
   const [csvData, setCsvData] = useState(null);
   const [columnMapping, setColumnMapping] = useState({});
@@ -100,9 +103,9 @@ export default function CSVImportDialog({ isOpen, onClose, onSuccess }) {
         
         // Map optional fields
         if (columnMapping.vatPercent && row[columnMapping.vatPercent]) {
-          event.vatPercent = parseFloat(row[columnMapping.vatPercent]) || 18;
+          event.vatPercent = parseFloat(row[columnMapping.vatPercent]) || defaultVatPercent;
         } else {
-          event.vatPercent = 18;
+          event.vatPercent = defaultVatPercent;
         }
         
         if (columnMapping.clientPaymentStatus && row[columnMapping.clientPaymentStatus]) {

@@ -5,8 +5,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar, Heart, Banknote, Percent, CreditCard, Package, MapPin, Phone, Tag } from "lucide-react";
+import { useAuth } from "@/lib/SupabaseAuthContext";
 
 export default function DetailsStep({ eventData, updateEventData, packages = [] }) {
+  const { tenantDefaults } = useAuth();
+  const defaultVatPercent = tenantDefaults?.defaultVatPercent ?? 18;
   const [discounts, setDiscounts] = useState([]);
   const [originalPrice, setOriginalPrice] = useState(0);
 
@@ -270,13 +273,13 @@ export default function DetailsStep({ eventData, updateEventData, packages = [] 
             min="0"
             max="100"
             step="0.1"
-            placeholder="18"
+            placeholder={String(defaultVatPercent)}
             value={eventData.vatPercent || ''}
-            onChange={(e) => updateEventData({ vatPercent: parseFloat(e.target.value) || 18 })}
+            onChange={(e) => updateEventData({ vatPercent: parseFloat(e.target.value) || defaultVatPercent })}
             className="bg-gray-800/50 border-gray-700 text-white placeholder-gray-500 focus:border-yellow-400 focus:ring-yellow-400/20"
           />
           <p className="text-xs text-gray-500">
-            ברירת מחדל: 18%.
+            ברירת מחדל: {defaultVatPercent}%.
           </p>
         </div>
 

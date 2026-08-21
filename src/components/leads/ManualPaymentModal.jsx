@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { base44 } from "@/api/base44Client";
+import { useAuth } from "@/lib/SupabaseAuthContext";
 import { toast } from "sonner";
 import { Banknote } from "lucide-react";
 
@@ -16,18 +17,23 @@ const PAYMENT_TYPES = [
 ];
 
 export default function ManualPaymentModal({ isOpen, onClose, lead, onSaved }) {
+  const { tenantDefaults } = useAuth();
+  // Pre-fill from the tenant's financial-defaults setting (Settings → תמחור);
+  // still just a human-editable starting value -- no auto-charging exists
+  // anywhere in this codebase.
+  const defaultDeposit = String(tenantDefaults?.defaultDepositAmount ?? 500);
   const [paymentType, setPaymentType] = useState("deposit");
-  const [amount, setAmount] = useState("500");
+  const [amount, setAmount] = useState(defaultDeposit);
   const [note, setNote] = useState("מקדמה");
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       setPaymentType("deposit");
-      setAmount("500");
+      setAmount(defaultDeposit);
       setNote("מקדמה");
     }
-  }, [isOpen]);
+  }, [isOpen, defaultDeposit]);
 
   const handlePaymentTypeChange = (newType) => {
     setPaymentType(newType);

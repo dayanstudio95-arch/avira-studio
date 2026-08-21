@@ -34,6 +34,8 @@ import UsersTab from "../components/settings/UsersTab";
 import WorkspaceTab from "../components/settings/WorkspaceTab";
 import StudioDetailsCard from "../components/settings/StudioDetailsCard";
 import StudioSignatureCard from "../components/settings/StudioSignatureCard";
+import QuietHoursCard from "../components/settings/QuietHoursCard";
+import FinancialDefaultsCard from "../components/settings/FinancialDefaultsCard";
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 import { DEFAULT_CONTRACT_TERMS } from "@/lib/defaultContractTerms";
@@ -340,6 +342,7 @@ export default function Settings() {
           <TabsContent value="pricing">
             <div className="space-y-6">
               <PricingManagement />
+              <FinancialDefaultsCard />
 
               <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm">
                 <CardHeader className="border-b border-gray-800">
@@ -555,7 +558,10 @@ export default function Settings() {
 
           {/* תבניות הודעה */}
           <TabsContent value="templates">
-            <MessageTemplatesTab />
+            <div className="space-y-6">
+              <MessageTemplatesTab />
+              <QuietHoursCard />
+            </div>
           </TabsContent>
 
           {/* חיבורים */}

@@ -12,6 +12,7 @@
 // meaning deleted events were previously left orphaned in Google Calendar
 // forever).
 import { getConnectedAccounts, getValidAccessToken, type AccountRole } from './googleCalendarAuth.ts';
+import { fetchWithRetry } from './retry.ts';
 
 interface CalendarPayload {
   summary: string;
@@ -180,7 +181,7 @@ export async function pushEventToAccount(
   const hasRealExistingId = existingGoogleEventId && !existingGoogleEventId.startsWith('creating_');
 
   if (hasRealExistingId) {
-    const res = await fetch(`${baseUrl}/${existingGoogleEventId}${sendUpdates}`, { method: 'PATCH', headers, body });
+    const res = await fetchWithRetry(`${baseUrl}/${existingGoogleEventId}${sendUpdates}`, { method: 'PATCH', headers, body });
     if (res.status === 404 || res.status === 410) {
       console.log(`[googleCalendarSync] Calendar event ${existingGoogleEventId} not found — clearing to recreate next sync`);
       return { action: 'cleared_missing_id', googleEventId: null };
@@ -189,7 +190,7 @@ export async function pushEventToAccount(
     return { action: 'updated', googleEventId: existingGoogleEventId };
   }
 
-  const res = await fetch(`${baseUrl}${sendUpdates}`, { method: 'POST', headers, body });
+  const res = await fetchWithRetry(`${baseUrl}${sendUpdates}`, { method: 'POST', headers, body });
   if (!res.ok) throw new Error(`POST failed: ${res.status} ${await res.text()}`);
   const created = await res.json();
   return { action: 'created', googleEventId: created.id };
@@ -197,7 +198,7 @@ export async function pushEventToAccount(
 
 export async function deleteEventFromAccount(accessToken: string, calendarId: string, googleEventId: string | null): Promise<void> {
   if (!googleEventId || googleEventId.startsWith('creating_')) return;
-  const res = await fetch(
+  const res = await fetchWithRetry(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${googleEventId}`,
     { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` } },
   );

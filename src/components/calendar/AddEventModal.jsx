@@ -8,8 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, X, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { useAuth } from "@/lib/SupabaseAuthContext";
 
 export default function AddEventModal({ selectedDate, isOpen, onClose, onSuccess }) {
+  const { tenantDefaults } = useAuth();
+  const defaultVatPercent = tenantDefaults?.defaultVatPercent ?? 18;
   const [formData, setFormData] = useState({
     date: selectedDate ? format(selectedDate, 'yyyy-MM-dd') : '',
     coupleNames: '',
@@ -19,7 +22,7 @@ export default function AddEventModal({ selectedDate, isOpen, onClose, onSuccess
     requiredCrew: 3,
     totalAmountGross: 0,
     vatableAmount: 0,
-    vatPercent: 18,
+    vatPercent: defaultVatPercent,
     team: [],
     clientPaymentStatus: 'Unpaid',
     notes: ''
@@ -60,7 +63,7 @@ export default function AddEventModal({ selectedDate, isOpen, onClose, onSuccess
       const vatableAmount = (formData.vatableAmount > 0 && formData.vatableAmount <= totalAmountGross)
         ? formData.vatableAmount
         : totalAmountGross;
-      const vatRate = (formData.vatPercent || 18) / 100;
+      const vatRate = (formData.vatPercent || defaultVatPercent) / 100;
       const vatOnVatablePart = vatableAmount - (vatableAmount / (1 + vatRate));
       const vatAmount = vatOnVatablePart;
       const amountBeforeVat = totalAmountGross - vatAmount;
@@ -87,12 +90,12 @@ export default function AddEventModal({ selectedDate, isOpen, onClose, onSuccess
         requiredCrew: 3,
         totalAmountGross: 0,
         vatableAmount: 0,
-        vatPercent: 18,
+        vatPercent: defaultVatPercent,
         team: [],
         clientPaymentStatus: 'Unpaid',
         notes: ''
       });
-      
+
       if (onSuccess) onSuccess();
       onClose();
     } catch (error) {

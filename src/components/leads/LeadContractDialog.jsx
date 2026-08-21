@@ -66,6 +66,11 @@ export default function LeadContractDialog({ isOpen, onClose, lead, onSigned }) 
   // (src/api/entities.js), so this reads `displayNameToClients`, not the
   // snake_case DB column name.
   const [studioDisplayName, setStudioDisplayName] = useState("Avira Studio");
+  // Studio logo for the same banner, for parity with the public ContractPage.jsx
+  // (which already renders studioLogoUrl) — null until/unless a tenant has
+  // uploaded one via Settings → פרטי הסטודיו; falls back to the text+icon banner
+  // below when null, exactly like ContractPage.jsx does.
+  const [studioLogoUrl, setStudioLogoUrl] = useState(null);
 
   useEffect(() => {
     if (!user?.tenant_id) return;
@@ -73,6 +78,7 @@ export default function LeadContractDialog({ isOpen, onClose, lead, onSigned }) 
       .then((tenant) => {
         const name = tenant?.displayNameToClients || tenant?.name;
         if (name) setStudioDisplayName(name);
+        if (tenant?.logoUrl) setStudioLogoUrl(tenant.logoUrl);
       })
       .catch(() => {}); // best-effort — never blocks the contract dialog
   }, [user?.tenant_id]);
@@ -125,11 +131,15 @@ export default function LeadContractDialog({ isOpen, onClose, lead, onSigned }) 
             style={{ backgroundImage: "url('https://images.unsplash.com/photo-1519741497674-611481863552?w=900&q=80')", backgroundSize: "cover", backgroundPosition: "center" }}
           />
           <div className="relative z-10 text-center">
-            <div className="flex items-center justify-center gap-2 mb-1">
-              <Heart className="w-5 h-5 text-yellow-400" />
-              <span className="text-yellow-400 text-3xl font-bold tracking-widest">AVIRA</span>
-              <Camera className="w-5 h-5 text-yellow-400" />
-            </div>
+            {studioLogoUrl ? (
+              <img src={studioLogoUrl} alt={studioDisplayName} className="h-14 mx-auto mb-1 object-contain" />
+            ) : (
+              <div className="flex items-center justify-center gap-2 mb-1">
+                <Heart className="w-5 h-5 text-yellow-400" />
+                <span className="text-yellow-400 text-3xl font-bold tracking-widest">{studioDisplayName?.toUpperCase() || "AVIRA"}</span>
+                <Camera className="w-5 h-5 text-yellow-400" />
+              </div>
+            )}
             <p className="text-gray-300 text-sm tracking-wide">Wedding Photography &amp; Videography Studio</p>
           </div>
           <Button
