@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import {
   ArrowRight, Upload, Copy, Link2, Ban, RefreshCw, ImageIcon, CheckCircle2,
   CreditCard, Printer, Loader2, ChevronDown, ChevronUp, AlertTriangle, ExternalLink,
-  Package, Gift, Download, Eye, Trash2,
+  Package, Gift, Download, Eye, Trash2, Truck, PackageCheck,
 } from "lucide-react";
 import { WORKFLOW_STATUS_LABELS, WORKFLOW_STATUS_COLORS, PAYMENT_STATUS_LABELS } from "./AlbumOrders";
 
@@ -32,6 +32,15 @@ const BUCKET = "album-files";
 
 const ENGRAVING_TYPE_LABELS = { colored: "צבעונית", blind: "שקופה (ללא צבע)" };
 const ENGRAVING_SCOPE_LABELS = { main_only: "אלבום ראשי בלבד", full_set: "כל הסט" };
+
+// Manual admin-driven production/delivery status progression -- see
+// updateWorkflowStatusMutation's comment for why this exists (these workflow_status
+// values were previously unreachable dead code, no UI ever set them).
+const PRODUCTION_STATUS_STEPS = [
+  { value: "in_print", label: "נשלח להדפסה", icon: Printer },
+  { value: "delivered", label: "נמסר ללקוח", icon: Truck },
+  { value: "completed", label: "הושלם", icon: PackageCheck },
+];
 
 function sanitizeFileName(name) {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -706,6 +715,23 @@ export default function AlbumOrderDetail() {
     onError: (err) => toast.error(err.message || "שגיאה בביטול הקישור"),
   });
 
+  // Production/delivery status ('in_print' / 'delivered' / 'completed') was a valid
+  // workflow_status per the DB check constraint since 0031_wedding_albums.sql, and has
+  // full label/color support (WORKFLOW_STATUS_LABELS/COLORS in AlbumOrders.jsx) and even
+  // couple-portal display support (AlbumPortal.jsx's POST_PAYMENT_STATUSES), but no admin
+  // action anywhere ever set it -- these three states were unreachable dead code. Plain
+  // manual buttons here, not auto-triggered by generatePrintLinkMutation above, since
+  // "created a print-shop link" and "actually sent the files" are two different real-world
+  // moments (the studio might generate the link well before actually handing files off).
+  const updateWorkflowStatusMutation = useMutation({
+    mutationFn: (workflowStatus) => base44.entities.AlbumOrder.update(orderId, { workflowStatus }),
+    onSuccess: (_data, workflowStatus) => {
+      invalidateOrder();
+      toast.success(`ההזמנה סומנה כ"${WORKFLOW_STATUS_LABELS[workflowStatus]}"`);
+    },
+    onError: (err) => toast.error(err.message || "שגיאה"),
+  });
+
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
     toast.success("הועתק ללוח");
@@ -1364,6 +1390,36 @@ export default function AlbumOrderDetail() {
                 ))}
               </div>
             )}
+
+            <div className="pt-3 mt-1 border-t border-gray-800 space-y-2">
+              <p className="text-gray-400 text-sm">
+                לאחר שהקבצים נשלחו בפועל למעבדת ההדפסה (בין אם דרך הקישור למעלה או בכל דרך אחרת), עדכנו כאן את סטטוס
+                ההזמנה:
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {PRODUCTION_STATUS_STEPS.map((step) => {
+                  const isActive = order.workflowStatus === step.value;
+                  const StepIcon = step.icon;
+                  return (
+                    <Button
+                      key={step.value}
+                      size="sm"
+                      variant={isActive ? "default" : "outline"}
+                      disabled={updateWorkflowStatusMutation.isPending}
+                      onClick={() => updateWorkflowStatusMutation.mutate(step.value)}
+                      className={
+                        isActive
+                          ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500"
+                          : "border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
+                      }
+                    >
+                      <StepIcon className="w-4 h-4 mr-2" />
+                      {isActive ? `${step.label} (נוכחי)` : step.label}
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
