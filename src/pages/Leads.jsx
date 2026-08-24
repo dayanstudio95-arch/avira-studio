@@ -160,6 +160,19 @@ export default function Leads() {
 
   const loadLeads = () => loadData();
 
+  // Lightweight staff-only refetch -- used after toggling a "favorite" photographer/
+  // videographer in StaffAvailabilityModal's "בחירת מועדפים" screen, so the change is
+  // reflected without re-running loadData()'s full leads/events reload (and its
+  // isLoading flash) just for a small preference toggle.
+  const refetchStaffMembers = async () => {
+    try {
+      const staffData = await base44.entities.StaffMember.list();
+      setStaffMembers(staffData);
+    } catch (error) {
+      console.error("Error refetching staff members:", error);
+    }
+  };
+
   const handleAssignStudioIds = async () => {
     try {
       toast.info('מבצע שיוך מספרי ID...');
@@ -905,6 +918,7 @@ export default function Leads() {
         staffMembers={staffMembers}
         onLeadUpdated={loadLeads}
         onEventUpdated={loadLeads}
+        onStaffMembersChanged={refetchStaffMembers}
       />
 
       <FollowUpReminderDialog
