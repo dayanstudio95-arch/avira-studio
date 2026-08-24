@@ -105,9 +105,28 @@ refactor of anything existing. These rules govern it specifically:
   build a server-side ZIP in an Edge Function; the CPU/wall-clock caps make
   that unreliable for 30-40+ full-resolution files.
 - No watermark/preview compositing in v1 — Supabase Storage's Image
-  Transformations only resize on read, they don't composite. One
-  full-resolution file per spread serves both preview (via resize) and print.
-  Don't build a separate preview-generation pipeline unless explicitly asked.
+  Transformations only resize on read, they don't composite. Don't build a
+  separate preview-generation pipeline unless explicitly asked.
+  **Superseded for plain preview thumbnails, 2026-08-24 (explicitly asked):**
+  the "one full-resolution file per spread serves both preview (via resize)
+  and print" design doesn't work in practice — confirmed by calling
+  Supabase's image-render endpoint directly, which returns `{"error":
+  "InvalidRequest","message":"The source image file is too large to
+  process"}` for every spread in a real order (this studio's real
+  full-resolution wedding photography exports are consistently 25-30MB, all
+  over Supabase's hard source-file-size cap on that endpoint — not a bug to
+  patch, resize-on-read cannot work for this content at all). Fix, approved
+  by the user as a deliberate exception to this rule: `album_spreads` now
+  also gets a small JPEG `thumb_file_key`, generated **100% client-side**
+  (browser canvas resize, `src/lib/imageCompress.js`) at upload time and
+  lazily backfilled for legacy spreads on first admin view
+  (`AlbumOrderDetail.jsx`'s `toggleExpandVersion`) — see
+  `0043_album_spread_thumbnails.sql`. This is NOT a server-side
+  pipeline/Edge Function/background compute, so it doesn't reintroduce the
+  CPU/wall-clock constraints this rule protects against. The original
+  `file_key` is untouched and remains the sole source for print/full-res
+  access. Watermark/preview *compositing* itself is still out of scope —
+  this only changes how a plain (uncomposited) preview is produced.
 - Revision rounds are never blocking. The first round is free; 2nd+ rounds
   are shown as informational cost only — never gate the couple from
   submitting another round or reaching the purchase wizard over an unpaid

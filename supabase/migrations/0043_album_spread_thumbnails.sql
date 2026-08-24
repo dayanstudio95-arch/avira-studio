@@ -1,0 +1,25 @@
+-- Wedding Albums module -- adds a dedicated small preview file per spread, stored
+-- separately from the full-resolution original.
+--
+-- Why: 0031_wedding_albums.sql's original design (see its album_spreads comment)
+-- relied on Supabase Storage Image Transformations (resize-on-read) so a single
+-- full-resolution file could serve both preview and print. Confirmed 2026-08-24
+-- that this doesn't work in practice: Supabase's image-render endpoint has a hard
+-- source-file-size cap, and this studio's real spread files (full-resolution
+-- wedding photography exports, 25-30MB each) are all over it -- every single
+-- transform request fails with "The source image file is too large to process",
+-- with no partial/plan-dependent success. Resize-on-read cannot work at all for
+-- this studio's real content, not a bug to patch.
+--
+-- Fix (explicitly approved by the user, a deliberate exception to CLAUDE.md's "no
+-- separate preview-generation pipeline" iron rule): generate a small JPEG preview
+-- client-side (browser canvas resize, see src/lib/imageCompress.js) at upload time
+-- and store it as a second file. This is NOT a server-side pipeline -- no Edge
+-- Function, no background compute -- so it doesn't reintroduce the constraints
+-- that iron rule was protecting against. The original file_key is untouched and
+-- still the sole source used for print/full-resolution access.
+--
+-- Nullable: existing spreads uploaded before this migration have no thumbnail yet.
+-- The frontend backfills them lazily (generates + uploads a thumb the first time
+-- an old spread is viewed, then persists it here so every later view is instant).
+alter table album_spreads add column thumb_file_key text;

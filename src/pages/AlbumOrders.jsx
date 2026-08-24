@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
+import { supabase } from "@/api/supabaseClient";
 import { createPageUrl } from "@/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -10,7 +11,9 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { BookImage, Plus, Search, Link2, PenLine } from "lucide-react";
+import { BookImage, Plus, Search, Link2, PenLine, Trash2 } from "lucide-react";
+
+const BUCKET = "album-files";
 
 // Wedding Albums module -- order list + creation. Orders can be linked to an existing
 // `events` row, or stand alone via manual couple/date/phone fields (e.g. a 2024 couple
@@ -94,6 +97,49 @@ export default function AlbumOrders() {
     },
     onError: (err) => toast.error(err.message || "שגיאה ביצירת ההזמנה"),
   });
+
+  // DB-level FKs (album_versions/album_review_rounds/album_order_selections/
+  // album_order_addons/print_access_links, all "on delete cascade" -- see
+  // 0031_wedding_albums.sql) clean up every child row automatically once the order
+  // itself is deleted. They never touch actual Storage *files* though, so those are
+  // collected and removed explicitly first -- otherwise every spread image (and the
+  // bank-transfer proof file, if any) would be orphaned forever in the album-files
+  // bucket with nothing left in the DB pointing at them.
+  const deleteOrderMutation = useMutation({
+    mutationFn: async (order) => {
+      const versions = await base44.entities.AlbumVersion.filter({ albumOrderId: order.id });
+      const spreadsByVersion = await Promise.all(
+        versions.map((v) => base44.entities.AlbumSpread.filter({ versionId: v.id }))
+      );
+      // Each spread also has a separate thumbnail Storage object (thumbFileKey,
+      // added in 0043_album_spread_thumbnails.sql) alongside the full-res original
+      // (fileKey) -- both must be collected or the thumbnail is left orphaned.
+      const paths = spreadsByVersion.flat().flatMap((s) => [s.fileKey, s.thumbFileKey]).filter(Boolean);
+      if (order.transferProofFileKey) paths.push(order.transferProofFileKey);
+      if (paths.length > 0) {
+        await supabase.storage.from(BUCKET).remove(paths).catch(() => {});
+      }
+      await base44.entities.AlbumOrder.delete(order.id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["albumOrders"] });
+      toast.success("ההזמנה נמחקה");
+    },
+    onError: (err) => toast.error(err.message || "שגיאה במחיקת ההזמנה"),
+  });
+
+  const handleDeleteOrder = (e, order) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (
+      !confirm(
+        `למחוק לצמיתות את הזמנת האלבום של ${displayName(order)}? כל הגרסאות, הקבצים, סבבי הבדיקה, בחירות המוצר והקישורים (לזוג/למעבדת הדפסה) יימחקו ולא ניתן יהיה לשחזר.`
+      )
+    ) {
+      return;
+    }
+    deleteOrderMutation.mutate(order);
+  };
 
   const handleCloseDialog = () => {
     setIsDialogOpen(false);
@@ -241,6 +287,16 @@ export default function AlbumOrders() {
                         {PAYMENT_STATUS_LABELS[order.paymentStatus]}
                       </Badge>
                     )}
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      title="מחק הזמנה"
+                      disabled={deleteOrderMutation.isPending}
+                      onClick={(e) => handleDeleteOrder(e, order)}
+                      className="h-8 w-8 text-gray-500 hover:text-red-400 hover:bg-red-950/30"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
                   </div>
                 </Card>
               </Link>

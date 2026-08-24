@@ -5,6 +5,8 @@ import { supabase } from "@/api/supabaseClient";
 import { useAuth } from "@/lib/SupabaseAuthContext";
 import { createPageUrl } from "@/utils";
 import { generateRawToken, hashToken } from "@/lib/albumTokens";
+import { getCachedPortalTokenRaw, saveCachedPortalToken, clearCachedPortalToken } from "@/lib/albumPortalTokenCache";
+import { compressImageForThumb } from "@/lib/imageCompress";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import {
   ArrowRight, Upload, Copy, Link2, Ban, RefreshCw, ImageIcon, CheckCircle2,
   CreditCard, Printer, Loader2, ChevronDown, ChevronUp, AlertTriangle, ExternalLink,
-  Package, Gift, Download, Eye,
+  Package, Gift, Download, Eye, Trash2,
 } from "lucide-react";
 import { WORKFLOW_STATUS_LABELS, WORKFLOW_STATUS_COLORS, PAYMENT_STATUS_LABELS } from "./AlbumOrders";
 
@@ -35,6 +37,23 @@ function sanitizeFileName(name) {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
+// Runs `fn` over `items` with at most `limit` calls in flight at once. Firing all
+// 30-40 spreads' signed-URL (transform) requests at once in a single Promise.all
+// can overwhelm/rate-limit Supabase's image-render pipeline (observed as bulk
+// network failures on the whole grid) -- a small concurrency cap is much gentler.
+async function mapWithConcurrency(items, limit, fn) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  async function worker() {
+    while (nextIndex < items.length) {
+      const current = nextIndex++;
+      results[current] = await fn(items[current], current);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
 export default function AlbumOrderDetail() {
   const { orderId } = useParams();
   const { user } = useAuth();
@@ -42,8 +61,11 @@ export default function AlbumOrderDetail() {
   const fileInputRef = useRef(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
+  const [failedUploads, setFailedUploads] = useState([]); // [{file, sequenceNumber, versionId, fileName, errorMessage}] -- files that failed this batch, kept in memory so "נסה שוב" can retry the exact same File objects without re-selecting
+  const [retryingUploads, setRetryingUploads] = useState(false);
   const [expandedVersionId, setExpandedVersionId] = useState(null);
-  const [versionPreviews, setVersionPreviews] = useState({}); // versionId -> [{id, sequenceNumber, fileKey, url}]
+  const [versionPreviews, setVersionPreviews] = useState({}); // versionId -> [{id, sequenceNumber, fileKey, thumbUrl}] -- full-res is fetched lazily on demand (handleOpenFullRes), never eagerly for the whole grid
+  const [backfillProgress, setBackfillProgress] = useState({}); // versionId -> {current, total} -- only set while legacy spreads (no thumb_file_key yet) are being backfilled in toggleExpandVersion; absent once done
   const [showOnlyFlagged, setShowOnlyFlagged] = useState({}); // versionId -> bool
   const [newPortalToken, setNewPortalToken] = useState(null); // raw token, shown once
   const [newPrintToken, setNewPrintToken] = useState(null);
@@ -123,11 +145,57 @@ export default function AlbumOrderDetail() {
   // --- Sketch version upload ---------------------------------------------------
   const handleUploadClick = () => fileInputRef.current?.click();
 
+  // Small preview file's path is independent of the original's filename -- always
+  // predictable from versionId+sequenceNumber, so re-uploads/replacements just
+  // overwrite the same thumb slot (upsert:true) instead of accumulating orphans.
+  const thumbPathFor = (versionId, sequenceNumber) =>
+    `${user.tenant_id}/${orderId}/${versionId}/thumbs/spread-${String(sequenceNumber).padStart(2, "0")}.jpg`;
+
+  // Compresses + uploads the small preview file for one spread. Never throws --
+  // a thumb failure must not block the (much more important) original upload；on
+  // failure this just leaves thumb_file_key null, and the grid backfills it lazily
+  // later (see toggleExpandVersion).
+  const uploadThumbForSpread = async (file, versionId, sequenceNumber) => {
+    try {
+      const thumbBlob = await compressImageForThumb(file);
+      const thumbPath = thumbPathFor(versionId, sequenceNumber);
+      const { error } = await supabase.storage.from(BUCKET).upload(thumbPath, thumbBlob, {
+        upsert: true,
+        contentType: "image/jpeg",
+      });
+      if (error) throw error;
+      return thumbPath;
+    } catch (err) {
+      console.error("[AlbumOrderDetail] thumb generation/upload failed:", err);
+      return null;
+    }
+  };
+
+  // Uploads a single spread's file + registers its DB row. Throws on failure so
+  // callers (handleFilesSelected / retryFailedUploads) can isolate one file's
+  // failure from the rest of the batch instead of aborting everything. upsert
+  // defaults to false for a brand-new upload (never silently overwrite), but is
+  // passed true on retry so re-attempting the same sequenceNumber/path is safe.
+  const uploadOneSpread = async (file, sequenceNumber, versionId, { upsert = false } = {}) => {
+    const path = `${user.tenant_id}/${orderId}/${versionId}/spread-${String(sequenceNumber).padStart(2, "0")}-${sanitizeFileName(file.name)}`;
+    const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, file, { upsert });
+    if (uploadError) throw uploadError;
+    const thumbFileKey = await uploadThumbForSpread(file, versionId, sequenceNumber);
+    await base44.entities.AlbumSpread.create({
+      versionId,
+      sequenceNumber,
+      fileKey: path,
+      thumbFileKey,
+      processingStatus: "ready",
+    });
+  };
+
   const handleFilesSelected = async (e) => {
     const files = Array.from(e.target.files || []);
     e.target.value = "";
     if (files.length === 0) return;
     setIsUploading(true);
+    setFailedUploads([]);
     const sorted = [...files].sort((a, b) => a.name.localeCompare(b.name));
     setUploadProgress({ current: 0, total: sorted.length });
     try {
@@ -137,36 +205,120 @@ export default function AlbumOrderDetail() {
         versionNumber: nextVersionNumber,
       });
 
+      // Each file is uploaded in its own try/catch -- a single failed file (bad
+      // network blip, storage error, etc.) no longer aborts every remaining file
+      // in the batch. Failures are collected so the studio can see exactly which
+      // pages are missing and retry just those, instead of losing files silently.
+      const failures = [];
+      let successCount = 0;
       for (let i = 0; i < sorted.length; i++) {
         const file = sorted[i];
         const sequenceNumber = i + 1;
-        const path = `${user.tenant_id}/${orderId}/${newVersion.id}/spread-${String(sequenceNumber).padStart(2, "0")}-${sanitizeFileName(file.name)}`;
-        const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: false });
-        if (uploadError) throw uploadError;
-        await base44.entities.AlbumSpread.create({
-          versionId: newVersion.id,
-          sequenceNumber,
-          fileKey: path,
-          processingStatus: "ready",
-        });
+        try {
+          await uploadOneSpread(file, sequenceNumber, newVersion.id);
+          successCount++;
+        } catch (fileErr) {
+          failures.push({
+            file,
+            sequenceNumber,
+            versionId: newVersion.id,
+            fileName: file.name,
+            errorMessage: fileErr?.message || "שגיאה לא ידועה",
+          });
+        }
         setUploadProgress({ current: i + 1, total: sorted.length });
       }
 
-      await base44.entities.AlbumOrder.update(orderId, {
-        currentVersionId: newVersion.id,
-        workflowStatus: "in_review",
-      });
+      // Only point the order at the new version if at least one spread actually
+      // made it in -- never leave the order referencing an empty version.
+      if (successCount > 0) {
+        await base44.entities.AlbumOrder.update(orderId, {
+          currentVersionId: newVersion.id,
+          workflowStatus: "in_review",
+        });
+      }
 
       queryClient.invalidateQueries({ queryKey: ["albumVersions", orderId] });
       queryClient.invalidateQueries({ queryKey: ["albumSpreadCounts", orderId] });
       invalidateOrder();
-      toast.success(`גרסה ${nextVersionNumber} הועלתה בהצלחה (${sorted.length} כפולות)`);
+
+      if (failures.length === 0) {
+        toast.success(`גרסה ${nextVersionNumber} הועלתה בהצלחה (${sorted.length} כפולות)`);
+      } else if (successCount > 0) {
+        toast.error(`הועלו ${successCount} מתוך ${sorted.length} כפולות. ${failures.length} נכשלו -- ראו פירוט למטה ולחצו "נסה שוב"`);
+        setFailedUploads(failures);
+      } else {
+        toast.error(`ההעלאה נכשלה לחלוטין (0 מתוך ${sorted.length} כפולות) -- ראו פירוט למטה`);
+        setFailedUploads(failures);
+      }
     } catch (err) {
       toast.error(err.message || "שגיאה בהעלאת הסקיצה");
     } finally {
       setIsUploading(false);
       setUploadProgress({ current: 0, total: 0 });
     }
+  };
+
+  // Re-attempts exactly the files that failed in the last batch (same in-memory
+  // File objects, same version/sequence numbers), with upsert:true so retrying a
+  // partially-created path is safe. Only the still-failing subset remains in
+  // failedUploads afterward.
+  const retryFailedUploads = async () => {
+    if (failedUploads.length === 0) return;
+    setRetryingUploads(true);
+    setUploadProgress({ current: 0, total: failedUploads.length });
+    const stillFailing = [];
+    let recoveredCount = 0;
+    const versionId = failedUploads[0]?.versionId;
+    for (let i = 0; i < failedUploads.length; i++) {
+      const item = failedUploads[i];
+      try {
+        await uploadOneSpread(item.file, item.sequenceNumber, item.versionId, { upsert: true });
+        recoveredCount++;
+      } catch (err) {
+        stillFailing.push({ ...item, errorMessage: err?.message || "שגיאה לא ידועה" });
+      }
+      setUploadProgress({ current: i + 1, total: failedUploads.length });
+    }
+    setFailedUploads(stillFailing);
+    setRetryingUploads(false);
+    setUploadProgress({ current: 0, total: 0 });
+
+    if (recoveredCount > 0 && versionId) {
+      // If this version had zero successful spreads until now, make sure the
+      // order actually points at it -- mirrors the same guard in handleFilesSelected.
+      if (order?.currentVersionId !== versionId) {
+        try {
+          await base44.entities.AlbumOrder.update(orderId, {
+            currentVersionId: versionId,
+            workflowStatus: "in_review",
+          });
+        } catch {
+          // best-effort -- don't block reporting the retry result on this
+        }
+      }
+      queryClient.invalidateQueries({ queryKey: ["albumVersions", orderId] });
+      queryClient.invalidateQueries({ queryKey: ["albumSpreadCounts", orderId] });
+      invalidateOrder();
+    }
+
+    if (stillFailing.length === 0) {
+      toast.success(`כל הכפולות שנכשלו הועלו בהצלחה (${recoveredCount})`);
+    } else {
+      toast.error(`הועלו ${recoveredCount} מתוך ${failedUploads.length} בניסיון החוזר. ${stillFailing.length} עדיין נכשלו`);
+    }
+  };
+
+  // Updates a single spread's thumb fields in-place inside versionPreviews, so the
+  // grid can render progressively (each tile appears as soon as ITS thumbnail is
+  // ready) instead of the whole section staying blank until every spread -- possibly
+  // 30+, each requiring a full 25-30MB legacy backfill -- has finished.
+  const patchPreviewThumb = (versionId, spreadId, patch) => {
+    setVersionPreviews((prev) => {
+      const current = prev[versionId];
+      if (!current) return prev;
+      return { ...prev, [versionId]: current.map((p) => (p.id === spreadId ? { ...p, ...patch } : p)) };
+    });
   };
 
   const toggleExpandVersion = async (version) => {
@@ -178,16 +330,100 @@ export default function AlbumOrderDetail() {
     if (versionPreviews[version.id]) return;
     const spreads = spreadCounts[version.id] || [];
     if (spreads.length === 0) return;
-    const paths = spreads.map((s) => s.fileKey);
-    const { data, error } = await supabase.storage.from(BUCKET).createSignedUrls(paths, 60 * 10);
-    if (error) {
-      toast.error("שגיאה בטעינת תצוגה מקדימה");
-      return;
-    }
+
+    // Paint the grid immediately with placeholder tiles (thumbUrl: null -- shows the
+    // existing ImageIcon placeholder in the JSX below) instead of waiting for every
+    // thumbnail to resolve first. Each tile is then patched in place as its own
+    // signed URL / backfill finishes, via patchPreviewThumb.
     setVersionPreviews((prev) => ({
       ...prev,
-      [version.id]: spreads.map((s, i) => ({ id: s.id, sequenceNumber: s.sequenceNumber, fileKey: s.fileKey, url: data[i]?.signedUrl })),
+      [version.id]: spreads.map((s) => ({
+        id: s.id,
+        sequenceNumber: s.sequenceNumber,
+        fileKey: s.fileKey,
+        thumbFileKey: s.thumbFileKey || null,
+        thumbUrl: null,
+      })),
     }));
+
+    // Grid only ever needs the small preview file (album_spreads.thumb_file_key,
+    // generated client-side at upload time -- see src/lib/imageCompress.js and
+    // 0043_album_spread_thumbnails.sql). This replaces the earlier resize-on-read
+    // approach (Supabase Storage Image Transformations): confirmed 2026-08-24 that
+    // the transform endpoint has a hard source-file-size cap this studio's real
+    // spread files (25-30MB originals) are all over, so every transform request
+    // failed with "The source image file is too large to process" -- not a bug to
+    // patch, resize-on-read cannot work for this content at all. Signing the
+    // already-small thumb file needs no transform option.
+    const withThumbs = spreads.filter((s) => s.thumbFileKey);
+    const legacySpreads = spreads.filter((s) => !s.thumbFileKey);
+
+    if (withThumbs.length > 0) {
+      mapWithConcurrency(withThumbs, 6, async (s) => {
+        const { data } = await supabase.storage.from(BUCKET).createSignedUrl(s.thumbFileKey, 60 * 10);
+        patchPreviewThumb(version.id, s.id, { thumbFileKey: s.thumbFileKey, thumbUrl: data?.signedUrl || null });
+      });
+    }
+
+    // Legacy spreads uploaded before the thumb_file_key column existed have none yet
+    // -- backfill lazily on first view: download the full-resolution original once,
+    // compress it client-side (same helper used at upload time), upload it as the
+    // spread's thumb, and persist thumb_file_key so every later view is instant.
+    // Never blocks the rest of the grid on failure -- unresolved spreads just fall
+    // back to the placeholder icon (see the p.thumbUrl ternary in the grid JSX).
+    // Capped at 3 concurrent (vs. 6 for the already-small thumbs above) since each
+    // one means downloading a full 25-30MB original. A visible progress counter
+    // (see backfillProgress state + JSX) shows this is actively working, since with
+    // 30+ legacy spreads it can take a couple of minutes end-to-end.
+    if (legacySpreads.length > 0) {
+      let completed = 0;
+      setBackfillProgress((prev) => ({ ...prev, [version.id]: { current: 0, total: legacySpreads.length } }));
+      await mapWithConcurrency(legacySpreads, 3, async (s) => {
+        try {
+          const { data: signedOriginal, error: signError } = await supabase.storage
+            .from(BUCKET)
+            .createSignedUrl(s.fileKey, 60 * 5);
+          if (signError || !signedOriginal?.signedUrl) throw signError || new Error("sign failed");
+          const res = await fetch(signedOriginal.signedUrl);
+          if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
+          const blob = await res.blob();
+          const originalFile = new File([blob], "original.jpg", { type: blob.type || "image/jpeg" });
+          const thumbFileKey = await uploadThumbForSpread(originalFile, version.id, s.sequenceNumber);
+          if (!thumbFileKey) return;
+          await base44.entities.AlbumSpread.update(s.id, { thumbFileKey });
+          const { data: signedThumb } = await supabase.storage.from(BUCKET).createSignedUrl(thumbFileKey, 60 * 10);
+          patchPreviewThumb(version.id, s.id, { thumbFileKey, thumbUrl: signedThumb?.signedUrl || null });
+        } catch (err) {
+          console.error(`[AlbumOrderDetail] legacy thumb backfill failed for spread ${s.id}:`, err);
+        } finally {
+          completed += 1;
+          setBackfillProgress((prev) => ({ ...prev, [version.id]: { current: completed, total: legacySpreads.length } }));
+        }
+      });
+      setBackfillProgress((prev) => {
+        const next = { ...prev };
+        delete next[version.id];
+        return next;
+      });
+      // Keep the shared spreadCounts cache in sync so thumb_file_key persists across
+      // re-expanding this version (or other flows reading spreadCounts) without
+      // re-running the backfill every time.
+      queryClient.invalidateQueries({ queryKey: ["albumSpreadCounts", orderId] });
+    }
+  };
+
+  // Full-resolution original, signed on demand only when the studio explicitly
+  // wants to inspect one spread closely -- never fetched eagerly for the whole
+  // grid. (The couple's approved-spread print-shop download is a separate,
+  // dedicated flow -- see AlbumPrintAccess.jsx / the album-print-access Edge
+  // Function -- this is purely for the studio's own "open original" action here.)
+  const handleOpenFullRes = async (fileKey) => {
+    const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(fileKey, 60 * 10);
+    if (error || !data?.signedUrl) {
+      toast.error("שגיאה בפתיחת התמונה המקורית");
+      return;
+    }
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
   };
 
   // Auto-expand the version currently shown to the couple, once, on load --
@@ -202,7 +438,13 @@ export default function AlbumOrderDetail() {
 
   // --- Single-spread replace (fix one page without re-uploading the whole version) ---
   const handleReplaceClick = (versionId, spread) => {
-    setReplaceTarget({ spreadId: spread.id, versionId, sequenceNumber: spread.sequenceNumber, oldFileKey: spread.fileKey });
+    setReplaceTarget({
+      spreadId: spread.id,
+      versionId,
+      sequenceNumber: spread.sequenceNumber,
+      oldFileKey: spread.fileKey,
+      oldThumbFileKey: spread.thumbFileKey,
+    });
     replaceFileInputRef.current?.click();
   };
 
@@ -210,29 +452,56 @@ export default function AlbumOrderDetail() {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file || !replaceTarget) return;
-    const { spreadId, versionId, sequenceNumber, oldFileKey } = replaceTarget;
+    const { spreadId, versionId, sequenceNumber, oldFileKey, oldThumbFileKey } = replaceTarget;
     setReplacingSpreadId(spreadId);
     try {
       const path = `${user.tenant_id}/${orderId}/${versionId}/spread-${String(sequenceNumber).padStart(2, "0")}-replaced-${Date.now()}-${sanitizeFileName(file.name)}`;
       const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, file, { upsert: false });
       if (uploadError) throw uploadError;
-      await base44.entities.AlbumSpread.update(spreadId, { fileKey: path, processingStatus: "ready" });
+      // thumbPathFor is deterministic per versionId+sequenceNumber (upsert:true), so
+      // this naturally overwrites the previous thumb file in place -- no separate
+      // Storage cleanup needed for it. If compression/upload fails here, fall back to
+      // keeping the previous thumbFileKey (still on disk, still valid) instead of
+      // losing the reference entirely.
+      const newThumbFileKey = await uploadThumbForSpread(file, versionId, sequenceNumber);
+      const thumbFileKey = newThumbFileKey || oldThumbFileKey || null;
+      await base44.entities.AlbumSpread.update(spreadId, { fileKey: path, thumbFileKey, processingStatus: "ready" });
       if (order?.workflowStatus !== "in_review") {
         await base44.entities.AlbumOrder.update(orderId, { workflowStatus: "in_review" });
       }
       if (oldFileKey) {
         supabase.storage.from(BUCKET).remove([oldFileKey]).catch(() => {});
       }
-      const { data: signedData } = await supabase.storage.from(BUCKET).createSignedUrl(path, 60 * 10);
+      // Now that the studio has uploaded a replacement file, resolve any outstanding
+      // "needs_revision" decision(s) on this spread -- otherwise the red "תיקון"
+      // badge in the grid keeps showing even though the underlying issue was just
+      // fixed, and there'd be no visible confirmation the replace actually worked.
+      const staleDecisions = Object.values(decisionsByRound)
+        .flat()
+        .filter((d) => d.spreadId === spreadId && d.decision === "needs_revision");
+      if (staleDecisions.length > 0) {
+        await Promise.all(staleDecisions.map((d) => base44.entities.AlbumSpreadDecision.delete(d.id)));
+        queryClient.invalidateQueries({ queryKey: ["albumSpreadDecisions", orderId] });
+      }
+      let thumbUrl = null;
+      if (thumbFileKey) {
+        const { data: thumbSignedData, error: thumbSignedError } = await supabase.storage
+          .from(BUCKET)
+          .createSignedUrl(thumbFileKey, 60 * 10);
+        if (thumbSignedError) {
+          console.error("[AlbumOrderDetail] thumbnail sign failed:", thumbSignedError);
+        }
+        thumbUrl = thumbSignedData?.signedUrl || null;
+      }
       setVersionPreviews((prev) => ({
         ...prev,
         [versionId]: (prev[versionId] || []).map((p) =>
-          p.id === spreadId ? { ...p, fileKey: path, url: signedData?.signedUrl || p.url } : p
+          p.id === spreadId ? { ...p, fileKey: path, thumbFileKey, thumbUrl } : p
         ),
       }));
       queryClient.invalidateQueries({ queryKey: ["albumSpreadCounts", orderId] });
       invalidateOrder();
-      toast.success("הכפולה הוחלפה בהצלחה");
+      toast.success("הכפולה הוחלפה בהצלחה" + (staleDecisions.length > 0 ? " -- וסומנה כמטופלת" : ""));
     } catch (err) {
       toast.error(err.message || "שגיאה בהחלפת הקובץ");
     } finally {
@@ -250,6 +519,56 @@ export default function AlbumOrderDetail() {
     onError: (err) => toast.error(err.message || "שגיאה"),
   });
 
+  // --- Delete a sketch version -----------------------------------------------------
+  // DB-level FKs cascade-delete the version's spreads/review-rounds/decisions
+  // automatically (see 0031_wedding_albums.sql), but the actual Storage *files*
+  // are not touched by that cascade -- best-effort clean them up here too so
+  // deleted versions don't leave orphaned objects in the album-files bucket.
+  const deleteVersionMutation = useMutation({
+    mutationFn: async (version) => {
+      // Removes both the full-resolution original (fileKey) and its separately
+      // stored small preview (thumbFileKey, see 0043_album_spread_thumbnails.sql) --
+      // leaving the thumb behind would orphan it in the bucket forever.
+      const paths = (spreadCounts[version.id] || [])
+        .flatMap((s) => [s.fileKey, s.thumbFileKey])
+        .filter(Boolean);
+      if (paths.length > 0) {
+        await supabase.storage.from(BUCKET).remove(paths).catch(() => {});
+      }
+      await base44.entities.AlbumVersion.delete(version.id);
+    },
+    onSuccess: (_result, version) => {
+      queryClient.invalidateQueries({ queryKey: ["albumVersions", orderId] });
+      queryClient.invalidateQueries({ queryKey: ["albumSpreadCounts", orderId] });
+      queryClient.invalidateQueries({ queryKey: ["albumReviewRounds", orderId] });
+      queryClient.invalidateQueries({ queryKey: ["albumSpreadDecisions", orderId] });
+      setVersionPreviews((prev) => {
+        const next = { ...prev };
+        delete next[version.id];
+        return next;
+      });
+      setExpandedVersionId((prev) => (prev === version.id ? null : prev));
+      invalidateOrder();
+      toast.success("הגרסה נמחקה");
+    },
+    onError: (err) => toast.error(err.message || "שגיאה במחיקת הגרסה"),
+  });
+
+  const handleDeleteVersion = (version) => {
+    if (order.currentVersionId === version.id) {
+      toast.error("לא ניתן למחוק את הגרסה המוצגת כרגע לזוג");
+      return;
+    }
+    if (order.approvedVersionId === version.id) {
+      toast.error("לא ניתן למחוק גרסה מאושרת");
+      return;
+    }
+    if (!confirm(`למחוק לצמיתות את גרסה ${version.versionNumber}? כל הקבצים, סבב/י הבדיקה וההערות של הזוג לגרסה זו יימחקו ולא ניתן יהיה לשחזר.`)) {
+      return;
+    }
+    deleteVersionMutation.mutate(version);
+  };
+
   // --- Portal link ---------------------------------------------------------------
   const generatePortalLinkMutation = useMutation({
     mutationFn: async () => {
@@ -260,6 +579,7 @@ export default function AlbumOrderDetail() {
     },
     onSuccess: (raw) => {
       setNewPortalToken(raw);
+      saveCachedPortalToken(orderId, raw);
       invalidateOrder();
       toast.success("קישור לזוג נוצר");
     },
@@ -269,11 +589,35 @@ export default function AlbumOrderDetail() {
   const revokePortalLinkMutation = useMutation({
     mutationFn: () => base44.entities.AlbumOrder.update(orderId, { portalTokenRevokedAt: new Date().toISOString() }),
     onSuccess: () => {
+      setNewPortalToken(null);
+      clearCachedPortalToken(orderId);
       invalidateOrder();
       toast.success("הקישור בוטל");
     },
     onError: (err) => toast.error(err.message || "שגיאה בביטול הקישור"),
   });
+
+  // Re-hydrate the raw portal token from this browser's localStorage cache on
+  // load/refresh -- but only trust it after re-hashing and confirming it still
+  // matches the DB's current portal_token_hash (link may have been
+  // revoked/regenerated from a different browser/device since it was cached).
+  useEffect(() => {
+    if (!order) return;
+    if (newPortalToken) return;
+    if (!order.portalTokenHash || order.portalTokenRevokedAt) {
+      clearCachedPortalToken(orderId);
+      return;
+    }
+    const cachedRaw = getCachedPortalTokenRaw(orderId);
+    if (!cachedRaw) return;
+    let cancelled = false;
+    hashToken(cachedRaw).then((hash) => {
+      if (cancelled) return;
+      if (hash === order.portalTokenHash) setNewPortalToken(cachedRaw);
+      else clearCachedPortalToken(orderId);
+    });
+    return () => { cancelled = true; };
+  }, [order?.portalTokenHash, order?.portalTokenRevokedAt, orderId, newPortalToken]);
 
   // --- Payment ---------------------------------------------------------------
   const [proofUrl, setProofUrl] = useState(null);
@@ -406,11 +750,28 @@ export default function AlbumOrderDetail() {
     return "";
   };
 
+  // Studio-editable via Settings -> תבניות הודעות ("template_album_portal_link"),
+  // unlike buildAlbumMessage above which stays hardcoded for the sketch/fix buttons.
+  const buildSendToCoupleMessage = async () => {
+    try {
+      const rows = await base44.entities.AppSetting.filter({ key: "template_album_portal_link" });
+      const tpl = rows?.[0]?.value;
+      if (tpl) {
+        return tpl
+          .replace(/\{\{names\}\}/g, displayName || "")
+          .replace(/\{\{link\}\}/g, portalLink || "");
+      }
+    } catch {
+      // fall through to the hardcoded default below
+    }
+    return `שלום ${displayName || ""} 😊\nהכנו עבורכם תצוגה מקדימה של האלבום לצפייה ואישור 💛${portalLink ? `\n${portalLink}` : ""}`;
+  };
+
   const handleSendWhatsApp = async (type) => {
     if (!displayPhone) return;
     setSendingMessageType(type);
     try {
-      const message = buildAlbumMessage(type);
+      const message = type === "send_to_couple" ? await buildSendToCoupleMessage() : buildAlbumMessage(type);
       const result = await base44.functions.invoke("sendWhatsAppMessage", { to: displayPhone, message });
       if (result?.data?.error) throw new Error(result.data.error);
       toast.success("ההודעה נשלחה");
@@ -473,6 +834,34 @@ export default function AlbumOrderDetail() {
           </CardHeader>
           <CardContent className="space-y-3">
             <input ref={replaceFileInputRef} type="file" accept="image/*" className="hidden" onChange={handleReplaceFileSelected} />
+            {failedUploads.length > 0 && (
+              <div className="border border-red-800 bg-red-950/30 rounded-lg p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <p className="text-red-400 text-sm flex items-center gap-1.5 font-medium">
+                    <AlertTriangle className="w-4 h-4" />
+                    {failedUploads.length} כפולות לא הועלו -- לא הועלה קובץ בטעות
+                  </p>
+                  <Button
+                    size="sm"
+                    onClick={retryFailedUploads}
+                    disabled={retryingUploads}
+                    className="bg-red-600 hover:bg-red-700 text-white"
+                  >
+                    {retryingUploads ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                    {retryingUploads && uploadProgress.total > 0
+                      ? `מנסה שוב ${uploadProgress.current} מתוך ${uploadProgress.total}...`
+                      : "נסה שוב"}
+                  </Button>
+                </div>
+                <div className="max-h-40 overflow-y-auto space-y-1">
+                  {failedUploads.map((f) => (
+                    <p key={`${f.versionId}-${f.sequenceNumber}`} className="text-red-300/90 text-xs">
+                      עמוד {f.sequenceNumber} · {f.fileName} -- {f.errorMessage}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
             {versions.length === 0 ? (
               <p className="text-gray-500 text-sm">עדיין לא הועלתה סקיצה</p>
             ) : (
@@ -486,20 +875,45 @@ export default function AlbumOrderDetail() {
                 const previews = (versionPreviews[v.id] || []).filter((p) => !filterOn || versionFlagged.has(p.id));
                 return (
                   <div key={v.id} className="border border-gray-800 rounded-lg overflow-hidden">
-                    <button
-                      onClick={() => toggleExpandVersion(v)}
-                      className="w-full flex items-center justify-between p-3 hover:bg-gray-800/50 transition-colors"
-                    >
-                      <div className="flex items-center gap-2">
+                    <div className="w-full flex items-center justify-between p-3 hover:bg-gray-800/50 transition-colors">
+                      <button
+                        onClick={() => toggleExpandVersion(v)}
+                        className="flex items-center gap-2 flex-1"
+                      >
                         <span className="text-white font-medium">גרסה {v.versionNumber}</span>
                         <span className="text-gray-500 text-sm">{spreads.length} כפולות</span>
                         {isCurrent && <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 text-xs">מוצגת לזוג</Badge>}
                         {isApproved && <Badge className="bg-teal-500/20 text-teal-400 border-teal-500/30 text-xs">מאושרת</Badge>}
+                      </button>
+                      <div className="flex items-center gap-1">
+                        {!isCurrent && !isApproved && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            title="מחק גרסה"
+                            onClick={() => handleDeleteVersion(v)}
+                            disabled={deleteVersionMutation.isPending}
+                            className="h-7 w-7 text-gray-500 hover:text-red-400 hover:bg-red-950/30"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                        <button onClick={() => toggleExpandVersion(v)} className="p-1">
+                          {isExpanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                        </button>
                       </div>
-                      {isExpanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
-                    </button>
+                    </div>
                     {isExpanded && (
                       <div className="p-3 border-t border-gray-800 space-y-3">
+                        {backfillProgress[v.id] && (
+                          <div className="flex items-center gap-2 bg-blue-950/30 border border-blue-800 rounded-lg px-3 py-2">
+                            <Loader2 className="w-4 h-4 text-blue-400 animate-spin shrink-0" />
+                            <p className="text-blue-300 text-sm">
+                              מכין תצוגות מקדימות לכפולות ישנות ({backfillProgress[v.id].current} מתוך {backfillProgress[v.id].total}) --
+                              זה קורה פעם אחת בלבד, כל צפייה הבאה תהיה מיידית.
+                            </p>
+                          </div>
+                        )}
                         {isCurrent && flaggedSpreadIds.size > 0 && (
                           <div className="flex items-center justify-between">
                             <p className="text-red-400 text-sm flex items-center gap-1.5">
@@ -520,14 +934,43 @@ export default function AlbumOrderDetail() {
                           {previews.map((p) => {
                             const isFlagged = versionFlagged.has(p.id);
                             const isReplacing = replacingSpreadId === p.id;
+                            // The uploaded path itself encodes whether this file came from
+                            // the single-spread "replace" flow (handleReplaceFileSelected
+                            // names it "...-replaced-<timestamp>-..." vs. the plain
+                            // "...-<filename>" of an original upload) -- reusing that instead
+                            // of a separate DB flag means this survives refresh/navigation
+                            // for free, straight from the fileKey that's already stored.
+                            const wasReplaced = p.fileKey?.includes("-replaced-");
                             return (
                               <div
                                 key={p.id || p.sequenceNumber}
                                 className={`rounded-lg border overflow-hidden ${isFlagged ? "border-red-500 ring-1 ring-red-500/50" : "border-gray-800"}`}
                               >
-                                <a href={p.url} target="_blank" rel="noreferrer" className="block">
-                                  <img src={p.url} alt={`עמוד ${p.sequenceNumber}`} className="w-full aspect-square object-cover" />
-                                </a>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenFullRes(p.fileKey)}
+                                  title="פתח באיכות מקורית"
+                                  className="block w-full relative"
+                                >
+                                  {wasReplaced && (
+                                    <span className="absolute top-1 right-1 z-10 flex items-center gap-0.5 bg-green-500/90 text-white text-[10px] font-medium px-1.5 py-0.5 rounded">
+                                      <RefreshCw className="w-2.5 h-2.5" /> הוחלף
+                                    </span>
+                                  )}
+                                  {p.thumbUrl ? (
+                                    <img
+                                      src={p.thumbUrl}
+                                      alt={`עמוד ${p.sequenceNumber}`}
+                                      className="w-full aspect-square object-cover bg-gray-800"
+                                      loading="lazy"
+                                      decoding="async"
+                                    />
+                                  ) : (
+                                    <div className="w-full aspect-square bg-gray-800 flex items-center justify-center">
+                                      <ImageIcon className="w-6 h-6 text-gray-600" />
+                                    </div>
+                                  )}
+                                </button>
                                 <div className="flex items-center justify-between px-1.5 py-1">
                                   <span className="text-gray-500 text-xs">עמוד {p.sequenceNumber}</span>
                                   {isFlagged && (
@@ -580,7 +1023,7 @@ export default function AlbumOrderDetail() {
           <CardContent className="space-y-3">
             {portalLink && (
               <div className="bg-gray-800/50 p-3 rounded-lg space-y-2">
-                <p className="text-amber-400 text-sm">הקישור מוצג פעם אחת בלבד -- העתק ושלח לזוג עכשיו.</p>
+                <p className="text-amber-400 text-sm">הקישור נשמר בדפדפן הזה ויישאר זמין גם אחרי רענון -- אך לא יופיע במכשיר/דפדפן אחר. העתק ושלח לזוג.</p>
                 <div className="flex gap-2">
                   <Input readOnly value={portalLink} className="bg-gray-900 border-gray-700 text-white text-sm" />
                   <Button size="icon" variant="outline" onClick={() => window.open(portalLink, "_blank")} title="פתח קישור" className="border-gray-700 bg-gray-800 hover:bg-gray-700 shrink-0">
@@ -615,6 +1058,15 @@ export default function AlbumOrderDetail() {
               <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
+                  disabled={!displayPhone || !!sendingMessageType}
+                  onClick={() => handleSendWhatsApp("send_to_couple")}
+                  className="bg-yellow-400 text-gray-900 hover:bg-yellow-500"
+                >
+                  {sendingMessageType === "send_to_couple" ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                  💌 שלח לזוג
+                </Button>
+                <Button
+                  size="sm"
                   variant="outline"
                   disabled={!displayPhone || !!sendingMessageType}
                   onClick={() => handleSendWhatsApp("sketch")}
@@ -636,7 +1088,7 @@ export default function AlbumOrderDetail() {
               </div>
               {!portalLink && order.portalTokenHash && !order.portalTokenRevokedAt && (
                 <p className="text-gray-500 text-xs">
-                  שימו לב: הקישור המדויק לא זמין כרגע (הוא מוצג פעם אחת בלבד בעת היצירה) -- ההודעה תישלח בלי קישור מוטבע.
+                  שימו לב: הקישור המדויק לא זמין בדפדפן זה (נוצר במכשיר/דפדפן אחר, בוטל, או שמטמון הדפדפן נוקה) -- ההודעה תישלח בלי קישור מוטבע.
                   כדי לשלוח הודעה עם קישור, לחצו למעלה על &quot;צור קישור חדש&quot; (פעולה זו מבטלת את הקישור הקיים שביד הזוג).
                 </p>
               )}

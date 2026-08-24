@@ -58,6 +58,16 @@ const ADDON_CATEGORY_LABELS = {
   other: "אחר",
 };
 
+// The couple never manually picks the "extra pages" addon (see the "addons" step
+// below, which filters the 'extra_pages' catalog category out of the pickable
+// list) -- every product's base price already includes this many pages per the
+// order's current (approved) spread version; anything beyond it is billed
+// automatically per page. Kept in sync manually with the identical constant in
+// supabase/functions/album-portal/index.ts's submitPurchase, which is the
+// authoritative, server-side computation -- this copy only drives the
+// display-only estimatedTotal preview here.
+const PAGE_BASELINE = 30;
+
 const ENGRAVING_TYPE_OPTIONS = [
   { id: "colored", label: "חריטה צבעונית", description: "צבע בולט על גבי הכריכה" },
   { id: "blind", label: "הטבעה שקופה (ללא צבע)", description: "מומלץ בעיקר לכריכת עור סינטטי" },
@@ -322,7 +332,7 @@ function ReviewGallery({ token, order, onReloaded }) {
         {spreads
           .slice()
           .sort((a, b) => a.sequenceNumber - b.sequenceNumber)
-          .map((spread) => {
+          .map((spread, spreadIndex) => {
             const d = decisions[spread.id] || {};
             const needsRevision = d.decision === "needs_revision";
             return (
@@ -352,6 +362,8 @@ function ReviewGallery({ token, order, onReloaded }) {
                       alt={`עמוד ${spread.sequenceNumber}`}
                       className={`w-full h-auto ${needsRevision ? "cursor-crosshair" : ""}`}
                       onClick={(e) => handleImageClick(spread.id, e)}
+                      loading={spreadIndex < 2 ? "eager" : "lazy"}
+                      decoding="async"
                     />
                   ) : (
                     <div className="h-48 flex items-center justify-center text-gray-600">
@@ -461,6 +473,12 @@ function PurchaseWizard({ token, order, onReloaded }) {
   const selectedEngravingColor = (catalog.engravingColors || []).find((c) => c.id === selectedEngravingColorId);
   const selectedEngravingFont = (catalog.engravingFonts || []).find((f) => f.id === selectedEngravingFontId);
   const extraPagesAddon = catalog.addons.find((a) => a.category === "extra_pages");
+  const pickableAddons = catalog.addons.filter((a) => a.category !== "extra_pages");
+
+  // Real page count comes from the order's current (approved-by-purchase-time)
+  // version's actual uploaded spreads -- never from anything the couple enters.
+  const spreadCount = order.currentVersion?.spreads?.length || 0;
+  const extraPagesCount = Math.max(0, spreadCount - PAGE_BASELINE);
 
   const coverTypesPresent = COVER_TYPE_ORDER.filter((t) => catalog.covers.some((c) => c.coverType === t));
   const filteredCovers = coverFilter === "all" ? catalog.covers : catalog.covers.filter((c) => c.coverType === coverFilter);
@@ -483,11 +501,23 @@ function PurchaseWizard({ token, order, onReloaded }) {
     if (selectedCover) total += Number(selectedCover.priceDelta || 0);
     if (engravingEnabled) total += getEngravingPrice(engravingType, engravingScope);
     Object.entries(selectedAddons).forEach(([addonId, qty]) => {
+      if (extraPagesAddon && addonId === extraPagesAddon.id) return; // never manual, added below
       const addon = catalog.addons.find((a) => a.id === addonId);
       if (addon && qty > 0) total += Number(addon.price) * qty;
     });
+    if (extraPagesAddon && extraPagesCount > 0) total += Number(extraPagesAddon.price) * extraPagesCount;
     return total;
-  }, [selectedProduct, selectedCover, engravingEnabled, engravingType, engravingScope, selectedAddons, catalog.addons]);
+  }, [
+    selectedProduct,
+    selectedCover,
+    engravingEnabled,
+    engravingType,
+    engravingScope,
+    selectedAddons,
+    catalog.addons,
+    extraPagesAddon,
+    extraPagesCount,
+  ]);
 
   // Addons flagged requiresUpload must have at least one uploaded image before the
   // couple can move past the addons step (mirrors the product/cover step's own
@@ -568,11 +598,17 @@ function PurchaseWizard({ token, order, onReloaded }) {
     setSubmitting(true);
     setSubmitError("");
     try {
-      const addonsPayload = Object.entries(selectedAddons).map(([addonId, quantity]) => ({
-        addonId,
-        quantity,
-        imageKeys: (addonImages[addonId] || []).filter((img) => img.path).map((img) => img.path),
-      }));
+      // Defensive: the "extra pages" addon is never shown as a manually-pickable
+      // item (see the "addons" step below), but strip it here too in case it's
+      // ever present in selectedAddons -- the server recomputes/charges it
+      // authoritatively from the real spread count regardless of what's sent.
+      const addonsPayload = Object.entries(selectedAddons)
+        .filter(([addonId]) => !extraPagesAddon || addonId !== extraPagesAddon.id)
+        .map(([addonId, quantity]) => ({
+          addonId,
+          quantity,
+          imageKeys: (addonImages[addonId] || []).filter((img) => img.path).map((img) => img.path),
+        }));
       const res = await base44.functions.invoke("albumPortal", {
         token,
         action: "submitPurchase",
@@ -646,8 +682,13 @@ function PurchaseWizard({ token, order, onReloaded }) {
                 </div>
                 {p.description && <p className="text-gray-400 text-sm mt-1">{p.description}</p>}
                 <p className="text-gray-500 text-xs mt-1.5">
-                  כולל 30 עמודים
+                  כולל {PAGE_BASELINE} עמודים
                   {extraPagesAddon ? ` · עמוד נוסף ${formatCurrency(extraPagesAddon.price)}` : ""}
+                  {extraPagesCount > 0
+                    ? ` · האלבום שהועלה כולל ${spreadCount} עמודים -- תתווסף עלות של ${extraPagesCount} עמודים נוספים (${formatCurrency(
+                        Number(extraPagesAddon?.price || 0) * extraPagesCount
+                      )}) אוטומטית`
+                    : ""}
                 </p>
               </button>
             ))}
@@ -897,8 +938,22 @@ function PurchaseWizard({ token, order, onReloaded }) {
       {step === "addons" && (
         <div className="space-y-3">
           <h3 className="text-white font-bold">תוספות</h3>
+          {extraPagesAddon && extraPagesCount > 0 && (
+            <div className="p-3 rounded-xl border border-yellow-400/40 bg-yellow-400/10 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <span className="text-white text-sm font-medium block">עמודים נוספים -- מחושב אוטומטית</span>
+                <span className="text-gray-400 text-xs block mt-0.5">
+                  האלבום שהועלה כולל {spreadCount} עמודים, {PAGE_BASELINE} מתוכם כלולים במחיר הבסיס. {extraPagesCount}{" "}
+                  עמודים נוספים x {formatCurrency(extraPagesAddon.price)}.
+                </span>
+              </div>
+              <span className="text-yellow-400 font-bold shrink-0">
+                {formatCurrency(Number(extraPagesAddon.price) * extraPagesCount)}
+              </span>
+            </div>
+          )}
           <div className="grid gap-3">
-            {catalog.addons.map((a) => {
+            {pickableAddons.map((a) => {
               const qty = selectedAddons[a.id];
               const checked = !!qty;
               const images = addonImages[a.id] || [];
@@ -1022,7 +1077,9 @@ function PurchaseWizard({ token, order, onReloaded }) {
                 </div>
               );
             })}
-            {!catalog.addons.length && <p className="text-gray-500 text-sm">אין תוספות זמינות כרגע.</p>}
+            {!pickableAddons.length && !(extraPagesAddon && extraPagesCount > 0) && (
+              <p className="text-gray-500 text-sm">אין תוספות זמינות כרגע.</p>
+            )}
           </div>
         </div>
       )}
@@ -1088,6 +1145,7 @@ function PurchaseWizard({ token, order, onReloaded }) {
               </div>
             )}
             {Object.entries(selectedAddons).map(([addonId, qty]) => {
+              if (extraPagesAddon && addonId === extraPagesAddon.id) return null; // shown separately below, auto-computed
               const addon = catalog.addons.find((a) => a.id === addonId);
               if (!addon) return null;
               return (
@@ -1099,6 +1157,14 @@ function PurchaseWizard({ token, order, onReloaded }) {
                 </div>
               );
             })}
+            {extraPagesAddon && extraPagesCount > 0 && (
+              <div className="flex justify-between text-gray-300">
+                <span>
+                  {extraPagesAddon.name} x{extraPagesCount}
+                </span>
+                <span>{formatCurrency(Number(extraPagesAddon.price) * extraPagesCount)}</span>
+              </div>
+            )}
             <div className="border-t border-gray-700 pt-2 flex justify-between text-white font-bold">
               <span>סה"כ</span>
               <span className="text-yellow-400">{formatCurrency(estimatedTotal)}</span>

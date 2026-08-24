@@ -19,6 +19,23 @@ import { hashToken } from '../_shared/albumTokens.ts';
 const BUCKET = 'album-files';
 const SIGNED_URL_TTL_SECONDS = 60 * 30; // 30 min — long enough to browse a full gallery
 
+// Runs `fn` over `items` with at most `limit` calls in flight at once. Firing all
+// 30-40 spreads' signed-URL (transform) requests in one Promise.all overwhelmed
+// Supabase's image-render pipeline (observed as bulk network failures on the
+// admin grid, same root cause) — a small concurrency cap is much gentler.
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+  async function worker() {
+    while (nextIndex < items.length) {
+      const current = nextIndex++;
+      results[current] = await fn(items[current]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
 // Authoritative, server-side engraving pricing matrix. Kept in sync manually with the
 // identical (display-only) copy in src/pages/AlbumPortal.jsx — this copy is the one that
 // actually determines what gets charged and snapshotted, never trust the client's total.
@@ -50,17 +67,41 @@ async function resolveOrderByToken(supabase: any, token: string) {
 
 async function signSpreads(supabase: any, spreads: any[]) {
   if (!spreads.length) return [];
-  const paths = spreads.map((s) => s.file_key);
-  const { data: signed, error } = await supabase.storage.from(BUCKET).createSignedUrls(paths, SIGNED_URL_TTL_SECONDS);
-  if (error) {
-    console.error('[album-portal] createSignedUrls failed:', error.message);
-    return spreads.map((s) => ({ id: s.id, sequenceNumber: s.sequence_number, previewUrl: null }));
-  }
-  return spreads.map((s, i) => ({
-    id: s.id,
-    sequenceNumber: s.sequence_number,
-    previewUrl: signed[i]?.signedUrl ?? null,
-  }));
+  // Prefer each spread's small, dedicated thumb file (album_spreads.thumb_file_key,
+  // generated client-side in the admin at upload time -- see src/lib/imageCompress.js
+  // and 0043_album_spread_thumbnails.sql) over resize-on-read of the full-resolution
+  // original. Confirmed 2026-08-24 that Supabase Storage's Image Transformation
+  // service has a hard source-file-size cap this studio's real spread files (25-30MB
+  // originals) are all over -- every transform request against the original fails
+  // with "The source image file is too large to process". The thumb file is already
+  // small, so it's signed directly with no transform needed.
+  //
+  // Spreads uploaded before 0043 have no thumb_file_key yet -- fall back to the old
+  // resize-on-read attempt against the original for those (harmless: it just
+  // degrades to previewUrl:null for the same oversized files that always failed
+  // before). There's no browser/canvas available here to backfill a thumb
+  // server-side (and doing so would reintroduce the server-side preview-pipeline
+  // CLAUDE.md's iron rule warns against) -- once the studio opens that spread once
+  // in the admin grid (AlbumOrderDetail.jsx's lazy backfill), thumb_file_key is
+  // persisted and this path picks it up automatically on the couple's next visit.
+  //
+  // IMPORTANT: the *batch* `createSignedUrls` (plural) does NOT support the
+  // `transform` option at all -- the storage-js SDK silently drops it (its batch
+  // sign endpoint only ever accepts `{ expiresIn, paths }`), so signing must be
+  // done one spread at a time regardless. Capped concurrency, not one big
+  // Promise.all -- see mapWithConcurrency above.
+  const results = await mapWithConcurrency(spreads, 6, (s) =>
+    s.thumb_file_key
+      ? supabase.storage.from(BUCKET).createSignedUrl(s.thumb_file_key, SIGNED_URL_TTL_SECONDS)
+      : supabase.storage
+          .from(BUCKET)
+          .createSignedUrl(s.file_key, SIGNED_URL_TTL_SECONDS, { transform: { width: 1600, quality: 75 } })
+  );
+  return spreads.map((s, i) => {
+    const { data, error } = results[i];
+    if (error) console.error('[album-portal] createSignedUrl failed:', error.message);
+    return { id: s.id, sequenceNumber: s.sequence_number, previewUrl: data?.signedUrl ?? null };
+  });
 }
 
 async function insertNotification(supabase: any, order: any, type: string, title: string, body: string) {
@@ -107,7 +148,7 @@ Deno.serve(async (req) => {
         if (versionRow) {
           const { data: spreads } = await supabase
             .from('album_spreads')
-            .select('id, sequence_number, file_key')
+            .select('id, sequence_number, file_key, thumb_file_key')
             .eq('version_id', versionRow.id)
             .order('sequence_number', { ascending: true });
           currentVersion = {
@@ -334,7 +375,35 @@ Deno.serve(async (req) => {
         engravingFont = fontRow ?? null;
       }
 
-      const addonInputs = Array.isArray(addons) ? addons : [];
+      // Server-authoritative "extra pages" charge. The couple never manually picks
+      // this in the UI (see AlbumPortal.jsx's addons step, which filters the
+      // 'extra_pages' catalog category out of the pickable list) -- it's computed
+      // purely from the real album_spreads count of the order's current (== approved,
+      // by the time a purchase can be submitted) version vs. the 30-page baseline
+      // every product's base_price already includes. Never trust a client-supplied
+      // quantity for this: recomputed here from the DB, and any addonId the client
+      // still sent for this specific catalog row is dropped below (defense in depth).
+      const PAGE_BASELINE = 30;
+      let spreadCount = 0;
+      if (order.current_version_id) {
+        const { count } = await supabase
+          .from('album_spreads')
+          .select('id', { count: 'exact', head: true })
+          .eq('version_id', order.current_version_id);
+        spreadCount = count || 0;
+      }
+      const extraPagesCount = Math.max(0, spreadCount - PAGE_BASELINE);
+      const { data: extraPagesAddonRow } = await supabase
+        .from('album_addons')
+        .select('*')
+        .eq('tenant_id', order.tenant_id)
+        .eq('category', 'extra_pages')
+        .eq('active', true)
+        .maybeSingle();
+
+      const addonInputs = (Array.isArray(addons) ? addons : []).filter(
+        (a: any) => !extraPagesAddonRow || a.addonId !== extraPagesAddonRow.id
+      );
       const addonIds = addonInputs.map((a: any) => a.addonId).filter(Boolean);
       let addonRows: any[] = [];
       if (addonIds.length) {
@@ -372,6 +441,21 @@ Deno.serve(async (req) => {
           };
         })
         .filter(Boolean);
+
+      if (extraPagesCount > 0 && extraPagesAddonRow) {
+        total += Number(extraPagesAddonRow.price) * extraPagesCount;
+        orderAddonRows.push({
+          tenant_id: order.tenant_id,
+          album_order_id: order.id,
+          addon_id: extraPagesAddonRow.id,
+          addon_name_snapshot: extraPagesAddonRow.name,
+          addon_price_snapshot: extraPagesAddonRow.price,
+          quantity: extraPagesCount,
+          uploaded_file_keys: [],
+          _requiresUpload: false,
+          _addonName: extraPagesAddonRow.name,
+        });
+      }
 
       // Addons flagged requires_upload must have at least one validated image key —
       // enforced server-side, not just as a UI gate.
