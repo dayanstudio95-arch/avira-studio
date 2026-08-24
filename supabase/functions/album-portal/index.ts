@@ -171,6 +171,29 @@ Deno.serve(async (req) => {
         openRound = roundRow ?? null;
       }
 
+      // Bank transfer details the studio entered once in Settings (StudioDetailsCard.jsx,
+      // migration 0044_bank_transfer_details.sql) -- shown as-is on the portal's payment
+      // step instead of telling the couple to contact the studio for account details.
+      // Scoped explicitly to this order's own tenant_id, never a client-supplied id, same
+      // as every other lookup in this function. bankDetails is null (not an object of
+      // empty strings) if the studio hasn't filled any of this in yet, so the frontend can
+      // cleanly fall back to the old "contact us" copy.
+      const { data: tenantRow } = await supabase
+        .from('tenants')
+        .select('bank_name, bank_branch_number, bank_account_number, bank_account_holder_name, bank_transfer_notes')
+        .eq('id', order.tenant_id)
+        .maybeSingle();
+      const hasBankDetails = !!(tenantRow && (tenantRow.bank_name || tenantRow.bank_account_number));
+      const bankDetails = hasBankDetails
+        ? {
+            bankName: tenantRow.bank_name,
+            branchNumber: tenantRow.bank_branch_number,
+            accountNumber: tenantRow.bank_account_number,
+            accountHolderName: tenantRow.bank_account_holder_name,
+            notes: tenantRow.bank_transfer_notes,
+          }
+        : null;
+
       return jsonResponse({
         id: order.id,
         workflowStatus: order.workflow_status,
@@ -184,6 +207,7 @@ Deno.serve(async (req) => {
         shippingNotes: order.shipping_notes,
         currentVersion,
         latestRound: openRound,
+        bankDetails,
       });
     }
 

@@ -35,7 +35,23 @@ const FIELDS = [
   { key: "facebook_url", label: "Facebook" },
 ];
 
-const EMPTY_FORM = FIELDS.reduce((acc, f) => ({ ...acc, [f.key]: "" }), { auto_signature_text: "" });
+// Bank transfer details (2026-08-25): shown as-is to the couple on the Wedding
+// Albums portal's payment step (AlbumPortal.jsx's PaymentStep, via album-portal
+// Edge Function's getOrder action) instead of the old "contact the studio for
+// account details" text. Kept as a separate FIELDS group with its own heading
+// (not merged into the identity/contact FIELDS above) purely for UI grouping --
+// same `tenants` table, same save mechanism.
+const BANK_FIELDS = [
+  { key: "bank_name", label: "שם הבנק" },
+  { key: "bank_branch_number", label: "מספר סניף" },
+  { key: "bank_account_number", label: "מספר חשבון" },
+  { key: "bank_account_holder_name", label: "שם בעל החשבון" },
+];
+
+const EMPTY_FORM = [...FIELDS, ...BANK_FIELDS].reduce(
+  (acc, f) => ({ ...acc, [f.key]: "" }),
+  { auto_signature_text: "", bank_transfer_notes: "" }
+);
 
 const MAX_LOGO_BYTES = 2 * 1024 * 1024; // 2MB
 
@@ -68,8 +84,9 @@ export default function StudioDetailsCard() {
       const data = await base44.entities.Tenant.get(user.tenant_id);
       if (data) {
         const next = { ...EMPTY_FORM };
-        FIELDS.forEach((f) => { next[f.key] = data[toCamelKey(f.key)] || ""; });
+        [...FIELDS, ...BANK_FIELDS].forEach((f) => { next[f.key] = data[toCamelKey(f.key)] || ""; });
         next.auto_signature_text = data.autoSignatureText || "";
+        next.bank_transfer_notes = data.bankTransferNotes || "";
         setForm(next);
         setLogoUrl(data.logoUrl || null);
       }
@@ -160,7 +177,8 @@ export default function StudioDetailsCard() {
           פרטי הסטודיו
         </CardTitle>
         <p className="text-gray-400 text-sm mt-1">
-          פרטי זהות ויצירת קשר של הסטודיו (בשלב זה נשמר כאן בלבד — עדיין לא משולב אוטומטית בחוזה, בהודעות או בחשבוניות)
+          פרטי זהות ויצירת קשר של הסטודיו (בשלב זה נשמר כאן בלבד — עדיין לא משולב אוטומטית בחוזה, בהודעות או
+          בחשבוניות, למעט פרטי חשבון הבנק למטה שמוצגים לזוג בפורטל האלבום)
         </p>
       </CardHeader>
       <CardContent className="p-6 space-y-6">
@@ -212,6 +230,38 @@ export default function StudioDetailsCard() {
               />
             </div>
           ))}
+        </div>
+
+        <div className="space-y-4 pt-2 border-t border-gray-800">
+          <div>
+            <Label className="text-white font-semibold block">פרטי חשבון בנק להעברה</Label>
+            <p className="text-xs text-gray-500 mt-1">
+              יוצג לזוג בפורטל האלבום בשלב התשלום (הזמנת אלבום), במקום ההפניה הכללית לפנייה לסטודיו.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {BANK_FIELDS.map((f) => (
+              <div key={f.key} className="space-y-2">
+                <Label className="text-gray-300 font-medium">{f.label}</Label>
+                <Input
+                  value={form[f.key]}
+                  disabled={!canManage}
+                  onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                  className="bg-gray-800/50 border-gray-700 text-white"
+                />
+              </div>
+            ))}
+          </div>
+          <div className="space-y-2">
+            <Label className="text-gray-300 font-medium">הערות נוספות להעברה (אופציונלי)</Label>
+            <Textarea
+              value={form.bank_transfer_notes}
+              disabled={!canManage}
+              onChange={(e) => setForm({ ...form, bank_transfer_notes: e.target.value })}
+              className="bg-gray-800/50 border-gray-700 text-white min-h-[60px]"
+              placeholder="לדוגמה: IBAN למשלמים מחו״ל, או הערה לציון שם הזוג בהעברה"
+            />
+          </div>
         </div>
 
         <div className="space-y-2">

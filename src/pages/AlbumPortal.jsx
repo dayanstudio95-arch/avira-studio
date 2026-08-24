@@ -1286,7 +1286,37 @@ function PaymentStep({ token, order, onReloaded }) {
       </h3>
       <div className="bg-gray-800/50 rounded-xl p-4 text-sm text-gray-300 space-y-1">
         <p>סכום לתשלום: <span className="text-yellow-400 font-bold">{formatCurrency(order.totalAmount)}</span></p>
-        <p>לפרטי חשבון להעברה, אנא פנו לסטודיו בוואטסאפ או בטלפון.</p>
+        {order.bankDetails ? (
+          <div className="pt-2 mt-2 border-t border-gray-700/50 space-y-1">
+            {order.bankDetails.bankName && (
+              <p>
+                <span className="text-gray-500">בנק: </span>
+                {order.bankDetails.bankName}
+              </p>
+            )}
+            {order.bankDetails.branchNumber && (
+              <p>
+                <span className="text-gray-500">סניף: </span>
+                {order.bankDetails.branchNumber}
+              </p>
+            )}
+            {order.bankDetails.accountNumber && (
+              <p>
+                <span className="text-gray-500">מספר חשבון: </span>
+                {order.bankDetails.accountNumber}
+              </p>
+            )}
+            {order.bankDetails.accountHolderName && (
+              <p>
+                <span className="text-gray-500">שם בעל החשבון: </span>
+                {order.bankDetails.accountHolderName}
+              </p>
+            )}
+            {order.bankDetails.notes && <p className="text-gray-400 text-xs pt-1">{order.bankDetails.notes}</p>}
+          </div>
+        ) : (
+          <p>לפרטי חשבון להעברה, אנא פנו לסטודיו בוואטסאפ או בטלפון.</p>
+        )}
       </div>
 
       {done ? (
