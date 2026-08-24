@@ -54,6 +54,15 @@ export const PAYMENT_STATUS_LABELS = {
   paid: "שולם",
 };
 
+// "שולם" gets a bold/prominent green treatment everywhere it's shown (list rows here +
+// AlbumOrderDetail.jsx's payment card) so a paid order is instantly recognizable at a
+// glance, distinct from the neutral-gray treatment every other payment status keeps.
+export const PAYMENT_STATUS_COLORS = {
+  unpaid: "border-gray-700 bg-gray-800 text-gray-400",
+  transfer_pending_review: "border-amber-500/30 bg-amber-500/20 text-amber-400",
+  paid: "border-green-500/40 bg-green-500/20 text-green-400 font-semibold",
+};
+
 export default function AlbumOrders() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -283,7 +292,10 @@ export default function AlbumOrders() {
                       {WORKFLOW_STATUS_LABELS[order.workflowStatus] || order.workflowStatus}
                     </Badge>
                     {order.paymentStatus !== "unpaid" && (
-                      <Badge variant="outline" className="border-gray-700 bg-gray-800 text-gray-400 text-xs">
+                      <Badge
+                        variant="outline"
+                        className={`text-xs ${PAYMENT_STATUS_COLORS[order.paymentStatus] || "border-gray-700 bg-gray-800 text-gray-400"}`}
+                      >
                         {PAYMENT_STATUS_LABELS[order.paymentStatus]}
                       </Badge>
                     )}

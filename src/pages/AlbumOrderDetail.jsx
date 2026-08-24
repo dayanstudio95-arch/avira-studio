@@ -18,7 +18,7 @@ import {
   CreditCard, Printer, Loader2, ChevronDown, ChevronUp, AlertTriangle, ExternalLink,
   Package, Gift, Download, Eye, Trash2, Truck, PackageCheck,
 } from "lucide-react";
-import { WORKFLOW_STATUS_LABELS, WORKFLOW_STATUS_COLORS, PAYMENT_STATUS_LABELS } from "./AlbumOrders";
+import { WORKFLOW_STATUS_LABELS, WORKFLOW_STATUS_COLORS, PAYMENT_STATUS_LABELS, PAYMENT_STATUS_COLORS } from "./AlbumOrders";
 
 // Wedding Albums module -- single order's full lifecycle control: upload sketch
 // versions, generate/revoke the couple's portal link, view review-round history,
@@ -827,7 +827,10 @@ export default function AlbumOrderDetail() {
             <Badge className={WORKFLOW_STATUS_COLORS[order.workflowStatus] || "bg-gray-500/20 text-gray-400 border-gray-500/30"}>
               {WORKFLOW_STATUS_LABELS[order.workflowStatus] || order.workflowStatus}
             </Badge>
-            <Badge variant="outline" className="border-gray-700 bg-gray-800 text-gray-400">
+            <Badge
+              variant="outline"
+              className={PAYMENT_STATUS_COLORS[order.paymentStatus] || "border-gray-700 bg-gray-800 text-gray-400"}
+            >
               {PAYMENT_STATUS_LABELS[order.paymentStatus]}
             </Badge>
           </div>
@@ -1316,7 +1319,12 @@ export default function AlbumOrderDetail() {
             </div>
             <div className="flex items-center justify-between">
               <span className="text-gray-400">סטטוס תשלום</span>
-              <Badge variant="outline" className="border-gray-700 bg-gray-800 text-gray-300">{PAYMENT_STATUS_LABELS[order.paymentStatus]}</Badge>
+              <Badge
+                variant="outline"
+                className={PAYMENT_STATUS_COLORS[order.paymentStatus] || "border-gray-700 bg-gray-800 text-gray-300"}
+              >
+                {PAYMENT_STATUS_LABELS[order.paymentStatus]}
+              </Badge>
             </div>
             {order.transferProofFileKey && (
               <Button size="sm" variant="outline" onClick={viewTransferProof} className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">
