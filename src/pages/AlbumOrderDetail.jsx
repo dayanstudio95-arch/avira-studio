@@ -18,7 +18,7 @@ import {
   CreditCard, Printer, Loader2, ChevronDown, ChevronUp, AlertTriangle, ExternalLink,
   Package, Gift, Download, Eye, Trash2, Truck, PackageCheck,
 } from "lucide-react";
-import { WORKFLOW_STATUS_LABELS, WORKFLOW_STATUS_COLORS, PAYMENT_STATUS_LABELS, PAYMENT_STATUS_COLORS } from "./AlbumOrders";
+import { WORKFLOW_STATUS_LABELS, WORKFLOW_STATUS_COLORS, PAYMENT_STATUS_LABELS, PAYMENT_STATUS_COLORS, getOrderNameColorClass } from "./AlbumOrders";
 
 // Wedding Albums module -- single order's full lifecycle control: upload sketch
 // versions, generate/revoke the couple's portal link, view review-round history,
@@ -818,7 +818,7 @@ export default function AlbumOrderDetail() {
 
         <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-white">{displayName || "ללא שם"}</h1>
+            <h1 className={`text-2xl md:text-3xl font-bold ${getOrderNameColorClass(order)}`}>{displayName || "ללא שם"}</h1>
             <p className="text-gray-400 mt-1">
               {displayDate || "ללא תאריך"}{displayPhone ? ` · ${displayPhone}` : ""}
             </p>

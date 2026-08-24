@@ -63,6 +63,18 @@ export const PAYMENT_STATUS_COLORS = {
   paid: "border-green-500/40 bg-green-500/20 text-green-400 font-semibold",
 };
 
+// Order display-name text color, driven by status -- separate from (and in addition to)
+// the status badges above. Precedence: paid (green) wins over everything, then
+// revision_requested (red, "awaiting corrections"), then awaiting_payment (yellow),
+// else the neutral default. See CLAUDE.md-adjacent working notes: this mirrors the
+// exact 3-way mapping the user asked for, not the full WORKFLOW_STATUS_COLORS palette.
+export function getOrderNameColorClass(order) {
+  if (order?.paymentStatus === "paid") return "text-green-400";
+  if (order?.workflowStatus === "revision_requested") return "text-red-400";
+  if (order?.workflowStatus === "awaiting_payment") return "text-yellow-400";
+  return "text-white";
+}
+
 export default function AlbumOrders() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -277,7 +289,7 @@ export default function AlbumOrders() {
                 <Card className="bg-gray-900/50 border-gray-800 hover:border-yellow-400/30 transition-all duration-200 p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-white font-semibold text-lg">{displayName(order)}</span>
+                      <span className={`font-semibold text-lg ${getOrderNameColorClass(order)}`}>{displayName(order)}</span>
                       {!order.eventId && (
                         <Badge variant="outline" className="border-gray-700 bg-gray-800 text-gray-500 text-xs">ללא אירוע מקושר</Badge>
                       )}
