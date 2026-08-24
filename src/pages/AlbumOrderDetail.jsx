@@ -7,6 +7,7 @@ import { createPageUrl } from "@/utils";
 import { generateRawToken, hashToken } from "@/lib/albumTokens";
 import { getCachedPortalTokenRaw, saveCachedPortalToken, clearCachedPortalToken } from "@/lib/albumPortalTokenCache";
 import { compressImageForThumb } from "@/lib/imageCompress";
+import { format } from "date-fns";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -818,7 +819,18 @@ export default function AlbumOrderDetail() {
 
         <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-4">
           <div>
-            <h1 className={`text-2xl md:text-3xl font-bold ${getOrderNameColorClass(order)}`}>{displayName || "ללא שם"}</h1>
+            <div className="flex items-baseline gap-2 flex-wrap">
+              <h1 className={`text-2xl md:text-3xl font-bold ${getOrderNameColorClass(order)}`}>{displayName || "ללא שם"}</h1>
+              {(() => {
+                const opened = order?.created_date ? new Date(order.created_date) : null;
+                if (!opened || isNaN(opened.getTime())) return null;
+                return (
+                  <span className="text-gray-500 text-sm whitespace-nowrap">
+                    נפתחה: {format(opened, "d/M/yy")}
+                  </span>
+                );
+              })()}
+            </div>
             <p className="text-gray-400 mt-1">
               {displayDate || "ללא תאריך"}{displayPhone ? ` · ${displayPhone}` : ""}
             </p>

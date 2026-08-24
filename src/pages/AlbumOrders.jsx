@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { BookImage, Plus, Search, Link2, PenLine, Trash2 } from "lucide-react";
+import { format } from "date-fns";
 
 const BUCKET = "album-files";
 
@@ -203,6 +204,14 @@ export default function AlbumOrders() {
     return order.weddingDateManual;
   };
 
+  // Order *opening* date -- when the album order itself was created, distinct from
+  // displayDate() above (which is the couple's wedding/event date).
+  const displayOrderOpenedDate = (order) => {
+    if (!order.created_date) return null;
+    const d = new Date(order.created_date);
+    return isNaN(d.getTime()) ? null : format(d, "d/M/yy");
+  };
+
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
       if (statusFilter !== "all" && order.workflowStatus !== statusFilter) return false;
@@ -290,6 +299,11 @@ export default function AlbumOrders() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className={`font-semibold text-lg ${getOrderNameColorClass(order)}`}>{displayName(order)}</span>
+                      {displayOrderOpenedDate(order) && (
+                        <span className="text-gray-500 text-xs whitespace-nowrap">
+                          נפתחה: {displayOrderOpenedDate(order)}
+                        </span>
+                      )}
                       {!order.eventId && (
                         <Badge variant="outline" className="border-gray-700 bg-gray-800 text-gray-500 text-xs">ללא אירוע מקושר</Badge>
                       )}
