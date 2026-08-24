@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/SupabaseAuthContext";
 import { createPageUrl } from "@/utils";
 import { generateRawToken, hashToken } from "@/lib/albumTokens";
 import { getCachedPortalTokenRaw, saveCachedPortalToken, clearCachedPortalToken } from "@/lib/albumPortalTokenCache";
+import { getCachedPrintToken, saveCachedPrintToken, clearCachedPrintToken } from "@/lib/albumPrintTokenCache";
 import { compressImageForThumb } from "@/lib/imageCompress";
 import { format } from "date-fns";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -142,6 +143,18 @@ export default function AlbumOrderDetail() {
     queryFn: () => base44.entities.AlbumOrderSelection.filter({ albumOrderId: orderId }),
   });
   const selection = selections[0] || null;
+
+  // Cover catalog row for its preview_image_url -- shows the studio a small thumbnail
+  // of the actual selected cover, so they don't mix up similarly-named cover options
+  // (e.g. two leather covers in different colors). Note this reflects the catalog's
+  // *current* image for that cover_id, not a point-in-time snapshot -- album_order_selections
+  // only snapshots name/price (per CLAUDE.md's data-integrity rule for money fields), not
+  // an image, which is an acceptable trade-off for a purely visual reference aid.
+  const { data: selectedCover } = useQuery({
+    queryKey: ["albumCover", selection?.coverId],
+    queryFn: () => base44.entities.AlbumCover.get(selection.coverId),
+    enabled: !!selection?.coverId,
+  });
 
   const { data: orderAddons = [] } = useQuery({
     queryKey: ["albumOrderAddons", orderId],
@@ -696,11 +709,12 @@ export default function AlbumOrderDetail() {
     mutationFn: async () => {
       const raw = generateRawToken();
       const hash = await hashToken(raw);
-      await base44.entities.PrintAccessLink.create({ albumOrderId: orderId, tokenHash: hash });
-      return raw;
+      const created = await base44.entities.PrintAccessLink.create({ albumOrderId: orderId, tokenHash: hash });
+      return { raw, linkId: created.id };
     },
-    onSuccess: (raw) => {
+    onSuccess: ({ raw, linkId }) => {
       setNewPrintToken(raw);
+      saveCachedPrintToken(orderId, linkId, raw);
       queryClient.invalidateQueries({ queryKey: ["printAccessLinks", orderId] });
       toast.success("קישור למעבדת הדפסה נוצר");
     },
@@ -709,12 +723,40 @@ export default function AlbumOrderDetail() {
 
   const revokePrintLinkMutation = useMutation({
     mutationFn: (linkId) => base44.entities.PrintAccessLink.update(linkId, { revokedAt: new Date().toISOString() }),
-    onSuccess: () => {
+    onSuccess: (_data, linkId) => {
+      const cached = getCachedPrintToken(orderId);
+      if (cached?.linkId === linkId) {
+        setNewPrintToken(null);
+        clearCachedPrintToken(orderId);
+      }
       queryClient.invalidateQueries({ queryKey: ["printAccessLinks", orderId] });
       toast.success("הקישור בוטל");
     },
     onError: (err) => toast.error(err.message || "שגיאה בביטול הקישור"),
   });
+
+  // Re-hydrate the raw print-shop token from this browser's localStorage cache on
+  // load/refresh -- same rationale as the couple portal link's equivalent effect above:
+  // the DB only stores a hash, so this is the only way to survive a refresh. Only trust
+  // the cached value after confirming its linkId still exists, isn't revoked, and its
+  // re-hashed value still matches that row's token_hash.
+  useEffect(() => {
+    if (newPrintToken) return;
+    const cached = getCachedPrintToken(orderId);
+    if (!cached) return;
+    const matchingLink = printLinks.find((l) => l.id === cached.linkId);
+    if (!matchingLink || matchingLink.revokedAt) {
+      clearCachedPrintToken(orderId);
+      return;
+    }
+    let cancelled = false;
+    hashToken(cached.raw).then((hash) => {
+      if (cancelled) return;
+      if (hash === matchingLink.tokenHash) setNewPrintToken(cached.raw);
+      else clearCachedPrintToken(orderId);
+    });
+    return () => { cancelled = true; };
+  }, [printLinks, orderId, newPrintToken]);
 
   // Production/delivery status ('in_print' / 'delivered' / 'completed') was a valid
   // workflow_status per the DB check constraint since 0031_wedding_albums.sql, and has
@@ -750,6 +792,7 @@ export default function AlbumOrderDetail() {
   }
 
   const portalLink = newPortalToken ? `${window.location.origin}/album/${newPortalToken}` : null;
+  const printLink = newPrintToken ? `${window.location.origin}/print-access/${newPrintToken}` : null;
 
   // Which spreads (in the version currently shown to the couple) were flagged
   // "needs_revision" in the latest review round for that version -- used to
@@ -1196,11 +1239,20 @@ export default function AlbumOrderDetail() {
                     </div>
                     <div className="flex items-center justify-between border-b border-gray-800 pb-2">
                       <span className="text-gray-400">כריכה</span>
-                      <span className="text-white font-medium">
-                        {selection.coverNameSnapshot || "—"}
-                        {!!selection.coverPriceDeltaSnapshot && (
-                          <span className="text-gray-400"> · +₪{Number(selection.coverPriceDeltaSnapshot).toLocaleString()}</span>
+                      <span className="text-white font-medium flex items-center gap-2 justify-end">
+                        {selectedCover?.previewImageUrl && (
+                          <img
+                            src={selectedCover.previewImageUrl}
+                            alt={selection.coverNameSnapshot || "כריכה"}
+                            className="w-10 h-10 rounded-lg object-cover border border-gray-700 shrink-0"
+                          />
                         )}
+                        <span>
+                          {selection.coverNameSnapshot || "—"}
+                          {!!selection.coverPriceDeltaSnapshot && (
+                            <span className="text-gray-400"> · +₪{Number(selection.coverPriceDeltaSnapshot).toLocaleString()}</span>
+                          )}
+                        </span>
                       </span>
                     </div>
                   </div>
@@ -1372,12 +1424,15 @@ export default function AlbumOrderDetail() {
             {!order.approvedVersionId && (
               <p className="text-amber-400 text-sm">יש לאשר גרסה לפני יצירת קישור למעבדת הדפסה.</p>
             )}
-            {newPrintToken && (
+            {printLink && (
               <div className="bg-gray-800/50 p-3 rounded-lg space-y-2">
-                <p className="text-amber-400 text-sm">הקישור מוצג פעם אחת בלבד -- העתק ושלח למעבדת ההדפסה עכשיו.</p>
+                <p className="text-amber-400 text-sm">הקישור נשמר בדפדפן הזה ויישאר זמין גם אחרי רענון -- אך לא יופיע במכשיר/דפדפן אחר. העתק ושלח למעבדת ההדפסה.</p>
                 <div className="flex gap-2">
-                  <Input readOnly value={`${window.location.origin}/print-access/${newPrintToken}`} className="bg-gray-900 border-gray-700 text-white text-sm" />
-                  <Button size="icon" variant="outline" onClick={() => copyToClipboard(`${window.location.origin}/print-access/${newPrintToken}`)} className="border-gray-700 bg-gray-800 hover:bg-gray-700 shrink-0">
+                  <Input readOnly value={printLink} className="bg-gray-900 border-gray-700 text-white text-sm" />
+                  <Button size="icon" variant="outline" onClick={() => window.open(printLink, "_blank")} title="פתח קישור" className="border-gray-700 bg-gray-800 hover:bg-gray-700 shrink-0">
+                    <ExternalLink className="w-4 h-4" />
+                  </Button>
+                  <Button size="icon" variant="outline" onClick={() => copyToClipboard(printLink)} title="העתק קישור" className="border-gray-700 bg-gray-800 hover:bg-gray-700 shrink-0">
                     <Copy className="w-4 h-4" />
                   </Button>
                 </div>
@@ -1392,6 +1447,13 @@ export default function AlbumOrderDetail() {
               <RefreshCw className="w-4 h-4 mr-2" />
               צור קישור חדש
             </Button>
+
+            {!printLink && printLinks.some((l) => !l.revokedAt) && (
+              <p className="text-gray-500 text-xs">
+                שימו לב: הקישור המדויק לא זמין בדפדפן זה (נוצר במכשיר/דפדפן אחר, או שמטמון הדפדפן נוקה) -- ניתן עדיין
+                לבטל קישורים קיימים למטה, או ליצור קישור חדש להעתקה/פתיחה.
+              </p>
+            )}
 
             {printLinks.length > 0 && (
               <div className="space-y-2 pt-2">
