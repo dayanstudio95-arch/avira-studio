@@ -1,28 +1,37 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 const Event = base44.entities.Event;
+const StaffMember = base44.entities.StaffMember;
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { WalletCards, Check, User, Calendar, Coins, CalendarDays } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { WalletCards, Check, User, Calendar, Coins, CalendarDays, MessageCircle, History } from 'lucide-react';
 import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { VAT_RATE } from "@/lib/financialCalculations";
+import StaffPaymentDetailDialog from '@/components/payments/StaffPaymentDetailDialog';
 
 export default function Payments() {
     const [events, setEvents] = useState([]);
+    const [staffMembers, setStaffMembers] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [updatingPayment, setUpdatingPayment] = useState(null);
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
     const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth().toString());
     const [selectedPayments, setSelectedPayments] = useState({});
+    const [detailDialogStaff, setDetailDialogStaff] = useState(null);
 
     const loadData = async () => {
         setIsLoading(true);
-        const allEvents = await Event.list('-date');
+        const [allEvents, allStaff] = await Promise.all([
+            Event.list('-date'),
+            StaffMember.list(),
+        ]);
         setEvents(allEvents);
+        setStaffMembers(allStaff);
         setIsLoading(false);
     };
 
@@ -30,19 +39,21 @@ export default function Payments() {
         loadData();
     }, []);
 
-    const paymentsOwed = useMemo(() => {
-        const owed = {};
-        const filteredEvents = events.filter(event => {
+    const filteredEvents = useMemo(() => {
+        return events.filter(event => {
             const eventDate = new Date(event.date);
             const eventYear = eventDate.getFullYear();
             const eventMonth = eventDate.getMonth();
-            
+
             const yearMatch = eventYear === selectedYear;
             const monthMatch = selectedMonth === "all" || eventMonth === parseInt(selectedMonth);
-            
+
             return yearMatch && monthMatch;
         });
-        
+    }, [events, selectedYear, selectedMonth]);
+
+    const paymentsOwed = useMemo(() => {
+        const owed = {};
         filteredEvents.forEach(event => {
             if (!event.team || event.team.length === 0) return;
 
@@ -57,13 +68,44 @@ export default function Payments() {
                         eventId: event.id,
                         coupleNames: event.coupleNames,
                         date: event.date,
+                        venue: event.venue,
                         memberIndexInEvent: index
                     });
                 }
             });
         });
         return owed;
-    }, [events, selectedYear, selectedMonth]);
+    }, [filteredEvents]);
+
+    const paymentsHistory = useMemo(() => {
+        const paid = {};
+        filteredEvents.forEach(event => {
+            if (!event.team || event.team.length === 0) return;
+
+            event.team.forEach((member, index) => {
+                if (member.isPaid && member.cost > 0) {
+                    if (!paid[member.staffMemberName]) {
+                        paid[member.staffMemberName] = { total: 0, events: [] };
+                    }
+                    paid[member.staffMemberName].total += member.cost;
+                    paid[member.staffMemberName].events.push({
+                        ...member,
+                        eventId: event.id,
+                        coupleNames: event.coupleNames,
+                        date: event.date,
+                        venue: event.venue,
+                        memberIndexInEvent: index
+                    });
+                }
+            });
+        });
+        return paid;
+    }, [filteredEvents]);
+
+    const getStaffPhone = (staffName) => {
+        const staff = staffMembers.find(s => s.name === staffName);
+        return staff?.phoneNumber || null;
+    };
 
     const handleMarkAsPaid = async (eventId, memberIndexInEvent) => {
         setUpdatingPayment(`${eventId}-${memberIndexInEvent}`);
@@ -71,7 +113,7 @@ export default function Payments() {
             const eventToUpdate = events.find(e => e.id === eventId);
             if (eventToUpdate && eventToUpdate.team && eventToUpdate.team[memberIndexInEvent]) {
                 const newTeam = [...eventToUpdate.team];
-                newTeam[memberIndexInEvent] = { ...newTeam[memberIndexInEvent], isPaid: true };
+                newTeam[memberIndexInEvent] = { ...newTeam[memberIndexInEvent], isPaid: true, paidAt: new Date().toISOString() };
                 await Event.update(eventId, { team: newTeam });
                 await loadData();
             }
@@ -107,6 +149,7 @@ export default function Payments() {
                 indicesToUpdate.forEach(index => {
                     if (newTeam[index]) {
                         newTeam[index].isPaid = true;
+                        newTeam[index].paidAt = new Date().toISOString();
                     }
                 });
                 return Event.update(event.id, { team: newTeam });
@@ -153,6 +196,7 @@ export default function Payments() {
                 indicesToUpdate.forEach(index => {
                     if (newTeam[index]) {
                         newTeam[index].isPaid = true;
+                        newTeam[index].paidAt = new Date().toISOString();
                     }
                 });
                 return Event.update(event.id, { team: newTeam });
@@ -186,6 +230,7 @@ export default function Payments() {
     };
     
     const totalOwedAmount = Object.values(paymentsOwed).reduce((sum, staff) => sum + staff.total, 0);
+    const totalPaidAmount = Object.values(paymentsHistory).reduce((sum, staff) => sum + staff.total, 0);
 
     if (isLoading) {
         return (
@@ -257,114 +302,222 @@ export default function Payments() {
                     </div>
                 </div>
                 
-                <Card className="bg-gray-900/50 border-yellow-400/20 mb-8">
-                    <CardContent className="p-4 md:p-6">
-                        <p className="text-gray-400 text-base md:text-lg">סך הכל חובות לצוות</p>
-                        <p className="text-2xl md:text-4xl font-bold text-red-400">
-                           ₪{totalOwedAmount.toLocaleString()}
-                        </p>
-                    </CardContent>
-                </Card>
+                <Tabs defaultValue="owed" className="w-full">
+                    <TabsList className="bg-gray-900 border border-gray-800 mb-6">
+                        <TabsTrigger value="owed" className="data-[state=active]:bg-yellow-500 data-[state=active]:text-gray-900">
+                            לתשלום
+                        </TabsTrigger>
+                        <TabsTrigger value="history" className="data-[state=active]:bg-yellow-500 data-[state=active]:text-gray-900 gap-1.5">
+                            <History className="w-4 h-4" />
+                            היסטוריית תשלומים
+                        </TabsTrigger>
+                    </TabsList>
 
-                <Accordion type="multiple" className="w-full space-y-4">
-                    {Object.keys(paymentsOwed).length > 0 ? Object.entries(paymentsOwed).map(([name, data]) => (
-                        <Card key={name} className="bg-gray-900/50 border-gray-800 backdrop-blur-sm">
-                            <AccordionItem value={name} className="border-b-0">
-                                <AccordionTrigger className="p-3 md:p-6 text-white hover:no-underline">
-                                    <div className="flex flex-col gap-2 w-full">
-                                        {/* Row 1: name + badge */}
-                                        <div className="flex items-center gap-2">
-                                            <User className="w-5 h-5 text-yellow-400 flex-shrink-0"/>
-                                            <span className="text-base md:text-xl font-semibold">{name}</span>
-                                            <span className="text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded-full">{data.events.length} אירועים</span>
-                                        </div>
-                                        {/* Row 2: amount + buttons */}
-                                        <div className="flex flex-wrap items-center gap-2">
-                                            <div className="text-right flex-1 min-w-0">
-                                                <p className="text-gray-400 text-xs">סה״כ לתשלום</p>
-                                                <p className="text-base font-bold text-red-400">
-                                                    ₪{data.total.toLocaleString()}
-                                                    <span className="text-xs font-normal text-gray-500 mr-1 hidden sm:inline">(כולל מע"מ: ₪{Math.round(data.total * VAT_RATE).toLocaleString()})</span>
-                                                </p>
-                                                <p className="text-xs font-normal text-gray-500 sm:hidden">כולל מע"מ: ₪{Math.round(data.total * VAT_RATE).toLocaleString()}</p>
+                    <TabsContent value="owed">
+                        <Card className="bg-gray-900/50 border-yellow-400/20 mb-8">
+                            <CardContent className="p-4 md:p-6">
+                                <p className="text-gray-400 text-base md:text-lg">סך הכל חובות לצוות</p>
+                                <p className="text-2xl md:text-4xl font-bold text-red-400">
+                                   ₪{totalOwedAmount.toLocaleString()}
+                                </p>
+                            </CardContent>
+                        </Card>
+
+                        <Accordion type="multiple" className="w-full space-y-4">
+                            {Object.keys(paymentsOwed).length > 0 ? Object.entries(paymentsOwed).map(([name, data]) => (
+                                <Card key={name} className="bg-gray-900/50 border-gray-800 backdrop-blur-sm">
+                                    <AccordionItem value={name} className="border-b-0">
+                                        <AccordionTrigger className="p-3 md:p-6 text-white hover:no-underline">
+                                            <div className="flex flex-col gap-2 w-full">
+                                                {/* Row 1: name + badge */}
+                                                <div className="flex items-center gap-2">
+                                                    <User className="w-5 h-5 text-yellow-400 flex-shrink-0"/>
+                                                    <span className="text-base md:text-xl font-semibold">{name}</span>
+                                                    <span className="text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded-full">{data.events.length} אירועים</span>
+                                                </div>
+                                                {/* Row 2: amount + buttons */}
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <div className="text-right flex-1 min-w-0">
+                                                        <p className="text-gray-400 text-xs">סה״כ לתשלום</p>
+                                                        <p className="text-base font-bold text-red-400">
+                                                            ₪{data.total.toLocaleString()}
+                                                            <span className="text-xs font-normal text-gray-500 mr-1 hidden sm:inline">(כולל מע"מ: ₪{Math.round(data.total * VAT_RATE).toLocaleString()})</span>
+                                                        </p>
+                                                        <p className="text-xs font-normal text-gray-500 sm:hidden">כולל מע"מ: ₪{Math.round(data.total * VAT_RATE).toLocaleString()}</p>
+                                                    </div>
+                                                    <Button
+                                                       size="sm"
+                                                       onClick={(e) => {
+                                                           e.stopPropagation();
+                                                           setDetailDialogStaff({ name, phone: getStaffPhone(name), events: data.events, total: data.total });
+                                                       }}
+                                                       className="bg-amber-500 hover:bg-amber-600 text-gray-900 text-xs px-2 font-semibold"
+                                                   >
+                                                       <MessageCircle className="w-3 h-3 ml-1"/>
+                                                       שלח פירוט
+                                                   </Button>
+                                                    {(selectedPayments[name] || []).length > 0 && (
+                                                       <Button
+                                                           size="sm"
+                                                           onClick={(e) => {
+                                                               e.stopPropagation();
+                                                               handleMarkSelectedAsPaid(name);
+                                                           }}
+                                                           disabled={updatingPayment === `selected-${name}`}
+                                                           className="bg-blue-500 hover:bg-blue-600 text-white text-xs px-2"
+                                                       >
+                                                           <Check className="w-3 h-3 ml-1"/>
+                                                           {updatingPayment === `selected-${name}` ? 'מעדכן...' : `שולם (${(selectedPayments[name] || []).length})`}
+                                                       </Button>
+                                                    )}
+                                                    <Button
+                                                       size="sm"
+                                                       onClick={(e) => {
+                                                           e.stopPropagation();
+                                                           handleMarkAllAsPaid(name);
+                                                       }}
+                                                       disabled={updatingPayment === name}
+                                                       className="bg-green-500 hover:bg-green-600 text-white text-xs px-2"
+                                                   >
+                                                       <Check className="w-3 h-3 ml-1"/>
+                                                       {updatingPayment === name ? 'מעדכן...' : 'שולם הכל'}
+                                                   </Button>
+                                                </div>
                                             </div>
-                                            {(selectedPayments[name] || []).length > 0 && (
-                                               <Button
-                                                   size="sm"
-                                                   onClick={(e) => {
-                                                       e.stopPropagation();
-                                                       handleMarkSelectedAsPaid(name);
-                                                   }}
-                                                   disabled={updatingPayment === `selected-${name}`}
-                                                   className="bg-blue-500 hover:bg-blue-600 text-white text-xs px-2"
-                                               >
-                                                   <Check className="w-3 h-3 ml-1"/>
-                                                   {updatingPayment === `selected-${name}` ? 'מעדכן...' : `שולם (${(selectedPayments[name] || []).length})`}
-                                               </Button>
-                                            )}
-                                            <Button
-                                               size="sm"
-                                               onClick={(e) => {
-                                                   e.stopPropagation();
-                                                   handleMarkAllAsPaid(name);
-                                               }}
-                                               disabled={updatingPayment === name}
-                                               className="bg-green-500 hover:bg-green-600 text-white text-xs px-2"
-                                           >
-                                               <Check className="w-3 h-3 ml-1"/>
-                                               {updatingPayment === name ? 'מעדכן...' : 'שולם הכל'}
-                                           </Button>
-                                        </div>
-                                    </div>
-                                </AccordionTrigger>
-                                <AccordionContent className="px-3 md:px-6 pb-4 md:pb-6">
-                                    <div className="space-y-2 border-t border-gray-800 pt-3">
-                                        {data.events.map((event, index) => {
-                                            const paymentKey = `${event.eventId}::${event.memberIndexInEvent}`;
-                                            return (
-                                                <div key={index} className="flex justify-between items-center p-2 md:p-3 rounded-lg bg-gray-800/50 gap-2">
-                                                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                        <Checkbox
-                                                            checked={isPaymentSelected(name, paymentKey)}
-                                                            onCheckedChange={() => togglePaymentSelection(name, paymentKey)}
-                                                            className="border-gray-600 flex-shrink-0"
-                                                        />
-                                                        <div className="flex flex-col gap-0.5 min-w-0">
-                                                           <div className="flex items-center gap-1.5">
-                                                                <Calendar className="w-3 h-3 text-gray-500 flex-shrink-0" />
-                                                                <span className="text-gray-300 text-xs">{format(new Date(event.date), 'd/M/yy')}</span>
-                                                                <Coins className="w-3 h-3 text-yellow-500 flex-shrink-0 mr-1" />
-                                                                <span className="text-yellow-400 text-xs font-semibold">₪{event.cost.toLocaleString()}</span>
+                                        </AccordionTrigger>
+                                        <AccordionContent className="px-3 md:px-6 pb-4 md:pb-6">
+                                            <div className="space-y-2 border-t border-gray-800 pt-3">
+                                                {data.events.map((event, index) => {
+                                                    const paymentKey = `${event.eventId}::${event.memberIndexInEvent}`;
+                                                    return (
+                                                        <div key={index} className="flex justify-between items-center p-2 md:p-3 rounded-lg bg-gray-800/50 gap-2">
+                                                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                                <Checkbox
+                                                                    checked={isPaymentSelected(name, paymentKey)}
+                                                                    onCheckedChange={() => togglePaymentSelection(name, paymentKey)}
+                                                                    className="border-gray-600 flex-shrink-0"
+                                                                />
+                                                                <div className="flex flex-col gap-0.5 min-w-0">
+                                                                   <div className="flex items-center gap-1.5">
+                                                                        <Calendar className="w-3 h-3 text-gray-500 flex-shrink-0" />
+                                                                        <span className="text-gray-300 text-xs">{format(new Date(event.date), 'd/M/yy')}</span>
+                                                                        <Coins className="w-3 h-3 text-yellow-500 flex-shrink-0 mr-1" />
+                                                                        <span className="text-yellow-400 text-xs font-semibold">₪{event.cost.toLocaleString()}</span>
+                                                                    </div>
+                                                                     <div className="flex items-center gap-1.5">
+                                                                        <span className="text-gray-300 text-sm font-medium truncate">{event.coupleNames}</span>
+                                                                    </div>
+                                                                </div>
                                                             </div>
-                                                             <div className="flex items-center gap-1.5">
-                                                                <span className="text-gray-300 text-sm font-medium truncate">{event.coupleNames}</span>
+                                                            <Button
+                                                                size="sm"
+                                                                onClick={() => handleMarkAsPaid(event.eventId, event.memberIndexInEvent)}
+                                                                disabled={updatingPayment === `${event.eventId}-${event.memberIndexInEvent}`}
+                                                                className="bg-green-500 hover:bg-green-600 text-white text-xs px-2 flex-shrink-0"
+                                                            >
+                                                                <Check className="w-3 h-3 ml-1"/>
+                                                                {updatingPayment === `${event.eventId}-${event.memberIndexInEvent}` ? 'מעדכן...' : 'שולם'}
+                                                            </Button>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </AccordionContent>
+                                    </AccordionItem>
+                                </Card>
+                            )) : (
+                                 <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm text-center p-12">
+                                    <Check className="w-16 h-16 mx-auto text-green-500 mb-4" />
+                                    <h3 className="text-xl font-bold text-white">הכל שולם!</h3>
+                                    <p className="text-gray-400">אין תשלומים פתוחים לאנשי הצוות.</p>
+                                </Card>
+                            )}
+                        </Accordion>
+                    </TabsContent>
+
+                    <TabsContent value="history">
+                        <Card className="bg-gray-900/50 border-green-400/20 mb-8">
+                            <CardContent className="p-4 md:p-6">
+                                <p className="text-gray-400 text-base md:text-lg">סה״כ שולם בתקופה</p>
+                                <p className="text-2xl md:text-4xl font-bold text-green-400">
+                                   ₪{totalPaidAmount.toLocaleString()}
+                                </p>
+                            </CardContent>
+                        </Card>
+
+                        <Accordion type="multiple" className="w-full space-y-4">
+                            {Object.keys(paymentsHistory).length > 0 ? Object.entries(paymentsHistory).map(([name, data]) => (
+                                <Card key={name} className="bg-gray-900/50 border-gray-800 backdrop-blur-sm">
+                                    <AccordionItem value={name} className="border-b-0">
+                                        <AccordionTrigger className="p-3 md:p-6 text-white hover:no-underline">
+                                            <div className="flex flex-col gap-2 w-full">
+                                                {/* Row 1: name + badge */}
+                                                <div className="flex items-center gap-2">
+                                                    <User className="w-5 h-5 text-green-400 flex-shrink-0"/>
+                                                    <span className="text-base md:text-xl font-semibold">{name}</span>
+                                                    <span className="text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded-full">{data.events.length} אירועים</span>
+                                                </div>
+                                                {/* Row 2: amount */}
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <div className="text-right flex-1 min-w-0">
+                                                        <p className="text-gray-400 text-xs">סה״כ שולם</p>
+                                                        <p className="text-base font-bold text-green-400">
+                                                            ₪{data.total.toLocaleString()}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </AccordionTrigger>
+                                        <AccordionContent className="px-3 md:px-6 pb-4 md:pb-6">
+                                            <div className="space-y-2 border-t border-gray-800 pt-3">
+                                                {data.events.map((event, index) => (
+                                                    <div key={index} className="flex justify-between items-center p-2 md:p-3 rounded-lg bg-gray-800/50 gap-2">
+                                                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                            <div className="flex flex-col gap-0.5 min-w-0">
+                                                               <div className="flex items-center gap-1.5">
+                                                                    <Calendar className="w-3 h-3 text-gray-500 flex-shrink-0" />
+                                                                    <span className="text-gray-300 text-xs">{format(new Date(event.date), 'd/M/yy')}</span>
+                                                                    <Coins className="w-3 h-3 text-yellow-500 flex-shrink-0 mr-1" />
+                                                                    <span className="text-yellow-400 text-xs font-semibold">₪{event.cost.toLocaleString()}</span>
+                                                                </div>
+                                                                 <div className="flex items-center gap-1.5">
+                                                                    <span className="text-gray-300 text-sm font-medium truncate">{event.coupleNames}</span>
+                                                                    {event.venue && (
+                                                                        <span className="text-gray-500 text-xs truncate">· {event.venue}</span>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                         </div>
+                                                        {event.paidAt && (
+                                                            <span className="text-xs text-green-400 bg-green-400/10 px-2 py-1 rounded-full flex-shrink-0">
+                                                                שולם ב-{format(new Date(event.paidAt), 'd/M/yy')}
+                                                            </span>
+                                                        )}
                                                     </div>
-                                                    <Button 
-                                                        size="sm"
-                                                        onClick={() => handleMarkAsPaid(event.eventId, event.memberIndexInEvent)}
-                                                        disabled={updatingPayment === `${event.eventId}-${event.memberIndexInEvent}`}
-                                                        className="bg-green-500 hover:bg-green-600 text-white text-xs px-2 flex-shrink-0"
-                                                    >
-                                                        <Check className="w-3 h-3 ml-1"/>
-                                                        {updatingPayment === `${event.eventId}-${event.memberIndexInEvent}` ? 'מעדכן...' : 'שולם'}
-                                                    </Button>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </AccordionContent>
-                            </AccordionItem>
-                        </Card>
-                    )) : (
-                         <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm text-center p-12">
-                            <Check className="w-16 h-16 mx-auto text-green-500 mb-4" />
-                            <h3 className="text-xl font-bold text-white">הכל שולם!</h3>
-                            <p className="text-gray-400">אין תשלומים פתוחים לאנשי הצוות.</p>
-                        </Card>
-                    )}
-                </Accordion>
+                                                ))}
+                                            </div>
+                                        </AccordionContent>
+                                    </AccordionItem>
+                                </Card>
+                            )) : (
+                                 <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm text-center p-12">
+                                    <History className="w-16 h-16 mx-auto text-gray-600 mb-4" />
+                                    <h3 className="text-xl font-bold text-white">אין עדיין תשלומים בהיסטוריה</h3>
+                                    <p className="text-gray-400">תשלומים שתסמנו כ"שולם" בתקופה זו יופיעו כאן.</p>
+                                </Card>
+                            )}
+                        </Accordion>
+                    </TabsContent>
+                </Tabs>
+
+                <StaffPaymentDetailDialog
+                    open={!!detailDialogStaff}
+                    onOpenChange={(isOpen) => { if (!isOpen) setDetailDialogStaff(null); }}
+                    staffName={detailDialogStaff?.name}
+                    phoneNumber={detailDialogStaff?.phone}
+                    events={detailDialogStaff?.events}
+                    total={detailDialogStaff?.total}
+                />
 
             </div>
         </div>

@@ -130,6 +130,13 @@ const TEMPLATES = [
 תוכל/י לאשר האם את/ה פנוי/ה?`,
     variables: ["{{role}}", "{{event_date}}", "{{venue}}", "{{names}}"],
   },
+  {
+    key: "template_staff_payment_detail",
+    label: "פירוט תשלום לאיש צוות",
+    description: "ההודעה שתישלח לאיש/אשת צוות כשלוחצים על כפתור 'שלח פירוט' בדף התשלומים — כוללת רשימת אירועים עם תאריך/מיקום/סכום, ואת הסכום הכולל לתשלום",
+    defaultValue: `היי {{name}} 😊\nהנה פירוט התשלום שלך:\n{{events_list}}\nסה"כ לתשלום: ₪{{total}}`,
+    variables: ["{{name}}", "{{events_list}}", "{{total}}"],
+  },
 ];
 
 export default function MessageTemplatesTab() {
