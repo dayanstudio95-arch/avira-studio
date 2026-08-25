@@ -11,6 +11,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { sendCalendarInviteByName } from "@/lib/calendarInvites";
+import MobileStaffAssignmentSheet from "@/components/events/MobileStaffAssignmentSheet";
 
 export default function StaffScheduling() {
   const isMobile = useIsMobile();
@@ -21,6 +23,11 @@ export default function StaffScheduling() {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [editModalOpen, setEditModalOpen] = useState(false);
+  // Mobile-only: reuses the same bottom-sheet staff-assignment UI already built
+  // for the Events page's mobile "צוות" quick action (MobileStaffAssignmentSheet)
+  // instead of the desktop-oriented Dialog+renderStaffList, so mobile users get
+  // one consistent per-role picker experience across both pages.
+  const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
   const [sortMode, setSortMode] = useState('date');
   const [filterMissing, setFilterMissing] = useState(true);
   const [isEditingOrder, setIsEditingOrder] = useState(false);
@@ -421,9 +428,10 @@ export default function StaffScheduling() {
                       // CHANGED (2026-08-26): on mobile the "Right: Detail View" column below
                       // just stacks under the list (grid-cols-1 below the lg breakpoint), so
                       // tapping a card silently updated state with no visible feedback unless
-                      // the user scrolled down. Reuse the same edit dialog the calendar view
-                      // already opens on click -- desktop keeps the existing inline split view.
-                      if (isMobile) setEditModalOpen(true);
+                      // the user scrolled down. Opens the same per-role bottom-sheet picker
+                      // already used by the Events page's mobile "צוות" action -- desktop keeps
+                      // the existing inline split view untouched.
+                      if (isMobile) setMobileSheetOpen(true);
                     }}
                     className={`w-full text-left p-4 rounded-lg transition-colors ${
                       isSelected
@@ -595,7 +603,14 @@ export default function StaffScheduling() {
                       return (
                         <button
                           key={event.id}
-                          onClick={() => { setSelectedEvent(event); setEditModalOpen(true); }}
+                          onClick={() => {
+                            setSelectedEvent(event);
+                            // CHANGED (2026-08-26): mobile uses the same bottom-sheet picker as
+                            // the list view now, for a consistent staff-assignment UI across both
+                            // view modes; desktop keeps opening the existing Dialog.
+                            if (isMobile) setMobileSheetOpen(true);
+                            else setEditModalOpen(true);
+                          }}
                           className={`w-full text-left p-1 rounded text-xs transition-colors ${
                             teamStatus.isFullTeam
                               ? 'bg-green-500/20 hover:bg-green-500/30 text-green-400'
@@ -693,6 +708,16 @@ export default function StaffScheduling() {
             </div>
           </DialogContent>
         </Dialog>
+
+        <MobileStaffAssignmentSheet
+          event={selectedEvent}
+          isOpen={mobileSheetOpen}
+          onClose={() => setMobileSheetOpen(false)}
+          staffMembers={staffMembers}
+          events={events}
+          onRefresh={loadData}
+          sendCalendarInviteByName={sendCalendarInviteByName}
+        />
       </div>
     </div>
   );

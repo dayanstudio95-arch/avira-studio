@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Checkbox } from "@/components/ui/checkbox";
 import { base44 } from "@/api/base44Client";
 import { StaffPickerCell } from "./EventsTableWithBulkDelete";
 
@@ -100,9 +99,9 @@ export default function MobileStaffAssignmentSheet({ event, isOpen, onClose, sta
                       const isSelected = videoEditor?.staffMemberName === staff.name;
                       return (
                         <div key={staff.id} className="flex items-center gap-3 p-2 rounded hover:bg-gray-800/50">
-                          <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={async () => {
+                          <button
+                            type="button"
+                            onClick={async () => {
                               if (isSelected) {
                                 await handleRemoveTeamMember(staff.name);
                               } else {
@@ -120,7 +119,14 @@ export default function MobileStaffAssignmentSheet({ event, isOpen, onClose, sta
                               }
                               setEditingEditor(false);
                             }}
-                          />
+                            className={`shrink-0 text-xs font-semibold px-3 py-1.5 rounded-md transition-colors ${
+                              isSelected
+                                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+                                : 'bg-amber-500 hover:bg-amber-600 text-gray-900'
+                            }`}
+                          >
+                            {isSelected ? '✓ נבחר' : 'בחר'}
+                          </button>
                           <div className="flex items-center gap-2 flex-1">
                             <div className="w-8 h-8 bg-purple-500/20 text-purple-400 rounded-full flex items-center justify-center text-sm font-semibold">
                               {staff.name.charAt(0).toUpperCase()}
