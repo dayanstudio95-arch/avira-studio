@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { VAT_RATE } from "@/lib/financialCalculations";
 
 // "שלח פירוט" (gold button) on the Payments page — lets the studio send a staff
 // member a WhatsApp breakdown of exactly what's owed to them: one line per event
@@ -27,8 +28,10 @@ export default function StaffPaymentDetailDialog({ open, onOpenChange, staffName
         .map((e) => `• ${format(new Date(e.date), "d/M/yy")} - ${e.venue || "ללא מיקום"} - ₪${(e.cost || 0).toLocaleString()}`)
         .join("\n");
 
+    const totalWithVat = Math.round((total || 0) * VAT_RATE);
+
     const buildFallback = () =>
-      `היי ${staffName} 😊\nהנה פירוט התשלום שלך:\n${buildEventsList()}\nסה"כ לתשלום: ₪${(total || 0).toLocaleString()}`;
+      `היי ${staffName} 😊\nהנה פירוט התשלום שלך:\n${buildEventsList()}\nסה"כ לתשלום: ₪${(total || 0).toLocaleString()} (כולל מע"מ: ₪${totalWithVat.toLocaleString()})`;
 
     const loadMessage = async () => {
       try {
@@ -39,6 +42,7 @@ export default function StaffPaymentDetailDialog({ open, onOpenChange, staffName
           const msg = tpl
             .replace(/\{\{name\}\}/g, staffName || "")
             .replace(/\{\{events_list\}\}/g, buildEventsList())
+            .replace(/\{\{total_with_vat\}\}/g, totalWithVat.toLocaleString())
             .replace(/\{\{total\}\}/g, (total || 0).toLocaleString());
           setMessageText(msg);
         } else {

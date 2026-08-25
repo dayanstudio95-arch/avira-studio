@@ -133,9 +133,9 @@ const TEMPLATES = [
   {
     key: "template_staff_payment_detail",
     label: "פירוט תשלום לאיש צוות",
-    description: "ההודעה שתישלח לאיש/אשת צוות כשלוחצים על כפתור 'שלח פירוט' בדף התשלומים — כוללת רשימת אירועים עם תאריך/מיקום/סכום, ואת הסכום הכולל לתשלום",
-    defaultValue: `היי {{name}} 😊\nהנה פירוט התשלום שלך:\n{{events_list}}\nסה"כ לתשלום: ₪{{total}}`,
-    variables: ["{{name}}", "{{events_list}}", "{{total}}"],
+    description: "ההודעה שתישלח לאיש/אשת צוות כשלוחצים על כפתור 'שלח פירוט' בדף התשלומים — כוללת רשימת אירועים עם תאריך/מיקום/סכום, ואת הסכום הכולל לתשלום (כולל וללא מע\"מ)",
+    defaultValue: `היי {{name}} 😊\nהנה פירוט התשלום שלך:\n{{events_list}}\nסה"כ לתשלום: ₪{{total}} (כולל מע"מ: ₪{{total_with_vat}})`,
+    variables: ["{{name}}", "{{events_list}}", "{{total}}", "{{total_with_vat}}"],
   },
 ];
 
