@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
-import { useAuth } from "@/lib/SupabaseAuthContext";
 import { usePermission } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -88,7 +87,11 @@ export default function NotificationBell() {
     markAsRead(notification);
     if (notification.relatedLeadId) {
       setOpen(false);
-      navigate(createPageUrl("Leads"));
+      // Reuses the ?openLeadId= deep-link pattern already established by
+      // GlobalSearch.jsx -- Leads.jsx picks this query param up once its data
+      // has loaded and opens that lead straight in UnifiedSidePanel, instead
+      // of just landing on the bare Leads list.
+      navigate(`${createPageUrl("Leads")}?openLeadId=${notification.relatedLeadId}`);
     }
   };
 
