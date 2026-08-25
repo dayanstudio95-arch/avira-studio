@@ -7,13 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Calendar, List, Users, AlertTriangle, UserCheck, ChevronLeft, ChevronRight, X, GripVertical, Pencil, Check } from "lucide-react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths } from "date-fns";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { toast } from "sonner";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { sendCalendarInviteByName } from "@/lib/calendarInvites";
-import { getStaffRateForRole } from "@/lib/staffRates";
 import MobileStaffAssignmentSheet from "@/components/events/MobileStaffAssignmentSheet";
+import StaffAssignmentRoleList from "@/components/events/StaffAssignmentRoleList";
 
 export default function StaffScheduling() {
   const isMobile = useIsMobile();
@@ -40,12 +38,6 @@ export default function StaffScheduling() {
     videographer: 'וידאו 1',
     videographer2: 'וידאו 2',
     editor: 'עורך'
-  };
-
-  const getRolesForStaff = (staffRole) => {
-    if (staffRole === 'photographer') return ['photographer1', 'photographer2'];
-    if (staffRole === 'videographer') return ['videographer', 'videographer2'];
-    return [];
   };
 
   useEffect(() => {
@@ -96,69 +88,6 @@ export default function StaffScheduling() {
     return { isFullTeam, missingCount, assignedCount: assignedNonEditorTeam.length };
   };
 
-  const handleToggleEditorMember = async (event, staffMemberName) => {
-    try {
-      const currentTeam = event.team || [];
-      const memberExists = currentTeam.some(m => m.staffMemberName === staffMemberName && m.role === 'editor');
-      let newTeam;
-      if (memberExists) {
-        newTeam = currentTeam.filter(m => !(m.staffMemberName === staffMemberName && m.role === 'editor'));
-      } else {
-        const withoutEmptyEditor = currentTeam.filter(m => m.role !== 'editor' || m.staffMemberName);
-        newTeam = [...withoutEmptyEditor, {
-          role: 'editor',
-          staffMemberName,
-          cost: getStaffRateForRole(staffMembers.find(s => s.name === staffMemberName), 'editor'),
-          isPaid: false,
-          progressStatus: 'pending'
-        }];
-      }
-      await base44.entities.Event.update(event.id, { team: newTeam });
-      await loadData();
-      if (selectedEvent?.id === event.id) setSelectedEvent({ ...event, team: newTeam });
-    } catch (error) {
-      console.error('Failed to update editor:', error);
-    }
-  };
-
-  const handleAssignRole = async (event, staffMemberName, role) => {
-    try {
-      const currentTeam = event.team || [];
-      const memberWithThisNameAndRole = currentTeam.find(m => m.staffMemberName === staffMemberName && m.role === role);
-
-      let newTeam;
-      if (memberWithThisNameAndRole) {
-        // Already in this role → remove
-        newTeam = currentTeam.filter(m => !(m.staffMemberName === staffMemberName && m.role === role));
-      } else {
-        const conflictingEvent = events.find(e =>
-          e.id !== event.id &&
-          e.date === event.date &&
-          e.team?.some(m => m.staffMemberName === staffMemberName)
-        );
-        if (conflictingEvent) {
-          toast.error(`${staffMemberName} כבר תפוס באירוע אחר באותו יום`);
-          return;
-        }
-        // Remove this person from any other role, and remove whoever was in target role
-        const filtered = currentTeam.filter(m => m.staffMemberName !== staffMemberName && m.role !== role);
-        newTeam = [...filtered, {
-          role,
-          staffMemberName,
-          cost: getStaffRateForRole(staffMembers.find(s => s.name === staffMemberName), role),
-          isPaid: false,
-          progressStatus: 'pending'
-        }];
-      }
-
-      await base44.entities.Event.update(event.id, { team: newTeam });
-      await loadData();
-      if (selectedEvent?.id === event.id) setSelectedEvent({ ...event, team: newTeam });
-    } catch (error) {
-      console.error('Failed to assign role:', error);
-    }
-  };
-
   const handleRemoveTeamMember = async (event, staffMemberName) => {
     try {
       const newTeam = (event.team || []).filter(m => m.staffMemberName !== staffMemberName);
@@ -190,7 +119,7 @@ export default function StaffScheduling() {
     await loadData();
   };
 
-  const renderStaffList = (event, compact = false, showEditControls = false) => (
+  const renderStaffList = (event, _compact = false, showEditControls = false) => (
     <>
       {showEditControls && (
         <div className="flex justify-between items-center mb-3">
@@ -259,85 +188,13 @@ export default function StaffScheduling() {
           </Droppable>
         </DragDropContext>
       ) : (
-        <div className={`grid ${compact ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'} gap-3 ${compact ? 'max-h-64' : 'max-h-[450px]'} overflow-y-auto`}>
-          {(showEditControls ? orderedStaff : staffMembers.filter(s => s.role !== 'editor')).map((staff) => {
-            const availableRoles = getRolesForStaff(staff.role);
-            const assignedRole = event?.team?.find(m => m.staffMemberName === staff.name)?.role;
-            const isBooked = event && events.some(e =>
-              e.id !== event.id &&
-              e.date === event.date &&
-              e.team?.some(m => m.staffMemberName === staff.name)
-            );
-            const avatarColor = staff.role === 'photographer' ? 'bg-blue-500/20 text-blue-400' : 'bg-pink-500/20 text-pink-400';
-            return (
-              <div
-                key={staff.id}
-                className={`flex items-center gap-3 p-3 rounded-lg border ${
-                  assignedRole
-                    ? staff.role === 'photographer' ? 'bg-blue-500/20 border-blue-500/50' : 'bg-pink-500/20 border-pink-500/50'
-                    : isBooked ? 'bg-gray-800/30 border-gray-700 opacity-50' : 'bg-gray-800/50 border-gray-700'
-                }`}
-              >
-                <div className={`w-9 h-9 ${avatarColor} rounded-full flex items-center justify-center font-semibold flex-shrink-0`}>
-                  {staff.name.charAt(0).toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-white font-medium text-sm truncate">{staff.name}</div>
-                  <div className="flex gap-1 mt-1 flex-wrap">
-                    {availableRoles.map(role => (
-                      <button
-                        key={role}
-                        disabled={isBooked && assignedRole !== role}
-                        onClick={() => event && handleAssignRole(event, staff.name, role)}
-                        className={`text-xs px-2 py-0.5 rounded font-medium transition-colors ${
-                          assignedRole === role
-                            ? staff.role === 'photographer' ? 'bg-blue-500 text-white' : 'bg-pink-500 text-white'
-                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                        } disabled:opacity-40 disabled:cursor-not-allowed`}
-                      >
-                        {ROLE_LABELS[role]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {isBooked && !assignedRole && (
-                  <Badge className="bg-red-500/20 text-red-400 border-red-500/30 border text-xs">תפוס</Badge>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {staffMembers.filter(s => s.role === 'editor').length > 0 && (
-        <div className="mt-4">
-          <h4 className="text-gray-400 text-sm font-semibold mb-2">✂️ עורכים</h4>
-          <div className={`grid ${compact ? 'grid-cols-2' : 'grid-cols-1 md:grid-cols-2'} gap-2`}>
-            {staffMembers.filter(s => s.role === 'editor').map((staff) => {
-              const isAssigned = event?.team?.some(m => m.staffMemberName === staff.name && m.role === 'editor');
-              return (
-                <div
-                  key={staff.id}
-                  onClick={() => event && handleToggleEditorMember(event, staff.name)}
-                  className={`flex items-center gap-3 p-3 rounded-lg transition-colors border cursor-pointer ${
-                    isAssigned
-                      ? 'bg-purple-500/20 border-purple-500/50'
-                      : 'bg-gray-800/50 hover:bg-gray-800 border-gray-700'
-                  }`}
-                >
-                  <Checkbox checked={isAssigned} onCheckedChange={() => event && handleToggleEditorMember(event, staff.name)} onClick={e => e.stopPropagation()} />
-                  <div className="w-9 h-9 bg-purple-500/20 text-purple-400 rounded-full flex items-center justify-center font-semibold">
-                    {staff.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="flex-1 text-left">
-                    <div className="text-white font-medium text-sm">{staff.name}</div>
-                    <div className="text-gray-400 text-xs">עורך</div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <StaffAssignmentRoleList
+          event={event}
+          staffMembers={staffMembers}
+          events={events}
+          onRefresh={loadData}
+          sendCalendarInviteByName={sendCalendarInviteByName}
+        />
       )}
     </>
   );
