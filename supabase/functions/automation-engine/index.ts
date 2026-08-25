@@ -958,6 +958,174 @@ async function runCustomStaffMessage(supabase: any, tenantId: string, automation
   return { sent, failed, skipped, logs };
 }
 
+// Builds the recipient list for a type='custom', audience_type='staff_role' automation.
+// Config shape: { role: 'photographer' | 'videographer' | 'editor' | 'graphic_designer' | 'all' | 'custom',
+//                  staffIds?: string[] }
+// If staffIds is a non-empty array, it takes precedence over role -- this is how the
+// hand-pickable checkbox list (CreateCustomAutomationModal.jsx) targets an exact set of
+// people rather than an entire role. Falls back to role-based filtering (or "all") when
+// staffIds is absent/empty, so automations created before this feature keep working as-is.
+// Mirrors runCustomStaffMessage's own staff_members filter exactly (same STAFF_JOB_ROLES
+// vocabulary, matched against staff_members.role -- not the per-event team-slot role).
+async function buildStaffRoleAudience(supabase: any, tenantId: string, audienceConfig: any, template: string, testPhone?: string) {
+  const targetRole = audienceConfig?.role || 'all';
+  const staffIds: string[] = Array.isArray(audienceConfig?.staffIds) ? audienceConfig.staffIds : [];
+  const { data: allStaff } = await supabase.from('staff_members').select('*').eq('tenant_id', tenantId);
+
+  const eligible = (allStaff || []).filter((m: any) => {
+    if (staffIds.length > 0) return staffIds.includes(m.id);
+    if (targetRole && targetRole !== 'all' && m.role !== targetRole) return false;
+    return true;
+  });
+
+  return eligible.map((member: any) => {
+    const finalMessage = renderTemplate(template, { staff_name: member.name, staffName: member.name });
+    const phone = testPhone || member.phone_number || '';
+    // staffId/staffPhone are the generic keys the frontend's shared preview/select-and-send
+    // UI reads regardless of what kind of recipient this actually is (staff/lead/event) --
+    // see runQuestionnaireReminder/runPaymentReminder/runAlbumReminder, which do the same.
+    return { staffId: member.id, name: member.name, staffPhone: phone, message: finalMessage, eventDate: null };
+  });
+}
+
+// Builds the recipient list for a type='custom', audience_type='leads_events' automation.
+// Config shape: { conditions: [ { field: 'client_payment_status'|'album_status'|'event_date_relative'|'event_month_year',
+//                                  op: 'eq'|'neq'|'before_today'|'after_today', value?: string } ] }
+// event_month_year's value is a 'YYYY-MM' string, compared against event.date's own
+// first-7-characters -- this is how CreateCustomAutomationModal.jsx's "specific month+year
+// of the event date" picker is expressed, additive to the pre-existing 3 condition fields.
+// All conditions are AND-ed together. Only fields that exist on `events` are supported (both
+// client_payment_status and album_status live on events, not leads -- confirmed against
+// 0001_init.sql -- so this filters `events`, matching album_reminder/payment_reminder's own
+// precedent of sourcing recipients from `events`, not `leads`).
+async function buildLeadsEventsAudience(supabase: any, tenantId: string, audienceConfig: any, template: string, studioName: string, testPhone?: string) {
+  const { data: allEvents } = await supabase.from('events').select('*').eq('tenant_id', tenantId).order('date', { ascending: false });
+  const conditions = Array.isArray(audienceConfig?.conditions) ? audienceConfig.conditions : [];
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+
+  const eligible = (allEvents || []).filter((event: any) => {
+    if (!event.phone_number) return false;
+    for (const cond of conditions) {
+      if (!cond || !cond.field) continue;
+      if (cond.field === 'client_payment_status') {
+        if (cond.op === 'eq' && event.client_payment_status !== cond.value) return false;
+        if (cond.op === 'neq' && event.client_payment_status === cond.value) return false;
+      } else if (cond.field === 'album_status') {
+        if (cond.op === 'eq' && event.album_status !== cond.value) return false;
+        if (cond.op === 'neq' && event.album_status === cond.value) return false;
+      } else if (cond.field === 'event_date_relative') {
+        if (!event.date) return false;
+        const isPast = event.date < todayStr;
+        if (cond.op === 'before_today' && !isPast) return false;
+        if (cond.op === 'after_today' && isPast) return false;
+      } else if (cond.field === 'event_month_year') {
+        if (!event.date) return false;
+        const monthYear = String(event.date).slice(0, 7);
+        if (cond.op === 'eq' && monthYear !== cond.value) return false;
+        if (cond.op === 'neq' && monthYear === cond.value) return false;
+      }
+    }
+    return true;
+  });
+
+  return eligible.map((event: any) => {
+    const finalMessage = renderTemplate(template, {
+      coupleNames: event.couple_names || '',
+      eventDate: event.date || '',
+      venueName: event.venue || '',
+      studioName,
+    });
+    const phone = testPhone || event.phone_number || '';
+    return { staffId: event.id, name: event.couple_names, staffPhone: phone, message: finalMessage, eventDate: event.date };
+  });
+}
+
+// The handler for type='custom' automations -- generalizes runCustomStaffMessage's exact
+// guard sequence (checkSendGuards -> in-run dedup -> sendWhatsApp -> log insert) to whichever
+// audience_type the admin picked when creating this automation. No message/target override
+// params here (unlike custom_staff_message's free-text compose flow) -- the template and
+// audience config are read directly off the already-saved automation row.
+async function runCustomAudienceMessage(supabase: any, tenantId: string, automation: any, runId: string, opts: any = {}) {
+  const { testPhone, dryRun, selectedStaffIds, quietHours } = opts;
+
+  const template = (automation.message_template || '').trim();
+  if (!template) {
+    return { sent: 0, failed: 0, skipped: 0, logs: [], previews: [] };
+  }
+
+  const audienceType = automation.audience_type;
+  const audienceConfig = automation.audience_config || {};
+
+  let rows: any[] = [];
+  if (audienceType === 'staff_role') {
+    rows = await buildStaffRoleAudience(supabase, tenantId, audienceConfig, template, testPhone);
+  } else if (audienceType === 'leads_events') {
+    const studioName = await getStudioName(supabase, tenantId);
+    rows = await buildLeadsEventsAudience(supabase, tenantId, audienceConfig, template, studioName, testPhone);
+  } else {
+    return { sent: 0, failed: 0, skipped: 0, logs: [], previews: [] };
+  }
+
+  if (dryRun) {
+    return { sent: 0, failed: 0, skipped: 0, logs: [], previews: rows };
+  }
+
+  const toSend = Array.isArray(selectedStaffIds) && selectedStaffIds.length > 0
+    ? rows.filter((r) => selectedStaffIds.includes(r.staffId))
+    : rows;
+
+  let sent = 0, failed = 0, skipped = 0;
+  const logs: any[] = [];
+  const sentPhones = new Set<string>();
+
+  for (const item of toSend) {
+    const phone = (item.staffPhone || '').trim();
+    if (!phone || phone.length <= 3) {
+      skipped++;
+      logs.push({ staffId: item.staffId, name: item.name, status: 'skipped', reason: 'invalid_phone' });
+      continue;
+    }
+    if (sentPhones.has(phone)) {
+      skipped++;
+      logs.push({ staffId: item.staffId, name: item.name, status: 'skipped', reason: 'dup_phone' });
+      continue;
+    }
+
+    const logEntry = {
+      automation_run_id: runId,
+      automation_id: automation.id,
+      automation_name: automation.name,
+      recipient_name: item.name,
+      recipient_contact: phone,
+      channel: automation.channel || 'whatsapp',
+      message_content: item.message,
+    };
+
+    const guardSkipReason = await checkSendGuards(supabase, automation, quietHours, phone);
+    if (guardSkipReason) {
+      await supabase.from('automation_message_logs').insert({ ...logEntry, status: 'skipped', error: guardSkipReason });
+      skipped++;
+      logs.push({ staffId: item.staffId, name: item.name, status: 'skipped', reason: guardSkipReason });
+      continue;
+    }
+
+    try {
+      await sendWhatsApp(supabase, tenantId, phone, item.message);
+      sentPhones.add(phone);
+      await supabase.from('automation_message_logs').insert({ ...logEntry, status: 'sent', sent_at: new Date().toISOString() });
+      sent++;
+      logs.push({ staffId: item.staffId, name: item.name, phone, status: 'sent' });
+    } catch (err) {
+      await supabase.from('automation_message_logs').insert({ ...logEntry, status: 'failed', error: err.message });
+      failed++;
+      logs.push({ staffId: item.staffId, name: item.name, phone, status: 'failed', error: err.message });
+    }
+  }
+
+  return { sent, failed, skipped, logs };
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Orchestration
 // ─────────────────────────────────────────────────────────────────────────
@@ -998,6 +1166,7 @@ async function executeAutomation(supabase: any, tenantId: string, automation: an
     if (automation.type === 'album_reminder') result = await runAlbumReminder(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedEventIds, quietHours });
     if (automation.type === 'questionnaire_send') result = await runQuestionnaireSend(supabase, tenantId, automation, runId, { testPhone, dryRun, targetYYYYMM, selectedEventIds, quietHours });
     if (automation.type === 'custom_staff_message') result = await runCustomStaffMessage(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds, messageTemplateOverride, targetRoleOverride, quietHours });
+    if (automation.type === 'custom') result = await runCustomAudienceMessage(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds, quietHours });
 
     if (!dryRun) {
       const nextRunAt = calculateNextRun(automation);

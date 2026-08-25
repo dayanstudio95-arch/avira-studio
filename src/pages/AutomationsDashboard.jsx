@@ -9,6 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Settings, Play, Clock, Calendar, Loader2, X, Send, Eye, RefreshCw, ChevronDown, ChevronUp, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
+import { STAFF_JOB_ROLES, staffJobRoleLabel } from "@/lib/staffRoles";
+import CreateCustomAutomationModal from "@/components/automations/CreateCustomAutomationModal";
+import TemplateVariablesHelp from "@/components/automations/TemplateVariablesHelp";
+import { VARS_BY_TYPE, VARS_BY_AUDIENCE_TYPE } from "@/lib/automationTemplateVariables";
 
 // ── Default automations to seed if none exist ──────────────────────────────
 const DEFAULTS = [
@@ -89,18 +93,8 @@ const DEFAULTS = [
 ];
 
 // ── Variable chips per automation type ─────────────────────────────────────
-const VARS_BY_TYPE = {
-  monthly_staff_summary: ["{staffName}", "{month}", "{eventsList}", "{eventCount}", "{totalDays}"],
-  daily_event_brief: ["{staffName}", "{coupleNames}", "{venue}", "{date}", "{time}", "{productionDetails}", "{photographer}", "{videographer}"],
-  album_reminder: ["{coupleNames}", "{albumLink}", "{date}", "{venue}", "{studioName}"],
-  payment_reminder: ["{coupleNames}", "{remainingBalance}", "{eventDate}", "{venueName}", "{studioName}"],
-  questionnaire_reminder: ["{coupleNames}", "{eventDate}", "{venue}", "{questionnaireLink}", "{studioName}"],
-  // Added (2026-08-18) — this type was missing from the map entirely (pre-existing gap,
-  // unrelated to the studioName fix), so its merge-field chips were never shown in the
-  // template editor even though the handler (automation-engine's runQuestionnaireSend)
-  // supports all of these.
-  questionnaire_send: ["{coupleNames}", "{venue}", "{date}", "{questionnaireUrl}", "{studioName}"],
-};
+// Now sourced from src/lib/automationTemplateVariables.js (shared with
+// CreateCustomAutomationModal.jsx) — see that file for descriptions.
 
 const FREQ_LABELS = {
   monthly_1st: "ראשון לחודש",
@@ -113,6 +107,28 @@ const FREQ_COLORS = {
   daily: "bg-purple-900/60 text-purple-300 border-purple-700",
   manual: "bg-gray-800/60 text-gray-400 border-gray-600",
 };
+
+// Human-readable summary for one leads_events audience condition — mirrors the exact
+// field/op vocabulary automation-engine's buildLeadsEventsAudience() understands.
+const CONDITION_FIELD_LABELS = {
+  client_payment_status: "סטטוס תשלום",
+  album_status: "סטטוס אלבום",
+  event_date_relative: "תאריך אירוע",
+};
+const PAYMENT_STATUS_LABELS = { Paid: "שולם", "Partially Paid": "שולם חלקית", Unpaid: "לא שולם" };
+const ALBUM_STATUS_LABELS = { pending: "לא נשלח", sent: "נשלח" };
+function describeCondition(c) {
+  const fieldLabel = CONDITION_FIELD_LABELS[c?.field] || c?.field || "";
+  if (c?.field === "event_date_relative") {
+    return `${fieldLabel}: ${c.op === "before_today" ? "עבר" : "עתידי"}`;
+  }
+  const valueLabel = c?.field === "client_payment_status"
+    ? (PAYMENT_STATUS_LABELS[c.value] || c.value)
+    : c?.field === "album_status"
+    ? (ALBUM_STATUS_LABELS[c.value] || c.value)
+    : c?.value;
+  return `${fieldLabel} ${c?.op === "neq" ? "שונה מ" : "שווה ל"} "${valueLabel}"`;
+}
 
 function formatPhone(raw) {
   const digits = raw.replace(/\D/g, "");
@@ -170,7 +186,9 @@ function SettingsModal({ automation, onClose, onSaved }) {
   const [loadingReal, setLoadingReal] = useState(false);
   const [previewSelected, setPreviewSelected] = useState(new Set()); // for questionnaire_send checkboxes
 
-  const vars = VARS_BY_TYPE[automation.type] || [];
+  const vars = automation.type === "custom"
+    ? (VARS_BY_AUDIENCE_TYPE[automation.audienceType] || [])
+    : (VARS_BY_TYPE[automation.type] || []);
   const showStaffFilter = ["monthly_staff_summary", "daily_event_brief"].includes(automation.type);
   const HEBREW_MONTHS = ["","ינואר","פברואר","מרץ","אפריל","מאי","יוני","יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר"];
 
@@ -535,19 +553,12 @@ function SettingsModal({ automation, onClose, onSaved }) {
           {/* ── Message Template ── */}
           <section className="bg-gray-800/50 border border-gray-700 rounded-xl p-4 space-y-3">
             <h3 className="text-purple-300 font-semibold text-sm">💬 תבנית הודעה</h3>
-            {vars.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {vars.map(v => (
-                  <button
-                    key={v}
-                    onClick={() => insertVar(v)}
-                    className="text-xs px-2 py-1 bg-indigo-900/40 border border-indigo-700/50 text-indigo-300 rounded-lg hover:bg-indigo-800/60 transition-colors"
-                  >
-                    {v}
-                  </button>
-                ))}
-              </div>
+            {automation.type === 'daily_event_brief' && (
+              <p className="text-xs text-gray-500">
+                הפרטים האלה מוצגים מהאירוע הראשון של אותו יום בלבד, אם יש כמה אירועים.
+              </p>
             )}
+            <TemplateVariablesHelp vars={vars} onInsert={insertVar} />
             <textarea
               value={form.messageTemplate}
               onChange={e => setForm(f => ({ ...f, messageTemplate: e.target.value }))}
@@ -557,6 +568,32 @@ function SettingsModal({ automation, onClose, onSaved }) {
               placeholder="הכנס תבנית הודעה..."
             />
           </section>
+
+          {/* ── Audience summary (custom automations only, read-only — v1 doesn't
+              support editing the audience after creation; delete + recreate instead) ── */}
+          {automation.type === 'custom' && (
+            <section className="bg-gray-800/50 border border-gray-700 rounded-xl p-4 space-y-2">
+              <h3 className="text-purple-300 font-semibold text-sm">👥 קהל יעד (לא ניתן לעריכה)</h3>
+              {automation.audienceType === 'staff_role' && (
+                <p className="text-gray-300 text-sm">
+                  אנשי צוות: <span className="text-white font-medium">
+                    {staffJobRoleLabel(automation.audienceConfig?.role) || 'כל אנשי הצוות'}
+                  </span>
+                </p>
+              )}
+              {automation.audienceType === 'leads_events' && (
+                <div className="text-gray-300 text-sm space-y-1">
+                  {(automation.audienceConfig?.conditions || []).length === 0 && (
+                    <p>כל האירועים (ללא סינון)</p>
+                  )}
+                  {(automation.audienceConfig?.conditions || []).map((c, i) => (
+                    <p key={i}>• {describeCondition(c)}</p>
+                  ))}
+                </div>
+              )}
+              <p className="text-gray-500 text-xs">כדי לשנות את קהל היעד, מחקו אוטומציה זו וצרו חדשה.</p>
+            </section>
+          )}
 
           {/* ── Months Ahead (questionnaire_send only) ── */}
           {automation.type === 'questionnaire_send' && (
@@ -1064,6 +1101,7 @@ export default function AutomationsDashboard() {
   const [albumReminderModal, setAlbumReminderModal] = useState(null); // { automation, previews }
   const [questionnaireSendModal, setQuestionnaireSendModal] = useState(null); // automation
   const [customStaffMessageModal, setCustomStaffMessageModal] = useState(null); // automation
+  const [createCustomModal, setCreateCustomModal] = useState(false);
   const [sendingAll, setSendingAll] = useState(false);
   const [selectedRecipients, setSelectedRecipients] = useState(new Set()); // indices of selected previews
 
@@ -1171,7 +1209,7 @@ export default function AutomationsDashboard() {
     }
     setRunningId(automation.id);
     try {
-      const DRY_RUN_TYPES = ['monthly_staff_summary', 'daily_event_brief', 'payment_reminder', 'questionnaire_reminder'];
+      const DRY_RUN_TYPES = ['monthly_staff_summary', 'daily_event_brief', 'payment_reminder', 'questionnaire_reminder', 'custom'];
       if (DRY_RUN_TYPES.includes(automation.type)) {
         // First do a dry run to show preview
         const res = await base44.functions.invoke("automationEngine", {
@@ -1243,9 +1281,18 @@ export default function AutomationsDashboard() {
     <div className="min-h-screen bg-gray-950 p-4 md:p-8" dir="rtl">
       <div className="max-w-5xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl md:text-4xl font-bold text-white">⚡ אוטומציות לעסק</h1>
-          <p className="text-gray-400 mt-1 text-sm">ניהול שליחות אוטומטיות בוואטסאפ לצוות וללקוחות</p>
+        <div className="mb-8 flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-bold text-white">⚡ אוטומציות לעסק</h1>
+            <p className="text-gray-400 mt-1 text-sm">ניהול שליחות אוטומטיות בוואטסאפ לצוות וללקוחות</p>
+          </div>
+          <button
+            onClick={() => setCreateCustomModal(true)}
+            className="flex items-center gap-2 bg-purple-600 hover:bg-purple-500 text-white font-medium px-4 py-2.5 rounded-xl transition-colors shrink-0"
+          >
+            <span className="text-lg leading-none">＋</span>
+            אוטומציה חדשה
+          </button>
         </div>
 
         {isLoading ? (
@@ -1300,6 +1347,13 @@ export default function AutomationsDashboard() {
           automation={customStaffMessageModal}
           onClose={() => setCustomStaffMessageModal(null)}
           onSent={loadAutomations}
+        />
+      )}
+
+      {createCustomModal && (
+        <CreateCustomAutomationModal
+          onClose={() => setCreateCustomModal(false)}
+          onCreated={() => { setCreateCustomModal(false); loadAutomations(); }}
         />
       )}
 
