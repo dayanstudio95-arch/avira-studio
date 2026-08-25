@@ -10,8 +10,10 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSam
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function StaffScheduling() {
+  const isMobile = useIsMobile();
   const [events, setEvents] = useState([]);
   const [staffMembers, setStaffMembers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -414,7 +416,15 @@ export default function StaffScheduling() {
                 return (
                   <button
                     key={event.id}
-                    onClick={() => setSelectedEvent(event)}
+                    onClick={() => {
+                      setSelectedEvent(event);
+                      // CHANGED (2026-08-26): on mobile the "Right: Detail View" column below
+                      // just stacks under the list (grid-cols-1 below the lg breakpoint), so
+                      // tapping a card silently updated state with no visible feedback unless
+                      // the user scrolled down. Reuse the same edit dialog the calendar view
+                      // already opens on click -- desktop keeps the existing inline split view.
+                      if (isMobile) setEditModalOpen(true);
+                    }}
                     className={`w-full text-left p-4 rounded-lg transition-colors ${
                       isSelected
                         ? 'bg-yellow-500/20 border border-yellow-500/50'
