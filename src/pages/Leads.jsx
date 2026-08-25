@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +38,7 @@ const statusConfig = {
 
 export default function Leads() {
   const { user } = useAuth();
+  const location = useLocation();
   // lead_coordinator (2026-08-20: given full access to this same page — sees all
   // tenant leads with financial data, can create/edit — but must never be able to
   // delete a lead) hits this page too now, not just owner/admin/studio_manager. RLS
@@ -122,9 +124,14 @@ export default function Leads() {
   // navigates here with ?openLeadId=<id>; once leads are loaded, auto-open that lead's
   // UnifiedSidePanel the same way clicking its name would, then strip the param so a
   // refresh/back-nav doesn't reopen it.
+  // CHANGED (2026-08-26): also reused by NotificationBell.jsx's deep-link. This effect
+  // used to depend on [leads, isLoading] only -- so when already mounted on /Leads with
+  // data loaded, a navigate() call that only changes the query string (no remount)
+  // never re-triggered it; only a full page refresh did. Depending on location.search
+  // too makes it re-fire on every URL-only navigation, not just on mount.
   useEffect(() => {
     if (isLoading || leads.length === 0) return;
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(location.search);
     const openLeadId = params.get('openLeadId');
     if (!openLeadId) return;
     const lead = leads.find(l => l.id === openLeadId);
@@ -132,7 +139,7 @@ export default function Leads() {
     params.delete('openLeadId');
     const newSearch = params.toString();
     window.history.replaceState({}, '', window.location.pathname + (newSearch ? `?${newSearch}` : ''));
-  }, [leads, isLoading]);
+  }, [leads, isLoading, location.search]);
 
   const loadData = async () => {
     setIsLoading(true);
