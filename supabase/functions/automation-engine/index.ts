@@ -672,6 +672,7 @@ async function runAlbumReminder(supabase: any, tenantId: string, automation: any
       eventDate: event.date || '',
       venueName: event.venue || '',
       studioName,
+      albumLink: event.album_sketch_link || '',
     });
 
     pendingMessages.push({
