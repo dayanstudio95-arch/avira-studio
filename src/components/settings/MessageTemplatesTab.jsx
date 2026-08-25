@@ -91,8 +91,8 @@ const TEMPLATES = [
     key: "template_final_link",
     label: "שליחת סרטון/תמונות סופי לזוג",
     description: "ההודעה שתישלח לזוג כשלוחצים על 'שלח לזוג' (חומר סופי) בסטטוס עבודה",
-    defaultValue: `שלום {{names}} 😊\nתאריך האירוע: {{event_date}}\nלצפייה: {{final_link}}`,
-    variables: ["{{names}}", "{{event_date}}", "{{venue}}", "{{final_link}}"],
+    defaultValue: `שלום {{names}} 😊\nתאריך האירוע: {{event_date}}\nלצפייה: {{final_link}}\nמדריך לבחירת תמונות והזמנת אלבום: {{album_guide_link}}`,
+    variables: ["{{names}}", "{{event_date}}", "{{venue}}", "{{final_link}}", "{{album_guide_link}}"],
   },
   {
     key: "template_invoice_message",

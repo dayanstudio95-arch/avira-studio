@@ -79,6 +79,7 @@ const scopedNavItemsByRole = {
   album_manager: [
     { title: "הזמנות אלבומים", url: "/AlbumOrders", icon: BookImage },
     { title: "קטלוג אלבומים", url: "/AlbumCatalogSettings", icon: Settings },
+    { title: "מדריך אלבום", url: "/AlbumGuideSettings", icon: FileText },
   ],
 };
 
@@ -102,6 +103,7 @@ const secondaryNavItems = [
   { title: "אנשי צוות",         url: createPageUrl("TeamMembers"),         icon: Camera },
   { title: "חבילות ומחירים",    url: createPageUrl("Packages"),            icon: Camera },
   { title: "קטלוג אלבומים",     url: "/AlbumCatalogSettings",              icon: Settings },
+  { title: "מדריך אלבום",       url: "/AlbumGuideSettings",                icon: FileText },
   { title: "ניהול חשבוניות",    url: createPageUrl("AllInvoicesPage"),     icon: FileText },
   { title: "אישור הודעות",      url: "/PendingApprovals",                  icon: Bell },
 ];

@@ -106,6 +106,14 @@ const FUNCTION_MAP = {
   // under normal RLS, since those are all authenticated admin/album_manager actions.
   albumPortal: 'album-portal',
   albumPrintAccess: 'album-print-access',
+  // Album Guide Page — separate, generic couple-facing informational page (not part
+  // of the album-portal purchase wizard above). Public/unauthenticated like
+  // get-lead-public: no config.toml override needed since this is always called
+  // through this functions.invoke() wrapper, which already attaches a valid JWT
+  // (real session token, or the anon-key fallback below) satisfying platform-level
+  // verify_jwt=true even with no logged-in user.
+  getAlbumGuidePublic: 'get-album-guide-public',
+
   // Two-way staff availability confirmation (migration 0041) — public, unauthenticated
   // like the two functions above. Called from StaffAvailabilityResponse.jsx (the
   // /staff-availability/:token page); the raw token is the caller's only credential,

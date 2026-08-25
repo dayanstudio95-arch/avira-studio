@@ -53,9 +53,17 @@ const AlbumCatalogSettings = lazy(() => import('./pages/AlbumCatalogSettings'));
 const AlbumPortal = lazy(() => import('./pages/AlbumPortal'));
 const AlbumPrintAccess = lazy(() => import('./pages/AlbumPrintAccess'));
 
+// Album Guide Page — separate, generic couple-facing informational page (not
+// part of the album-portal purchase wizard above). See CLAUDE.md's Wedding
+// Albums module section: reads (never writes) album_products/album_covers/
+// album_addons, and has no relationship to the album_orders/... tables.
+const AlbumGuideSettings = lazy(() => import('./pages/AlbumGuideSettings'));
+
 // Two-way staff availability confirmation -- public, no-login response page opened
 // from the WhatsApp link StaffAvailabilityModal.jsx sends.
 const StaffAvailabilityResponse = lazy(() => import('./pages/StaffAvailabilityResponse'));
+const AlbumGuide = lazy(() => import('./pages/AlbumGuide'));
+
 // Shared fallback while a lazy page chunk downloads -- matches the existing
 // auth-loading spinner's look (fixed inset-0, same spinner classes) so route-change
 // loading doesn't look visually different from the app's other loading states.
@@ -162,6 +170,7 @@ const AuthenticatedApp = () => {
             <Route path="/AlbumOrders" element={<AlbumOrders />} />
             <Route path="/AlbumOrders/:orderId" element={<AlbumOrderDetail />} />
             <Route path="/AlbumCatalogSettings" element={<AlbumCatalogSettings />} />
+            <Route path="/AlbumGuideSettings" element={<AlbumGuideSettings />} />
             <Route path="*" element={<PageNotFound />} />
           </Routes>
         </Suspense>
@@ -210,6 +219,7 @@ const AuthenticatedApp = () => {
           <Route path="/AlbumOrders" element={<AlbumOrders />} />
           <Route path="/AlbumOrders/:orderId" element={<AlbumOrderDetail />} />
           <Route path="/AlbumCatalogSettings" element={<AlbumCatalogSettings />} />
+          <Route path="/AlbumGuideSettings" element={<AlbumGuideSettings />} />
 
           <Route path="*" element={<PageNotFound />} />
         </Routes>
@@ -239,10 +249,16 @@ function App() {
               <Route path="/album/:token" element={<AlbumPortal />} />
               <Route path="/print-access/:token" element={<AlbumPrintAccess />} />
 
+              {/* Album Guide Page -- separate, generic (identical per couple) informational
+                  page, sent as a companion link alongside the gallery link. Public,
+                  no-login, read-only. Not part of the album-portal purchase wizard above. */}
+              <Route path="/album-guide/:tenantId" element={<AlbumGuide />} />
+
               {/* Two-way staff availability confirmation -- public, no-login page opened
                   from the WhatsApp link StaffAvailabilityModal.jsx sends. Token-validated
                   server-side on every request via respond-staff-availability-public. */}
               <Route path="/staff-availability/:token" element={<StaffAvailabilityResponse />} />
+
               {/* Protected routes */}
               <Route path="/*" element={<AuthenticatedApp />} />
             </Routes>

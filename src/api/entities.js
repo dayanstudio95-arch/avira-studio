@@ -159,6 +159,19 @@ export const entities = {
   AlbumOrderAddon: createEntity('album_order_addons'),
   PrintAccessLink: createEntity('print_access_links'),
   PrintAccessEvent: createEntity('print_access_events'),
+  // Album Guide Page (migration 0039_album_guide.sql) — a separate, generic
+  // (one row per tenant) couple-facing informational page explaining the album-
+  // ordering process, sent as a companion link alongside the gallery link. Fully
+  // isolated from the album_orders/... purchase-wizard tables above and from the
+  // legacy events.album_status marker — see CLAUDE.md's Wedding Albums module
+  // section.
+  AlbumGuideContent: createEntity('album_guide_content'),
+  AlbumGuideFaqItem: createEntity('album_guide_faq_items'),
+  // migration 0040 — per-cover preview image + multi-example sketch
+  // galleries for the Album Guide page (see CLAUDE.md, same isolation rule).
+  AlbumGuideCoverPreview: createEntity('album_guide_cover_previews'),
+  AlbumGuideSketchExample: createEntity('album_guide_sketch_examples'),
+  AlbumGuideSketchExampleImage: createEntity('album_guide_sketch_example_images'),
   // Two-way staff availability confirmation (migration 0041) — append-only log of
   // WhatsApp availability-check links sent to staff + their pending/available/declined
   // response. RLS admin-only, same as Notification above. Written by
