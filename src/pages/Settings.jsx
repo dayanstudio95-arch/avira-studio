@@ -63,6 +63,9 @@ export default function Settings() {
   const [editStaffData, setEditStaffData] = useState(null);
   const [isEditStaffDialogOpen, setIsEditStaffDialogOpen] = useState(false);
   const [isPropagatingRate, setIsPropagatingRate] = useState(false);
+  const [retroFromDate, setRetroFromDate] = useState("");
+  const [retroToDate, setRetroToDate] = useState("");
+  const [isRetroUpdating, setIsRetroUpdating] = useState(false);
   const [isEventImportOpen, setIsEventImportOpen] = useState(false);
   const [isStaffImportOpen, setIsStaffImportOpen] = useState(false);
   const [masterContractTerms, setMasterContractTerms] = useState(DEFAULT_CONTRACT_TERMS);
@@ -199,6 +202,70 @@ export default function Settings() {
       toast.error("שגיאה בעדכון התעריף באירועים העתידיים");
     }
     setIsPropagatingRate(false);
+  };
+
+  // One-off manual backfill for a specific past/mixed date range (unlike the
+  // "future events" action above, which is intentionally always scoped to
+  // today-and-later) -- e.g. correcting a rate that was already wrong for
+  // several months of already-assigned events before the rate was fixed here.
+  // Explicit opt-in, studio-triggered per staff member with an explicit date
+  // range, so it can never accidentally rewrite unrelated events.
+  const handleUpdateStaffAndBackfillRange = async () => {
+    if (!editStaffData) return;
+    if (!retroFromDate || !retroToDate) {
+      toast.error("יש לבחור טווח תאריכים (מ- ועד)");
+      return;
+    }
+    if (retroFromDate > retroToDate) {
+      toast.error("תאריך ההתחלה חייב להיות לפני תאריך הסיום (או שווה לו)");
+      return;
+    }
+    setIsRetroUpdating(true);
+    try {
+      const original = staffMembers.find(s => s.id === editStaffData.id);
+      const matchName = original?.name || editStaffData.name;
+
+      await base44.entities.StaffMember.update(editStaffData.id, editStaffData);
+
+      const allEvents = await base44.entities.Event.list();
+      const eventsToUpdate = allEvents
+        .filter(e => e.date && e.date >= retroFromDate && e.date <= retroToDate)
+        .map(e => {
+          const team = e.team || [];
+          let changed = false;
+          const newTeam = team.map(member => {
+            if (member.staffMemberName !== matchName) return member;
+            const newCost = getStaffRateForRole(editStaffData, member.role);
+            if (newCost === member.cost) return member;
+            changed = true;
+            return { ...member, cost: newCost };
+          });
+          return changed ? { id: e.id, newTeam } : null;
+        })
+        .filter(Boolean);
+
+      await Promise.all(
+        eventsToUpdate.map(({ id: eventId, newTeam }) =>
+          base44.entities.Event.update(eventId, { team: newTeam })
+        )
+      );
+
+      loadStaff();
+      setEditingStaff(null);
+      setIsEditStaffDialogOpen(false);
+      setEditStaffData(null);
+      setRetroFromDate("");
+      setRetroToDate("");
+      toast.success(
+        eventsToUpdate.length > 0
+          ? `התעריף עודכן ב-${eventsToUpdate.length} אירועים בטווח שנבחר`
+          : "לא נמצאו אירועים מתאימים בטווח שנבחר"
+      );
+    } catch (error) {
+      console.error("Error backfilling staff rate for date range:", error);
+      toast.error("שגיאה בעדכון התעריף בטווח התאריכים");
+    }
+    setIsRetroUpdating(false);
   };
 
   const handleDeleteStaff = async (id) => {
@@ -561,21 +628,41 @@ export default function Settings() {
                           <Label>אימייל (לזימון יומן)</Label>
                           <Input type="email" value={editStaffData.email || ""} onChange={(e) => setEditStaffData({...editStaffData, email: e.target.value})} placeholder="example@email.com" className="bg-gray-800 border-gray-700 text-white" />
                         </div>
+                        <div className="space-y-2 border-t border-gray-800 pt-4">
+                          <Label>תיקון תעריף רטרואקטיבי (אופציונלי)</Label>
+                          <p className="text-xs text-gray-500">
+                            שומר את התעריף שלמעלה, וגם מעדכן אותו באירועים קיימים (כולל בעבר, לא רק מהיום והלאה) בטווח התאריכים שתבחרו — לדוגמה, לתקן חודשים שכבר עברו לפני שהתעריף הזה תוקן כאן.
+                          </p>
+                          <div className="flex gap-2">
+                            <Input type="date" value={retroFromDate} onChange={(e) => setRetroFromDate(e.target.value)} className="bg-gray-800 border-gray-700 text-white" />
+                            <Input type="date" value={retroToDate} onChange={(e) => setRetroToDate(e.target.value)} className="bg-gray-800 border-gray-700 text-white" />
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleUpdateStaffAndBackfillRange}
+                            disabled={isRetroUpdating || !retroFromDate || !retroToDate}
+                            className="w-full border-yellow-500/40 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20"
+                          >
+                            {isRetroUpdating && <Loader2 className="w-4 h-4 ml-2 animate-spin" />}
+                            עדכן גם אירועים בטווח שנבחר
+                          </Button>
+                        </div>
                       </div>
                     )}
                     <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-2">
-                      <Button variant="outline" onClick={() => setIsEditStaffDialogOpen(false)} disabled={isPropagatingRate} className="border-gray-700 bg-gray-800 text-gray-300">ביטול</Button>
+                      <Button variant="outline" onClick={() => setIsEditStaffDialogOpen(false)} disabled={isPropagatingRate || isRetroUpdating} className="border-gray-700 bg-gray-800 text-gray-300">ביטול</Button>
                       <Button
                         variant="outline"
                         onClick={() => handleUpdateStaffAndPropagateRate(editStaffData.id, editStaffData)}
-                        disabled={isPropagatingRate}
+                        disabled={isPropagatingRate || isRetroUpdating}
                         title="שומר את התעריף החדש וגם מעדכן אותו בכל האירועים העתידיים (מהיום ואילך) שבהם איש הצוות הזה כבר משובץ"
                         className="border-yellow-500/40 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20"
                       >
                         {isPropagatingRate && <Loader2 className="w-4 h-4 ml-2 animate-spin" />}
                         עדכן גם באירועים עתידיים
                       </Button>
-                      <Button onClick={() => handleUpdateStaff(editStaffData.id, editStaffData)} disabled={isPropagatingRate} className="bg-yellow-400 hover:bg-yellow-500 text-gray-900">שמור</Button>
+                      <Button onClick={() => handleUpdateStaff(editStaffData.id, editStaffData)} disabled={isPropagatingRate || isRetroUpdating} className="bg-yellow-400 hover:bg-yellow-500 text-gray-900">שמור</Button>
                     </DialogFooter>
                   </DialogContent>
                 </Dialog>
@@ -607,7 +694,7 @@ export default function Settings() {
                             <Button
                               size="sm"
                               variant="ghost"
-                              onClick={() => { setEditStaffData({...staff}); setIsEditStaffDialogOpen(true); }}
+                              onClick={() => { setEditStaffData({...staff}); setIsEditStaffDialogOpen(true); setRetroFromDate(""); setRetroToDate(""); }}
                               className="text-gray-400 hover:text-yellow-400"
                             >
                               <Edit className="w-4 h-4" />
