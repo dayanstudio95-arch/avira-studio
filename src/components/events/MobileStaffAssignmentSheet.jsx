@@ -92,11 +92,15 @@ export default function MobileStaffAssignmentSheet({ event, isOpen, onClose, sta
               <PopoverContent className="w-72 bg-gray-900 border-gray-700 text-white p-3" align="end">
                 <div className="text-sm font-semibold text-gray-400 mb-3">בחר עורך וידאו</div>
                 {/* CHANGED: see the matching comment in EventsTableWithBulkDelete.jsx's
-                    StaffPickerCell -- max-h-72 was cutting the list short and iOS
-                    Safari needs -webkit-overflow-scrolling: touch for a nested scroll
-                    container inside a transform-positioned Popover portal to reliably
-                    accept touch-drag scrolling. */}
-                <div className="space-y-2 max-h-[65vh] overflow-y-auto pr-1" style={{ WebkitOverflowScrolling: 'touch' }}>
+                    StaffPickerCell -- this Popover portals to document.body as a
+                    sibling of this Sheet's own content, so the Sheet's touch-scroll
+                    lock was blocking touchmove here too; stopPropagation keeps drags
+                    from reaching that document-level listener. */}
+                <div
+                  className="space-y-2 max-h-[65vh] overflow-y-auto pr-1"
+                  style={{ WebkitOverflowScrolling: 'touch' }}
+                  onTouchMove={(e) => e.stopPropagation()}
+                >
                   {editors.length === 0 ? (
                     <div className="text-sm text-gray-500 text-center py-4">אין עורכים זמינים</div>
                   ) : (

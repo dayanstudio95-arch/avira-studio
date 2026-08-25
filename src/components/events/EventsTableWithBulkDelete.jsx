@@ -64,13 +64,22 @@ export function StaffPickerCell({ event, role, roleKey, label, color, icon, staf
       <PopoverContent className="w-72 bg-gray-900 border-gray-700 text-white p-3" align="start" side="bottom">
         <div className="text-sm font-semibold text-gray-400 mb-3">בחר {label}</div>
         {/* CHANGED: max-h-72 (fixed 288px, ~5 rows) was cutting the list short well
-            before the popover ran out of actual screen room -- overflow-y-auto was
-            technically present, but on iOS Safari a nested scroll container inside a
-            transform-positioned Radix Popover portal needs -webkit-overflow-scrolling:
-            touch to reliably accept touch-drag scrolling; without it the extra rows
-            were unreachable. Also widened the cap to use real available viewport
-            space instead of a small fixed height. */}
-        <div className="space-y-2 max-h-[65vh] overflow-y-auto pr-1" style={{ WebkitOverflowScrolling: 'touch' }}>
+            before the popover ran out of actual screen room, and widening it alone
+            wasn't enough either -- this Popover portals its content to document.body
+            as a SIBLING of the parent Sheet/Dialog's own content in the DOM (not a
+            descendant), so the Sheet's touch-scroll lock (which blocks touchmove on
+            anything outside its own content ref, to stop the background page from
+            scrolling while it's open) was intercepting drags here too, even though
+            visually the list sits on top of the sheet. Fix: widen the cap to real
+            available viewport space, add -webkit-overflow-scrolling for iOS momentum
+            scroll, and stopPropagation on touchmove so it never reaches that
+            document-level listener -- the browser's native scroll then behaves
+            normally inside this div specifically. */}
+        <div
+          className="space-y-2 max-h-[65vh] overflow-y-auto pr-1"
+          style={{ WebkitOverflowScrolling: 'touch' }}
+          onTouchMove={(e) => e.stopPropagation()}
+        >
           {staffList.length === 0 ? (
             <div className="text-sm text-gray-500 text-center py-4">אין {label} זמינים</div>
           ) : (
@@ -605,7 +614,16 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
                                 </PopoverTrigger>
                                 <PopoverContent className="w-80 bg-gray-900 border-gray-700 text-white p-3" align="start">
                                   <div className="text-sm font-semibold text-gray-400 mb-3">בחר עורך וידאו</div>
-                                  <div className="space-y-2 max-h-[65vh] overflow-y-auto pr-1" style={{ WebkitOverflowScrolling: 'touch' }}>
+                                  {/* CHANGED: see the matching comment in StaffPickerCell above --
+                                      this Popover portals to document.body as a sibling of this
+                                      table's own Dialog/Sheet content elsewhere on mobile, so
+                                      stopPropagation on touchmove keeps drags from being blocked
+                                      by that ancestor's scroll lock. */}
+                                  <div
+                                    className="space-y-2 max-h-[65vh] overflow-y-auto pr-1"
+                                    style={{ WebkitOverflowScrolling: 'touch' }}
+                                    onTouchMove={(e) => e.stopPropagation()}
+                                  >
                                     {editors.length === 0 ? (
                                       <div className="text-sm text-gray-500 text-center py-4">אין עורכים זמינים</div>
                                     ) : (
