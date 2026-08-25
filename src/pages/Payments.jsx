@@ -22,6 +22,7 @@ export default function Payments() {
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
     const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth().toString());
     const [selectedPayments, setSelectedPayments] = useState({});
+    const [selectedReceipts, setSelectedReceipts] = useState({});
     const [detailDialogStaff, setDetailDialogStaff] = useState(null);
 
     const loadData = async () => {
@@ -148,6 +149,53 @@ export default function Payments() {
         }
     };
 
+    // Bulk version of handleToggleReceipt for the checkboxes in the history tab --
+    // marks every selected event's receipt as received (always sets true, since
+    // "mark selected as received" is the only bulk action offered; unchecking one
+    // afterwards is still available via the per-event toggle button above).
+    const handleMarkSelectedReceiptsReceived = async (staffName) => {
+        setUpdatingPayment(`selected-receipt-${staffName}`);
+        try {
+            const selected = selectedReceipts[staffName] || [];
+            if (selected.length === 0) return;
+
+            const eventUpdates = new Map();
+            selected.forEach(paymentKey => {
+                const sepIndex = paymentKey.lastIndexOf('::');
+                const eventId = paymentKey.slice(0, sepIndex);
+                const memberIndex = paymentKey.slice(sepIndex + 2);
+                if (!eventUpdates.has(eventId)) {
+                    eventUpdates.set(eventId, []);
+                }
+                eventUpdates.get(eventId).push(parseInt(memberIndex));
+            });
+
+            const eventIdsToUpdate = Array.from(eventUpdates.keys());
+            const eventsToModify = events.filter(e => eventIdsToUpdate.includes(e.id));
+
+            const updatePromises = eventsToModify.map(event => {
+                const indicesToUpdate = eventUpdates.get(event.id);
+                if (!indicesToUpdate) return null;
+
+                const newTeam = [...event.team];
+                indicesToUpdate.forEach(index => {
+                    if (newTeam[index]) {
+                        newTeam[index].receiptReceived = true;
+                    }
+                });
+                return Event.update(event.id, { team: newTeam });
+            }).filter(Boolean);
+
+            await Promise.all(updatePromises);
+            await loadData();
+            setSelectedReceipts(prev => ({ ...prev, [staffName]: [] }));
+        } catch (error) {
+            console.error("Error updating selected receipts:", error);
+        } finally {
+            setUpdatingPayment(null);
+        }
+    };
+
     const handleMarkAllAsPaid = async (staffName) => {
         setUpdatingPayment(staffName);
         try {
@@ -252,7 +300,24 @@ export default function Payments() {
     const isPaymentSelected = (staffName, paymentKey) => {
         return (selectedPayments[staffName] || []).includes(paymentKey);
     };
-    
+
+    const toggleReceiptSelection = (staffName, paymentKey) => {
+        setSelectedReceipts(prev => {
+            const currentSelected = prev[staffName] || [];
+            const isSelected = currentSelected.includes(paymentKey);
+            return {
+                ...prev,
+                [staffName]: isSelected
+                    ? currentSelected.filter(k => k !== paymentKey)
+                    : [...currentSelected, paymentKey]
+            };
+        });
+    };
+
+    const isReceiptSelected = (staffName, paymentKey) => {
+        return (selectedReceipts[staffName] || []).includes(paymentKey);
+    };
+
     const totalOwedAmount = Object.values(paymentsOwed).reduce((sum, staff) => sum + staff.total, 0);
     const totalPaidAmount = Object.values(paymentsHistory).reduce((sum, staff) => sum + staff.total, 0);
 
@@ -498,14 +563,35 @@ export default function Payments() {
                                                         </p>
                                                         <p className="text-xs font-normal text-gray-500 sm:hidden">כולל מע"מ: ₪{Math.round(data.total * VAT_RATE).toLocaleString()}</p>
                                                     </div>
+                                                    {(selectedReceipts[name] || []).length > 0 && (
+                                                        <Button
+                                                            size="sm"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleMarkSelectedReceiptsReceived(name);
+                                                            }}
+                                                            disabled={updatingPayment === `selected-receipt-${name}`}
+                                                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-2"
+                                                        >
+                                                            <Receipt className="w-3 h-3 ml-1"/>
+                                                            {updatingPayment === `selected-receipt-${name}` ? 'מעדכן...' : `סמן קבלה (${(selectedReceipts[name] || []).length})`}
+                                                        </Button>
+                                                    )}
                                                 </div>
                                             </div>
                                         </AccordionTrigger>
                                         <AccordionContent className="px-3 md:px-6 pb-4 md:pb-6">
                                             <div className="space-y-2 border-t border-gray-800 pt-3">
-                                                {data.events.map((event, index) => (
+                                                {data.events.map((event, index) => {
+                                                    const receiptKey = `${event.eventId}::${event.memberIndexInEvent}`;
+                                                    return (
                                                     <div key={index} className="flex justify-between items-center p-2 md:p-3 rounded-lg bg-gray-800/50 gap-2">
                                                         <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                            <Checkbox
+                                                                checked={isReceiptSelected(name, receiptKey)}
+                                                                onCheckedChange={() => toggleReceiptSelection(name, receiptKey)}
+                                                                className="border-gray-600 flex-shrink-0"
+                                                            />
                                                             <div className="flex flex-col gap-0.5 min-w-0">
                                                                <div className="flex items-center gap-1.5">
                                                                     <Calendar className="w-3 h-3 text-gray-500 flex-shrink-0" />
@@ -542,7 +628,8 @@ export default function Payments() {
                                                             </Button>
                                                         </div>
                                                     </div>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         </AccordionContent>
                                     </AccordionItem>
