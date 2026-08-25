@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { sendCalendarInviteByName } from "@/lib/calendarInvites";
+import { getStaffRateForRole } from "@/lib/staffRates";
 import MobileStaffAssignmentSheet from "@/components/events/MobileStaffAssignmentSheet";
 
 export default function StaffScheduling() {
@@ -107,7 +108,7 @@ export default function StaffScheduling() {
         newTeam = [...withoutEmptyEditor, {
           role: 'editor',
           staffMemberName,
-          cost: staffMembers.find(s => s.name === staffMemberName)?.defaultRate || 0,
+          cost: getStaffRateForRole(staffMembers.find(s => s.name === staffMemberName), 'editor'),
           isPaid: false,
           progressStatus: 'pending'
         }];
@@ -144,7 +145,7 @@ export default function StaffScheduling() {
         newTeam = [...filtered, {
           role,
           staffMemberName,
-          cost: staffMembers.find(s => s.name === staffMemberName)?.defaultRate || 0,
+          cost: getStaffRateForRole(staffMembers.find(s => s.name === staffMemberName), role),
           isPaid: false,
           progressStatus: 'pending'
         }];

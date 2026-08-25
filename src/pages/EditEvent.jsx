@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
+import { getStaffRateForRole } from "@/lib/staffRates";
 
 import StepIndicator from "../components/newEvent/StepIndicator";
 import DetailsStep from "../components/newEvent/DetailsStep";
@@ -175,7 +176,7 @@ export default function EditEvent() {
           if (updates.staffMemberName !== undefined && updates.cost === undefined) {
               const selectedStaff = staffMembers.find(s => s.name === updates.staffMemberName);
               if (selectedStaff) {
-                  finalUpdates.cost = selectedStaff.defaultRate || 0;
+                  finalUpdates.cost = getStaffRateForRole(selectedStaff, role);
               }
           }
 
@@ -206,7 +207,7 @@ export default function EditEvent() {
                   role: 'editor',
                   isPaid: false,
                   staffMemberName: '',
-                  cost: defaultEditor?.defaultRate || 0,
+                  cost: getStaffRateForRole(defaultEditor, 'editor'),
                   progressStatus: 'pending'
               });
           } else if (!hasVideographer && hasEditor) {

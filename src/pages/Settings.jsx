@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { STAFF_JOB_ROLES, staffJobRoleLabel } from "@/lib/staffRoles";
+import { getStaffRateForRole } from "@/lib/staffRates";
 import CSVImportDialog from "../components/CSVImportDialog";
 import StaffImportDialog from "../components/settings/StaffImportDialog";
 import DiscountForm from "../components/settings/DiscountForm";
@@ -61,6 +62,7 @@ export default function Settings() {
   const [newStaff, setNewStaff] = useState({ name: "", role: "photographer", defaultRate: 0, phoneNumber: "", email: "", ratesByRole: [] });
   const [editStaffData, setEditStaffData] = useState(null);
   const [isEditStaffDialogOpen, setIsEditStaffDialogOpen] = useState(false);
+  const [isPropagatingRate, setIsPropagatingRate] = useState(false);
   const [isEventImportOpen, setIsEventImportOpen] = useState(false);
   const [isStaffImportOpen, setIsStaffImportOpen] = useState(false);
   const [masterContractTerms, setMasterContractTerms] = useState(DEFAULT_CONTRACT_TERMS);
@@ -133,6 +135,70 @@ export default function Settings() {
     } catch (error) {
       console.error("Error updating staff:", error);
     }
+  };
+
+  // Rates in events.team[].cost are a one-time snapshot taken when a staff
+  // member is assigned to an event (see getStaffRateForRole call sites) --
+  // editing a rate here normally does NOT retroactively change any
+  // already-assigned event, past or future (matches the same "snapshot,
+  // never live-joined" pattern used for album order pricing). This is an
+  // explicit, separate action the studio opts into: save the new rate AND
+  // refresh the stored cost on every future (today or later), already-assigned
+  // event for this staff member -- regardless of role (matches whatever role
+  // they're actually assigned as on each event) and regardless of whether
+  // that event is already marked paid, per explicit product decision.
+  const handleUpdateStaffAndPropagateRate = async (id, updates) => {
+    setIsPropagatingRate(true);
+    try {
+      // Match against the currently-saved name, not any new name typed in
+      // this edit -- events.team[].staffMemberName is a plain string
+      // snapshot, so renaming a staff member here doesn't retroactively
+      // rename them on already-assigned events (same as the regular "שמור"
+      // save; renaming propagation is a separate, unrelated concern).
+      const original = staffMembers.find(s => s.id === id);
+      const matchName = original?.name || updates.name;
+
+      await base44.entities.StaffMember.update(id, updates);
+
+      const allEvents = await base44.entities.Event.list();
+      const todayStr = new Date().toISOString().split('T')[0];
+
+      const eventsToUpdate = allEvents
+        .filter(e => e.date && e.date >= todayStr)
+        .map(e => {
+          const team = e.team || [];
+          let changed = false;
+          const newTeam = team.map(member => {
+            if (member.staffMemberName !== matchName) return member;
+            const newCost = getStaffRateForRole(updates, member.role);
+            if (newCost === member.cost) return member;
+            changed = true;
+            return { ...member, cost: newCost };
+          });
+          return changed ? { id: e.id, newTeam } : null;
+        })
+        .filter(Boolean);
+
+      await Promise.all(
+        eventsToUpdate.map(({ id: eventId, newTeam }) =>
+          base44.entities.Event.update(eventId, { team: newTeam })
+        )
+      );
+
+      loadStaff();
+      setEditingStaff(null);
+      setIsEditStaffDialogOpen(false);
+      setEditStaffData(null);
+      toast.success(
+        eventsToUpdate.length > 0
+          ? `התעריף עודכן ב-${eventsToUpdate.length} אירועים עתידיים`
+          : "התעריף נשמר (לא נמצאו אירועים עתידיים לעדכון)"
+      );
+    } catch (error) {
+      console.error("Error propagating staff rate to future events:", error);
+      toast.error("שגיאה בעדכון התעריף באירועים העתידיים");
+    }
+    setIsPropagatingRate(false);
   };
 
   const handleDeleteStaff = async (id) => {
@@ -497,9 +563,19 @@ export default function Settings() {
                         </div>
                       </div>
                     )}
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => setIsEditStaffDialogOpen(false)} className="border-gray-700 bg-gray-800 text-gray-300">ביטול</Button>
-                      <Button onClick={() => handleUpdateStaff(editStaffData.id, editStaffData)} className="bg-yellow-400 hover:bg-yellow-500 text-gray-900">שמור</Button>
+                    <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-2">
+                      <Button variant="outline" onClick={() => setIsEditStaffDialogOpen(false)} disabled={isPropagatingRate} className="border-gray-700 bg-gray-800 text-gray-300">ביטול</Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => handleUpdateStaffAndPropagateRate(editStaffData.id, editStaffData)}
+                        disabled={isPropagatingRate}
+                        title="שומר את התעריף החדש וגם מעדכן אותו בכל האירועים העתידיים (מהיום ואילך) שבהם איש הצוות הזה כבר משובץ"
+                        className="border-yellow-500/40 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20"
+                      >
+                        {isPropagatingRate && <Loader2 className="w-4 h-4 ml-2 animate-spin" />}
+                        עדכן גם באירועים עתידיים
+                      </Button>
+                      <Button onClick={() => handleUpdateStaff(editStaffData.id, editStaffData)} disabled={isPropagatingRate} className="bg-yellow-400 hover:bg-yellow-500 text-gray-900">שמור</Button>
                     </DialogFooter>
                   </DialogContent>
                 </Dialog>

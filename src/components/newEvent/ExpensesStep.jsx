@@ -17,6 +17,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { getStaffRateForRole } from "@/lib/staffRates";
 
 const StaffSelector = ({ role, value, staff, onUpdate }) => {
     const [open, setOpen] = useState(false);
@@ -31,7 +32,8 @@ const StaffSelector = ({ role, value, staff, onUpdate }) => {
     const handleSelect = (currentValue) => {
         const selectedStaff = staff.find(s => s.name.toLowerCase() === currentValue.toLowerCase());
         const newName = selectedStaff ? selectedStaff.name : currentValue;
-        onUpdate({ staffMemberName: newName, cost: selectedStaff?.defaultRate ?? value?.cost ?? 0 });
+        const cost = selectedStaff ? getStaffRateForRole(selectedStaff, role.key) : (value?.cost ?? 0);
+        onUpdate({ staffMemberName: newName, cost });
         setOpen(false);
     };
 
