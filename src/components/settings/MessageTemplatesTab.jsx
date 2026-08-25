@@ -74,6 +74,13 @@ const TEMPLATES = [
     variables: ["{{names}}", "{{event_date}}", "{{album_sketch_link}}"],
   },
   {
+    key: "template_album_portal_link",
+    label: "שליחת קישור לבדיקת אלבום (הזמנת אלבום)",
+    description: "ההודעה שתישלח לזוג כשלוחצים על 'שלח לזוג' בכרטיס 'קישור לזוג' בעמוד פרטי הזמנת אלבום. תבנית זו נפרדת מ'שליחת סקיצת אלבום לזוג' הישנה למעלה — זו שייכת למודול הזמנות האלבום החדש (album_orders).",
+    defaultValue: `שלום {{names}} 😊\nהכנו עבורכם תצוגה מקדימה של האלבום לצפייה ואישור 💛\n{{link}}`,
+    variables: ["{{names}}", "{{link}}"],
+  },
+  {
     key: "template_raw_link",
     label: "שליחת חומר גלם לעורך",
     description: "ההודעה שתישלח לעורך/ת כשלוחצים על 'שלח לעריכה' בסטטוס עבודה",
