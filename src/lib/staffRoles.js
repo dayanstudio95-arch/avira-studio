@@ -54,6 +54,20 @@ export const PHOTOGRAPHER_TEAM_ROLES = EVENT_TEAM_ROLES
   .filter(({ value }) => value.startsWith("photographer"))
   .map(({ value }) => value);
 
+// Which EVENT_TEAM_ROLES slots a given STAFF_JOB_ROLES member is eligible to fill on
+// an event's team — used by the "assign from availability pill" flow
+// (UnifiedSidePanel.jsx) to build the role-slot picker / default selection.
+export const JOB_ROLE_TO_TEAM_ROLES = {
+  photographer: ["photographer1", "photographer2"],
+  videographer: ["videographer", "videographer2"],
+  editor: ["editor"],
+  graphic_designer: [],
+};
+
+export function teamRoleSlotsForJobRole(jobRole) {
+  return JOB_ROLE_TO_TEAM_ROLES[jobRole] || [];
+}
+
 // ─── 2. Staff member's own general job category (staff_members.role) ──────────────
 // Must exactly match the CHECK constraint in supabase/migrations/0001_init.sql:74.
 export const STAFF_JOB_ROLES = [

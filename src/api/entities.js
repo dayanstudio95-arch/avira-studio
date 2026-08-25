@@ -159,4 +159,11 @@ export const entities = {
   AlbumOrderAddon: createEntity('album_order_addons'),
   PrintAccessLink: createEntity('print_access_links'),
   PrintAccessEvent: createEntity('print_access_events'),
+  // Two-way staff availability confirmation (migration 0041) — append-only log of
+  // WhatsApp availability-check links sent to staff + their pending/available/declined
+  // response. RLS admin-only, same as Notification above. Written by
+  // StaffAvailabilityModal.jsx (create, client-side token mint) and read back in
+  // UnifiedSidePanel.jsx; the public response page never uses this entity directly --
+  // it goes through respond-staff-availability-public with a service-role client.
+  StaffAvailabilityRequest: createEntity('staff_availability_requests'),
 };

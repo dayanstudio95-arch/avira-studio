@@ -106,6 +106,12 @@ const FUNCTION_MAP = {
   // under normal RLS, since those are all authenticated admin/album_manager actions.
   albumPortal: 'album-portal',
   albumPrintAccess: 'album-print-access',
+  // Two-way staff availability confirmation (migration 0041) — public, unauthenticated
+  // like the two functions above. Called from StaffAvailabilityResponse.jsx (the
+  // /staff-availability/:token page); the raw token is the caller's only credential,
+  // hashed+looked-up server-side on every request against
+  // staff_availability_requests.token_hash.
+  respondStaffAvailabilityPublic: 'respond-staff-availability-public',
 };
 
 // Names that intentionally have NO Edge Function port yet — either confirmed dead

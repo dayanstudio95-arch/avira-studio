@@ -122,6 +122,14 @@ const TEMPLATES = [
     defaultValue: `היי $couple_names, החודש שלכם כבר כמעט כאן! 🎊 נשמח אם תמלאו את השאלון: $questionnaire_link`,
     variables: ["$couple_names", "$questionnaire_link", "$event_date", "$venue"],
   },
+  {
+    key: "template_staff_availability_check",
+    label: "בדיקת זמינות צלם/וידאוגרף",
+    description: "ההודעה שתישלח לאנשי צוות כשלוחצים על 'זמינות צלם' בכרטיס הליד ובוחרים אנשי צוות לבדיקת זמינות",
+    defaultValue: `היי! רציתי לבדוק זמינות שלך בתור {{role}} בתאריך {{event_date}} באולם {{venue}} ({{names}}).
+תוכל/י לאשר האם את/ה פנוי/ה?`,
+    variables: ["{{role}}", "{{event_date}}", "{{venue}}", "{{names}}"],
+  },
 ];
 
 export default function MessageTemplatesTab() {

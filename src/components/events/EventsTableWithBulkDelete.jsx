@@ -19,6 +19,7 @@ import EventExpensesEditor from "../eventDetails/EventExpensesEditor";
 import { calculateNetProfit, getProfitColor } from "@/lib/profitCalculations";
 import EventMobileCards from "./EventMobileCards";
 import MobileStaffAssignmentSheet from "./MobileStaffAssignmentSheet";
+import { sendCalendarInviteByName } from "@/lib/calendarInvites";
 
 const paymentStatusConfig = {
   "Paid": { color: "bg-green-500/20 text-green-400 border-green-500/30", icon: "✅" },
@@ -294,14 +295,6 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
     const newTeam = event.team.filter(m => m.staffMemberName !== staffName);
     await base44.entities.Event.update(event.id, { team: newTeam });
     if (onRefresh) onRefresh();
-  };
-
-  const sendCalendarInviteByName = async (eventId, staffName) => {
-    try {
-      await base44.functions.invoke('sendStaffInvite', { eventId, staffName });
-    } catch (error) {
-      console.error('Error sending calendar invite:', error);
-    }
   };
 
   const handleSyncToCalendar = async (event) => {

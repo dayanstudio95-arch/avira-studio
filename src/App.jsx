@@ -53,6 +53,9 @@ const AlbumCatalogSettings = lazy(() => import('./pages/AlbumCatalogSettings'));
 const AlbumPortal = lazy(() => import('./pages/AlbumPortal'));
 const AlbumPrintAccess = lazy(() => import('./pages/AlbumPrintAccess'));
 
+// Two-way staff availability confirmation -- public, no-login response page opened
+// from the WhatsApp link StaffAvailabilityModal.jsx sends.
+const StaffAvailabilityResponse = lazy(() => import('./pages/StaffAvailabilityResponse'));
 // Shared fallback while a lazy page chunk downloads -- matches the existing
 // auth-loading spinner's look (fixed inset-0, same spinner classes) so route-change
 // loading doesn't look visually different from the app's other loading states.
@@ -236,6 +239,10 @@ function App() {
               <Route path="/album/:token" element={<AlbumPortal />} />
               <Route path="/print-access/:token" element={<AlbumPrintAccess />} />
 
+              {/* Two-way staff availability confirmation -- public, no-login page opened
+                  from the WhatsApp link StaffAvailabilityModal.jsx sends. Token-validated
+                  server-side on every request via respond-staff-availability-public. */}
+              <Route path="/staff-availability/:token" element={<StaffAvailabilityResponse />} />
               {/* Protected routes */}
               <Route path="/*" element={<AuthenticatedApp />} />
             </Routes>
