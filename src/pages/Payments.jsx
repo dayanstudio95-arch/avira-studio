@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { WalletCards, Check, User, Calendar, Coins, CalendarDays, MessageCircle, History } from 'lucide-react';
+import { WalletCards, Check, User, Calendar, Coins, CalendarDays, MessageCircle, History, Receipt } from 'lucide-react';
 import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -123,7 +123,31 @@ export default function Payments() {
             setUpdatingPayment(null);
         }
     };
-    
+
+    // "התקבלה קבלה" toggle in the payments-history tab — lets the studio track,
+    // per paid event, whether the staff member has actually sent a receipt for
+    // it yet (a totally separate concern from isPaid: money can be transferred
+    // before the receipt arrives). Stored as receiptReceived on the same team
+    // jsonb entry, so no migration needed.
+    const handleToggleReceipt = async (eventId, memberIndexInEvent) => {
+        const key = `receipt-${eventId}-${memberIndexInEvent}`;
+        setUpdatingPayment(key);
+        try {
+            const eventToUpdate = events.find(e => e.id === eventId);
+            if (eventToUpdate && eventToUpdate.team && eventToUpdate.team[memberIndexInEvent]) {
+                const newTeam = [...eventToUpdate.team];
+                const current = newTeam[memberIndexInEvent];
+                newTeam[memberIndexInEvent] = { ...current, receiptReceived: !current.receiptReceived };
+                await Event.update(eventId, { team: newTeam });
+                await loadData();
+            }
+        } catch (error) {
+            console.error("Error toggling receipt status:", error);
+        } finally {
+            setUpdatingPayment(null);
+        }
+    };
+
     const handleMarkAllAsPaid = async (staffName) => {
         setUpdatingPayment(staffName);
         try {
@@ -447,16 +471,22 @@ export default function Payments() {
                         </Card>
 
                         <Accordion type="multiple" className="w-full space-y-4">
-                            {Object.keys(paymentsHistory).length > 0 ? Object.entries(paymentsHistory).map(([name, data]) => (
+                            {Object.keys(paymentsHistory).length > 0 ? Object.entries(paymentsHistory).map(([name, data]) => {
+                                const receivedCount = data.events.filter(e => e.receiptReceived).length;
+                                return (
                                 <Card key={name} className="bg-gray-900/50 border-gray-800 backdrop-blur-sm">
                                     <AccordionItem value={name} className="border-b-0">
                                         <AccordionTrigger className="p-3 md:p-6 text-white hover:no-underline">
                                             <div className="flex flex-col gap-2 w-full">
-                                                {/* Row 1: name + badge */}
-                                                <div className="flex items-center gap-2">
+                                                {/* Row 1: name + badges */}
+                                                <div className="flex items-center gap-2 flex-wrap">
                                                     <User className="w-5 h-5 text-green-400 flex-shrink-0"/>
                                                     <span className="text-base md:text-xl font-semibold">{name}</span>
                                                     <span className="text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded-full">{data.events.length} אירועים</span>
+                                                    <span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${receivedCount === data.events.length ? 'text-emerald-400 bg-emerald-400/10' : 'text-amber-400 bg-amber-400/10'}`}>
+                                                        <Receipt className="w-3 h-3" />
+                                                        {receivedCount}/{data.events.length} קבלות התקבלו
+                                                    </span>
                                                 </div>
                                                 {/* Row 2: amount */}
                                                 <div className="flex flex-wrap items-center gap-2">
@@ -491,18 +521,34 @@ export default function Payments() {
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                        {event.paidAt && (
-                                                            <span className="text-xs text-green-400 bg-green-400/10 px-2 py-1 rounded-full flex-shrink-0">
-                                                                שולם ב-{format(new Date(event.paidAt), 'd/M/yy')}
-                                                            </span>
-                                                        )}
+                                                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                                                            {event.paidAt && (
+                                                                <span className="text-xs text-green-400 bg-green-400/10 px-2 py-1 rounded-full">
+                                                                    שולם ב-{format(new Date(event.paidAt), 'd/M/yy')}
+                                                                </span>
+                                                            )}
+                                                            <Button
+                                                                size="sm"
+                                                                onClick={() => handleToggleReceipt(event.eventId, event.memberIndexInEvent)}
+                                                                disabled={updatingPayment === `receipt-${event.eventId}-${event.memberIndexInEvent}`}
+                                                                className={event.receiptReceived
+                                                                    ? "bg-emerald-600/20 border border-emerald-500 text-emerald-400 hover:bg-emerald-600/30 text-xs px-2"
+                                                                    : "bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs px-2"}
+                                                            >
+                                                                <Receipt className="w-3 h-3 ml-1"/>
+                                                                {updatingPayment === `receipt-${event.eventId}-${event.memberIndexInEvent}`
+                                                                    ? 'מעדכן...'
+                                                                    : (event.receiptReceived ? 'התקבלה קבלה' : 'סמן שהתקבלה קבלה')}
+                                                            </Button>
+                                                        </div>
                                                     </div>
                                                 ))}
                                             </div>
                                         </AccordionContent>
                                     </AccordionItem>
                                 </Card>
-                            )) : (
+                                );
+                            }) : (
                                  <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm text-center p-12">
                                     <History className="w-16 h-16 mx-auto text-gray-600 mb-4" />
                                     <h3 className="text-xl font-bold text-white">אין עדיין תשלומים בהיסטוריה</h3>
