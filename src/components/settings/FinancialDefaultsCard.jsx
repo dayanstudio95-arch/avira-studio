@@ -49,11 +49,25 @@ export default function FinancialDefaultsCard() {
   };
 
   const handleSave = async () => {
+    // הקלטים אינם בתוך <form> ו-handleSave הוא onClick רגיל, ולכן min/max של
+    // ה-<input> לעולם לא נאכפים ע"י הדפדפן. בלי הבדיקה כאן, שדה ריק היה נשמר
+    // כ-0% מע״מ ומחתים כל אירוע חדש כפטור ממע״מ.
+    const parsedVat = parseFloat(vatPercent);
+    if (!Number.isFinite(parsedVat) || parsedVat < 0 || parsedVat > 100) {
+      toast.error("אחוז מע״ם חייב להיות מספר בין 0 ל-100");
+      return;
+    }
+    const parsedDeposit = parseFloat(depositAmount);
+    if (!Number.isFinite(parsedDeposit) || parsedDeposit < 0) {
+      toast.error("סכום מקדמה חייב להיות מספר שאינו שלילי");
+      return;
+    }
+
     setIsSaving(true);
     try {
       await base44.entities.Tenant.update(user.tenant_id, {
-        default_vat_percent: parseFloat(vatPercent) || 0,
-        default_deposit_amount: parseFloat(depositAmount) || 0,
+        default_vat_percent: parsedVat,
+        default_deposit_amount: parsedDeposit,
       });
       toast.success("ברירות המחדל הפיננסיות נשמרו בהצלחה");
     } catch (error) {
