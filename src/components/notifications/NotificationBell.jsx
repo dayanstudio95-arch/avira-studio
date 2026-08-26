@@ -3,7 +3,6 @@ import { base44 } from "@/api/base44Client";
 import { usePermission } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Bell, FileCheck, CheckCheck } from "lucide-react";
 import { format } from "date-fns";
@@ -126,7 +125,19 @@ export default function NotificationBell() {
             </button>
           )}
         </div>
-        <ScrollArea className="max-h-80">
+        {/* Plain scrollable div instead of the shadcn ScrollArea -- matches the
+            established pattern used by every other popover-nested scrollable
+            list in this codebase (StaffAssignmentRoleList.jsx,
+            EventsTableWithBulkDelete.jsx): Radix's ScrollArea wraps native
+            overflow in its own custom scrollbar/viewport handling, which was
+            unreliable for touch-scrolling on mobile here, whereas a plain
+            overflow-y-auto div + WebkitOverflowScrolling works reliably and
+            lets the user actually scroll through the full notification list
+            instead of it just being clipped at a fixed height. */}
+        <div
+          className="max-h-[70vh] overflow-y-auto"
+          style={{ WebkitOverflowScrolling: 'touch' }}
+        >
           {notifications.length === 0 ? (
             <p className="text-gray-500 text-sm text-center py-8">אין התראות</p>
           ) : (
@@ -157,7 +168,7 @@ export default function NotificationBell() {
               })}
             </div>
           )}
-        </ScrollArea>
+        </div>
       </PopoverContent>
     </Popover>
   );
