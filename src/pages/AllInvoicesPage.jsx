@@ -4,9 +4,11 @@ import { format } from "date-fns";
 import { Download, Loader2, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { VAT_RATE } from "@/lib/financialCalculations";
+import { useAuth } from "@/lib/SupabaseAuthContext";
 
 export default function AllInvoicesPage() {
+  const { tenantDefaults } = useAuth();
+  const vatPercent = tenantDefaults?.defaultVatPercent ?? 18;
   const [leads, setLeads] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -54,13 +56,11 @@ export default function AllInvoicesPage() {
 
   // Calculate totals
   const totalAmount = filteredInvoices.reduce((sum, inv) => sum + (inv.amount || 0), 0);
-  // This page aggregates raw invoicesList entries across all leads (no per-event
-  // vatPercent is available at this layer), so it uses the shared VAT_RATE constant
-  // (financialCalculations.js) — the single source of truth for the current statutory
-  // rate — instead of a locally-duplicated magic number that could silently drift out
-  // of sync with it.
-  const vatRatePercent = Math.round((VAT_RATE - 1) * 100);
-  const totalVat = totalAmount * (VAT_RATE - 1);
+  // This page aggregates raw invoicesList entries across all leads, so no per-event
+  // vatPercent is available at this layer — it falls back to the tenant's own default
+  // rate, which is 0 for a VAT-exempt studio (עוסק פטור).
+  const vatRatePercent = vatPercent;
+  const totalVat = totalAmount * (vatPercent / 100);
 
   const exportToCSV = () => {
     const headers = ["שם הלקוח", "תאריך אירוע", "מס' חשבונית", "תאריך", "תיאור", "סכום", "קישור"];

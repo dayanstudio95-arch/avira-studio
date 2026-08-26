@@ -11,7 +11,7 @@ import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { VAT_RATE } from "@/lib/financialCalculations";
+import { SUPPLIER_VAT_RATE } from '@/lib/financialCalculations';
 import StaffPaymentDetailDialog from '@/components/payments/StaffPaymentDetailDialog';
 
 export default function Payments() {
@@ -430,9 +430,9 @@ export default function Payments() {
                                                         <p className="text-gray-400 text-xs">סה״כ לתשלום</p>
                                                         <p className="text-base font-bold text-red-400">
                                                             ₪{data.total.toLocaleString()}
-                                                            <span className="text-xs font-normal text-gray-500 mr-1 hidden sm:inline">(כולל מע"מ: ₪{Math.round(data.total * VAT_RATE).toLocaleString()})</span>
+                                                            <span className="text-xs font-normal text-gray-500 mr-1 hidden sm:inline">(כולל מע"מ: ₪{Math.round(data.total * SUPPLIER_VAT_RATE).toLocaleString()})</span>
                                                         </p>
-                                                        <p className="text-xs font-normal text-gray-500 sm:hidden">כולל מע"מ: ₪{Math.round(data.total * VAT_RATE).toLocaleString()}</p>
+                                                        <p className="text-xs font-normal text-gray-500 sm:hidden">כולל מע"מ: ₪{Math.round(data.total * SUPPLIER_VAT_RATE).toLocaleString()}</p>
                                                     </div>
                                                     <Button
                                                        size="sm"
@@ -530,7 +530,7 @@ export default function Payments() {
                                 <p className="text-gray-400 text-base md:text-lg">סה״כ שולם בתקופה</p>
                                 <p className="text-2xl md:text-4xl font-bold text-green-400">
                                    ₪{totalPaidAmount.toLocaleString()}
-                                   <span className="text-sm font-normal text-gray-500 mr-2">(כולל מע"מ: ₪{Math.round(totalPaidAmount * VAT_RATE).toLocaleString()})</span>
+                                   <span className="text-sm font-normal text-gray-500 mr-2">(כולל מע"מ: ₪{Math.round(totalPaidAmount * SUPPLIER_VAT_RATE).toLocaleString()})</span>
                                 </p>
                             </CardContent>
                         </Card>
@@ -559,9 +559,9 @@ export default function Payments() {
                                                         <p className="text-gray-400 text-xs">סה״כ שולם</p>
                                                         <p className="text-base font-bold text-green-400">
                                                             ₪{data.total.toLocaleString()}
-                                                            <span className="text-xs font-normal text-gray-500 mr-1 hidden sm:inline">(כולל מע"מ: ₪{Math.round(data.total * VAT_RATE).toLocaleString()})</span>
+                                                            <span className="text-xs font-normal text-gray-500 mr-1 hidden sm:inline">(כולל מע"מ: ₪{Math.round(data.total * SUPPLIER_VAT_RATE).toLocaleString()})</span>
                                                         </p>
-                                                        <p className="text-xs font-normal text-gray-500 sm:hidden">כולל מע"מ: ₪{Math.round(data.total * VAT_RATE).toLocaleString()}</p>
+                                                        <p className="text-xs font-normal text-gray-500 sm:hidden">כולל מע"מ: ₪{Math.round(data.total * SUPPLIER_VAT_RATE).toLocaleString()}</p>
                                                     </div>
                                                     {(selectedReceipts[name] || []).length > 0 && (
                                                         <Button

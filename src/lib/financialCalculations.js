@@ -1,7 +1,13 @@
 // Financial calculations helper for the photography studio
 // Constants
 export const DROR_EDITOR_COST = 1200; // Editor (Dror) fixed cost in NIS
-export const VAT_RATE = 1.18; // 18% VAT
+
+/**
+ * השיעור החוקי שספק/פרילנסר עוסק מורשה מחייב את הסטודיו. זו *לא* הגדרת המע"מ
+ * של הסטודיו עצמו (tenants.default_vat_percent) — סטודיו עוסק פטור עדיין מקבל
+ * חשבונית עם מע"מ מצלם מורשה. אין כיום שדה מע"מ ברמת איש צוות, ולכן זה קבוע.
+ */
+export const SUPPLIER_VAT_RATE = 1.18;
 
 /**
  * שיעור המע"מ של אירוע ספציפי. events.vat_percent הוא NOT NULL DEFAULT 18

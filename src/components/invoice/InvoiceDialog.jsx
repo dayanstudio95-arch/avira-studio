@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { FileText, ExternalLink, Loader2, AlertTriangle, XCircle, Wifi, CalendarCheck } from "lucide-react";
 import { toast } from "sonner";
-import { VAT_RATE } from "@/lib/financialCalculations";
+import { useAuth } from "@/lib/SupabaseAuthContext";
 
 const INVOICE_ITEMS = ["מקדמה", "תשלום יתרה", "תוספת צילום", "אלבומים"];
 
@@ -37,6 +37,8 @@ export default function InvoiceDialog({
 }) {
   const todayStr = new Date().toISOString().split("T")[0];
   const DEPOSIT_AMOUNT = 500;
+  const { tenantDefaults } = useAuth();
+  const vatPercent = tenantDefaults?.defaultVatPercent ?? 18;
   const isCompany = businessType === "company";
   const businessLabel = isCompany ? "חברה בע״מ" : "עוסק מורשה";
   // Full literal Tailwind class strings (not template-interpolated) so the JIT scanner
@@ -66,9 +68,9 @@ export default function InvoiceDialog({
   const [isFetchingLatestDate, setIsFetchingLatestDate] = useState(false);
 
   // Display-only VAT breakdown preview (the actual charged amount, amountNum, is
-  // unaffected) — centralized on the shared VAT_RATE constant instead of a locally
-  // duplicated magic number, so a future statutory rate change is a one-place fix.
-  const vatRate = VAT_RATE - 1;
+  // unaffected). Reads the tenant's own rate so a VAT-exempt studio (עוסק פטור,
+  // rate 0) sees no VAT line rather than a fabricated 18%.
+  const vatRate = vatPercent / 100;
   const amountNum = parseFloat(amount) || 0;
   const vatAmount = +(amountNum - amountNum / (1 + vatRate)).toFixed(2);
   const priceBeforeVat = +(amountNum / (1 + vatRate)).toFixed(2);

@@ -148,7 +148,7 @@ export default function EventExpensesEditor({ eventId, onSave }) {
 
           {/* VAT */}
           <div className="bg-gradient-to-br from-orange-900/30 to-orange-900/10 border border-orange-700/40 rounded-lg p-4">
-            <p className="text-xs text-gray-400 font-medium mb-1">מע"מ (18%)</p>
+            <p className="text-xs text-gray-400 font-medium mb-1">מע"מ ({vatPercent}%)</p>
             <p className="text-2xl font-bold text-orange-400">₪{vatAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
           </div>
 
