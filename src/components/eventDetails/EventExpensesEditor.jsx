@@ -48,7 +48,10 @@ export default function EventExpensesEditor({ eventId, onSave }) {
       await base44.entities.Event.update(event.id, {
         team: event.team,
         totalAmountGross: event.totalAmountGross,
-        vatAmount: vatableAmountInput * getVatPercent(event) / 100,
+        // הסכום שמוזן בשדה "סכום חייב במע״מ" הוא כולל מע״מ (שורה 25 מאתחלת אותו
+        // מ-totalAmountGross), ולכן מחלצים ולא מוסיפים. עד 2026-08-26 נשמר כאן
+        // × p/100 — ראה 0046_fix_expenses_editor_vat_amount.sql.
+        vatAmount: vatableAmountInput * getVatPercent(event) / (100 + getVatPercent(event)),
         vatableAmount: vatableAmountInput,
         clientPaymentStatus: event.clientPaymentStatus
       });
