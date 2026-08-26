@@ -10,7 +10,9 @@ import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 import { DEFAULT_CONTRACT_TERMS } from "@/lib/defaultContractTerms";
 
-const STATUSES = ["חדש", "נשלחה הצעה", "פולו-אפ", "נסגר/חתימה", "לא רלוונטי"];
+// ששת הערכים שה-CHECK ב-0001_init.sql:106 מתיר. 'חוזה' נכתב ע"י sign-lead-public
+// בכל חתימה ציבורית — בלעדיו ה-Select נשאר ריק בעריכת ליד חתום.
+const STATUSES = ["חדש", "נשלחה הצעה", "פולו-אפ", "נסגר/חתימה", "חוזה", "לא רלוונטי"];
 
 export default function LeadFormDialog({ isOpen, onClose, lead, packagePrices, onSaved }) {
   const [packages, setPackages] = useState([]);

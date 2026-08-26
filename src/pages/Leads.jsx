@@ -383,7 +383,7 @@ export default function Leads() {
     }
   };
 
-  const STATUS_ORDER = ['נסגר/חתימה', 'פולו-אפ', 'נשלחה הצעה', 'חדש', 'לא רלוונטי'];
+  const STATUS_ORDER = ['חוזה', 'נסגר/חתימה', 'פולו-אפ', 'נשלחה הצעה', 'חדש', 'לא רלוונטי'];
   const DORMANT_HOURS = 48;
   const filteredLeads = leads.filter((lead) => {
     if (searchTerm.trim()) {
