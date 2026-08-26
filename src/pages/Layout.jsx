@@ -20,6 +20,7 @@ import {
   Shield,
   LogOut,
   BookImage,
+  BookOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -106,6 +107,7 @@ const secondaryNavItems = [
   { title: "מדריך אלבום",       url: "/AlbumGuideSettings",                icon: FileText },
   { title: "ניהול חשבוניות",    url: createPageUrl("AllInvoicesPage"),     icon: FileText },
   { title: "אישור הודעות",      url: "/PendingApprovals",                  icon: Bell },
+  { title: "מדריך",             url: "/Guide",                             icon: BookOpen },
 ];
 
 // Combined for legacy localStorage order/hidden compatibility

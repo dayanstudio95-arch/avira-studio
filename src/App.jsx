@@ -41,6 +41,7 @@ const GoogleCalendarSync = lazy(() => import('./pages/GoogleCalendarSync'));
 const AutomationLogs = lazy(() => import('./pages/AutomationLogs'));
 const PendingApprovals = lazy(() => import('./pages/PendingApprovals'));
 const SystemAdvisor = lazy(() => import('./pages/SystemAdvisor'));
+const Guide = lazy(() => import('./pages/Guide'));
 const LeadsCoordinator = lazy(() => import('./pages/LeadsCoordinator'));
 const MyEvents = lazy(() => import('./pages/MyEvents'));
 
@@ -213,6 +214,13 @@ const AuthenticatedApp = () => {
           <Route path="/AutomationLogs" element={<AutomationLogs />} />
           <Route path="/PendingApprovals" element={<PendingApprovals />} />
           <Route path="/SystemAdvisor" element={<SystemAdvisor />} />
+
+          {/* דף מדריך סטטי, admin-only — ההגנה כאן היא רק בכך שהראוט הזה נמצא בבלוק
+              ה-Routes הסופי (נגיש רק אחרי שנכשלה בדיקת !isAdmin(user) למעלה). אסור
+              להוסיף את אותו path לאחד מבלוקי ה-Routes של תפקידים מוגבלים למעלה
+              (lead_coordinator/photographer/editor/album_manager), אחרת זה מפסיק
+              להיות admin-only. */}
+          <Route path="/Guide" element={<Guide />} />
 
           {/* Wedding Albums module admin pages -- also reachable by full admin/owner/
               studio_manager, not just the scoped album_manager role above. */}
