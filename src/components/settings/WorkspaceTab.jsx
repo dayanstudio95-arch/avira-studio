@@ -112,6 +112,9 @@ export default function WorkspaceTab() {
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-xs text-gray-500">
+              נשמר כרגע בלבד — כל התאריכים והשעות במערכת מוצגים בשעון ישראל.
+            </p>
           </div>
 
           <div className="space-y-2">
@@ -130,6 +133,9 @@ export default function WorkspaceTab() {
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-xs text-gray-500">
+              נשמר כרגע בלבד — כל הסכומים במערכת מוצגים בשקלים (₪).
+            </p>
           </div>
         </div>
 
