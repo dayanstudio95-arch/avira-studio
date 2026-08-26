@@ -1,0 +1,45 @@
+-- Makes the rate limiter actually record hits. It never has, not once.
+--
+-- 0023_rate_limiting.sql:13 declares `id bigserial primary key`, and :28 grants table privileges:
+--   grant select, insert, delete on rate_limit_hits to service_role;
+-- In Postgres, INSERT on a table does NOT confer USAGE on the sequence its column default calls.
+-- That grant was never written, so every insert by the Edge Functions has failed since the table
+-- was created (2026-08-18).
+--
+-- Proven directly against production, inside a rolled-back transaction:
+--   set local role service_role;
+--   insert into rate_limit_hits (bucket_key) values ('__probe__');
+--   -> 42501  permission denied for sequence rate_limit_hits_id_seq
+--
+-- `rate_limit_hits_id_seq` is the ONLY sequence in the entire `public` schema -- all 39 other tables
+-- use gen_random_uuid(), which is a plain function call needing no grant. The single table that broke
+-- the convention is the single table that broke.
+--
+-- Why nobody noticed: _shared/rateLimit.ts:50-56 is deliberately fail-open (a DB hiccup must never
+-- stop a couple signing their contract), and the insert error at :66-68 is reported only via
+-- console.error into Supabase function logs. The count query succeeds -- SELECT *is* granted -- and
+-- returns 0 from a permanently empty table, so `count >= maxHits` was never true. A control that
+-- reports healthy, logs its own failure where no one looks, and protects nothing.
+--
+-- Nine endpoints have therefore been unthrottled since 2026-08-18:
+--   fully public -- get-lead-public, save-signed-contract, sign-lead-public,
+--                   submit-production-questionnaire
+--   token/public -- album-portal, album-print-access, get-album-guide-public,
+--                   respond-staff-availability-public
+--   authenticated -- ai-assistant (per user id, 20/60s; this one fronts a paid Claude API)
+-- Honest severity: not a data-breach path (those endpoints' real secret is a 122-bit UUID, which
+-- hammering does not enumerate) -- this is cost and availability exposure.
+--
+-- DELIBERATE BEHAVIOUR CHANGE, stated plainly: this switches ON a control that has never run in
+-- production. It can only ever block requests that currently succeed. The blocked response is a
+-- recoverable Hebrew 429 ("יותר מדי בקשות, נסה שוב בעוד כמה דקות") that self-clears within the
+-- 10-minute window. The sharpest edge is album-portal: all 7 of its actions share one bucket and
+-- AlbumPortal.jsx:538-549 calls createAddonUploadUrl once per file, so a couple uploading 30+ images
+-- inside 10 minutes could be cut off mid-upload. Only 2 album_orders exist today.
+--
+-- Rollback is one line:
+--   revoke usage on sequence rate_limit_hits_id_seq from service_role;
+grant usage on sequence rate_limit_hits_id_seq to service_role;
+
+-- anon and authenticated are deliberately NOT granted, preserving 0023:26's exclusion -- the table is
+-- written exclusively by service-role Edge Functions and must stay invisible to browser clients.
