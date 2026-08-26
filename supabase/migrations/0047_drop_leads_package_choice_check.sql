@@ -1,0 +1,23 @@
+-- Removes the four-fixed-values CHECK on leads.package_choice (0001_init.sql:99), which had become a
+-- live bug rather than a safeguard.
+--
+-- The lead form's package dropdown is populated from the `packages` table
+-- (LeadFormDialog.jsx:229) and writes the selected package's *name* into package_choice
+-- (LeadFormDialog.jsx:92). The catalog has since grown past the four names the constraint permits, so
+-- a package the owner created in Settings was selectable in the UI but rejected on save.
+--
+-- Census on 2026-08-26 (production): `packages` holds 6 rows -- 'חבילה 1'..'חבילה 4' plus
+-- 'חבילת וידאו' and 'חינה'. Across 297 leads, package_choice is 'חבילה 2' x272, 'חבילה 3' x9,
+-- 'חבילה 1' x8, 'חבילה 4' x3, null x5 -- zero on the two newer packages, because the constraint made
+-- them unsaveable. LeadCSVImportDialog.jsx:117 and the AI import path write free text and hit the same
+-- wall.
+--
+-- Deliberately NOT replaced with a foreign key to packages(name). The CSV/AI import paths write free
+-- text, so an FK would turn today's silent typo into a hard save failure -- a new failure mode on a live
+-- system -- and renaming a package in Settings would then invalidate every lead pointing at the old
+-- name. The real constraint already lives where it belongs: the dropdown only offers rows from
+-- `packages`, and leads.package_id already stores the referencable id (LeadFormDialog.jsx:121).
+--
+-- Dropping a CHECK only widens what is permitted, so no existing row can be invalidated by this.
+-- leads_status_check is a separate constraint and is intentionally left in place.
+alter table leads drop constraint if exists leads_package_choice_check;
