@@ -4,13 +4,21 @@ export const DROR_EDITOR_COST = 1200; // Editor (Dror) fixed cost in NIS
 export const VAT_RATE = 1.18; // 18% VAT
 
 /**
+ * שיעור המע"מ של אירוע ספציפי. events.vat_percent הוא NOT NULL DEFAULT 18
+ * ונחתם מ-tenants.default_vat_percent ביצירה — ה-fallback חל רק על אובייקטים
+ * שטרם נשמרו. ?? ולא || כדי שאירוע פטור ממע"מ (0) לא ייפול חזרה ל-18.
+ */
+export const getVatPercent = (event, fallbackPercent = 18) =>
+  event?.vatPercent ?? fallbackPercent;
+
+/**
  * Calculate financial details for an event
  * @param {Object} event - Event data
  * @returns {Object} Calculated financial data
  */
 export const calculateEventFinancials = (event, staffMembers = []) => {
   const totalAmountGross = event.totalAmountGross || 0;
-  const vatPercent = event.vatPercent || 18;
+  const vatPercent = getVatPercent(event);
   const amountBeforeVat = Math.round((totalAmountGross / (1 + vatPercent / 100)) * 100) / 100;
   const vatAmount = Math.round((totalAmountGross - amountBeforeVat) * 100) / 100;
   const totalExpenses = (event.team || []).reduce((sum, m) => sum + (m.cost || 0), 0);

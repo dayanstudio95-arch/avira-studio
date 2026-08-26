@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
 import { getStaffRateForRole } from "@/lib/staffRates";
+import { getVatPercent } from "@/lib/financialCalculations";
 
 import StepIndicator from "../components/newEvent/StepIndicator";
 import DetailsStep from "../components/newEvent/DetailsStep";
@@ -101,8 +102,8 @@ export default function EditEvent() {
     if (!data) return {};
     const totalAmountGross = data.totalAmountGross || 0;
     
-    // Extract VAT: divide by 1.18 to get amount before VAT
-    const amountBeforeVat = totalAmountGross / 1.18;
+    // Extract VAT using the event's own rate to get amount before VAT
+    const amountBeforeVat = totalAmountGross / (1 + getVatPercent(data) / 100);
     const vatAmount = totalAmountGross - amountBeforeVat;
     
     // Calculate total expenses from the 'team' array (including editor)

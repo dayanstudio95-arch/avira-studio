@@ -45,7 +45,7 @@ export default function EventQuickEditModal({ event, isOpen, onClose, onUpdate }
       const vatableAmount = (formData.vatableAmount > 0 && formData.vatableAmount <= totalAmountGross)
         ? formData.vatableAmount
         : totalAmountGross;
-      const vatRate = (formData.vatPercent || defaultVatPercent) / 100;
+      const vatRate = (formData.vatPercent ?? defaultVatPercent) / 100;
       const vatOnVatablePart = vatableAmount - (vatableAmount / (1 + vatRate));
       const vatAmount = vatOnVatablePart;
       const amountBeforeVat = totalAmountGross - vatAmount;
@@ -74,6 +74,7 @@ export default function EventQuickEditModal({ event, isOpen, onClose, onUpdate }
   if (!formData) return null;
 
   const totalExpenses = (formData.team || []).reduce((sum, member) => sum + (member.cost || 0), 0);
+  const vatPercent = formData.vatPercent ?? defaultVatPercent;
   const statusConfig = {
     "Paid": { color: "bg-green-500/20 text-green-400 border-green-500/30", label: "שולם" },
     "Partially Paid": { color: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30", label: "שולם חלקית" },
@@ -227,7 +228,7 @@ export default function EventQuickEditModal({ event, isOpen, onClose, onUpdate }
             <div className="flex justify-between text-sm">
               <span className="text-gray-400">רווח נקי משוער:</span>
               <span className="text-green-400 font-semibold">
-                ₪{((formData.totalAmountGross || 0) - (formData.totalAmountGross || 0) * 0.18 / 1.18 - totalExpenses).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                ₪{((formData.totalAmountGross || 0) - (formData.totalAmountGross || 0) * (vatPercent / 100) / (1 + vatPercent / 100) - totalExpenses).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
               </span>
             </div>
           </div>

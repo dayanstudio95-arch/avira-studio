@@ -1,12 +1,14 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PieChart } from "lucide-react";
+import { getVatPercent } from "@/lib/financialCalculations";
 
 export default function EventChart({ event }) {
   const teamExpenses = (event.team || []).reduce((sum, member) => sum + (member.cost || 0), 0);
   const hasVideographer = (event.team || []).some(m => ['videographer', 'videographer2'].includes(m.role));
   const totalExpenses = teamExpenses + (hasVideographer ? 1200 : 0);
-  const amountBeforeVat = event.totalAmountGross / 1.18;
+  const vatPercent = getVatPercent(event);
+  const amountBeforeVat = event.totalAmountGross / (1 + vatPercent / 100);
   
   const chartData = [
     { 
@@ -16,7 +18,7 @@ export default function EventChart({ event }) {
       percentage: amountBeforeVat > 0 ? ((event.profitNet || 0) / amountBeforeVat * 100) : 0
     },
     { 
-      label: 'מע״מ (18%)', 
+      label: `מע״מ (${vatPercent}%)`,
       value: event.vatAmount || 0, 
       color: 'bg-blue-500',
       percentage: ((event.vatAmount || 0) / event.totalAmountGross * 100)

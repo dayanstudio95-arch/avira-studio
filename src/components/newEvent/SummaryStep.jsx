@@ -2,15 +2,17 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { format } from "date-fns";
 import { Heart, Calendar, Banknote, Receipt, TrendingUp } from "lucide-react";
+import { getVatPercent } from "@/lib/financialCalculations";
 
 export default function SummaryStep({ eventData }) {
   // Get pre-calculated totalExpenses (includes Dror if videographer exists)
   const totalExpenses = eventData.totalExpenses || 0;
-  const amountBeforeVat = eventData.totalAmountGross / 1.18;
-  
+  const vatPercent = getVatPercent(eventData);
+  const amountBeforeVat = eventData.totalAmountGross / (1 + vatPercent / 100);
+
   const chartData = [
     { label: 'רווח נקי', value: eventData.profitNet || 0, color: 'bg-green-500', percentage: amountBeforeVat > 0 ? ((eventData.profitNet || 0) / amountBeforeVat * 100) : 0 },
-    { label: 'מע״מ (18%)', value: eventData.vatAmount || 0, color: 'bg-blue-500', percentage: ((eventData.vatAmount || 0) / eventData.totalAmountGross * 100) },
+    { label: `מע״מ (${vatPercent}%)`, value: eventData.vatAmount || 0, color: 'bg-blue-500', percentage: ((eventData.vatAmount || 0) / eventData.totalAmountGross * 100) },
     { label: 'סך הוצאות', value: totalExpenses, color: 'bg-red-500', percentage: amountBeforeVat > 0 ? (totalExpenses / amountBeforeVat * 100) : 0 }
   ];
 
@@ -61,7 +63,7 @@ export default function SummaryStep({ eventData }) {
               </span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-gray-400">מע״מ ({eventData.vatPercent || 18}%)</span>
+              <span className="text-gray-400">מע״מ ({vatPercent}%)</span>
               <span className="text-blue-400 font-semibold">
                 -₪{eventData.vatAmount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
+import { getVatPercent } from "@/lib/financialCalculations";
 
 export default function EventExpensesEditor({ eventId, onSave }) {
   const [event, setEvent] = useState(null);
@@ -47,7 +48,7 @@ export default function EventExpensesEditor({ eventId, onSave }) {
       await base44.entities.Event.update(event.id, {
         team: event.team,
         totalAmountGross: event.totalAmountGross,
-        vatAmount: vatableAmountInput * 18 / 100,
+        vatAmount: vatableAmountInput * getVatPercent(event) / 100,
         vatableAmount: vatableAmountInput,
         clientPaymentStatus: event.clientPaymentStatus
       });
@@ -97,11 +98,12 @@ export default function EventExpensesEditor({ eventId, onSave }) {
 
   // Calculations
   const totalAmountGross = event.totalAmountGross || 0;
-  const vatAmount = vatableAmountInput * 18 / 118;
+  const vatPercent = getVatPercent(event);
+  const vatAmount = vatableAmountInput * vatPercent / (100 + vatPercent);
   const vatableAmount = vatableAmountInput;
   const netAmount = vatableAmount - vatAmount;
   const totalTeamExpenses = (event.team || []).reduce((sum, m) => sum + (m.cost || 0), 0);
-  const netProfit = (vatableAmount / 1.18) - totalTeamExpenses;
+  const netProfit = (vatableAmount / (1 + vatPercent / 100)) - totalTeamExpenses;
   const totalPaid = lead?.totalPaid || 0;
   const remainingBalance = lead?.remainingBalance || (totalAmountGross - totalPaid);
 
