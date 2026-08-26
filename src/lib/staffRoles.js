@@ -29,13 +29,7 @@ export const EVENT_TEAM_ROLES = [
   { value: "photographer1", label: "צלם 1", icon: "📷", doneField: "photographer1Done" },
   { value: "photographer2", label: "צלם 2", icon: "📷", doneField: "photographer2Done" },
   { value: "videographer", label: "צלם וידאו", icon: "🎥", doneField: "video1Done" },
-  // NOTE: there is no distinct `video2_done` column on `events` yet — every existing
-  // consumer of this role (DashboardWorkStatusCard.jsx, EventsTable.jsx) already
-  // aliases videographer2 onto the same `video1Done` flag as the primary videographer.
-  // Preserved here for consistency rather than inventing a new schema column as part
-  // of this consolidation; giving videographer2 its own independent completion flag
-  // would need a migration and is a separate, larger follow-up if ever needed.
-  { value: "videographer2", label: "צלם וידאו 2", icon: "🎥", doneField: "video1Done" },
+  { value: "videographer2", label: "צלם וידאו 2", icon: "🎥", doneField: "video2Done" },
   { value: "editor", label: "עורך", icon: "✂️", doneField: "editorDone" },
 ];
 

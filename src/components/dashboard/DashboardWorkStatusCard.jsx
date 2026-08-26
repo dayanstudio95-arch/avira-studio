@@ -10,7 +10,7 @@ const ROLE_DONE_FIELDS = {
   photographer1: "photographer1Done",
   photographer2: "photographer2Done",
   videographer: "video1Done",
-  videographer2: "video1Done",
+  videographer2: "video2Done",
   editor: "editorDone",
 };
 
@@ -18,6 +18,7 @@ const FIELD_LABELS = {
   photographer1Done: "צלם 1",
   photographer2Done: "צלם 2",
   video1Done: "וידאו",
+  video2Done: "וידאו 2",
   editorDone: "עריכה",
   rawDoneManual: "גלם",
   finalDoneManual: "סופי",

@@ -199,6 +199,7 @@ export default function Layout({ children }) {
           photographer1: "photographer1Done",
           photographer2: "photographer2Done",
           videographer:  "video1Done",
+          videographer2: "video2Done",
           editor:        "editorDone",
         };
         const getEventProgress = (e) => {
