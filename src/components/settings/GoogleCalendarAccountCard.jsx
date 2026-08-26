@@ -25,7 +25,26 @@ const COLOR_CLASSES = {
   red: "bg-red-900/20 border-red-700/40 text-red-400",
 };
 
-export default function GoogleCalendarAccountCard({ accountRole, account, onChanged }) {
+// `status` only reflects whether the refresh token still works — googleCalendarAuth.ts's
+// getValidAccessToken() sets 'connected' on any successful refresh and never looks at what the
+// token is actually allowed to do. On 2026-08-26 both accounts sat on a green "מחובר" badge for
+// over 24h while every calendar write returned 403 ACCESS_TOKEN_SCOPE_INSUFFICIENT. 34 events
+// silently stopped syncing, including a wedding the next day whose questionnaire answers never
+// reached the calendar. The owner's reaction — "אבל זה מראה שזה מחובר" — is the whole problem:
+// a health indicator that reports green during a total outage is worse than none at all.
+//
+// REJECTED APPROACH, recorded so it isn't retried: checking google_calendar_accounts.scope for
+// the calendar grant. It looks like the obvious fix and it is wrong. That column is written ONLY
+// at connect time (google-calendar-oauth-callback/index.ts:64, `scope: tokens.scope`) and never
+// on refresh, and it demonstrably understates the real grant — it read "userinfo.email openid"
+// with no calendar scope for the ENTIRE period 2026-08-19..08-25 during which calendar writes
+// were succeeding normally. Same stored value, working one week and broken the next: it does not
+// distinguish the two states, so a badge driven by it would have cried wolf for seven days.
+//
+// This uses ground truth instead: whether writes to this account actually failed. `failedSyncCount`
+// is derived by the parent page from event_calendar_syncs rows it already loads, so this costs no
+// extra query and reflects what Google really did rather than what it once claimed.
+export default function GoogleCalendarAccountCard({ accountRole, account, onChanged, failedSyncCount = 0, lastFailedError = null }) {
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [calendarIdInput, setCalendarIdInput] = useState(account?.calendarId || "primary");
@@ -36,7 +55,12 @@ export default function GoogleCalendarAccountCard({ accountRole, account, onChan
   }, [account?.calendarId]);
 
   const status = account?.status || "disconnected";
-  const meta = STATUS_META[status] || STATUS_META.disconnected;
+  // Only meaningful while the account claims to be connected — when it is genuinely
+  // disconnected or needs reauth, that status is already the honest, more specific answer.
+  const syncBroken = status === "connected" && failedSyncCount > 0;
+  const meta = syncBroken
+    ? { label: "הסנכרון נכשל", color: "red", icon: AlertTriangle }
+    : STATUS_META[status] || STATUS_META.disconnected;
   const StatusIcon = meta.icon;
   const isConnected = status === "connected";
   const roleLabel = accountRole === "primary" ? "חשבון ראשי" : "חשבון גיבוי";
@@ -132,6 +156,24 @@ export default function GoogleCalendarAccountCard({ accountRole, account, onChan
       {account?.lastError && (status === "error" || status === "needs_reauth") && (
         <div className="text-xs text-red-300 bg-red-900/10 border border-red-900/30 rounded-lg p-2 break-words">
           {account.lastError}
+        </div>
+      )}
+
+      {syncBroken && (
+        <div className="text-xs text-red-300 bg-red-900/10 border border-red-700/40 rounded-lg p-2 space-y-1">
+          <div className="font-medium">
+            ⚠️ החשבון מחובר, אבל {failedSyncCount} סנכרונים נכשלו — היומן לא מתעדכן
+          </div>
+          <div>
+            החיבור עצמו תקין, ולכן המערכת מציגה אותו כמחובר — אבל גוגל דוחה את הכתיבה ליומן.
+            הפתרון הרגיל: ללחוץ על "חבר מחדש" ולוודא שבמסך האישור של גוגל <strong>כל</strong> תיבות
+            הסימון מסומנות, כולל ההרשאה ליומן (Google Calendar).
+          </div>
+          {lastFailedError && (
+            <div className="text-red-400/80 break-words pt-0.5" dir="ltr">
+              {lastFailedError}
+            </div>
+          )}
         </div>
       )}
 

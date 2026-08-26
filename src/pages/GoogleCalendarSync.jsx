@@ -111,6 +111,22 @@ export default function GoogleCalendarSync() {
 
   const failedRows = syncRows.filter((s) => s.status === "failed");
 
+  // Per-account failure summary handed to GoogleCalendarAccountCard so its badge can reflect
+  // whether writes to THAT account are actually landing. `account.status` alone cannot do this:
+  // it tracks only the refresh token, so it reads "connected" even while every write 403s — the
+  // exact false-green that hid a 24h calendar outage on 2026-08-26. syncRows is already loaded
+  // for the table below, so this adds no query.
+  const failedByRole = useMemo(() => {
+    const map = {};
+    syncRows.forEach((row) => {
+      if (row.status !== "failed") return;
+      if (!map[row.accountRole]) map[row.accountRole] = { count: 0, lastError: null };
+      map[row.accountRole].count++;
+      if (!map[row.accountRole].lastError && row.lastError) map[row.accountRole].lastError = row.lastError;
+    });
+    return map;
+  }, [syncRows]);
+
   // An event counts as "fully synced" when every currently-connected account
   // has a successful sync row for it.
   const fullySyncedCount = useMemo(() => {
@@ -327,8 +343,20 @@ export default function GoogleCalendarSync() {
         <div className="space-y-6">
           {/* Account cards */}
           <div className="grid md:grid-cols-2 gap-4">
-            <GoogleCalendarAccountCard accountRole="primary" account={primaryAccount} onChanged={loadData} />
-            <GoogleCalendarAccountCard accountRole="backup" account={backupAccount} onChanged={loadData} />
+            <GoogleCalendarAccountCard
+              accountRole="primary"
+              account={primaryAccount}
+              onChanged={loadData}
+              failedSyncCount={failedByRole.primary?.count || 0}
+              lastFailedError={failedByRole.primary?.lastError || null}
+            />
+            <GoogleCalendarAccountCard
+              accountRole="backup"
+              account={backupAccount}
+              onChanged={loadData}
+              failedSyncCount={failedByRole.backup?.count || 0}
+              lastFailedError={failedByRole.backup?.lastError || null}
+            />
           </div>
 
           {/* Sync health summary */}
