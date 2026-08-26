@@ -1,0 +1,37 @@
+-- Gives automation_message_logs the `created_at` column that two live consumers already query.
+--
+-- Separate from 0050 on purpose: 0050 makes the writes succeed, this makes the reads work. Two distinct
+-- defects that happen to share a table.
+--
+-- The table is missing a column the rest of the schema treats as universal: 37 of the 40 base tables in
+-- `public` have created_at, and src/api/entities.js:9 maps the Base44-era field name `created_date` onto
+-- `created_at` for every entity without exception. automation_message_logs is the outlier, so this restores
+-- the convention rather than inventing a column.
+--
+-- Two consumers read it today and both fail against the current shape:
+--   _shared/automationGuards.ts:122 -- wasAlreadySentToday() filters `.gte('created_at', dayStartUTC)`.
+--     PostgREST errors on the unknown column, `data` comes back undefined, and the function returns false.
+--     The cross-run duplicate guard therefore fails OPEN: it has never once prevented a repeat send.
+--   src/pages/AutomationLogs.jsx:29 -- `.list("-created_date", 500)`, which the shim rewrites to an
+--     order-by on created_at. Same unknown-column error.
+--
+-- `sent_at` already exists (not null default now()) and is close in meaning, but it is set explicitly only
+-- on the 'sent' branch and defaults on the others, and -- more to the point -- changing the two consumers to
+-- read sent_at would require an Edge Function deploy. Adding the column they already ask for does not.
+--
+-- Shape matches sent_at and the 37 other tables. The default means the column is populated for every future
+-- row without any code change.
+alter table automation_message_logs add column if not exists created_at timestamptz not null default now();
+
+-- No backfill: the table is empty (see 0050 -- inserts have been failing since the table was created).
+--
+-- DELIBERATE BEHAVIOUR CHANGE, stated plainly: once rows exist (0050) and created_at is queryable (this
+-- migration), wasAlreadySentToday() starts returning true where it has always returned false. An automation
+-- that already sent successfully to a given phone earlier the same Israel day will now SKIP that recipient
+-- instead of sending again. That is the designed behaviour of code already running in production; it has
+-- simply never been reachable.
+--
+-- It can only ever reduce the number of messages sent, never increase it. A failed attempt is logged with
+-- status='failed', and the guard matches only status='sent', so retrying after a failure still works. None
+-- of the three automations that have actually run (day-before photographer reminder, monthly crew summary,
+-- custom staff message) is meant to reach the same person twice in one day.
