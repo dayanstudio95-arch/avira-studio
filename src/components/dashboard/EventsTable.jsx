@@ -1,13 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { format } from "date-fns";
-import { Link } from "react-router-dom";
-import { createPageUrl } from "@/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Eye, Heart, Users, Album, UserCheck, AlertTriangle, MessageCircle, Receipt } from "lucide-react";
-import InvoiceDialog from "@/components/invoice/InvoiceDialog";
+import { Heart, Album, UserCheck, AlertTriangle, MessageCircle, ClipboardList } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
@@ -18,9 +15,28 @@ const { StaffMember } = base44.entities;
 
 const calcProfit = (event, staffMembers) => calculateNetProfit(event, staffMembers);
 
+// The "פעולות" column used to hold three controls. All three are gone, and the column
+// itself is replaced by "שאלון" (below) rather than left empty:
+//
+//   * Eye -> <Link to={createPageUrl('EventDetails?id=…')}> and
+//     Users -> <Link to={createPageUrl('TeamPayments?id=…')}>
+//     Both were DEAD LINKS. Neither `/EventDetails` nor `/TeamPayments` is registered
+//     in App.jsx -- they never have been, in the repo's entire history -- so both fell
+//     through to <Route path="*" element={<PageNotFound />} />. `createPageUrl` is a
+//     Base44-era helper that builds a path from a page *name*; the Supabase rewrite
+//     replaced that registry with explicit routes and these two call sites were missed.
+//     The eye is not re-pointed at the side panel because it would be redundant: the
+//     couple's name already opens UnifiedSidePanel, on desktop and on mobile alike.
+//
+//   * Receipt -> setInvoiceEvent(event), which opened InvoiceDialog inline. Dropped at
+//     the owner's request -- he issues invoices from the side panel, which has its own
+//     InvoiceDialog. The import, the state and the element are all removed with it.
+//
+// What replaces it is the one thing that column could not tell him: whether the couple
+// has answered the production questionnaire.
+
 export default function EventsTable({ events, isLoading, onRefresh }) {
   const [staffMembers, setStaffMembers] = useState([]);
-  const [invoiceEvent, setInvoiceEvent] = useState(null);
   const [leads, setLeads] = useState([]);
   const [selectedLeadForDrawer, setSelectedLeadForDrawer] = useState(null);
   const [selectedEventForDrawer, setSelectedEventForDrawer] = useState(null);
@@ -48,6 +64,22 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
     setSelectedLeadForDrawer(relatedLead || null);
     setSelectedEventForDrawer(event);
     setIsDrawerOpen(true);
+  };
+
+  // Whether the couple has submitted the production questionnaire. The flag lives on
+  // the LEAD (leads.production_form_filled_at, stamped by submit-production-
+  // questionnaire), never on the event, so it is reached through source_lead_id --
+  // which is populated on every event, unlike the legacy lead_id. `leads` is already
+  // fetched above for the side panel, so this adds no query and no extra round trip.
+  //
+  // Returns null, not false, until that fetch resolves: `leads` starts as [] and the
+  // lookup would otherwise report every event as unanswered for the first moment
+  // after mount, flashing ~151 rows from orange to green. Null renders the same "—"
+  // the יומן column uses for "not known", which is the honest state at that point.
+  const isQuestionnaireFilled = (event) => {
+    if (leads.length === 0) return null;
+    if (!event.sourceLeadId) return false;
+    return !!leads.find(l => l.id === event.sourceLeadId)?.productionFormFilledAt;
   };
 
   const ROLE_DONE_FIELDS = {
@@ -181,20 +213,23 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
                         <Album className="w-3 h-3 mr-1 inline" />
                         {event.albumStatus === 'sent' ? 'נשלח' : 'לא נשלח'}
                       </Badge>
-                    </div>
-
-                    <div className="flex gap-2 pt-2">
-                      <Link to={createPageUrl(`EventDetails?id=${event.id}`)} className="flex-1">
-                        <Button variant="outline" size="sm" className="w-full border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">
-                          <Eye className="w-4 h-4 mr-2" />
-                          צפה
-                        </Button>
-                      </Link>
-                      <Link to={createPageUrl(`TeamPayments?id=${event.id}`)}>
-                        <Button variant="outline" size="sm" className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">
-                          <Users className="w-4 h-4" />
-                        </Button>
-                      </Link>
+                      {(() => {
+                        const filled = isQuestionnaireFilled(event);
+                        if (filled === null) return null;
+                        return (
+                          <Badge
+                            variant="outline"
+                            className={`${
+                              filled
+                                ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                                : 'bg-orange-500/20 text-orange-400 border-orange-500/30'
+                            } border text-xs`}
+                          >
+                            <ClipboardList className="w-3 h-3 mr-1 inline" />
+                            שאלון {filled ? 'מולא' : 'לא מולא'}
+                          </Badge>
+                        );
+                      })()}
                     </div>
                   </CardContent>
                 </Card>
@@ -216,7 +251,7 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
                 <TableHead className="text-gray-400">סטטוס התקדמות</TableHead>
                 <TableHead className="text-gray-400">אלבום</TableHead>
                 <TableHead className="text-gray-400">יומן</TableHead>
-                <TableHead className="text-gray-400">פעולות</TableHead>
+                <TableHead className="text-gray-400">שאלון</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -340,35 +375,25 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
                         )}
                       </TableCell>
                       <TableCell>
-                        <div className="flex gap-2">
-                          <Link to={createPageUrl(`EventDetails?id=${event.id}`)}>
-                            <Button 
-                              variant="ghost" 
-                              size="sm"
-                              className="text-gray-400 hover:text-yellow-400 hover:bg-yellow-500/10"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                          </Link>
-                          <Link to={createPageUrl(`TeamPayments?id=${event.id}`)}>
-                            <Button 
-                              variant="ghost" 
-                              size="sm"
-                              className="text-gray-400 hover:text-blue-400 hover:bg-blue-500/10"
-                            >
-                              <Users className="w-4 h-4" />
-                            </Button>
-                          </Link>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setInvoiceEvent(event)}
-                            className="text-emerald-400 hover:bg-emerald-500/10"
-                            title="הפקת חשבונית"
-                          >
-                            <Receipt className="w-4 h-4" />
-                          </Button>
-                        </div>
+                        {(() => {
+                          const filled = isQuestionnaireFilled(event);
+                          if (filled === null) return <span className="text-gray-500 text-xs">—</span>;
+                          return (
+                            <div className="flex items-center gap-1">
+                              <span className={`w-2 h-2 rounded-full ${filled ? 'bg-green-400' : 'bg-orange-400'}`}></span>
+                              <Badge
+                                variant="outline"
+                                className={`${
+                                  filled
+                                    ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                                    : 'bg-orange-500/20 text-orange-400 border-orange-500/30'
+                                } border font-medium text-xs`}
+                              >
+                                {filled ? 'מולא' : 'לא מולא'}
+                              </Badge>
+                            </div>
+                          );
+                        })()}
                       </TableCell>
 
                     </TableRow>
@@ -380,22 +405,6 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
         </div>
       </CardContent>
       </Card>
-      <InvoiceDialog
-      isOpen={!!invoiceEvent}
-      onClose={() => {
-        setInvoiceEvent(null);
-        if (onRefresh) onRefresh();
-      }}
-      coupleNames={invoiceEvent?.coupleNames}
-      eventDate={invoiceEvent?.date}
-      venueName={invoiceEvent?.venue}
-      clientPhone={invoiceEvent?.phoneNumber}
-      onInvoiceCreated={(url, amount) => {
-        setTimeout(() => {
-          if (onRefresh) onRefresh();
-        }, 300);
-      }}
-      />
       <UnifiedSidePanel
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
