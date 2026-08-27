@@ -2,6 +2,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PieChart } from "lucide-react";
 import { getVatPercent } from "@/lib/financialCalculations";
+import { calculateNetProfit } from "@/lib/profitCalculations";
 
 export default function EventChart({ event }) {
   const teamExpenses = (event.team || []).reduce((sum, member) => sum + (member.cost || 0), 0);
@@ -9,13 +10,22 @@ export default function EventChart({ event }) {
   const totalExpenses = teamExpenses + (hasVideographer ? 1200 : 0);
   const vatPercent = getVatPercent(event);
   const amountBeforeVat = event.totalAmountGross / (1 + vatPercent / 100);
-  
+
+  // Never read event.profitNet raw. events.profit_net is NULL on all 270 existing
+  // events, because EditEvent.jsx -- its principal writer -- could not save at all
+  // until 2026-08-27 (see that file's calculateFinancials comment). This card then
+  // showed "רווח נקי ₪0.00 / 0%" next to correct מע״מ and הוצאות slices.
+  // calculateNetProfit() prefers the stored value when it is present and otherwise
+  // computes the identical formula from totalAmountGross + team, so every event
+  // renders correctly with no backfill of stored money data.
+  const profitNet = calculateNetProfit(event);
+
   const chartData = [
-    { 
-      label: 'רווח נקי', 
-      value: event.profitNet || 0, 
+    {
+      label: 'רווח נקי',
+      value: profitNet,
       color: 'bg-green-500',
-      percentage: amountBeforeVat > 0 ? ((event.profitNet || 0) / amountBeforeVat * 100) : 0
+      percentage: amountBeforeVat > 0 ? (profitNet / amountBeforeVat * 100) : 0
     },
     { 
       label: `מע״מ (${vatPercent}%)`,
@@ -96,9 +106,9 @@ export default function EventChart({ event }) {
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             <p className="text-xs text-gray-400">רווח נקי</p>
             <p className={`text-lg font-bold ${
-              (event.profitNet || 0) >= 0 ? 'text-green-400' : 'text-red-400'
+              profitNet >= 0 ? 'text-green-400' : 'text-red-400'
             }`}>
-              ₪{(event.profitNet || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ₪{profitNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
           </div>
         </div>

@@ -6,6 +6,10 @@ import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus } from "lucid
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, addMonths, isSameMonth, isSameDay, isToday, addWeeks, subWeeks, subMonths } from "date-fns";
 import EventQuickEditModal from "../components/calendar/EventQuickEditModal";
 import AddEventModal from "../components/calendar/AddEventModal";
+// Never read event.profitNet raw -- it is NULL on every existing event (see
+// EditEvent.jsx's calculateFinancials comment for why). This helper prefers the
+// stored value when present and otherwise computes the identical formula.
+import { calculateNetProfit } from "@/lib/profitCalculations";
 
 const STATUS_COLORS = {
   "Paid": "bg-green-500 hover:bg-green-600 border-green-600",
@@ -278,7 +282,7 @@ export default function Calendar() {
                   <div>
                     <div className="text-xl font-bold mb-1">{event.coupleNames}</div>
                     <div className="text-sm opacity-90">
-                      ₪{event.totalAmountGross?.toLocaleString()} • רווח נקי: ₪{event.profitNet?.toLocaleString()}
+                      ₪{event.totalAmountGross?.toLocaleString()} • רווח נקי: ₪{calculateNetProfit(event).toLocaleString()}
                     </div>
                   </div>
                   <div className="text-xs opacity-75">

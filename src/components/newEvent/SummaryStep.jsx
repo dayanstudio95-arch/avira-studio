@@ -3,15 +3,22 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { format } from "date-fns";
 import { Heart, Calendar, Banknote, Receipt, TrendingUp } from "lucide-react";
 import { getVatPercent } from "@/lib/financialCalculations";
+import { calculateNetProfit } from "@/lib/profitCalculations";
 
 export default function SummaryStep({ eventData }) {
-  // Get pre-calculated totalExpenses (includes Dror if videographer exists)
-  const totalExpenses = eventData.totalExpenses || 0;
+  // Derived here rather than read off `eventData.totalExpenses`. That key used to be
+  // supplied by EditEvent.jsx's calculateFinancials(), but it also leaked into the
+  // Event.update() payload as a `total_expenses` column that does not exist, which
+  // made every save of that screen fail (see EditEvent.jsx for the full story). The
+  // key is gone from the payload, so this component computes the same sum itself --
+  // identical formula, no dependency on the caller shaping the object for it.
+  const totalExpenses = (eventData.team || []).reduce((sum, member) => sum + (member.cost || 0), 0);
+  const profitNet = calculateNetProfit(eventData);
   const vatPercent = getVatPercent(eventData);
   const amountBeforeVat = eventData.totalAmountGross / (1 + vatPercent / 100);
 
   const chartData = [
-    { label: 'רווח נקי', value: eventData.profitNet || 0, color: 'bg-green-500', percentage: amountBeforeVat > 0 ? ((eventData.profitNet || 0) / amountBeforeVat * 100) : 0 },
+    { label: 'רווח נקי', value: profitNet, color: 'bg-green-500', percentage: amountBeforeVat > 0 ? (profitNet / amountBeforeVat * 100) : 0 },
     { label: `מע״מ (${vatPercent}%)`, value: eventData.vatAmount || 0, color: 'bg-blue-500', percentage: ((eventData.vatAmount || 0) / eventData.totalAmountGross * 100) },
     { label: 'סך הוצאות', value: totalExpenses, color: 'bg-red-500', percentage: amountBeforeVat > 0 ? (totalExpenses / amountBeforeVat * 100) : 0 }
   ];
@@ -91,9 +98,9 @@ export default function SummaryStep({ eventData }) {
               <div className="flex justify-between items-center">
                 <span className="text-white font-semibold">רווח נקי</span>
                 <span className={`font-bold text-lg ${
-                  (eventData.profitNet || 0) >= 0 ? 'text-green-400' : 'text-red-400'
+                  profitNet >= 0 ? 'text-green-400' : 'text-red-400'
                 }`}>
-                  ₪{eventData.profitNet?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  ₪{profitNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
             </div>

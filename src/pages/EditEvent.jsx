@@ -111,8 +111,17 @@ export default function EditEvent() {
     
     // Net profit = amount before VAT - total expenses
     const profitNet = amountBeforeVat - totalExpenses;
-    
-    return { ...data, vatableAmount: totalAmountGross, vatAmount: Math.round(vatAmount * 100) / 100, profitNet: Math.round(profitNet * 100) / 100, totalExpenses };
+
+    // `totalExpenses` is deliberately NOT returned. There is no `events.total_expenses`
+    // column and there never was one (it is a leftover Base44 field name), while
+    // src/api/entities.js's recordToRow passes every key straight through to PostgREST
+    // with no allowlist. Including it made every save of this screen fail with
+    // PGRST204 "Could not find the 'total_expenses' column of 'events' in the schema
+    // cache" -- raised at request-parse time, before auth, so it failed for everyone
+    // from the very first commit of the Supabase rewrite until 2026-08-27. The catch in
+    // executeSave() showed only "שגיאה בעדכון אירוע", which is why it went unnoticed.
+    // Consumers that want the figure derive it from `team`, exactly as this line does.
+    return { ...data, vatableAmount: totalAmountGross, vatAmount: Math.round(vatAmount * 100) / 100, profitNet: Math.round(profitNet * 100) / 100 };
   };
 
   const handleUpdate = async () => {
