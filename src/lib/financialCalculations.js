@@ -1,6 +1,12 @@
 // Financial calculations helper for the photography studio
-// Constants
-export const DROR_EDITOR_COST = 1200; // Editor (Dror) fixed cost in NIS
+//
+// `DROR_EDITOR_COST = 1200` used to live here. It never had a single importer --
+// the literal was re-typed inline instead -- and it encoded a price that already
+// has a real, editable home in staff_members.default_rate (Settings -> אנשי צוות),
+// snapshotted per event into events.team[].cost. Keeping it would have preserved
+// exactly the duplicate-source-of-truth this file's SUPPLIER_VAT_RATE comment
+// warns about, and it is what let the dashboard double-count the editor's fee.
+// Removed with the last live consumer (Dashboard.jsx's expenses sum).
 
 /**
  * השיעור החוקי שספק/פרילנסר עוסק מורשה מחייב את הסטודיו. זו *לא* הגדרת המע"מ

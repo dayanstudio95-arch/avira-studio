@@ -58,10 +58,29 @@ export default function Dashboard() {
 
     const filterEvents = (events) => {
         const income = events.reduce((sum, event) => sum + (event.totalAmountGross || 0), 0);
+        // Expenses come from the event's own crew list and nothing else -- the same
+        // source calculateNetProfit() uses. There used to be a `+ (hasVideographer ?
+        // 1200 : 0)` term here, a hardcoded copy of the video editor's fee. It was
+        // wrong twice over: the editor is normally assigned to the event like any
+        // other crew member, so on 250 of 271 events his 1,200 was counted a second
+        // time on top of his real team[] row (2026 expenses overstated by 271,200);
+        // and `hasVideographer` tests only m.role, so an event whose videographer row
+        // is explicitly named "אין וידאו" with cost 0 still triggered it. The 15
+        // events with a videographer but no editor are deliberate -- the studio
+        // sometimes books video without editing -- so no compensation term belongs
+        // here at all. staff_members.default_rate (Settings -> אנשי צוות) is now the
+        // single source for that price: raise the editor's rate there and every new
+        // assignment follows, while past events keep the rate snapshotted into
+        // team[].cost.
+        //
+        // No number on screen changes as a result: `expenses` is returned in the
+        // stats object but never rendered -- the cards show only income and
+        // netProfit, and netProfit comes from calculateNetProfit(), which has always
+        // summed team[].cost alone. That is precisely why the wrong figure survived
+        // this long. It is fixed rather than deleted so that whoever does render
+        // הוצאות one day gets a number that agrees with רווח נקי beside it.
         let expenses = events.reduce((sum, event) => {
-          const teamExpenses = (event.team || []).reduce((s, m) => s + (m.cost || 0), 0);
-          const hasVideographer = (event.team || []).some(m => ['videographer', 'videographer2'].includes(m.role));
-          return sum + teamExpenses + (hasVideographer ? 1200 : 0);
+          return sum + (event.team || []).reduce((s, m) => s + (m.cost || 0), 0);
         }, 0);
         const vat = events.reduce((sum, event) => sum + (event.vatAmount != null ? event.vatAmount : calculateEventFinancials(event).vatAmount), 0);
         const profit = events.reduce((sum, event) => sum + calculateNetProfit(event, staffMembers), 0);
