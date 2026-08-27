@@ -65,6 +65,10 @@ const AlbumGuideSettings = lazy(() => import('./pages/AlbumGuideSettings'));
 const StaffAvailabilityResponse = lazy(() => import('./pages/StaffAvailabilityResponse'));
 const AlbumGuide = lazy(() => import('./pages/AlbumGuide'));
 
+// Public, no-login privacy policy -- required by Google Cloud Console before the
+// OAuth app can be published out of "Testing" status. Fully static, no data fetch.
+const Privacy = lazy(() => import('./pages/Privacy'));
+
 // Shared fallback while a lazy page chunk downloads -- matches the existing
 // auth-loading spinner's look (fixed inset-0, same spinner classes) so route-change
 // loading doesn't look visually different from the app's other loading states.
@@ -266,6 +270,10 @@ function App() {
                   from the WhatsApp link StaffAvailabilityModal.jsx sends. Token-validated
                   server-side on every request via respond-staff-availability-public. */}
               <Route path="/staff-availability/:token" element={<StaffAvailabilityResponse />} />
+
+              {/* Privacy policy -- public, no-login, static. The URL pasted into Google
+                  Cloud Console's "Application privacy policy link" Branding field. */}
+              <Route path="/privacy" element={<Privacy />} />
 
               {/* Protected routes */}
               <Route path="/*" element={<AuthenticatedApp />} />
