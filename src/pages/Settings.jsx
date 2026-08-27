@@ -501,6 +501,20 @@ export default function Settings() {
                   </div>
                 </CardHeader>
                 <CardContent className="p-6">
+                  {/*
+                    Honest-disclosure label, in the same style as WorkspaceTab's timezone/currency
+                    fields. `discount_presets` has no consumer: its only reader was the discount
+                    dropdown in newEvent/DetailsStep.jsx, removed on 2026-08-28 because it never
+                    persisted a value (0 of 271 events) and computed the wrong price. Discounts in
+                    real use live on the lead -- LeadFormDialog's basePrice/discount/finalPrice --
+                    and flow into the event through sync-lead-to-event. The table and this CRUD are
+                    kept rather than deleted so the capability stays available, but the screen now
+                    says plainly that nothing reads it today.
+                  */}
+                  <p className="text-xs text-gray-500 mb-4">
+                    ההנחות בפועל נקבעות בכרטיס הליד (מחיר בסיס ← הנחה ← מחיר סופי), והמחיר הסופי עובר משם לאירוע.
+                    הנחות שנשמרות כאן אינן בשימוש כרגע בשום מסך.
+                  </p>
                   <DiscountList />
                 </CardContent>
               </Card>

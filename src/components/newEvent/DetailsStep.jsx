@@ -1,86 +1,56 @@
-import React, { useState, useEffect } from 'react';
-import { base44 } from "@/api/base44Client";
+import React, { useState } from 'react';
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar, Heart, Banknote, Percent, CreditCard, Package, MapPin, Phone, Tag } from "lucide-react";
+import { Calendar, Heart, Banknote, Percent, CreditCard, Package, MapPin, Phone } from "lucide-react";
 import { useAuth } from "@/lib/SupabaseAuthContext";
+
+// Discounts are deliberately NOT offered on this screen.
+//
+// There were two independent discount mechanisms in the system. The one in daily use
+// lives on the lead (LeadFormDialog.jsx: basePrice / discount / finalPrice), always
+// computes `finalPrice = basePrice - discount` from a stored base price, and is correct
+// on all 298 leads including the 89 that carry a real discount. sync-lead-to-event
+// (:94, :120) copies `lead.final_price` into `events.total_amount_gross`, so an event
+// created from a discounted lead already arrives with the discounted price.
+//
+// The second mechanism lived here -- `events.selected_discount_id` + `manual_discount`
+// fed by the `discount_presets` catalog. It was never usable: this component is rendered
+// only by EditEvent.jsx, which could not save at all between 2026-08-12 and 2026-08-27
+// (see EditEvent.jsx's calculateFinancials comment), so it never persisted a single
+// value -- 0 of 271 events. Its arithmetic was also wrong: both handlers took their base
+// price from `originalPrice || eventData.totalAmountGross`, and `originalPrice` stays 0
+// unless the package is re-picked, so each keystroke subtracted again from the already
+// discounted total (typing 1000 on a 12,000 event produced 10,889, not 11,000).
+//
+// Removed rather than repaired (owner's decision, 2026-08-28): it removed no working
+// capability, it was actively misleading -- an event created from a discounted lead
+// showed an EMPTY discount field -- and repairing it would have kept a second, parallel
+// discount concept alive next to the one that works. For an event with no lead behind it
+// the final price is typed directly into "סכום ברוטו כולל" below. The DB columns and the
+// `discount_presets` table are untouched.
 
 export default function DetailsStep({ eventData, updateEventData, packages = [] }) {
   const { tenantDefaults } = useAuth();
   const defaultVatPercent = tenantDefaults?.defaultVatPercent ?? 18;
-  const [discounts, setDiscounts] = useState([]);
   const [originalPrice, setOriginalPrice] = useState(0);
-
-  useEffect(() => {
-    loadDiscounts();
-  }, []);
-
-  const loadDiscounts = async () => {
-    try {
-      const data = await base44.entities.DiscountPreset.list();
-      setDiscounts(data);
-    } catch (error) {
-      console.error("Error loading discounts:", error);
-    }
-  };
 
   const handlePackageChange = (packageId) => {
     const selectedPackage = packages.find(pkg => pkg.id === packageId);
     if (selectedPackage) {
       const defaultPrice = selectedPackage.defaultPrice || selectedPackage.price || 0;
       setOriginalPrice(defaultPrice);
-      
-      // Apply discount if one is selected
-      const finalPrice = calculateFinalPrice(defaultPrice, eventData.selectedDiscountId, eventData.manualDiscount);
-      
-      updateEventData({ 
+
+      updateEventData({
         packageId,
         requiredCrew: selectedPackage.totalCrewCount || 3,
-        totalAmountGross: finalPrice
+        totalAmountGross: defaultPrice
       });
     } else {
       updateEventData({ packageId: "", totalAmountGross: 0 });
       setOriginalPrice(0);
     }
-  };
-
-  const calculateFinalPrice = (basePrice, discountId, manualDiscount) => {
-    let finalPrice = basePrice;
-    
-    if (discountId) {
-      const discount = discounts.find(d => d.id === discountId);
-      if (discount) {
-        finalPrice -= discount.amount;
-      }
-    }
-    
-    if (manualDiscount) {
-      finalPrice -= manualDiscount;
-    }
-    
-    return Math.max(0, finalPrice);
-  };
-
-  const handleDiscountChange = (discountId) => {
-    const basePrice = originalPrice || eventData.totalAmountGross || 0;
-    const finalPrice = calculateFinalPrice(basePrice, discountId, eventData.manualDiscount);
-    
-    updateEventData({
-      selectedDiscountId: discountId,
-      totalAmountGross: finalPrice
-    });
-  };
-
-  const handleManualDiscountChange = (value) => {
-    const basePrice = originalPrice || eventData.totalAmountGross || 0;
-    const finalPrice = calculateFinalPrice(basePrice, eventData.selectedDiscountId, value);
-    
-    updateEventData({
-      manualDiscount: value,
-      totalAmountGross: finalPrice
-    });
   };
   return (
     <div className="space-y-6">
@@ -168,46 +138,6 @@ export default function DetailsStep({ eventData, updateEventData, packages = [] 
             </SelectContent>
           </Select>
         </div>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="discount" className="text-gray-300 font-medium flex items-center gap-2">
-          <Tag className="w-4 h-4 text-yellow-400" />
-          הנחה
-        </Label>
-        <Select 
-          value={eventData.selectedDiscountId || ""} 
-          onValueChange={handleDiscountChange}
-        >
-          <SelectTrigger className="bg-gray-800/50 border-gray-700 text-white focus:border-yellow-400 focus:ring-yellow-400/20">
-            <SelectValue placeholder="בחר הנחה (אופציונלי)" />
-          </SelectTrigger>
-          <SelectContent className="bg-gray-900 border-gray-700 text-white">
-            <SelectItem value={null}>ללא הנחה</SelectItem>
-            {discounts.map((discount) => (
-              <SelectItem key={discount.id} value={discount.id}>
-                {discount.name} (₪{discount.amount.toLocaleString()})
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="manualDiscount" className="text-gray-300 font-medium flex items-center gap-2">
-          <Tag className="w-4 h-4 text-yellow-400" />
-          הנחה ידנית (₪)
-        </Label>
-        <Input
-          id="manualDiscount"
-          type="number"
-          min="0"
-          step="100"
-          placeholder="הנחה נוספת"
-          value={eventData.manualDiscount || ''}
-          onChange={(e) => handleManualDiscountChange(parseFloat(e.target.value) || 0)}
-          className="bg-gray-800/50 border-gray-700 text-white placeholder-gray-500 focus:border-yellow-400 focus:ring-yellow-400/20"
-        />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
