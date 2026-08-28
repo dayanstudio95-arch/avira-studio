@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, RefreshCw, Calendar, CheckCircle2, XCircle, Clock, Send, ListChecks, CalendarSync } from "lucide-react";
+import { Loader2, RefreshCw, Calendar, CheckCircle2, XCircle, Clock, Send, ListChecks, CalendarSync, ChevronDown, ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
 
 const HEBREW_MONTHS = [
@@ -50,6 +50,25 @@ export default function GoogleCalendarSync() {
   const [syncYear, setSyncYear] = useState(now.getFullYear());
   const [syncRunning, setSyncRunning] = useState(false);
 
+  // Which year/month groups in the events table are expanded. Seeded synchronously
+  // from `now` (not in a useEffect) so the current month is already open on the very
+  // first paint — an effect would render everything collapsed and then flick open.
+  const [expandedYears, setExpandedYears] = useState(() => new Set([String(now.getFullYear())]));
+  const [expandedMonths, setExpandedMonths] = useState(
+    () => new Set([`${now.getFullYear()}-${now.getMonth()}`])
+  );
+
+  const toggleYear = (key) => setExpandedYears((prev) => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
+  const toggleMonth = (key) => setExpandedMonths((prev) => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
+
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -88,7 +107,12 @@ export default function GoogleCalendarSync() {
 
   const primaryAccount = accounts.find((a) => a.accountRole === "primary") || null;
   const backupAccount = accounts.find((a) => a.accountRole === "backup") || null;
-  const connectedRoles = accounts.filter((a) => a.status === "connected").map((a) => a.accountRole);
+  // Memoized: it feeds the grouping memo below, which would otherwise recompute on
+  // every render because a fresh array literal is never referentially equal.
+  const connectedRoles = useMemo(
+    () => accounts.filter((a) => a.status === "connected").map((a) => a.accountRole),
+    [accounts]
+  );
 
   const statusCounts = { success: 0, failed: 0, pending: 0, deleted: 0 };
   syncRows.forEach((s) => { if (statusCounts[s.status] !== undefined) statusCounts[s.status]++; });
@@ -128,13 +152,63 @@ export default function GoogleCalendarSync() {
   }, [syncRows]);
 
   // An event counts as "fully synced" when every currently-connected account
-  // has a successful sync row for it.
-  const fullySyncedCount = useMemo(() => {
-    if (connectedRoles.length === 0) return 0;
-    return allEvents.filter((e) =>
-      connectedRoles.every((role) => syncByEvent[e.id]?.[role]?.status === "success")
-    ).length;
-  }, [allEvents, connectedRoles, syncByEvent]);
+  // has a successful sync row for it. Extracted into one function so the global
+  // counter above the table and the per-month ratios inside it are the same
+  // definition and can never disagree.
+  const isFullySynced = useCallback(
+    (event) =>
+      connectedRoles.length > 0 &&
+      connectedRoles.every((role) => syncByEvent[event.id]?.[role]?.status === "success"),
+    [connectedRoles, syncByEvent]
+  );
+
+  const fullySyncedCount = useMemo(
+    () => allEvents.filter(isFullySynced).length,
+    [allEvents, isFullySynced]
+  );
+
+  // Events bucketed year -> month, chronologically ascending, each bucket carrying
+  // its own total and fully-synced count. Events with no date land in a trailing
+  // "ללא תאריך" bucket rather than being silently dropped.
+  const groupedEvents = useMemo(() => {
+    const dated = allEvents.filter((e) => e.date);
+    const undated = allEvents.filter((e) => !e.date);
+    dated.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    const years = [];
+    dated.forEach((event) => {
+      const d = new Date(event.date);
+      const y = d.getFullYear();
+      const m = d.getMonth();
+      let year = years[years.length - 1];
+      if (!year || year.year !== y) {
+        year = { year: y, key: String(y), months: [], total: 0, synced: 0 };
+        years.push(year);
+      }
+      let month = year.months[year.months.length - 1];
+      if (!month || month.month !== m) {
+        month = { month: m, key: `${y}-${m}`, label: HEBREW_MONTHS[m], events: [], total: 0, synced: 0 };
+        year.months.push(month);
+      }
+      month.events.push(event);
+      month.total++;
+      year.total++;
+      if (isFullySynced(event)) { month.synced++; year.synced++; }
+    });
+
+    if (undated.length > 0) {
+      const synced = undated.filter(isFullySynced).length;
+      years.push({
+        year: null,
+        key: "no-date",
+        label: "ללא תאריך",
+        total: undated.length,
+        synced,
+        months: [{ month: null, key: "no-date-m", label: "ללא תאריך", events: undated, total: undated.length, synced }],
+      });
+    }
+    return years;
+  }, [allEvents, isFullySynced]);
 
   const isEventSyncedToPrimary = (event) =>
     !!event.googleCalendarEventId && !String(event.googleCalendarEventId).startsWith("creating_");
@@ -508,42 +582,100 @@ export default function GoogleCalendarSync() {
                     </tr>
                   </thead>
                   <tbody>
-                    {allEvents.map((event) => {
-                      const primaryRow = syncByEvent[event.id]?.primary;
-                      const backupRow = syncByEvent[event.id]?.backup;
-                      const canSelect = isEventSyncedToPrimary(event);
-                      const nonEditorTeam = (event.team || []).filter((m) => m.staffMemberName && m.role !== "editor");
-                      const invitedCount = nonEditorTeam.filter((m) => m.calendarStatus).length;
+                    {groupedEvents.map((year) => {
+                      const yearOpen = expandedYears.has(year.key);
                       return (
-                        <tr key={event.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
-                          <td className="py-2 px-2">
-                            <Checkbox
-                              checked={selectedEventIds.has(event.id)}
-                              onCheckedChange={() => toggleEventSelection(event.id)}
-                              disabled={!canSelect}
-                              title={!canSelect ? "יש לסנכרן ליומן קודם" : undefined}
-                            />
-                          </td>
-                          <td className="py-2 px-2 text-white">{event.coupleNames || "—"}</td>
-                          <td className="py-2 px-2 text-gray-400">
-                            {event.date ? new Date(event.date).toLocaleDateString("he-IL") : "—"}
-                          </td>
-                          <td className="py-2 px-2">
-                            <SyncStatusBadge connected={connectedRoles.includes("primary")} row={primaryRow} />
-                          </td>
-                          <td className="py-2 px-2">
-                            <SyncStatusBadge connected={connectedRoles.includes("backup")} row={backupRow} />
-                          </td>
-                          <td className="py-2 px-2">
-                            {nonEditorTeam.length === 0 ? (
-                              <span className="text-gray-600 text-xs">אין צוות</span>
-                            ) : (
-                              <span className={`text-xs font-medium ${invitedCount === nonEditorTeam.length ? "text-green-400" : invitedCount > 0 ? "text-yellow-400" : "text-gray-500"}`}>
-                                {invitedCount}/{nonEditorTeam.length} זומנו
-                              </span>
-                            )}
-                          </td>
-                        </tr>
+                        <React.Fragment key={year.key}>
+                          <tr className="border-b border-gray-800 bg-gray-800/50">
+                            <td colSpan={6} className="p-0">
+                              <button
+                                type="button"
+                                onClick={() => toggleYear(year.key)}
+                                className="w-full flex items-center gap-2 py-2 px-2 text-right hover:bg-gray-800/70 transition-colors"
+                              >
+                                {yearOpen
+                                  ? <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+                                  : <ChevronLeft className="w-4 h-4 text-gray-400 shrink-0" />}
+                                <span className="text-white font-semibold">{year.label || year.year}</span>
+                                <span className="text-gray-400 text-xs">({year.total} אירועים)</span>
+                                <span className="mr-auto">
+                                  <SyncRatio
+                                    connected={connectedRoles.length > 0}
+                                    synced={year.synced}
+                                    total={year.total}
+                                  />
+                                </span>
+                              </button>
+                            </td>
+                          </tr>
+                          {yearOpen && year.months.map((month) => {
+                            const monthOpen = expandedMonths.has(month.key);
+                            return (
+                              <React.Fragment key={month.key}>
+                                <tr className="border-b border-gray-800/50 bg-gray-800/20">
+                                  <td colSpan={6} className="p-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleMonth(month.key)}
+                                      className="w-full flex items-center gap-2 py-1.5 px-2 pr-7 text-right hover:bg-gray-800/40 transition-colors"
+                                    >
+                                      {monthOpen
+                                        ? <ChevronDown className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                                        : <ChevronLeft className="w-3.5 h-3.5 text-gray-500 shrink-0" />}
+                                      <span className="text-gray-200 text-sm">{month.label}</span>
+                                      <span className="text-gray-500 text-xs">({month.total} אירועים)</span>
+                                      <span className="mr-auto">
+                                        <SyncRatio
+                                          connected={connectedRoles.length > 0}
+                                          synced={month.synced}
+                                          total={month.total}
+                                        />
+                                      </span>
+                                    </button>
+                                  </td>
+                                </tr>
+                                {monthOpen && month.events.map((event) => {
+                                  const primaryRow = syncByEvent[event.id]?.primary;
+                                  const backupRow = syncByEvent[event.id]?.backup;
+                                  const canSelect = isEventSyncedToPrimary(event);
+                                  const nonEditorTeam = (event.team || []).filter((m) => m.staffMemberName && m.role !== "editor");
+                                  const invitedCount = nonEditorTeam.filter((m) => m.calendarStatus).length;
+                                  return (
+                                    <tr key={event.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                                      <td className="py-2 px-2">
+                                        <Checkbox
+                                          checked={selectedEventIds.has(event.id)}
+                                          onCheckedChange={() => toggleEventSelection(event.id)}
+                                          disabled={!canSelect}
+                                          title={!canSelect ? "יש לסנכרן ליומן קודם" : undefined}
+                                        />
+                                      </td>
+                                      <td className="py-2 px-2 text-white">{event.coupleNames || "—"}</td>
+                                      <td className="py-2 px-2 text-gray-400">
+                                        {event.date ? new Date(event.date).toLocaleDateString("he-IL") : "—"}
+                                      </td>
+                                      <td className="py-2 px-2">
+                                        <SyncStatusBadge connected={connectedRoles.includes("primary")} row={primaryRow} />
+                                      </td>
+                                      <td className="py-2 px-2">
+                                        <SyncStatusBadge connected={connectedRoles.includes("backup")} row={backupRow} />
+                                      </td>
+                                      <td className="py-2 px-2">
+                                        {nonEditorTeam.length === 0 ? (
+                                          <span className="text-gray-600 text-xs">אין צוות</span>
+                                        ) : (
+                                          <span className={`text-xs font-medium ${invitedCount === nonEditorTeam.length ? "text-green-400" : invitedCount > 0 ? "text-yellow-400" : "text-gray-500"}`}>
+                                            {invitedCount}/{nonEditorTeam.length} זומנו
+                                          </span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </React.Fragment>
+                            );
+                          })}
+                        </React.Fragment>
                       );
                     })}
                   </tbody>
@@ -618,6 +750,20 @@ export default function GoogleCalendarSync() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+// "X מתוך Y מסונכרנים" for a year/month group. Counts come from isFullySynced(),
+// the same predicate behind the page's global counter, so a group's ratio can never
+// disagree with the total above the table. Mirrors how the global counter is
+// suppressed entirely when no account is connected.
+function SyncRatio({ connected, synced, total }) {
+  if (!connected) return <span className="text-gray-600 text-xs">—</span>;
+  const color = synced === total ? "text-green-400" : synced > 0 ? "text-yellow-400" : "text-red-400";
+  return (
+    <span className={`text-xs font-medium ${color}`}>
+      {synced} מתוך {total} מסונכרנים
+    </span>
   );
 }
 
