@@ -20,13 +20,35 @@ export default function StaffAssignmentRoleList({ event, staffMembers, events, o
 
   if (!event) return null;
 
+  // Both callers keep the event in their own state as a FROZEN SNAPSHOT taken
+  // when the sheet was opened -- EventsTableWithBulkDelete.jsx:356
+  // (`setSelectedEventForTeamSheet(event)`) and StaffScheduling.jsx's
+  // `selectedEvent`, whose loadData() only assigns it when nothing is selected
+  // yet (:58). Neither refreshes that snapshot when onRefresh() re-fetches, so
+  // a write succeeded, the list reloaded, and this component still rendered the
+  // old team -- the reported "it says הוסר but the name is still there until I
+  // close and re-open the sheet". Re-opening worked precisely because it read a
+  // fresh object out of the reloaded list.
+  //
+  // Fixed here rather than in the two callers because `events` -- which IS
+  // refreshed, and is already passed in for StaffPickerCell's conflict check --
+  // makes one lookup fix both of them without either changing.
+  //
+  // This also closes a real data bug, not just a display one: every handler
+  // below rebuilds `team` by filtering the current array, so two removals in a
+  // row off a stale snapshot would have RESURRECTED the first person removed.
+  //
+  // Falls back to the prop when the event isn't in the list (e.g. an active
+  // filter no longer matches it), so the sheet can never render blank.
+  const liveEvent = events?.find(e => e.id === event.id) || event;
+
   const photographers = staffMembers.filter(s => s.role === 'photographer');
   const videographers = staffMembers.filter(s => s.role === 'videographer');
   const editors = staffMembers.filter(s => s.role === 'editor');
 
   const handleRemoveTeamMember = async (staffName) => {
-    const newTeam = (event.team || []).filter(m => m.staffMemberName !== staffName);
-    await base44.entities.Event.update(event.id, { team: newTeam });
+    const newTeam = (liveEvent.team || []).filter(m => m.staffMemberName !== staffName);
+    await base44.entities.Event.update(liveEvent.id, { team: newTeam });
     onRefresh?.();
   };
 
@@ -46,10 +68,13 @@ export default function StaffAssignmentRoleList({ event, staffMembers, events, o
     if (removingKey) return;
     setRemovingKey(key);
     try {
-      const newTeam = (event.team || []).filter(predicate);
-      await base44.entities.Event.update(event.id, { team: newTeam });
+      const newTeam = (liveEvent.team || []).filter(predicate);
+      await base44.entities.Event.update(liveEvent.id, { team: newTeam });
       toast.success(`${staffName} הוסר מהאירוע`);
-      onRefresh?.();
+      // Awaited on purpose: the removingKey lock must outlive the re-fetch, or
+      // a second "הסר" tapped straight after this one would still be reading
+      // the pre-removal team and would put the first person back.
+      await onRefresh?.();
     } catch (error) {
       console.error("Failed to remove team member:", error);
       toast.error("שגיאה בהסרת איש הצוות מהאירוע");
@@ -73,7 +98,7 @@ export default function StaffAssignmentRoleList({ event, staffMembers, events, o
     </button>
   );
 
-  const videoEditor = event.team?.find(m => {
+  const videoEditor = liveEvent.team?.find(m => {
     const staff = staffMembers.find(s => s.name === m.staffMemberName);
     return staff?.role === 'editor';
   });
@@ -90,13 +115,13 @@ export default function StaffAssignmentRoleList({ event, staffMembers, events, o
       {roles.map((r) => {
         // Matched by team[].role, the exact same predicate StaffPickerCell uses,
         // so removing "צלם 1" can never also drop the same person from "צלם 2".
-        const assigned = event.team?.find(m => m.role === r.roleKey && m.staffMemberName);
+        const assigned = liveEvent.team?.find(m => m.role === r.roleKey && m.staffMemberName);
         return (
           <div key={r.role} className="flex items-center justify-between gap-2 bg-gray-800/50 border border-gray-700 rounded-lg px-3 py-3">
             <span className="text-sm text-gray-400 shrink-0">{r.label}</span>
             <div className="flex items-center gap-2 min-w-0">
               <StaffPickerCell
-                event={event}
+                event={liveEvent}
                 role={r.role}
                 roleKey={r.roleKey}
                 label={r.label}
@@ -167,12 +192,12 @@ export default function StaffAssignmentRoleList({ event, staffMembers, events, o
                           if (isSelected) {
                             await handleRemoveTeamMember(staff.name);
                           } else {
-                            const currentTeam = event.team || [];
+                            const currentTeam = liveEvent.team || [];
                             const withoutEmptyEditor = currentTeam.filter(m => m.role !== 'editor' || m.staffMemberName);
                             const cost = getStaffRateForRole(staff, 'editor');
                             const newTeam = [...withoutEmptyEditor, { role: 'editor', staffMemberName: staff.name, cost, isPaid: false, progressStatus: 'pending' }];
-                            await base44.entities.Event.update(event.id, { team: newTeam });
-                            await sendCalendarInviteByName(event.id, staff.name);
+                            await base44.entities.Event.update(liveEvent.id, { team: newTeam });
+                            await sendCalendarInviteByName(liveEvent.id, staff.name);
                             onRefresh?.();
                           }
                           setEditingEditor(false);
