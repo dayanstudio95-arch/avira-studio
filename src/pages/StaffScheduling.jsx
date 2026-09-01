@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,12 +6,28 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Calendar, List, Users, AlertTriangle, UserCheck, ChevronLeft, ChevronRight, X, GripVertical, Pencil, Check } from "lucide-react";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths } from "date-fns";
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths } from "date-fns";
+// Hebrew month names in the calendar header -- the title used to render in
+// English ("September 2026") above Hebrew weekday headers. Already the
+// established pattern in this project (NotificationBell.jsx:9).
+import { he } from "date-fns/locale";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { sendCalendarInviteByName } from "@/lib/calendarInvites";
 import MobileStaffAssignmentSheet from "@/components/events/MobileStaffAssignmentSheet";
 import StaffAssignmentRoleList from "@/components/events/StaffAssignmentRoleList";
+
+// Module-level so the array isn't rebuilt on every render. Short form on mobile
+// (a 7-column month grid leaves ~48px per column on a phone, where "ראשון" wraps).
+const WEEKDAYS = [
+  { short: "א׳", long: "ראשון" },
+  { short: "ב׳", long: "שני" },
+  { short: "ג׳", long: "שלישי" },
+  { short: "ד׳", long: "רביעי" },
+  { short: "ה׳", long: "חמישי" },
+  { short: "ו׳", long: "שישי" },
+  { short: "ש׳", long: "שבת" },
+];
 
 export default function StaffScheduling() {
   const isMobile = useIsMobile();
@@ -85,8 +101,26 @@ export default function StaffScheduling() {
     const requiredCrew = event.requiredCrew || 3;
     const isFullTeam = assignedNonEditorTeam.length >= requiredCrew;
     const missingCount = requiredCrew - assignedNonEditorTeam.length;
-    return { isFullTeam, missingCount, assignedCount: assignedNonEditorTeam.length };
+    // requiredCrew is returned (additively -- no existing consumer changes) so the
+    // calendar chip can show "2/3" without recomputing the `|| 3` default itself.
+    return { isFullTeam, missingCount, assignedCount: assignedNonEditorTeam.length, requiredCrew };
   };
+
+  // Group once instead of running `events.filter(...)` inside the day loop, which
+  // was ~30 x 271 comparisons -- each constructing a throwaway Date -- per render.
+  // Keying by local yyyy-MM-dd is exactly equivalent to the previous
+  // `isSameDay(new Date(e.date), day)`: both compare local calendar days, so no
+  // timezone behaviour changes here.
+  const eventsByDay = useMemo(() => {
+    const map = new Map();
+    for (const event of events) {
+      if (!event.date) continue;
+      const key = format(new Date(event.date), "yyyy-MM-dd");
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(event);
+    }
+    return map;
+  }, [events]);
 
   const handleRemoveTeamMember = async (event, staffMemberName) => {
     try {
@@ -403,20 +437,50 @@ export default function StaffScheduling() {
     </div>
   );
 
+  // Google-Calendar-style month grid. Replaces a layout whose day cells were
+  // `aspect-square` (height derived from column width) while the events box
+  // inside them was capped at `max-h-24` = 96px with `overflow-y-auto` -- so on
+  // the 75 days that carry 2+ events, events sat behind a near-invisible inner
+  // scrollbar with ~50px of unused space below them in the same cell. That, not
+  // styling alone, is what the studio reported as "צפוף מדיי".
+  //
+  // Three deliberate structural choices:
+  //  1. `gap-px` over a border-coloured background => one continuous hairline
+  //     grid, instead of 35 detached rounded boxes separated by `gap-2`.
+  //  2. `min-h-*` rather than a fixed height or an inner scroller: a day can
+  //     never hide an event again. Today's worst case is 4 events on one day
+  //     (one such day in 271 events), which fits; a busier day just grows its row.
+  //  3. Leading AND trailing blanks, so the last week is a full 7-cell row --
+  //     without trailing blanks a hairline grid ends ragged mid-row.
   const renderCalendarView = () => {
     const monthStart = startOfMonth(currentMonth);
     const monthEnd = endOfMonth(currentMonth);
     const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
-    const startDay = monthStart.getDay();
-    const emptyCells = Array(startDay).fill(null);
+    const leadingCount = monthStart.getDay();
+    const trailingCount = (7 - ((leadingCount + daysInMonth.length) % 7)) % 7;
+    const renderBlankCell = (key) => (
+      <div key={key} className="bg-gray-900/30 min-h-[76px] md:min-h-[120px]" />
+    );
 
     return (
       <Card className="bg-gray-900/50 border-gray-800">
         <CardHeader className="border-b border-gray-800">
-          <div className="flex justify-between items-center">
-            <CardTitle className="text-white text-xl">
-              {format(currentMonth, "MMMM yyyy")}
-            </CardTitle>
+          <div className="flex justify-between items-center gap-3 flex-wrap">
+            <div>
+              <CardTitle className="text-white text-xl">
+                {format(currentMonth, "MMMM yyyy", { locale: he })}
+              </CardTitle>
+              <div className="flex items-center gap-3 mt-2 text-[11px] text-gray-400">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-green-400" />
+                  צוות מלא
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-red-400" />
+                  חסר צוות
+                </span>
+              </div>
+            </div>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">
                 <ChevronRight className="w-4 h-4" />
@@ -430,32 +494,37 @@ export default function StaffScheduling() {
             </div>
           </div>
         </CardHeader>
-        <CardContent className="p-4">
-          <div className="grid grid-cols-7 gap-2">
-            {['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'].map(day => (
-              <div key={day} className="text-center text-gray-400 text-sm font-semibold py-2">{day}</div>
+        <CardContent className="p-2 md:p-4">
+          <div className="grid grid-cols-7 mb-1">
+            {WEEKDAYS.map((weekday) => (
+              <div key={weekday.long} className="text-center text-gray-500 text-[11px] md:text-xs font-semibold py-2">
+                <span className="md:hidden">{weekday.short}</span>
+                <span className="hidden md:inline">{weekday.long}</span>
+              </div>
             ))}
-            {emptyCells.map((_, idx) => (
-              <div key={`empty-${idx}`} className="aspect-square" />
-            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-px bg-gray-800 border border-gray-800 rounded-lg overflow-hidden">
+            {Array.from({ length: leadingCount }, (_, idx) => renderBlankCell(`lead-${idx}`))}
             {daysInMonth.map((day) => {
-              const dayEvents = events.filter(e => isSameDay(new Date(e.date), day));
+              const dayEvents = eventsByDay.get(format(day, "yyyy-MM-dd")) || [];
               const isToday = isSameDay(day, new Date());
               return (
                 <div
                   key={day.toString()}
-                  className={`aspect-square border rounded-lg p-2 ${
-                    !isSameMonth(day, currentMonth)
-                      ? 'bg-gray-800/20 border-gray-800'
-                      : isToday
-                      ? 'bg-yellow-500/10 border-yellow-500/30'
-                      : 'bg-gray-800/50 border-gray-700'
-                  }`}
+                  className={`min-h-[76px] md:min-h-[120px] p-1 md:p-1.5 ${isToday ? 'bg-yellow-500/[0.07]' : 'bg-gray-900'}`}
                 >
-                  <div className={`text-sm mb-1 ${isToday ? 'text-yellow-400 font-bold' : 'text-gray-300'}`}>
-                    {format(day, "d")}
+                  {/* Today marked by a filled circle on the number, Google-style,
+                      rather than tinting and outlining the whole cell. */}
+                  <div className="mb-1">
+                    <span
+                      className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[11px] md:text-xs ${
+                        isToday ? 'bg-yellow-400 text-gray-900 font-bold' : 'text-gray-400'
+                      }`}
+                    >
+                      {format(day, "d")}
+                    </span>
                   </div>
-                  <div className="space-y-1 overflow-y-auto max-h-24">
+                  <div className="flex flex-col gap-1">
                     {dayEvents.map((event) => {
                       const teamStatus = getTeamStatus(event);
                       return (
@@ -469,26 +538,26 @@ export default function StaffScheduling() {
                             if (isMobile) setMobileSheetOpen(true);
                             else setEditModalOpen(true);
                           }}
-                          className={`w-full text-left p-1 rounded text-xs transition-colors ${
+                          title={`${event.coupleNames} — ${teamStatus.assignedCount}/${teamStatus.requiredCrew} אנשי צוות`}
+                          className={`w-full flex items-center gap-1 md:gap-1.5 rounded px-1 py-[3px] md:py-1 transition-colors ${
                             teamStatus.isFullTeam
-                              ? 'bg-green-500/20 hover:bg-green-500/30 text-green-400'
-                              : 'bg-red-500/20 hover:bg-red-500/30 text-red-400'
+                              ? 'bg-green-500/10 hover:bg-green-500/20 text-green-300'
+                              : 'bg-red-500/10 hover:bg-red-500/20 text-red-300'
                           }`}
                         >
-                          <div className="font-medium truncate">{event.coupleNames}</div>
-                          {event.team?.filter(m => m.staffMemberName).length > 0 && (
-                            <div className="flex flex-wrap gap-0.5 mt-0.5">
-                              {event.team.filter(m => m.staffMemberName).slice(0, 3).map((member, idx) => (
-                                <span key={idx} className="text-[10px] opacity-80">
-                                  {member.staffMemberName.split(' ')[0]}
-                                  {idx < Math.min(event.team.filter(m => m.staffMemberName).length - 1, 2) ? ',' : ''}
-                                </span>
-                              ))}
-                              {event.team.filter(m => m.staffMemberName).length > 3 && (
-                                <span className="text-[10px] opacity-80">+{event.team.filter(m => m.staffMemberName).length - 3}</span>
-                              )}
-                            </div>
-                          )}
+                          <span
+                            className={`shrink-0 w-[3px] self-stretch min-h-[12px] rounded-full ${
+                              teamStatus.isFullTeam ? 'bg-green-400' : 'bg-red-400'
+                            }`}
+                          />
+                          <span className="flex-1 min-w-0 truncate text-right text-[10px] md:text-[11px] font-medium leading-tight">
+                            {event.coupleNames}
+                          </span>
+                          {/* Hidden on phones: at ~48px per column the couple's name
+                              needs every pixel. The count is still in the tooltip. */}
+                          <span className="hidden md:inline shrink-0 text-[10px] tabular-nums opacity-70">
+                            {teamStatus.assignedCount}/{teamStatus.requiredCrew}
+                          </span>
                         </button>
                       );
                     })}
@@ -496,6 +565,7 @@ export default function StaffScheduling() {
                 </div>
               );
             })}
+            {Array.from({ length: trailingCount }, (_, idx) => renderBlankCell(`trail-${idx}`))}
           </div>
         </CardContent>
       </Card>
