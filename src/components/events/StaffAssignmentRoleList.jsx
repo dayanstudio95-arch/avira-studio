@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { base44 } from "@/api/base44Client";
+import { toast } from "sonner";
 import { getStaffRateForRole } from "@/lib/staffRates";
 import { StaffPickerCell } from "./EventsTableWithBulkDelete";
 
@@ -15,6 +16,7 @@ import { StaffPickerCell } from "./EventsTableWithBulkDelete";
 export default function StaffAssignmentRoleList({ event, staffMembers, events, onRefresh, sendCalendarInviteByName }) {
   const [editingKey, setEditingKey] = useState(null);
   const [editingEditor, setEditingEditor] = useState(false);
+  const [removingKey, setRemovingKey] = useState(null);
 
   if (!event) return null;
 
@@ -27,6 +29,49 @@ export default function StaffAssignmentRoleList({ event, staffMembers, events, o
     await base44.entities.Event.update(event.id, { team: newTeam });
     onRefresh?.();
   };
+
+  // Explicit "הסר" removal, added because the tiny "×" glyph inside the assigned
+  // badge is unreliable on touch: it is a ~12px hit target sitting inside a much
+  // larger button that opens the picker Popover, so a finger that misses by a few
+  // pixels opens the picker instead of removing -- which is exactly the reported
+  // "sometimes it works, sometimes it doesn't". This button is a SIBLING of the
+  // Popover (never inside PopoverTrigger), is sized for touch, and surfaces
+  // failures instead of swallowing them -- an update that threw previously left
+  // the row unchanged with no message at all, indistinguishable from a missed tap.
+  //
+  // Scoped to this component on purpose: StaffPickerCell's own "×" is left exactly
+  // as-is because the same component renders the dense desktop events table, where
+  // there is no room for a text button and no touch problem to solve.
+  const removeAssignment = async (key, staffName, predicate) => {
+    if (removingKey) return;
+    setRemovingKey(key);
+    try {
+      const newTeam = (event.team || []).filter(predicate);
+      await base44.entities.Event.update(event.id, { team: newTeam });
+      toast.success(`${staffName} הוסר מהאירוע`);
+      onRefresh?.();
+    } catch (error) {
+      console.error("Failed to remove team member:", error);
+      toast.error("שגיאה בהסרת איש הצוות מהאירוע");
+    } finally {
+      setRemovingKey(null);
+    }
+  };
+
+  // A plain render helper, deliberately NOT a component declared inside the render
+  // body -- that would get a fresh identity every render and remount the button
+  // each time removingKey changes.
+  const renderRemoveButton = (removeKey, staffName, predicate) => (
+    <button
+      type="button"
+      disabled={removingKey === removeKey}
+      onClick={() => removeAssignment(removeKey, staffName, predicate)}
+      title={`הסר את ${staffName} מהאירוע`}
+      className="shrink-0 min-h-[36px] px-3 py-2 rounded-md text-xs font-semibold border transition-colors bg-red-500/15 text-red-400 border-red-500/30 hover:bg-red-500/25 active:bg-red-500/30 disabled:opacity-50"
+    >
+      {removingKey === removeKey ? '...' : 'הסר'}
+    </button>
+  );
 
   const videoEditor = event.team?.find(m => {
     const staff = staffMembers.find(s => s.name === m.staffMemberName);
@@ -42,32 +87,45 @@ export default function StaffAssignmentRoleList({ event, staffMembers, events, o
 
   return (
     <div className="space-y-3">
-      {roles.map((r) => (
-        <div key={r.role} className="flex items-center justify-between bg-gray-800/50 border border-gray-700 rounded-lg px-3 py-3">
-          <span className="text-sm text-gray-400">{r.label}</span>
-          <StaffPickerCell
-            event={event}
-            role={r.role}
-            roleKey={r.roleKey}
-            label={r.label}
-            color={r.color}
-            icon={r.icon}
-            staffList={r.staffList}
-            events={events}
-            onRefresh={onRefresh}
-            editingKey={editingKey}
-            setEditingKey={setEditingKey}
-            sendCalendarInviteByName={sendCalendarInviteByName}
-            isWrapped={true}
-          />
-        </div>
-      ))}
+      {roles.map((r) => {
+        // Matched by team[].role, the exact same predicate StaffPickerCell uses,
+        // so removing "צלם 1" can never also drop the same person from "צלם 2".
+        const assigned = event.team?.find(m => m.role === r.roleKey && m.staffMemberName);
+        return (
+          <div key={r.role} className="flex items-center justify-between gap-2 bg-gray-800/50 border border-gray-700 rounded-lg px-3 py-3">
+            <span className="text-sm text-gray-400 shrink-0">{r.label}</span>
+            <div className="flex items-center gap-2 min-w-0">
+              <StaffPickerCell
+                event={event}
+                role={r.role}
+                roleKey={r.roleKey}
+                label={r.label}
+                color={r.color}
+                icon={r.icon}
+                staffList={r.staffList}
+                events={events}
+                onRefresh={onRefresh}
+                editingKey={editingKey}
+                setEditingKey={setEditingKey}
+                sendCalendarInviteByName={sendCalendarInviteByName}
+                isWrapped={true}
+              />
+              {assigned && renderRemoveButton(
+                r.roleKey,
+                assigned.staffMemberName,
+                (m) => m.role !== r.roleKey
+              )}
+            </div>
+          </div>
+        );
+      })}
 
       {/* Editor -- same matching logic as the desktop table's editor column,
           since it isn't a StaffPickerCell instance there either (it matches
           by looking up staffMembers' role rather than a team[].role key). */}
-      <div className="flex items-center justify-between bg-gray-800/50 border border-gray-700 rounded-lg px-3 py-3">
-        <span className="text-sm text-gray-400">עורך</span>
+      <div className="flex items-center justify-between gap-2 bg-gray-800/50 border border-gray-700 rounded-lg px-3 py-3">
+        <span className="text-sm text-gray-400 shrink-0">עורך</span>
+        <div className="flex items-center gap-2 min-w-0">
         <Popover open={editingEditor} onOpenChange={setEditingEditor}>
           <PopoverTrigger asChild>
             <button className="text-left hover:bg-gray-800/30 p-1 rounded transition-colors cursor-pointer">
@@ -140,6 +198,15 @@ export default function StaffAssignmentRoleList({ event, staffMembers, events, o
             </div>
           </PopoverContent>
         </Popover>
+        {/* Editor is matched by the staff member's own role (see videoEditor above),
+            not by a team[].role key, so removal filters by name to stay consistent
+            with how this slot has always identified its occupant. */}
+        {videoEditor && renderRemoveButton(
+          "editor",
+          videoEditor.staffMemberName,
+          (m) => m.staffMemberName !== videoEditor.staffMemberName
+        )}
+        </div>
       </div>
     </div>
   );
