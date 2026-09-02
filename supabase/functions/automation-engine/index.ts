@@ -794,8 +794,22 @@ async function runQuestionnaireSend(supabase: any, tenantId: string, automation:
       studioName,
     });
 
-    const linkedLeadId = event.lead_id || event.source_lead_id || null;
-    const linkedLead = linkedLeadId ? leadsById[linkedLeadId] : null;
+    // Resolved through `validLeadId` (built above with the canonical precedence)
+    // rather than re-deriving the link. The line this replaces preferred
+    // `event.lead_id` -- the LEGACY Base44 field, while
+    // `sync-lead-to-event/index.ts:38` states "source_lead_id is the ONLY canonical
+    // link field". On 128 of 273 events `lead_id` holds an old Base44 ObjectId that
+    // matches no `leads` row, so `||` short-circuited on a non-null-but-garbage
+    // value, `leadsById[...]` missed, and the couple looked like they had no lead at
+    // all -- making `production_form_filled_at` invisible and putting a couple who
+    // HAD already filled the questionnaire into `readyToSend`. Reported as "the
+    // dashboard says 7 haven't filled it but the send preview says 15": both counts
+    // were right, and 7 + 8 mis-sorted = 15.
+    //
+    // Reusing `validLeadId` rather than merely flipping the order, on purpose: the
+    // two lookups in this function can no longer drift apart, and the
+    // `if (!validLeadId) continue` guard above already proves it is set.
+    const linkedLead = leadsById[validLeadId] || null;
 
     const isCompleted = !!linkedLead?.production_form_filled_at;
     const isSent = !!event.questionnaire_sent_at;
