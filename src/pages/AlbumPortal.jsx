@@ -24,6 +24,9 @@ import {
   Plus,
   Minus,
   X,
+  ZoomIn,
+  ChevronRight,
+  ChevronLeft,
 } from "lucide-react";
 
 // Public, no-login couple-facing wedding album portal -- /album/:token.
@@ -226,6 +229,104 @@ function PortalHeader({ order }) {
 
 // -------------------- Review gallery phase --------------------
 
+// Full-screen viewer for a single spread. Deliberately reuses the SAME
+// `previewUrl` the gallery already rendered -- i.e. album_spreads.thumb_file_key,
+// the 1600px/~190KB client-side thumbnail (see src/lib/imageCompress.js and
+// 0043_album_spread_thumbnails.sql). The browser already has that exact URL in
+// cache, so opening the viewer costs ZERO additional Storage egress.
+//
+// It deliberately does NOT sign or load the full-resolution original: those are
+// 25-30MB each (measured: 123 files averaging 29.2MB), so a couple paging through
+// a 122-spread order at full res would pull ~3.5GB in a single visit. That is
+// precisely what produced the 45GB egress spike on 2026-08-23/24, before the
+// thumbnail fix landed. 1600px on the long edge is already sharper than any phone
+// (~1200 device px) or laptop viewport can display, and the zoom toggle below
+// covers inspecting detail. Decision confirmed with the owner 2026-09-03.
+function SpreadLightbox({ spreads, index, onClose, onNavigate }) {
+  const [zoomed, setZoomed] = useState(false);
+  const spread = spreads[index];
+
+  // Reset zoom whenever a different spread is shown, otherwise the next spread
+  // opens mid-zoom at a scroll offset that means nothing for it.
+  useEffect(() => {
+    setZoomed(false);
+  }, [index]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+      // The portal is RTL, but ArrowRight/ArrowLeft are physical keys -- keep
+      // them mapped to physical direction so it matches the on-screen arrows.
+      else if (e.key === "ArrowLeft") onNavigate(1);
+      else if (e.key === "ArrowRight") onNavigate(-1);
+    };
+    window.addEventListener("keydown", onKey);
+    // Stop the page behind the overlay from scrolling on touch devices.
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [onClose, onNavigate]);
+
+  if (!spread) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/95 flex flex-col" dir="rtl">
+      <div className="flex items-center justify-between p-3 shrink-0">
+        <span className="text-white text-sm font-medium">עמוד {spread.sequenceNumber}</span>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="סגירה"
+          className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      <div className={`flex-1 min-h-0 flex ${zoomed ? "overflow-auto" : "items-center justify-center overflow-hidden"} p-2`}>
+        <img
+          src={spread.previewUrl}
+          alt={`עמוד ${spread.sequenceNumber}`}
+          onClick={() => setZoomed((z) => !z)}
+          className={
+            zoomed
+              ? "w-[200%] max-w-none h-auto cursor-zoom-out"
+              : "max-w-full max-h-full object-contain cursor-zoom-in m-auto"
+          }
+        />
+      </div>
+
+      <div className="flex items-center justify-between gap-3 p-3 shrink-0">
+        {/* RTL: "previous" sits on the right, "next" on the left. */}
+        <button
+          type="button"
+          onClick={() => onNavigate(1)}
+          disabled={index >= spreads.length - 1}
+          className="w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30 text-white flex items-center justify-center"
+          aria-label="העמוד הבא"
+        >
+          <ChevronLeft className="w-6 h-6" />
+        </button>
+        <span className="text-gray-400 text-xs">
+          {zoomed ? "לחצו על התמונה כדי להקטין" : "לחצו על התמונה כדי להגדיל"} · {index + 1} מתוך {spreads.length}
+        </span>
+        <button
+          type="button"
+          onClick={() => onNavigate(-1)}
+          disabled={index <= 0}
+          className="w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30 text-white flex items-center justify-center"
+          aria-label="העמוד הקודם"
+        >
+          <ChevronRight className="w-6 h-6" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ReviewGallery({ token, order, onReloaded }) {
   const spreads = order.currentVersion?.spreads || [];
   const [decisions, setDecisions] = useState({});
@@ -234,6 +335,14 @@ function ReviewGallery({ token, order, onReloaded }) {
   const [submitError, setSubmitError] = useState("");
   const [justSubmitted, setJustSubmitted] = useState(false);
   const [resultStatus, setResultStatus] = useState(null);
+  const [lightboxIndex, setLightboxIndex] = useState(null); // index into sortedSpreads, or null
+
+  // Hoisted out of the render map so the lightbox can page through the spreads
+  // in exactly the same order the gallery shows them.
+  const sortedSpreads = useMemo(
+    () => spreads.slice().sort((a, b) => a.sequenceNumber - b.sequenceNumber),
+    [spreads]
+  );
 
   useEffect(() => {
     // Default every spread to "approved" -- couple only needs to flag problems.
@@ -259,8 +368,15 @@ function ReviewGallery({ token, order, onReloaded }) {
     setDecisions((prev) => ({ ...prev, [spreadId]: { ...prev[spreadId], comment } }));
   };
 
-  const handleImageClick = (spreadId, e) => {
-    if (decisions[spreadId]?.decision !== "needs_revision") return;
+  const handleImageClick = (spreadId, spreadIndex, e) => {
+    // In "needs_revision" mode a tap means "place the correction pin here" --
+    // that behaviour is unchanged and takes precedence. Only in the default
+    // (approved) mode, where a tap previously did nothing at all, does it now
+    // open the full-screen viewer.
+    if (decisions[spreadId]?.decision !== "needs_revision") {
+      setLightboxIndex(spreadIndex);
+      return;
+    }
     const rect = e.currentTarget.getBoundingClientRect();
     const pointX = Math.round(((e.clientX - rect.left) / rect.width) * 100);
     const pointY = Math.round(((e.clientY - rect.top) / rect.height) * 100);
@@ -329,9 +445,7 @@ function ReviewGallery({ token, order, onReloaded }) {
       </div>
 
       <div className="space-y-6">
-        {spreads
-          .slice()
-          .sort((a, b) => a.sequenceNumber - b.sequenceNumber)
+        {sortedSpreads
           .map((spread, spreadIndex) => {
             const d = decisions[spread.id] || {};
             const needsRevision = d.decision === "needs_revision";
@@ -357,14 +471,27 @@ function ReviewGallery({ token, order, onReloaded }) {
                 </div>
                 <div className="relative bg-black">
                   {spread.previewUrl ? (
-                    <img
-                      src={spread.previewUrl}
-                      alt={`עמוד ${spread.sequenceNumber}`}
-                      className={`w-full h-auto ${needsRevision ? "cursor-crosshair" : ""}`}
-                      onClick={(e) => handleImageClick(spread.id, e)}
-                      loading={spreadIndex < 2 ? "eager" : "lazy"}
-                      decoding="async"
-                    />
+                    <>
+                      <img
+                        src={spread.previewUrl}
+                        alt={`עמוד ${spread.sequenceNumber}`}
+                        className={`w-full h-auto ${needsRevision ? "cursor-crosshair" : "cursor-zoom-in"}`}
+                        onClick={(e) => handleImageClick(spread.id, spreadIndex, e)}
+                        loading={spreadIndex < 2 ? "eager" : "lazy"}
+                        decoding="async"
+                      />
+                      {/* Always available, including in "needs_revision" mode where a
+                          tap on the image itself is reserved for placing the pin. */}
+                      <button
+                        type="button"
+                        onClick={() => setLightboxIndex(spreadIndex)}
+                        aria-label={`הגדלת עמוד ${spread.sequenceNumber}`}
+                        title="הגדלה"
+                        className="absolute top-2 left-2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center backdrop-blur-sm"
+                      >
+                        <ZoomIn className="w-5 h-5" />
+                      </button>
+                    </>
                   ) : (
                     <div className="h-48 flex items-center justify-center text-gray-600">
                       <ImageOff className="w-8 h-8" />
@@ -406,6 +533,17 @@ function ReviewGallery({ token, order, onReloaded }) {
       >
         {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : "שליחת הביקורת"}
       </Button>
+
+      {lightboxIndex !== null && (
+        <SpreadLightbox
+          spreads={sortedSpreads}
+          index={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+          onNavigate={(delta) =>
+            setLightboxIndex((i) => Math.min(sortedSpreads.length - 1, Math.max(0, i + delta)))
+          }
+        />
+      )}
     </div>
   );
 }
