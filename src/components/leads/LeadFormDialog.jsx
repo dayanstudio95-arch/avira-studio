@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -9,6 +10,7 @@ import { toast } from "sonner";
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 import { DEFAULT_CONTRACT_TERMS } from "@/lib/defaultContractTerms";
+import { parseWhatsAppLead } from "@/lib/whatsappLeadParser";
 
 // ששת הערכים שה-CHECK ב-0001_init.sql:106 מתיר. 'חוזה' נכתב ע"י sign-lead-public
 // בכל חתימה ציבורית — בלעדיו ה-Select נשאר ריק בעריכת ליד חתום.
@@ -33,6 +35,8 @@ export default function LeadFormDialog({ isOpen, onClose, lead, packagePrices, o
     packageDetails: "",
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [pasteText, setPasteText] = useState("");
+  const [pasteWarnings, setPasteWarnings] = useState([]);
 
   // Load packages from DB
   useEffect(() => {
@@ -52,6 +56,9 @@ export default function LeadFormDialog({ isOpen, onClose, lead, packagePrices, o
 
   useEffect(() => {
     if (!isOpen) return;
+    // כל פתיחה מתחילה נקי — אחרת אזהרות מהדבקה קודמת נשארות על המסך.
+    setPasteText("");
+    setPasteWarnings([]);
     if (lead) {
       setForm({
         coupleNames: lead.coupleNames || "",
@@ -80,6 +87,43 @@ export default function LeadFormDialog({ isOpen, onClose, lead, packagePrices, o
       });
     }
   }, [lead, isOpen]);
+
+  // קליטת הודעת וואטסאפ שלמה. הזיהוי כולו מקומי בדפדפן — אין קריאת רשת, אין AI,
+  // אין שליחה של שום דבר לאף אחד. ראה src/lib/whatsappLeadParser.js.
+  const handleWhatsAppPaste = (text) => {
+    setPasteText(text);
+    if (!text || !text.trim()) {
+      setPasteWarnings([]);
+      return;
+    }
+    const result = parseWhatsAppLead(text);
+    const warnings = [...result.warnings];
+
+    setForm((f) => {
+      // פורסים רק מפתחות שהפרסר באמת הפיק. email/status/packageChoice/contractTerms
+      // לעולם לא נדרסים: form.email הוא נמען החשבונית (avira.media1@gmail.com),
+      // ומילוי אוטומטי שלו היה שולח חשבוניות אמיתיות לזוגות.
+      const next = { ...f, ...result.fields };
+      if (result.leftovers.length > 0) {
+        next.notes = [f.notes, ...result.leftovers].filter(Boolean).join(" | ");
+      }
+      return next;
+    });
+
+    for (const line of result.leftovers) {
+      warnings.push(`לא זוהה — הועבר להערות: ${line}`);
+    }
+    setPasteWarnings(warnings);
+
+    const filled = Object.keys(result.fields).length;
+    if (filled === 0) toast.error("לא זוהו פרטים בהודעה");
+    else toast.success(`זוהו ${filled} שדות`);
+  };
+
+  const handleClearPaste = () => {
+    setPasteText("");
+    setPasteWarnings([]);
+  };
 
   const handlePackageChange = (pkgName) => {
     const matched = packages.find((p) => p.name === pkgName);
@@ -110,6 +154,8 @@ export default function LeadFormDialog({ isOpen, onClose, lead, packagePrices, o
       return;
     }
     setIsSaving(true);
+    // נשאר null במסלול העדכון — הקורא פותח את הפאנל רק עבור ליד שנוצר עכשיו.
+    let createdLead = null;
     try {
       const data = {
         coupleNames: form.coupleNames,
@@ -147,6 +193,7 @@ export default function LeadFormDialog({ isOpen, onClose, lead, packagePrices, o
       } else {
         // Create NEW lead
         const newLead = await base44.entities.Lead.create(data);
+        createdLead = newLead;
         console.log('[LeadFormDialog] 🆕 NEW LEAD CREATED:', { newLeadId: newLead.id, newLeadStudioId: newLead.studio_id });
         // Assign studio_id immediately
         try {
@@ -159,7 +206,7 @@ export default function LeadFormDialog({ isOpen, onClose, lead, packagePrices, o
         }
         toast.success("הליד נוסף בהצלחה עם מספר ID");
       }
-      onSaved();
+      onSaved(createdLead);
     } catch (error) {
       toast.error("שגיאה בשמירה");
     }
@@ -174,6 +221,42 @@ export default function LeadFormDialog({ isOpen, onClose, lead, packagePrices, o
         </DialogHeader>
 
         <div className="space-y-4 py-2">
+          {/* רק בליד חדש: הדבקה על ליד קיים עלולה לדרוס פרטים שכבר אושרו. */}
+          {!lead && (
+            <div className="rounded-lg border border-dashed border-gray-600 bg-gray-800/40 p-3">
+              <Label className="text-gray-300 text-xs">
+                הדבקה מוואטסאפ{" "}
+                <span className="text-gray-500">(שמות · תאריך · אולם · טלפון — כל שורה בנפרד)</span>
+              </Label>
+              <Textarea
+                dir="rtl"
+                rows={4}
+                value={pasteText}
+                onChange={(e) => handleWhatsAppPaste(e.target.value)}
+                placeholder={"דניאל וסבינה\n16/9/27\nעדיה\n0547391810"}
+                className="bg-gray-800 border-gray-700 text-white mt-1 text-sm"
+              />
+              <div className="flex items-center justify-between mt-2">
+                <span className="text-[11px] text-gray-500">הזיהוי מתבצע במכשיר שלך — לא נשלח לשום מקום</span>
+                {pasteText && (
+                  <Button type="button" variant="ghost" size="sm" onClick={handleClearPaste} className="text-gray-400 h-7 px-2 text-xs">
+                    נקה
+                  </Button>
+                )}
+              </div>
+              {pasteWarnings.length > 0 && (
+                <ul className="mt-2 space-y-1">
+                  {pasteWarnings.map((w, i) => (
+                    <li key={i} className="text-[11px] text-amber-400 flex gap-1.5">
+                      <span aria-hidden="true">⚠️</span>
+                      <span>{w}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
           <div>
             <Label className="text-gray-300">שמות הזוג *</Label>
             <Input value={form.coupleNames} onChange={(e) => setForm((f) => ({ ...f, coupleNames: e.target.value }))} className="bg-gray-800 border-gray-700 text-white mt-1" placeholder="שם + שם" />
@@ -190,22 +273,6 @@ export default function LeadFormDialog({ isOpen, onClose, lead, packagePrices, o
             </div>
           </div>
 
-          <div>
-            <Label className="text-gray-300 text-xs">📋 הדבקה מוואטסאפ <span className="text-gray-500">(ממיר אוטומטית לפורמט ישראלי)</span></Label>
-            <Input
-              placeholder="+972 54-739-1810"
-              className="bg-gray-800/60 border-gray-600 border-dashed text-gray-300 mt-1"
-              value=""
-              onChange={() => {}}
-              onPaste={(e) => {
-                e.preventDefault();
-                const raw = e.clipboardData.getData('text');
-                let cleaned = raw.replace(/\D/g, '');
-                if (cleaned.startsWith('972')) cleaned = '0' + cleaned.slice(3);
-                setForm((f) => ({ ...f, phoneNumber: cleaned }));
-              }}
-            />
-          </div>
 
           <div>
             <Label className="text-gray-300">אימייל</Label>
@@ -323,7 +390,9 @@ export default function LeadFormDialog({ isOpen, onClose, lead, packagePrices, o
           </div>
         </div>
 
-        <DialogFooter className="gap-2">
+        {/* דביק: כפתור השמירה יושב אחרי שני עורכי ReactQuill בתוך דיאלוג גולל,
+            ובלי זה צריך לגלול הרבה כדי להגיע אליו. */}
+        <DialogFooter className="gap-2 sticky bottom-0 bg-gray-900 pt-3 -mx-6 px-6 border-t border-gray-800">
           <Button variant="outline" onClick={onClose} className="border-gray-700 bg-gray-800 text-gray-300">ביטול</Button>
           <Button onClick={handleSave} disabled={isSaving} className="bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-semibold">
             {isSaving ? "שומר..." : "שמור"}

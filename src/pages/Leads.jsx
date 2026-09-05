@@ -800,7 +800,9 @@ export default function Leads() {
         onClose={() => setIsFormOpen(false)}
         lead={editingLead}
         packagePrices={packagePrices}
-        onSaved={() => { setIsFormOpen(false); loadLeads(); }}
+        // ליד שנוצר עכשיו נפתח מיד בפאנל הצד. בלי זה צריך לאתר אותו מחדש: מיון
+        // ברירת המחדל הוא event_asc, ולכן חתונה ב-2027 נוחתת בתחתית ~300 שורות.
+        onSaved={(created) => { setIsFormOpen(false); loadLeads(); if (created?.id) setSelectedLead(created); }}
       />
       <LeadContractDialog
         isOpen={!!contractLead}
