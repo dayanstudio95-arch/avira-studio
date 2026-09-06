@@ -18,8 +18,9 @@ import { Input } from "@/components/ui/input";
 import {
   ArrowRight, Upload, Copy, Link2, Ban, RefreshCw, ImageIcon, CheckCircle2,
   CreditCard, Printer, Loader2, ChevronDown, ChevronUp, AlertTriangle, ExternalLink,
-  Package, Gift, Download, Eye, Trash2, Truck, PackageCheck,
+  Package, Gift, Download, Eye, Trash2, Truck, PackageCheck, MapPin,
 } from "lucide-react";
+import SpreadReviewViewer, { SPREAD_STATUS_STYLES } from "@/components/albums/SpreadReviewViewer";
 import { WORKFLOW_STATUS_LABELS, WORKFLOW_STATUS_COLORS, PAYMENT_STATUS_LABELS, PAYMENT_STATUS_COLORS, getOrderNameColorClass } from "./AlbumOrders";
 
 // Wedding Albums module -- single order's full lifecycle control: upload sketch
@@ -78,6 +79,7 @@ export default function AlbumOrderDetail() {
   const [versionPreviews, setVersionPreviews] = useState({}); // versionId -> [{id, sequenceNumber, fileKey, thumbUrl}] -- full-res is fetched lazily on demand (handleOpenFullRes), never eagerly for the whole grid
   const [backfillProgress, setBackfillProgress] = useState({}); // versionId -> {current, total} -- only set while legacy spreads (no thumb_file_key yet) are being backfilled in toggleExpandVersion; absent once done
   const [showOnlyFlagged, setShowOnlyFlagged] = useState({}); // versionId -> bool
+  const [viewer, setViewer] = useState(null); // {versionId, index} -- open spread in SpreadReviewViewer
   const [newPortalToken, setNewPortalToken] = useState(null); // raw token, shown once
   const [newPrintToken, setNewPrintToken] = useState(null);
   const replaceFileInputRef = useRef(null);
@@ -452,12 +454,15 @@ export default function AlbumOrderDetail() {
   // Auto-expand the version currently shown to the couple, once, on load --
   // so the studio sees the actual preview thumbnails without an extra click.
   useEffect(() => {
-    if (order?.currentVersionId && !expandedVersionId) {
-      const v = versions.find((ver) => ver.id === order.currentVersionId);
-      if (v) toggleExpandVersion(v);
-    }
+    if (!order?.currentVersionId || expandedVersionId) return;
+    const v = versions.find((ver) => ver.id === order.currentVersionId);
+    // Wait for the spreadCounts query too: toggleExpandVersion bails out when the
+    // version's spreads aren't loaded yet, but still marks it expanded -- which
+    // left the grid permanently empty until the studio collapsed and re-opened
+    // the version by hand.
+    if (v && (spreadCounts[v.id] || []).length > 0) toggleExpandVersion(v);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [order?.currentVersionId, versions.length]);
+  }, [order?.currentVersionId, versions.length, spreadCounts]);
 
   // --- Single-spread replace (fix one page without re-uploading the whole version) ---
   const handleReplaceClick = (versionId, spread) => {
@@ -794,17 +799,21 @@ export default function AlbumOrderDetail() {
   const portalLink = newPortalToken ? `${window.location.origin}/album/${newPortalToken}` : null;
   const printLink = newPrintToken ? `${window.location.origin}/print-access/${newPrintToken}` : null;
 
-  // Which spreads (in the version currently shown to the couple) were flagged
-  // "needs_revision" in the latest review round for that version -- used to
-  // highlight/filter the preview grid so the studio can find them at a glance.
-  const currentVersionLatestRound = reviewRounds.find((r) => r.versionId === order.currentVersionId);
-  const flaggedSpreadIds = new Set(
-    currentVersionLatestRound
-      ? (decisionsByRound[currentVersionLatestRound.id] || [])
-          .filter((d) => d.decision === "needs_revision")
-          .map((d) => d.spreadId)
-      : []
-  );
+  // The couple's latest verdict per spread, per version -- drives the status
+  // pill + correction badge on every grid card and the full-screen viewer, so
+  // the studio never has to scroll down to the review-history card to find out
+  // what was asked for. reviewRounds is already sorted "-roundNumber", so the
+  // first round seen for a version is that version's latest round.
+  const latestRoundByVersionId = {};
+  reviewRounds.forEach((r) => {
+    if (!latestRoundByVersionId[r.versionId]) latestRoundByVersionId[r.versionId] = r;
+  });
+  const decisionsByVersionId = {}; // versionId -> { [spreadId]: decision }
+  Object.entries(latestRoundByVersionId).forEach(([versionId, round]) => {
+    const map = {};
+    (decisionsByRound[round.id] || []).forEach((d) => { map[d.spreadId] = d; });
+    decisionsByVersionId[versionId] = map;
+  });
 
   // spreadId -> sequenceNumber, across every version -- lets the review-rounds
   // history show "עמוד X" instead of a meaningless truncated UUID.
@@ -954,9 +963,13 @@ export default function AlbumOrderDetail() {
                 const isExpanded = expandedVersionId === v.id;
                 const isApproved = order.approvedVersionId === v.id;
                 const isCurrent = order.currentVersionId === v.id;
-                const versionFlagged = isCurrent ? flaggedSpreadIds : new Set();
-                const filterOn = isCurrent && showOnlyFlagged[v.id];
-                const previews = (versionPreviews[v.id] || []).filter((p) => !filterOn || versionFlagged.has(p.id));
+                const versionDecisions = decisionsByVersionId[v.id] || {};
+                const versionFlagged = new Set(
+                  Object.values(versionDecisions).filter((d) => d.decision === "needs_revision").map((d) => d.spreadId)
+                );
+                const filterOn = showOnlyFlagged[v.id];
+                const allPreviews = versionPreviews[v.id] || [];
+                const previews = allPreviews.filter((p) => !filterOn || versionFlagged.has(p.id));
                 return (
                   <div key={v.id} className="border border-gray-800 rounded-lg overflow-hidden">
                     <div className="w-full flex items-center justify-between p-3 hover:bg-gray-800/50 transition-colors">
@@ -998,25 +1011,36 @@ export default function AlbumOrderDetail() {
                             </p>
                           </div>
                         )}
-                        {isCurrent && flaggedSpreadIds.size > 0 && (
-                          <div className="flex items-center justify-between">
+                        {versionFlagged.size > 0 && (
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
                             <p className="text-red-400 text-sm flex items-center gap-1.5">
                               <AlertTriangle className="w-4 h-4" />
-                              {flaggedSpreadIds.size} כפולות דורשות תיקון בסבב הבדיקה האחרון
+                              {versionFlagged.size} כפולות דורשות תיקון בסבב הבדיקה האחרון
                             </p>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setShowOnlyFlagged((prev) => ({ ...prev, [v.id]: !prev[v.id] }))}
-                              className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
-                            >
-                              {filterOn ? "הצג הכל" : "הצג רק דורשים תיקון"}
-                            </Button>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => setViewer({ versionId: v.id, index: allPreviews.findIndex((p) => versionFlagged.has(p.id)) })}
+                                className="bg-yellow-400 text-gray-900 hover:bg-yellow-500"
+                              >
+                                <MapPin className="w-4 h-4 mr-1.5" />
+                                עבור לתיקון הראשון
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setShowOnlyFlagged((prev) => ({ ...prev, [v.id]: !prev[v.id] }))}
+                                className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
+                              >
+                                {filterOn ? "הצג הכל" : "הצג רק דורשים תיקון"}
+                              </Button>
+                            </div>
                           </div>
                         )}
                         <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
                           {previews.map((p) => {
-                            const isFlagged = versionFlagged.has(p.id);
+                            const decision = versionDecisions[p.id];
+                            const isFlagged = decision?.decision === "needs_revision";
                             const isReplacing = replacingSpreadId === p.id;
                             // The uploaded path itself encodes whether this file came from
                             // the single-spread "replace" flow (handleReplaceFileSelected
@@ -1032,10 +1056,15 @@ export default function AlbumOrderDetail() {
                               >
                                 <button
                                   type="button"
-                                  onClick={() => handleOpenFullRes(p.fileKey)}
-                                  title="פתח באיכות מקורית"
+                                  onClick={() => setViewer({ versionId: v.id, index: allPreviews.findIndex((x) => x.id === p.id) })}
+                                  title="הצג עמוד והערות"
                                   className="block w-full relative"
                                 >
+                                  {isFlagged && (
+                                    <span className="absolute top-1 left-1 z-10 flex items-center gap-0.5 bg-yellow-400 text-gray-900 text-[10px] font-bold px-1.5 py-0.5 rounded">
+                                      1 <MapPin className="w-2.5 h-2.5" />
+                                    </span>
+                                  )}
                                   {wasReplaced && (
                                     <span className="absolute top-1 right-1 z-10 flex items-center gap-0.5 bg-green-500/90 text-white text-[10px] font-medium px-1.5 py-0.5 rounded">
                                       <RefreshCw className="w-2.5 h-2.5" /> הוחלף
@@ -1055,13 +1084,11 @@ export default function AlbumOrderDetail() {
                                     </div>
                                   )}
                                 </button>
-                                <div className="flex items-center justify-between px-1.5 py-1">
+                                <div className="flex items-center justify-between gap-1 px-1.5 py-1">
                                   <span className="text-gray-500 text-xs">עמוד {p.sequenceNumber}</span>
-                                  {isFlagged && (
-                                    <span className="flex items-center gap-0.5 text-red-400 text-[10px]">
-                                      <AlertTriangle className="w-3 h-3" /> תיקון
-                                    </span>
-                                  )}
+                                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${SPREAD_STATUS_STYLES[decision?.decision || "pending"].className}`}>
+                                    {SPREAD_STATUS_STYLES[decision?.decision || "pending"].label}
+                                  </span>
                                 </div>
                                 <button
                                   type="button"
@@ -1505,6 +1532,24 @@ export default function AlbumOrderDetail() {
           </CardContent>
         </Card>
       </div>
+
+      {viewer && (
+        <SpreadReviewViewer
+          spreads={versionPreviews[viewer.versionId] || []}
+          index={viewer.index}
+          decisionBySpreadId={decisionsByVersionId[viewer.versionId] || {}}
+          authorName={displayName}
+          onNavigate={(delta) =>
+            setViewer((prev) => {
+              const list = versionPreviews[prev.versionId] || [];
+              const next = prev.index + delta;
+              return next < 0 || next >= list.length ? prev : { ...prev, index: next };
+            })
+          }
+          onClose={() => setViewer(null)}
+          onOpenFullRes={handleOpenFullRes}
+        />
+      )}
     </div>
   );
 }
