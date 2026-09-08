@@ -32,8 +32,14 @@ export default function ConversationList({
     { value: "staff", label: CONTACT_TYPE_LABELS.staff },
   ];
 
+  // `min-h-0` is load-bearing, not cosmetic. This is a grid item in an auto-sized row,
+  // so its default `min-height: auto` lets the row grow to the full height of the
+  // conversation list. `h-full` then resolves against that grown row, the scroll
+  // container below never overflows, and the parent's `overflow-hidden` silently
+  // truncates the list at the bottom of the panel — no scrollbar, no way to reach the
+  // older conversations. Zeroing the minimum caps the row at the container height.
   return (
-    <div className="flex h-full flex-col border-l border-gray-800 bg-gray-900/60">
+    <div className="flex h-full min-h-0 flex-col border-l border-gray-800 bg-gray-900/60">
       <div className="space-y-3 border-b border-gray-800 p-3">
         <div className="relative">
           <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />

@@ -44,7 +44,7 @@ export default function ConversationThread({
 
   if (!conversation) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 bg-gray-900/30 text-gray-500">
+      <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 bg-gray-900/30 text-gray-500">
         <MessageSquare className="h-10 w-10 text-gray-700" />
         <p className="text-sm">בחרו שיחה מהרשימה</p>
       </div>
@@ -59,8 +59,12 @@ export default function ConversationThread({
 
   const dayGroups = groupMessagesByDay(messages || []);
 
+  // See the matching note in ConversationList: without `min-h-0` this grid item's
+  // automatic minimum height is its full content, so a long thread stretches the row
+  // instead of scrolling inside it, and the tail of the conversation — plus the reply
+  // box under it — ends up clipped and unreachable.
   return (
-    <div className="flex h-full flex-col bg-gray-900/30">
+    <div className="flex h-full min-h-0 flex-col bg-gray-900/30">
       {/* Header */}
       <div className="border-b border-gray-800 bg-gray-900/80 p-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
