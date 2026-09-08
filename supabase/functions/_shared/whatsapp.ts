@@ -140,3 +140,76 @@ export async function sendWhatsApp(
     return { success: false, error: `Network error: ${e.message}` };
   }
 }
+
+// Green-API caps a file's caption at 1024 characters. Exported because the caller has
+// to decide what to do when the studio's price-list text is longer than that -- the
+// WhatsApp bot sends the image with a short caption and the full text as a separate
+// follow-up message rather than silently truncating a price list.
+export const WHATSAPP_CAPTION_MAX = 1024;
+
+// Sends an image/PDF/etc. that is already hosted at a public URL.
+//
+// Contract verified against https://green-api.com/en/docs/api/sending/SendFileByUrl/
+// on 2026-09-08 -- NOT written from memory. This file's own history is the reason for
+// that rule: sendMessage was once implemented from a plausible-looking guess and
+// silently 404'd in production for weeks (see the FIXED note at the top).
+//   POST {{apiUrl}}/waInstance{{idInstance}}/sendFileByUrl/{{apiTokenInstance}}
+//   body: { chatId, urlFile, fileName, caption? }
+// chatId, urlFile and fileName are all REQUIRED -- an omitted fileName is rejected,
+// which is why it has a fallback below rather than being passed through as undefined.
+//
+// Green-API also caps outgoing files at 100 MB and skips thumbnail generation above
+// 3000x3000px; neither is enforced here, since the file lives on someone else's URL
+// and its size is not knowable without fetching it.
+export async function sendWhatsAppFileByUrl(
+  supabase: any,
+  phone: string,
+  urlFile: string,
+  fileName?: string,
+  caption?: string,
+  tenantId?: string
+): Promise<SendWhatsAppResult> {
+  const settings = await loadWhatsAppSettings(supabase, tenantId);
+  if (!settings) {
+    return { success: false, error: 'WhatsApp gateway URL, instance ID and API token are required (set them in Settings)' };
+  }
+
+  const chatId = toInternationalIsraeliChatId(phone);
+  if (!chatId) {
+    return { success: false, error: 'Invalid phone number' };
+  }
+  if (!urlFile) {
+    return { success: false, error: 'File URL is required' };
+  }
+
+  // Derive a name from the URL when the caller has none. Query string stripped first
+  // (Supabase Storage and most CDNs append one), and a generic fallback if what's left
+  // has no usable last segment -- Green-API rejects the request outright without it.
+  const resolvedFileName =
+    fileName || urlFile.split('?')[0].split('/').filter(Boolean).pop() || 'file';
+
+  const body: Record<string, string> = { chatId, urlFile, fileName: resolvedFileName };
+  // Only send `caption` when there is one: Green-API treats an empty string as a
+  // present-but-blank caption rather than as absent.
+  if (caption) body.caption = caption.slice(0, WHATSAPP_CAPTION_MAX);
+
+  try {
+    const res = await fetchWithRetry(buildUrl(settings, 'sendFileByUrl'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    const text = await res.text();
+    let data: any = {};
+    try { data = JSON.parse(text); } catch { /* non-JSON */ }
+
+    if (!res.ok) {
+      return { success: false, error: `Green-API Error (${res.status}): ${text}` };
+    }
+
+    return { success: true, raw: data };
+  } catch (e) {
+    return { success: false, error: `Network error: ${e.message}` };
+  }
+}
