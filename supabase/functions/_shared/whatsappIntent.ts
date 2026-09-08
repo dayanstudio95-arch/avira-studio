@@ -42,6 +42,28 @@
 const BIDI_AND_INVISIBLES = new RegExp('[\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u2069\\uFEFF]', 'g');
 const NIQQUD = new RegExp('[\\u0591-\\u05C7]', 'g');
 
+// Hebrew final forms (sofit) → their regular forms. This is load-bearing, and it is the
+// one thing here that was found by replaying real messages rather than by reasoning.
+//
+// A Hebrew word ending in one of these letters swaps it for the regular form the moment
+// a suffix is added: סקסופו|ן| → סקסופו|נ|יסט, אלבו|ם| → אלבו|מ|ים. To a substring match
+// those are different characters, so the term silently stops matching its own inflected
+// forms — and the failure is invisible, because the two glyphs look almost identical in
+// the source.
+//
+// Both real consequences were observed in the studio's own inbox:
+//   - "סקסופון" did not match a saxophonist introducing himself as "אני סקסופוניסט".
+//     He was only silenced because his message happened to contain no service word
+//     either. Add a price question to that same message and the vendor veto written
+//     specifically for him would have let a price list through.
+//   - "אלבום" did not match "אלבומים".
+//
+// Normalising both the message and the search terms fixes the whole class at once, and
+// is why terms below are written in their plain dictionary form rather than being
+// enumerated in every inflection.
+const HEBREW_FINALS: Record<string, string> = { 'ך': 'כ', 'ם': 'מ', 'ן': 'נ', 'ף': 'פ', 'ץ': 'צ' };
+const HEBREW_FINALS_RE = new RegExp('[\\u05DA\\u05DD\\u05DF\\u05E3\\u05E5]', 'g');
+
 // (a) The event being photographed, or the service itself.
 const SERVICE_TERMS = [
   'חתונה', 'חתונת', 'חתונות', 'חינה', 'אירוסין',
@@ -106,13 +128,18 @@ function containsDate(text: string): boolean {
   return day >= 1 && day <= 31 && month >= 1 && month <= 12;
 }
 
-// Strips the invisible junk WhatsApp and iOS wrap text in, plus niqqud, so a term
-// isn't missed because of a character nobody can see. Same treatment as the lead
-// parser applies before matching.
+// Strips the invisible junk WhatsApp and iOS wrap text in, strips niqqud, and folds
+// Hebrew final letters — so a term isn't missed because of a character nobody can see,
+// or because a suffix turned ן into נ (see HEBREW_FINALS above).
+//
+// Applied to BOTH sides of every comparison: the message AND the search term. That is
+// what lets the term lists below stay in plain dictionary form instead of enumerating
+// every inflection of every word.
 function normalize(text: string): string {
   return String(text)
     .replace(BIDI_AND_INVISIBLES, '')
     .replace(NIQQUD, '')
+    .replace(HEBREW_FINALS_RE, (ch) => HEBREW_FINALS[ch] || ch)
     .replace(/[  ]/g, ' ')
     .toLowerCase();
 }
