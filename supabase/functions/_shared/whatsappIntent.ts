@@ -81,10 +81,27 @@ const INQUIRY_TERMS = [
   'מחיר', 'מחירון', 'מחירים', 'עלות', 'עולה', 'עולים', 'כמה',
   'הצעת מחיר', 'הצעה', 'חבילה', 'חבילות', 'עסקה',
   'פנוי', 'פנויה', 'פנויים', 'זמין', 'זמינה', 'זמינות', 'תפוס',
-  'מתעניין', 'מתעניינת', 'מעוניין', 'מעוניינת', 'מתחתנים', 'מתחתנת', 'מתחתן',
+  'מתעניין', 'מתעניינת', 'מעוניין', 'מעוניינת',
   'לשמוע פרטים', 'פרטים נוספים',
   'price', 'quote', 'available', 'availability',
 ];
+
+// (c) The sender describing their OWN event. This is a third category rather than an
+// addition to either list above, because it is the one phrase that carries both halves
+// of the evidence at once: it names an event AND identifies the speaker as the person
+// having it. A vendor pitching the studio never says "I am getting married".
+//
+// It was in INQUIRY_TERMS until the dry run showed why that placement was wrong. לירון
+// wrote "בעזרת השם מתחתן ב16 ליוני" and then "והייתי שמח לשמוע מחירים עלויות" — a real
+// groom asking for prices — and the gate stayed silent through both, because neither
+// message contains a service word. He was only reached because Daniel answered by hand.
+//
+// Neither naive fix works, which is why this list exists:
+//   - Moving these into SERVICE_TERMS breaks "אנחנו מתחתנים ורוצים צילום": the service
+//     word matches, but the only other signal has just been spent.
+//   - Listing them in BOTH lists lets the phrase satisfy the two-signal rule by pairing
+//     with itself, which is exactly the independence the rule is meant to guarantee.
+const SELF_EVENT_TERMS = ['מתחתן', 'מתחתנת', 'מתחתנים'];
 
 // Anything here forces silence even if (a) and (b) both matched. These are people
 // selling TO the studio, or coordinating an existing job — both of which routinely
@@ -112,6 +129,13 @@ const VENDOR_TERMS = [
   'אני צלם', 'אני צלמת', 'אני הצלם', 'אני הצלמת',
   'עורך וידאו', 'עורכת וידאו', 'אני וידאומן',
   'סקסופון', 'עוגות', 'קייטרינג', 'הפקת אירועים',
+  // A producer or agency speaking about someone else's wedding. These became load-
+  // bearing the moment SELF_EVENT_TERMS started standing on its own: "יש לי זוג שמתחתן
+  // ב-12/7, מה המחיר שלכם?" now carries a self-event term without the sender being the
+  // customer. A couple never says "I have a couple" / "I have a client".
+  // ⚠️ Deliberately NOT 'יש לי חתונה' or 'יש לי אירוע' — those are how a real customer
+  // talks ("יש לי אירוע ב-12/7 ואני מחפש צלם"), and vetoing them silences leads.
+  'יש לי זוג', 'יש לי זוגות', 'יש לי לקוח', 'יש לי לקוחה',
   'הצעה עסקית', 'עמלה', 'קידום אתרים', 'דיוור', 'לידים', 'seo',
   'ספק', 'ספקים', 'לוגיסטיקה',
   // Coordination language — an existing job being run, not a new inquiry.
@@ -174,6 +198,7 @@ export interface IntentResult {
   matchedService: string | null;
   matchedInquiry: string | null;
   matchedVendor: string | null;
+  matchedSelfEvent: string | null;
   matchedDate: boolean;
 }
 
@@ -183,6 +208,7 @@ export function detectLeadIntent(bodyText: string | null | undefined): IntentRes
     matchedService: null,
     matchedInquiry: null,
     matchedVendor: null,
+    matchedSelfEvent: null,
     matchedDate: false,
   };
   if (!bodyText || typeof bodyText !== 'string' || !bodyText.trim()) return empty;
@@ -192,14 +218,23 @@ export function detectLeadIntent(bodyText: string | null | undefined): IntentRes
   const matchedVendor = VENDOR_TERMS.find((t) => text.includes(normalize(t))) || null;
   const matchedService = SERVICE_TERMS.find((t) => text.includes(normalize(t))) || null;
   const matchedInquiry = INQUIRY_TERMS.find((t) => text.includes(normalize(t))) || null;
+  const matchedSelfEvent = SELF_EVENT_TERMS.find((t) => text.includes(normalize(t))) || null;
   const matchedDate = containsDate(text);
 
   return {
     // Vendor terms veto, regardless of what else matched.
-    isInquiry: !matchedVendor && !!matchedService && (!!matchedInquiry || matchedDate),
+    //
+    // A self-event term stands alone; every other route still needs two independent
+    // signals. See SELF_EVENT_TERMS for why that shortcut is not a hole: the phrase is
+    // the sender identifying themselves as the customer, and the vendor list carries
+    // the phrasings ('יש לי זוג', 'אני מפיק'…) that let someone say it about a stranger.
+    isInquiry: !matchedVendor && (
+      !!matchedSelfEvent || (!!matchedService && (!!matchedInquiry || matchedDate))
+    ),
     matchedService,
     matchedInquiry,
     matchedVendor,
+    matchedSelfEvent,
     matchedDate,
   };
 }
@@ -260,6 +295,7 @@ export function decideBotReply(input: BotDecisionInput): BotDecision {
     matchedService: null,
     matchedInquiry: null,
     matchedVendor: null,
+    matchedSelfEvent: null,
     matchedDate: false,
   };
   const stop = (reason: BotDecisionReason): BotDecision => ({ wouldReply: false, reason, intent: noIntent });
