@@ -54,6 +54,18 @@ export const ALBUM_MANAGER_ROLE = "album_manager";
 // supabase/functions/_shared/permissions.ts's CREW_ROLES/isCrewRole.
 export const CREW_ROLES = [PHOTOGRAPHER_ROLE, EDITOR_ROLE];
 
+// WhatsApp inbox (migration 0054_whatsapp_bot.sql): admin-equivalent + lead_coordinator.
+// Broader than ADMIN_ROLES because first-contact WhatsApp inquiries are lead intake,
+// which is exactly what lead_coordinator does; narrower than "any tenant member"
+// because these rows are real customer conversations, unlike leads/events. This list
+// must stay identical to the role list in 0054_whatsapp_bot.sql's RLS policies and to
+// App.jsx's routing — RLS is the boundary that actually enforces it.
+export const WHATSAPP_INBOX_ROLES = [...ADMIN_ROLES, LEAD_COORDINATOR_ROLE];
+
+export function canUseWhatsAppInbox(user) {
+  return !!user && WHATSAPP_INBOX_ROLES.includes(user.role);
+}
+
 export function isOwner(user) {
   return !!user && OWNER_ONLY_ROLES.includes(user.role);
 }
@@ -105,6 +117,7 @@ export function usePermission() {
     isAlbumManagerRole: isAlbumManagerRole(user),
     isEditorRole: isEditorRole(user),
     isCrewRole: isCrewRole(user),
+    canUseWhatsAppInbox: canUseWhatsAppInbox(user),
     hasRole: (allowedRoles) => hasRole(user, allowedRoles),
   };
 }

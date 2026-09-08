@@ -16,7 +16,14 @@ import { parseWhatsAppLead } from "@/lib/whatsappLeadParser";
 // בכל חתימה ציבורית — בלעדיו ה-Select נשאר ריק בעריכת ליד חתום.
 const STATUSES = ["חדש", "נשלחה הצעה", "פולו-אפ", "נסגר/חתימה", "חוזה", "לא רלוונטי"];
 
-export default function LeadFormDialog({ isOpen, onClose, lead, packagePrices, onSaved }) {
+// `lead`          — an existing lead being EDITED; handleSave takes the update path.
+// `initialValues` — pre-filled values for a NEW lead; handleSave still takes the create
+//                   path. Added for the WhatsApp inbox's "צור ליד" button, which
+//                   pre-fills this form from a conversation but must never create the
+//                   lead by itself — nothing is written until the user presses שמור.
+//                   Deliberately a separate prop from `lead`: passing a partial object
+//                   as `lead` would send handleSave into `Lead.update(undefined, ...)`.
+export default function LeadFormDialog({ isOpen, onClose, lead, initialValues, packagePrices, onSaved }) {
   const [packages, setPackages] = useState([]);
   const [form, setForm] = useState({
     coupleNames: "",
@@ -77,12 +84,18 @@ export default function LeadFormDialog({ isOpen, onClose, lead, packagePrices, o
         packageDetails: lead.packageDetails || "",
       });
     } else {
-      // New lead: fetch master contract from DB
+      // New lead: fetch master contract from DB.
+      // initialValues (if any) is spread LAST but only over the empty defaults — it can
+      // never overwrite the master contract terms, and callers deliberately don't pass
+      // email/status/package fields (email is the invoice recipient — see the paste
+      // handler's note below).
       loadMasterContract().then((terms) => {
         setForm({
           coupleNames: "", eventDate: "", phoneNumber: "", email: "avira.media1@gmail.com", venueName: "",
           packageChoice: "", packageId: "", basePrice: "", discount: "", finalPrice: "",
-          status: "חדש", notes: "", contractTerms: terms, packageDetails: "",
+          status: "חדש", notes: "", packageDetails: "",
+          ...(initialValues || {}),
+          contractTerms: terms,
         });
       });
     }

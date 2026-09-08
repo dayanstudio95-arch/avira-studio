@@ -1,0 +1,400 @@
+// Green API incoming-webhook receiver — STAGE 1: RECORD ONLY, NEVER REPLY.
+//
+// ⚠️ This function deliberately sends nothing. Not one message, in any code path.
+// Its entire job is to write what Green API reports into whatsapp_conversations /
+// whatsapp_messages so the inbox screen (src/pages/WhatsAppInbox.jsx) can show it.
+// The bot actually answering anyone is Stage 2 of the plan and requires a separate,
+// explicit go-ahead from the user — do not add a send call here without it. The point
+// of Stage 1 is to watch real traffic for a few days first and find out how much of it
+// is actually new leads versus existing clients and staff.
+//
+// Why that caution: the studio runs ONE Green API instance, already used by 11+ Edge
+// Functions to send contracts, payment reminders, questionnaires, staff schedules and
+// album sketches. Turning on `incomingWebhook` routes every reply from everyone here —
+// couples mid-production, photographers, editors, group chats. See contact_type below.
+//
+// Green API contract (verified against green-api.com's official webhook docs,
+// 2026-09-08):
+//   - Delivery is an HTTP POST with `Authorization: Bearer <webhookUrlToken>`
+//     (Bearer is the default when the token is configured without a type prefix).
+//   - We MUST answer 200. On a non-200 or a timeout (180s), Green API pauses 60
+//     seconds and resends the SAME notification, retrying for up to 24 hours.
+//     => the handler has to be idempotent, which is what
+//        whatsapp_messages' `unique (tenant_id, id_message)` provides.
+//   - Payload shape:
+//       { typeWebhook, instanceData: { idInstance, wid, typeInstance }, timestamp,
+//         idMessage, senderData: { chatId, sender, chatName, senderName,
+//         senderContactName }, messageData: { typeMessage, ... } }
+//
+// Auth: `verify_jwt = false` in config.toml (Green API cannot supply a Supabase user
+// JWT), so the webhookUrlToken checked in this file IS the authentication. It is
+// REQUIRED — if no token is configured for the tenant we reject rather than accept
+// anonymous writes, because an unauthenticated writer could otherwise inject fake
+// conversations into the inbox today, and (once Stage 2 lands) trick the studio's own
+// WhatsApp number into messaging arbitrary people.
+//
+// Never log a raw message body or token at info level — these are real customer
+// conversations.
+
+import { handleOptions, jsonResponse } from '../_shared/cors.ts';
+import { createServiceRoleClient } from '../_shared/supabaseClients.ts';
+import { checkRateLimit } from '../_shared/rateLimit.ts';
+import { normalizeIsraeliPhone, chatIdToLocalPhone, isGroupChatId } from '../_shared/phone.ts';
+
+const PG_UNIQUE_VIOLATION = '23505';
+
+// Green API webhook types that carry an actual chat message we want to record.
+// Everything else (outgoingMessageStatus / stateInstanceChanged / deviceInfo /
+// incomingCall / quotaExceeded / ...) is acknowledged with 200 and ignored.
+const INBOUND_TYPES = ['incomingMessageReceived'];
+const OUTBOUND_TYPES = ['outgoingMessageReceived', 'outgoingAPIMessageReceived'];
+
+interface ExtractedMessage {
+  typeMessage: string | null;
+  bodyText: string | null;
+  mediaUrl: string | null;
+}
+
+// Defensive extractor: Green API has ~15 message shapes and adds more over time. We
+// pull text/media where we recognize the shape and otherwise fall back to the type
+// name — the complete payload is stored in `raw` either way, so nothing is ever lost.
+function extractMessage(messageData: any): ExtractedMessage {
+  if (!messageData || typeof messageData !== 'object') {
+    return { typeMessage: null, bodyText: null, mediaUrl: null };
+  }
+  const typeMessage: string | null = messageData.typeMessage ?? null;
+
+  const text =
+    messageData.textMessageData?.textMessage ??
+    messageData.extendedTextMessageData?.text ??
+    messageData.fileMessageData?.caption ??
+    messageData.templateMessageData?.contentText ??
+    null;
+
+  const mediaUrl = messageData.fileMessageData?.downloadUrl ?? null;
+
+  // Shapes with no text at all get a short human-readable placeholder so the inbox
+  // thread doesn't render an empty bubble.
+  let bodyText: string | null = typeof text === 'string' && text.trim() ? text : null;
+  if (!bodyText) {
+    if (messageData.locationMessageData) {
+      const loc = messageData.locationMessageData;
+      bodyText = `📍 ${[loc.nameLocation, loc.address].filter(Boolean).join(' — ') || 'מיקום'}`;
+    } else if (messageData.contactMessageData) {
+      bodyText = `👤 ${messageData.contactMessageData.displayName || 'איש קשר'}`;
+    } else if (messageData.fileMessageData?.fileName) {
+      bodyText = `📎 ${messageData.fileMessageData.fileName}`;
+    }
+  }
+
+  return { typeMessage, bodyText, mediaUrl };
+}
+
+// Resolves which tenant this instance belongs to. There is no tenant_id anywhere in a
+// Green API payload, so the instance id is the only link — matched against the
+// whatsapp_instance_id each tenant already configures in Settings → Integrations.
+// Deliberately does NOT fall back to "the only tenant" when unmatched: this codebase
+// is multi-tenant and a wrong-tenant write would leak one studio's conversations into
+// another's inbox.
+async function resolveTenantId(supabase: any, idInstance: unknown): Promise<string | null> {
+  if (idInstance === null || idInstance === undefined) return null;
+  const { data, error } = await supabase
+    .from('app_settings')
+    .select('tenant_id, value')
+    .eq('key', 'whatsapp_instance_id')
+    .eq('value', String(idInstance))
+    .limit(1);
+  if (error) {
+    console.error('[whatsapp-webhook] tenant lookup failed:', error.message);
+    return null;
+  }
+  return data?.[0]?.tenant_id ?? null;
+}
+
+async function loadWebhookToken(supabase: any, tenantId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('tenant_secrets')
+    .select('value')
+    .eq('tenant_id', tenantId)
+    .eq('key', 'whatsapp_webhook_token')
+    .limit(1);
+  if (error) {
+    console.error('[whatsapp-webhook] token lookup failed:', error.message);
+    return null;
+  }
+  const value = data?.[0]?.value;
+  return value ? String(value) : null;
+}
+
+// Constant-time-ish comparison. The token is short and this endpoint is rate-limited,
+// so this is belt-and-braces rather than load-bearing.
+function tokensMatch(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+interface ContactMatch {
+  contactType: 'unknown' | 'lead' | 'client' | 'staff' | 'group';
+  leadId: string | null;
+  eventId: string | null;
+}
+
+// THE safety check of this whole module.
+//
+// Phones are compared in normalized local form on BOTH sides: the DB stores
+// '0501234567' (sometimes with spaces/dashes/bidi junk from a paste), while Green API
+// delivers '972501234567@c.us'. Comparing the raw strings matches nothing, which would
+// classify every existing client and every photographer as an unknown stranger — and,
+// in Stage 2, price-list them. That is why this normalizes in JS over a small set of
+// phone columns instead of doing an `.eq()` in SQL.
+//
+// Precedence is deliberate: client (has a signed event) beats lead beats staff, so a
+// couple who is also in the leads table is never treated as a fresh inquiry.
+async function classifyContact(supabase: any, tenantId: string, phone: string | null): Promise<ContactMatch> {
+  const none: ContactMatch = { contactType: 'unknown', leadId: null, eventId: null };
+  if (!phone) return none;
+
+  const [leadsRes, eventsRes, staffRes, profilesRes] = await Promise.all([
+    supabase
+      .from('leads')
+      .select('id, phone_number, signed_phone_number, production_bride_phone, production_groom_phone')
+      .eq('tenant_id', tenantId),
+    supabase.from('events').select('id, phone_number').eq('tenant_id', tenantId),
+    supabase.from('staff_members').select('id, phone_number').eq('tenant_id', tenantId),
+    supabase.from('profiles').select('id, phone').eq('tenant_id', tenantId),
+  ]);
+
+  if (leadsRes.error || eventsRes.error || staffRes.error || profilesRes.error) {
+    // Fail CLOSED, unlike the rate limiter: if we can't prove this number is a
+    // stranger, we must not let a later stage treat it as one. 'staff' is the safest
+    // label because the bot never acts on it.
+    console.error(
+      '[whatsapp-webhook] contact classification failed, defaulting to staff (bot-silent):',
+      leadsRes.error?.message || eventsRes.error?.message || staffRes.error?.message || profilesRes.error?.message
+    );
+    return { contactType: 'staff', leadId: null, eventId: null };
+  }
+
+  const matches = (value: unknown) => !!value && normalizeIsraeliPhone(value) === phone;
+
+  const event = (eventsRes.data || []).find((e: any) => matches(e.phone_number));
+  if (event) return { contactType: 'client', leadId: null, eventId: event.id };
+
+  const leads = leadsRes.data || [];
+  const productionLead = leads.find(
+    (l: any) => matches(l.production_bride_phone) || matches(l.production_groom_phone)
+  );
+  if (productionLead) return { contactType: 'client', leadId: productionLead.id, eventId: null };
+
+  const lead = leads.find((l: any) => matches(l.phone_number) || matches(l.signed_phone_number));
+  if (lead) return { contactType: 'lead', leadId: lead.id, eventId: null };
+
+  if ((staffRes.data || []).some((s: any) => matches(s.phone_number))) {
+    return { contactType: 'staff', leadId: null, eventId: null };
+  }
+  if ((profilesRes.data || []).some((p: any) => matches(p.phone))) {
+    return { contactType: 'staff', leadId: null, eventId: null };
+  }
+
+  return none;
+}
+
+Deno.serve(async (req: Request) => {
+  const preflight = handleOptions(req);
+  if (preflight) return preflight;
+
+  if (req.method !== 'POST') {
+    return jsonResponse({ error: 'Method not allowed' }, { status: 405 });
+  }
+
+  // Generous limit: this is a machine caller, and Green API legitimately bursts when
+  // it flushes a backlog. Fails open (see rateLimit.ts), so a limiter hiccup can never
+  // cost us a real message.
+  const limit = await checkRateLimit(req, 'whatsapp-webhook', { maxHits: 600, windowSeconds: 600 });
+  if (!limit.allowed) {
+    return jsonResponse({ error: 'Too many requests' }, { status: 429 });
+  }
+
+  let payload: any;
+  try {
+    payload = await req.json();
+  } catch {
+    // Unparseable body is permanent — answer 200 so Green API stops retrying it for
+    // the next 24 hours.
+    console.warn('[whatsapp-webhook] unparseable body, acknowledging');
+    return jsonResponse({ ok: true, ignored: 'unparseable' });
+  }
+
+  const typeWebhook: string = payload?.typeWebhook || '';
+  const supabase = createServiceRoleClient();
+
+  const tenantId = await resolveTenantId(supabase, payload?.instanceData?.idInstance);
+  if (!tenantId) {
+    console.warn(`[whatsapp-webhook] no tenant for idInstance=${payload?.instanceData?.idInstance}`);
+    return jsonResponse({ ok: true, ignored: 'unknown_instance' });
+  }
+
+  // ---- Authentication -------------------------------------------------------
+  const expectedToken = await loadWebhookToken(supabase, tenantId);
+  if (!expectedToken) {
+    // Refusing (rather than accepting) when unconfigured is intentional — see header.
+    console.error('[whatsapp-webhook] no whatsapp_webhook_token configured for tenant; rejecting');
+    return jsonResponse({ error: 'Unauthorized' }, { status: 401 });
+  }
+  const authHeader = req.headers.get('Authorization') || '';
+  const presented = authHeader.replace(/^Bearer\s+/i, '').trim();
+  if (!presented || !tokensMatch(presented, expectedToken)) {
+    console.warn('[whatsapp-webhook] token mismatch; rejecting');
+    return jsonResponse({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const isInbound = INBOUND_TYPES.includes(typeWebhook);
+  const isOutbound = OUTBOUND_TYPES.includes(typeWebhook);
+  if (!isInbound && !isOutbound) {
+    // Status receipts, instance-state changes, calls, quota warnings — nothing to
+    // record in Stage 1.
+    return jsonResponse({ ok: true, ignored: typeWebhook || 'unknown_type' });
+  }
+
+  const idMessage: string | null = payload?.idMessage ? String(payload.idMessage) : null;
+  const chatId: string | null = payload?.senderData?.chatId ? String(payload.senderData.chatId) : null;
+  if (!idMessage || !chatId) {
+    console.warn(`[whatsapp-webhook] ${typeWebhook} without idMessage/chatId, acknowledging`);
+    return jsonResponse({ ok: true, ignored: 'missing_ids' });
+  }
+
+  try {
+    const isGroup = isGroupChatId(chatId);
+    const phone = chatIdToLocalPhone(chatId);
+    const displayName =
+      payload?.senderData?.senderContactName ||
+      payload?.senderData?.senderName ||
+      payload?.senderData?.chatName ||
+      null;
+
+    // ---- Conversation (create or fetch) -------------------------------------
+    const { data: existingRows, error: convSelectError } = await supabase
+      .from('whatsapp_conversations')
+      .select('id, contact_type, bot_enabled, display_name')
+      .eq('tenant_id', tenantId)
+      .eq('chat_id', chatId)
+      .limit(1);
+    if (convSelectError) throw new Error(`conversation lookup: ${convSelectError.message}`);
+
+    let conversation = existingRows?.[0] ?? null;
+
+    if (!conversation) {
+      const match = isGroup
+        ? { contactType: 'group' as const, leadId: null, eventId: null }
+        : await classifyContact(supabase, tenantId, phone);
+
+      const { data: inserted, error: insertConvError } = await supabase
+        .from('whatsapp_conversations')
+        .insert({
+          tenant_id: tenantId,
+          chat_id: chatId,
+          phone,
+          contact_type: match.contactType,
+          matched_lead_id: match.leadId,
+          matched_event_id: match.eventId,
+          display_name: displayName,
+        })
+        .select('id, contact_type, bot_enabled, display_name')
+        .single();
+
+      if (insertConvError) {
+        if (insertConvError.code === PG_UNIQUE_VIOLATION) {
+          // Two webhooks for a brand-new chat arrived concurrently; re-read the row
+          // the other one created.
+          const { data: raced } = await supabase
+            .from('whatsapp_conversations')
+            .select('id, contact_type, bot_enabled, display_name')
+            .eq('tenant_id', tenantId)
+            .eq('chat_id', chatId)
+            .limit(1);
+          conversation = raced?.[0] ?? null;
+        }
+        if (!conversation) throw new Error(`conversation insert: ${insertConvError.message}`);
+      } else {
+        conversation = inserted;
+      }
+    }
+
+    // ---- Message (this insert IS the dedupe) --------------------------------
+    const { typeMessage, bodyText, mediaUrl } = extractMessage(payload?.messageData);
+    const direction = isInbound ? 'inbound' : 'outbound_human';
+
+    const { error: msgError } = await supabase.from('whatsapp_messages').insert({
+      tenant_id: tenantId,
+      conversation_id: conversation.id,
+      id_message: idMessage,
+      direction,
+      type_webhook: typeWebhook,
+      type_message: typeMessage,
+      body_text: bodyText,
+      media_url: mediaUrl,
+      raw: payload,
+    });
+
+    if (msgError) {
+      if (msgError.code === PG_UNIQUE_VIOLATION) {
+        // Green API redelivered a notification we already handled. Exit without
+        // touching anything else — this is the retry path, and it must be a no-op.
+        return jsonResponse({ ok: true, duplicate: true });
+      }
+      throw new Error(`message insert: ${msgError.message}`);
+    }
+
+    // ---- Conversation aggregates --------------------------------------------
+    const nowIso = new Date().toISOString();
+    const updates: Record<string, unknown> = {
+      last_message_at: nowIso,
+      last_message_preview: bodyText ? bodyText.slice(0, 200) : typeMessage,
+    };
+    if (isInbound) {
+      updates.last_inbound_at = nowIso;
+      if (displayName && !conversation.display_name) updates.display_name = displayName;
+    }
+
+    if (isOutbound) {
+      // ⚠️ THE most important line in this module. Green API reports a message the
+      // studio sent from its own phone (or from any of our other Edge Functions) as
+      // outgoing*MessageReceived. The moment a human is in the conversation the bot
+      // must fall silent in it permanently — otherwise, once Stage 2 is live, it would
+      // talk over Daniel mid-sentence in front of a client.
+      updates.bot_enabled = false;
+    }
+
+    // A stranger can become a lead later (Daniel presses "צור ליד", or adds them by
+    // hand). Re-classify while it still says 'unknown' so the label — and, in Stage 2,
+    // bot eligibility — stays truthful. Settled labels are left alone.
+    if (conversation.contact_type === 'unknown' && !isGroup && phone) {
+      const match = await classifyContact(supabase, tenantId, phone);
+      if (match.contactType !== 'unknown') {
+        updates.contact_type = match.contactType;
+        updates.matched_lead_id = match.leadId;
+        updates.matched_event_id = match.eventId;
+      }
+    }
+
+    const { error: updateError } = await supabase
+      .from('whatsapp_conversations')
+      .update(updates)
+      .eq('id', conversation.id);
+    if (updateError) {
+      // The message is already safely stored; a failed aggregate update is cosmetic,
+      // and returning non-200 here would make Green API redeliver a message we have.
+      console.error('[whatsapp-webhook] conversation update failed:', updateError.message);
+    }
+
+    // Stage 1 ends here, on purpose. No reply is sent.
+    return jsonResponse({ ok: true });
+  } catch (e: any) {
+    // Return 500 so Green API retries in 60s — a transient DB error should not lose a
+    // customer's message. The unique constraint makes that retry safe.
+    console.error('[whatsapp-webhook] failed:', e?.message || e);
+    return jsonResponse({ error: 'Internal error' }, { status: 500 });
+  }
+});

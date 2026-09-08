@@ -179,4 +179,12 @@ export const entities = {
   // UnifiedSidePanel.jsx; the public response page never uses this entity directly --
   // it goes through respond-staff-availability-public with a service-role client.
   StaffAvailabilityRequest: createEntity('staff_availability_requests'),
+  // WhatsApp inbox (migration 0054_whatsapp_bot.sql) — every conversation the studio's
+  // WhatsApp number is having, recorded by the whatsapp-webhook Edge Function from
+  // Green API's notifications. RLS is admin/lead_coordinator-only: these are real
+  // customer conversations, unlike leads/events which any tenant member can read.
+  // The webhook itself writes via a service-role client and never touches these
+  // entities; WhatsAppInbox.jsx reads them and updates only botEnabled.
+  WhatsAppConversation: createEntity('whatsapp_conversations'),
+  WhatsAppMessage: createEntity('whatsapp_messages'),
 };

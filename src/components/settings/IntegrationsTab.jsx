@@ -37,8 +37,18 @@ import { toast } from "sonner";
 // which falls back to the platform-wide key automatically when a tenant leaves this blank —
 // so filling this in is entirely optional, not required to use the assistant.
 const NON_SECRET_KEYS = ["whatsapp_gateway_url", "whatsapp_instance_id"];
+// whatsapp_webhook_token is the shared secret for the INBOUND direction (Green API ->
+// us), added with migration 0054_whatsapp_bot.sql. It is the same value pasted into
+// Green API's "webhookUrlToken" console field; Green API then sends it on every
+// notification as `Authorization: Bearer <token>`, and supabase/functions/
+// whatsapp-webhook compares it before recording anything. Kept in tenant_secrets, not
+// app_settings, for the same reason whatsapp_api_key moved there in the 2026-08-17
+// audit: app_settings' RLS has no role check. Note the whatsapp-webhook function
+// REJECTS every notification while this is blank — that is deliberate, it refuses to
+// accept unauthenticated writes rather than falling back to trusting anyone.
 const SECRET_KEYS = [
   "whatsapp_api_key",
+  "whatsapp_webhook_token",
   "morning_api_key_sole_prop",
   "morning_api_secret_sole_prop",
   "morning_api_key_company",
@@ -52,6 +62,7 @@ export default function IntegrationsTab() {
     whatsapp_gateway_url: "",
     whatsapp_instance_id: "",
     whatsapp_api_key: "",
+    whatsapp_webhook_token: "",
     morning_api_key_sole_prop: "",
     morning_api_secret_sole_prop: "",
     morning_api_key_company: "",
@@ -180,6 +191,40 @@ export default function IntegrationsTab() {
             <Label className="text-gray-300">API Token (apiTokenInstance)</Label>
             <SecretInput fieldKey="whatsapp_api_key" placeholder="apiTokenInstance" />
           </div>
+          {/* Inbound direction (migration 0054_whatsapp_bot.sql). Separated visually
+              from the three sending fields above because it enables something quite
+              different: it lets Green API push every incoming message to us. */}
+          <div className="pt-4 border-t border-gray-800 space-y-3">
+            <div className="bg-blue-900/20 border border-blue-700/40 rounded-lg p-3 text-xs text-blue-300 space-y-1">
+              <p><strong>📥 קבלת הודעות נכנסות (מסך "שיחות וואטסאפ")</strong></p>
+              <p>
+                בקונסולת Green API, במסך ההגדרות של האינסטנס: הדביקו את כתובת ה-Webhook למטה בשדה
+                <span dir="ltr"> webhookUrl</span>, בחרו טוקן כלשהו והדביקו אותו גם ב-
+                <span dir="ltr"> webhookUrlToken</span> בקונסולה וגם בשדה כאן למטה, והפעילו את
+                <span dir="ltr"> incomingWebhook</span>, <span dir="ltr">outgoingMessageWebhook</span> ו-
+                <span dir="ltr">outgoingAPIMessageWebhook</span>.
+              </p>
+              <p className="text-blue-400/80">
+                כל עוד השדה הזה ריק — לא נקלטת אף הודעה. זו הגנה מכוונת: בלי טוקן אי אפשר לדעת שההודעה
+                באמת הגיעה מ-Green API.
+              </p>
+            </div>
+            <div>
+              <Label className="text-gray-300">Webhook URL (להעתקה לקונסולה)</Label>
+              <Input
+                readOnly
+                value={`${import.meta.env.VITE_SUPABASE_URL || ""}/functions/v1/whatsapp-webhook`}
+                onFocus={(e) => e.target.select()}
+                className="bg-gray-800 border-gray-700 text-gray-400 mt-1"
+                dir="ltr"
+              />
+            </div>
+            <div>
+              <Label className="text-gray-300">Webhook Token (webhookUrlToken)</Label>
+              <SecretInput fieldKey="whatsapp_webhook_token" placeholder="טוקן שתבחרו — אותו ערך בדיוק כמו בקונסולה" />
+            </div>
+          </div>
+
           <div className="pt-2 border-t border-gray-800">
             <WhatsAppPanel
               gatewayUrl={values.whatsapp_gateway_url}

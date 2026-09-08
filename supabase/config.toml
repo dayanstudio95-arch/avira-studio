@@ -42,6 +42,20 @@ verify_jwt = false
 [functions.album-print-access]
 verify_jwt = false
 
+# whatsapp-webhook receives Green API's incoming/outgoing message notifications.
+# Green API is an external service posting straight to the URL configured in its
+# console — it has no Supabase user JWT to present, so platform-level JWT
+# verification must be off or every notification would 401 before the function
+# runs. It authenticates instead via the `Authorization: Bearer <webhookUrlToken>`
+# header that Green API sends, compared inside the function body against the
+# tenant's `whatsapp_webhook_token` secret (tenant_secrets). That check is
+# REQUIRED, not optional: an unconfigured token makes the function reject rather
+# than accept anonymous writes. Same "authenticate in the function body" shape as
+# calendar-sync-webhook / contract-signed-webhook, just with the header name the
+# third party dictates rather than our own x-cron-secret.
+[functions.whatsapp-webhook]
+verify_jwt = false
+
 # monthly-events-backup is called on a monthly pg_cron schedule (see
 # DEPLOYMENT.md section 9), which cannot supply a Supabase user JWT.
 # Authenticates itself via the x-cron-secret header (own dedicated
