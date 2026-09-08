@@ -121,7 +121,14 @@ export default function IntegrationsTab() {
       );
       toast.success("הגדרות האינטגרציות נשמרו בהצלחה");
     } catch (e) {
-      toast.error("שגיאה בשמירת ההגדרות");
+      // Surface the real reason. A bare "שגיאה בשמירת ההגדרות" cost a full debugging
+      // session on 2026-09-08: saving a brand-new secret key failed on tenant_secrets'
+      // missing set_tenant_id trigger (fixed in 0055_tenant_defaults_backfill.sql), and
+      // this toast was the only signal anyone had. Postgres errors arrive from PostgREST
+      // as { message, details, hint, code } — message alone is enough to tell a
+      // constraint violation apart from an RLS refusal.
+      console.error("Error saving integrations:", e);
+      toast.error(`שגיאה בשמירת ההגדרות: ${e?.message || "שגיאה לא ידועה"}`);
     }
     setIsSaving(false);
   };
