@@ -103,6 +103,14 @@ const VENDOR_TERMS = [
   // 'המפיק'/'המפיקה' forms close that gap.
   'אני מפיק', 'אני מפיקה', 'המפיק', 'המפיקה', 'מפיק אירועים', 'מפיקת אירועים',
   'אני נגן', 'אני זמר', 'אני זמרת', 'דיג׳יי', "דיג'יי", 'די ג׳יי',
+  // A colleague photographer/videographer asking what we charge. Daniel's own point
+  // (2026-09-08): these people are not staff and will never be in the database, so
+  // contact_type can never catch them — only the message text can. Deliberately ONLY
+  // the self-description forms: 'צלם' itself is a SERVICE term ("מחפשים צלם"), and
+  // vetoing 'צלם חתונות' would silence the very common "מחפשת צלם חתונות". Bare
+  // 'אני עורך' is avoided too — it swallows "אני עורך דין", i.e. a real customer.
+  'אני צלם', 'אני צלמת', 'אני הצלם', 'אני הצלמת',
+  'עורך וידאו', 'עורכת וידאו', 'אני וידאומן',
   'סקסופון', 'עוגות', 'קייטרינג', 'הפקת אירועים',
   'הצעה עסקית', 'עמלה', 'קידום אתרים', 'דיוור', 'לידים', 'seo',
   'ספק', 'ספקים', 'לוגיסטיקה',
