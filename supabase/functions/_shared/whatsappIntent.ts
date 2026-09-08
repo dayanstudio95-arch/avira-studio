@@ -136,8 +136,11 @@ const VENDOR_TERMS = [
 // only needs "does a date appear here at all?", with no need for the real parser's
 // ambiguity handling, year completion or validity round-trip.
 const DATE_RE = /(?:^|[^\d])([0-3]?\d)\s*[./-]\s*([01]?\d)(?:\s*[./-]\s*(\d{2,4}))?(?:$|[^\d])/;
+// The prefix before the month name is ב OR ל — "16 ביוני" and "16 ליוני" are both
+// ordinary Hebrew and both appeared in real traffic (לירון wrote "מתחתן ב16 ליוני",
+// which the ב-only form missed entirely).
 const HEBREW_MONTH_RE =
-  /\b[0-3]?\d\s*(?:ב)?\s*(?:ינואר|פברואר|מרץ|מרס|אפריל|מאי|יוני|יולי|אוגוסט|ספטמבר|אוקטובר|נובמבר|דצמבר)/;
+  /\b[0-3]?\d\s*[-–]?\s*(?:[בל])?\s*(?:ינואר|פברואר|מרץ|מרס|אפריל|מאי|יוני|יולי|אוגוסט|ספטמבר|אוקטובר|נובמבר|דצמבר)/;
 
 function containsDate(text: string): boolean {
   if (HEBREW_MONTH_RE.test(text)) return true;
