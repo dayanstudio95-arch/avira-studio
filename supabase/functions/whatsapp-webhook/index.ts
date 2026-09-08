@@ -123,7 +123,13 @@ async function loadWebhookToken(supabase: any, tenantId: string): Promise<string
     return null;
   }
   const value = data?.[0]?.value;
-  return value ? String(value) : null;
+  // Trimmed on purpose, and this is not cosmetic. The presented header is trimmed
+  // below, so without the same treatment here a token pasted into Settings with a
+  // trailing space or newline — the single easiest mistake to make when copying a
+  // secret between two browser tabs — can never match, and the only symptom is a
+  // silent "token mismatch" for every message forever.
+  const token = value ? String(value).trim() : '';
+  return token || null;
 }
 
 // Constant-time-ish comparison. The token is short and this endpoint is rate-limited,
@@ -246,7 +252,16 @@ Deno.serve(async (req: Request) => {
   const authHeader = req.headers.get('Authorization') || '';
   const presented = authHeader.replace(/^Bearer\s+/i, '').trim();
   if (!presented || !tokensMatch(presented, expectedToken)) {
-    console.warn('[whatsapp-webhook] token mismatch; rejecting');
+    // Lengths only — never the values themselves, and never the raw header. Which of
+    // the two sides is wrong is otherwise unknowable from outside, and a bare
+    // "mismatch" sends you round-tripping through the Green API console guessing.
+    // Equal lengths point at a typo or a case difference; different lengths usually
+    // mean one side got stray whitespace or an outright different string.
+    console.warn(
+      `[whatsapp-webhook] token mismatch; rejecting ` +
+        `(header ${presented.length} chars, configured ${expectedToken.length} chars` +
+        `${authHeader ? '' : ', no Authorization header sent'})`
+    );
     return jsonResponse({ error: 'Unauthorized' }, { status: 401 });
   }
 
