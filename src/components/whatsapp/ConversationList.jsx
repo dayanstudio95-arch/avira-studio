@@ -1,7 +1,7 @@
 import React from "react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Search, BotOff, MessageSquare } from "lucide-react";
+import { Search, BotOff, Bot, MessageSquare } from "lucide-react";
 import {
   CONTACT_TYPE_LABELS,
   CONTACT_TYPE_COLORS,
@@ -24,7 +24,12 @@ export default function ConversationList({
   contactFilter,
   onContactFilterChange,
 }) {
+  // "would_reply" is not a contact_type — it's the dry-run review queue, and it is the
+  // one filter worth opening every day: every conversation in it is one Stage 2 would
+  // have answered on its own. Placed first because that review is the entire point of
+  // running the gate without a send path.
   const filters = [
+    { value: "would_reply", label: "🤖 הבוט היה עונה" },
     { value: "all", label: "הכל" },
     { value: "unknown", label: CONTACT_TYPE_LABELS.unknown },
     { value: "lead", label: CONTACT_TYPE_LABELS.lead },
@@ -93,6 +98,15 @@ export default function ConversationList({
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <span className="truncate font-medium text-white">{conversationTitle(conv)}</span>
+                    {/* Dry run: the gate opened here at least once. Set once and never
+                        cleared, so this stays visible as a "read this one" marker even
+                        after the conversation has moved on. */}
+                    {conv.botWouldReplyAt && (
+                      <Bot
+                        className="h-3.5 w-3.5 shrink-0 text-emerald-400"
+                        title="הבוט היה עונה בשיחה הזו (מצב יבש — לא נשלח כלום)"
+                      />
+                    )}
                     {!conv.botEnabled && (
                       <BotOff className="h-3.5 w-3.5 shrink-0 text-gray-500" title="הבוט מושתק בשיחה זו" />
                     )}

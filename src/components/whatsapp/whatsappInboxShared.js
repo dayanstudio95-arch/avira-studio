@@ -30,6 +30,34 @@ export const STATE_LABELS = {
   EXPIRED: "פג תוקף",
 };
 
+// ---------------------------------------------------------------------------------
+// Dry-run verdicts (migration 0056_whatsapp_bot_dry_run.sql).
+//
+// The webhook runs the full Stage 2 gate chain on every inbound message and records
+// what it WOULD have done, without sending anything. These are the Hebrew renderings
+// of the machine codes stored in whatsapp_messages.bot_skip_reason — the wording lives
+// here, on purpose, so it can be reworded without a migration.
+//
+// Why this is shown in the UI at all: the gate is not asking to be trusted, it is
+// asking to be checked. Each verdict sits next to the message that produced it, so a
+// wrong one is found by reading the inbox rather than by reasoning about the code.
+// ---------------------------------------------------------------------------------
+export const BOT_DECISION_LABELS = {
+  ok: "הבוט היה עונה כאן",
+  group: "קבוצה — הבוט שותק",
+  known_contact: "מספר מוכר (לקוח / ליד / צוות) — הבוט שותק",
+  bot_muted: "הבוט מושתק בשיחה זו",
+  not_first_message: "לא ההודעה הראשונה בשיחה",
+  not_text: "הודעה שאינה טקסט — אי אפשר לבדוק תוכן",
+  quiet_hours: "שעות שקט",
+  no_intent: "לא זוהתה פנייה לצילום אירוע",
+};
+
+export function botDecisionLabel(reason) {
+  if (!reason) return "";
+  return BOT_DECISION_LABELS[reason] || reason;
+}
+
 // '972501234567@c.us' -> '0501234567' for display. Kept intentionally dumb: the
 // authoritative normalization lives server-side (_shared/phone.ts) and is already
 // stored on the conversation's `phone` column — this is only a fallback for rows

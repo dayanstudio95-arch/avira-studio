@@ -1,6 +1,6 @@
 import React from "react";
-import { Download } from "lucide-react";
-import { formatMessageTime } from "./whatsappInboxShared";
+import { Download, Bot, BotOff } from "lucide-react";
+import { formatMessageTime, botDecisionLabel } from "./whatsappInboxShared";
 
 // One message in the thread.
 //
@@ -51,6 +51,28 @@ export default function MessageBubble({ message }) {
         )}
 
         <div className="mt-1 text-left text-[10px] text-gray-400">{formatMessageTime(message.createdDate)}</div>
+
+        {/* Dry-run verdict. `botWouldReply` is null on outbound messages and on any
+            inbound row recorded before the dry run shipped, which is why this tests for
+            null rather than falsiness — "the bot chose silence" and "the bot was never
+            asked" must not look the same on screen.
+
+            The green marker is the one to read carefully: it means Stage 2, had it been
+            switched on, would have sent this person a greeting and then a price list.
+            Every green marker on a message that isn't a genuine inquiry is a bug found
+            for free, before it cost the studio anything. */}
+        {message.botWouldReply !== null && message.botWouldReply !== undefined && (
+          <div
+            className={`mt-1.5 flex items-center gap-1 border-t pt-1.5 text-[10px] ${
+              message.botWouldReply
+                ? "border-emerald-800/50 text-emerald-300"
+                : "border-gray-700/60 text-gray-500"
+            }`}
+          >
+            {message.botWouldReply ? <Bot className="h-3 w-3 shrink-0" /> : <BotOff className="h-3 w-3 shrink-0" />}
+            <span>{botDecisionLabel(message.botSkipReason)}</span>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-// Green API incoming-webhook receiver — STAGE 1: RECORD ONLY, NEVER REPLY.
+// Green API incoming-webhook receiver — STAGE 1 + DRY RUN: RECORD ONLY, NEVER REPLY.
 //
 // ⚠️ This function deliberately sends nothing. Not one message, in any code path.
 // Its entire job is to write what Green API reports into whatsapp_conversations /
@@ -7,6 +7,17 @@
 // explicit go-ahead from the user — do not add a send call here without it. The point
 // of Stage 1 is to watch real traffic for a few days first and find out how much of it
 // is actually new leads versus existing clients and staff.
+//
+// DRY RUN (migration 0056): on every inbound message this now also runs the complete
+// Stage 2 gate chain (_shared/whatsappIntent.ts) and records the verdict on the message
+// row — "I would have replied to this" / "I stayed silent because X". Still without
+// sending. This exists because Stage 1's first day proved the phone-number check alone
+// is not a sufficient gate: two thirds of the chats it labelled `unknown` were vendors,
+// a colleague, and personal chats, all of them bot-eligible. Recording the verdict lets
+// the content gate be judged against a week of real messages instead of on faith.
+//
+// When Stage 2 is authorised, the send goes exactly where `decision.wouldReply` is
+// computed below — the gate does not need to be rewritten, only obeyed.
 //
 // Why that caution: the studio runs ONE Green API instance, already used by 11+ Edge
 // Functions to send contracts, payment reminders, questionnaires, staff schedules and
@@ -40,6 +51,8 @@ import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createServiceRoleClient } from '../_shared/supabaseClients.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { normalizeIsraeliPhone, chatIdToLocalPhone, isGroupChatId } from '../_shared/phone.ts';
+import { loadQuietHoursSettings, isInQuietHoursNow } from '../_shared/automationGuards.ts';
+import { decideBotReply } from '../_shared/whatsappIntent.ts';
 
 const PG_UNIQUE_VIOLATION = '23505';
 
@@ -306,7 +319,7 @@ Deno.serve(async (req: Request) => {
     // ---- Conversation (create or fetch) -------------------------------------
     const { data: existingRows, error: convSelectError } = await supabase
       .from('whatsapp_conversations')
-      .select('id, contact_type, bot_enabled, display_name')
+      .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at')
       .eq('tenant_id', tenantId)
       .eq('chat_id', chatId)
       .limit(1);
@@ -330,7 +343,7 @@ Deno.serve(async (req: Request) => {
           matched_event_id: match.eventId,
           display_name: displayName,
         })
-        .select('id, contact_type, bot_enabled, display_name')
+        .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at')
         .single();
 
       if (insertConvError) {
@@ -339,7 +352,7 @@ Deno.serve(async (req: Request) => {
           // the other one created.
           const { data: raced } = await supabase
             .from('whatsapp_conversations')
-            .select('id, contact_type, bot_enabled, display_name')
+            .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at')
             .eq('tenant_id', tenantId)
             .eq('chat_id', chatId)
             .limit(1);
@@ -351,10 +364,78 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // ---- Message (this insert IS the dedupe) --------------------------------
     const { typeMessage, bodyText, mediaUrl } = extractMessage(payload?.messageData);
     const direction = isInbound ? 'inbound' : 'outbound_human';
 
+    // ---- Re-classification (must happen BEFORE the verdict) -----------------
+    //
+    // A stranger can become a lead later (Daniel presses "צור ליד", or adds them by
+    // hand, or fills in the couple's second phone number). Re-classify while the label
+    // still says 'unknown' so it — and the bot-eligibility decision below — stays
+    // truthful. Settled labels are left alone.
+    //
+    // The order is load-bearing: this used to run after the message insert, but the
+    // dry-run verdict reads contact_type, and a verdict computed from a stale 'unknown'
+    // would report "would reply" for someone we had just learned is a client. Running
+    // it first costs one extra classification pass on the rare redelivery, which is a
+    // trade worth making for a decision that Stage 2 will act on.
+    let effectiveContactType = conversation.contact_type;
+    let reclassified: ContactMatch | null = null;
+    if (conversation.contact_type === 'unknown' && !isGroup && phone) {
+      const match = await classifyContact(supabase, tenantId, phone);
+      if (match.contactType !== 'unknown') {
+        reclassified = match;
+        effectiveContactType = match.contactType;
+      }
+    }
+
+    // ---- Dry-run verdict ----------------------------------------------------
+    //
+    // ⚠️ Computes what Stage 2 WOULD do. Sends nothing — there is no branch below that
+    // sends, deliberately. When Stage 2 is authorised the send goes here, guarded by
+    // `decision.wouldReply`, and the gate chain itself needs no change.
+    //
+    // Only inbound messages get a verdict. Outbound rows are left null so that "the bot
+    // chose silence" is never confused with "nothing was ever asked of the bot".
+    let decision: ReturnType<typeof decideBotReply> | null = null;
+    if (isInbound) {
+      // Quiet hours costs a DB read, so it's only fetched when the cheap gates have
+      // already passed — otherwise the chain would have stopped before reaching it and
+      // the value would be thrown away. Passing `false` when unreachable is safe for
+      // exactly that reason.
+      const cheapGatesPass =
+        !isGroup &&
+        effectiveContactType === 'unknown' &&
+        conversation.bot_enabled &&
+        conversation.state === 'NEW' &&
+        !conversation.bot_would_reply_at;
+
+      let inQuietHours = false;
+      if (cheapGatesPass) {
+        try {
+          inQuietHours = isInQuietHoursNow(await loadQuietHoursSettings(supabase, tenantId));
+        } catch (quietErr: any) {
+          // Fail CLOSED, like classifyContact. If we can't tell what time it is for
+          // this tenant, "the bot would have messaged a stranger" is the claim we are
+          // least entitled to make.
+          console.error('[whatsapp-webhook] quiet-hours lookup failed, assuming quiet:', quietErr?.message || quietErr);
+          inQuietHours = true;
+        }
+      }
+
+      decision = decideBotReply({
+        contactType: effectiveContactType,
+        botEnabled: !!conversation.bot_enabled,
+        state: conversation.state || 'NEW',
+        isGroup,
+        typeMessage,
+        bodyText,
+        inQuietHours,
+        alreadyDecidedToReply: !!conversation.bot_would_reply_at,
+      });
+    }
+
+    // ---- Message (this insert IS the dedupe) --------------------------------
     const { error: msgError } = await supabase.from('whatsapp_messages').insert({
       tenant_id: tenantId,
       conversation_id: conversation.id,
@@ -365,6 +446,8 @@ Deno.serve(async (req: Request) => {
       body_text: bodyText,
       media_url: mediaUrl,
       raw: payload,
+      bot_would_reply: decision ? decision.wouldReply : null,
+      bot_skip_reason: decision ? decision.reason : null,
     });
 
     if (msgError) {
@@ -413,15 +496,23 @@ Deno.serve(async (req: Request) => {
       updates.bot_enabled = false;
     }
 
-    // A stranger can become a lead later (Daniel presses "צור ליד", or adds them by
-    // hand). Re-classify while it still says 'unknown' so the label — and, in Stage 2,
-    // bot eligibility — stays truthful. Settled labels are left alone.
-    if (conversation.contact_type === 'unknown' && !isGroup && phone) {
-      const match = await classifyContact(supabase, tenantId, phone);
-      if (match.contactType !== 'unknown') {
-        updates.contact_type = match.contactType;
-        updates.matched_lead_id = match.leadId;
-        updates.matched_event_id = match.eventId;
+    // Persist the re-classification computed above the message insert.
+    if (reclassified) {
+      updates.contact_type = reclassified.contactType;
+      updates.matched_lead_id = reclassified.leadId;
+      updates.matched_event_id = reclassified.eventId;
+    }
+
+    // Conversation-level mirror of the verdict, so the inbox list can flag the chats
+    // worth reviewing without loading every message. `bot_would_reply_at` is set once
+    // and never cleared: it marks "the gate opened here at least once", which is the
+    // exact population a human should read through before Stage 2 is switched on. It
+    // also stands in for the state transition the dry run can't perform — see
+    // `alreadyDecidedToReply` in _shared/whatsappIntent.ts.
+    if (decision) {
+      updates.bot_last_decision = decision.reason;
+      if (decision.wouldReply && !conversation.bot_would_reply_at) {
+        updates.bot_would_reply_at = nowIso;
       }
     }
 
@@ -435,7 +526,7 @@ Deno.serve(async (req: Request) => {
       console.error('[whatsapp-webhook] conversation update failed:', updateError.message);
     }
 
-    // Stage 1 ends here, on purpose. No reply is sent.
+    // Ends here, on purpose. The verdict has been written down; no reply is sent.
     return jsonResponse({ ok: true });
   } catch (e: any) {
     // Return 500 so Green API retries in 60s — a transient DB error should not lose a

@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { MessageSquare, AlertTriangle } from "lucide-react";
+import { MessageSquare, AlertTriangle, Bot } from "lucide-react";
 import ConversationList from "@/components/whatsapp/ConversationList";
 import ConversationThread from "@/components/whatsapp/ConversationThread";
 import LeadFormDialog from "@/components/leads/LeadFormDialog";
@@ -11,10 +11,17 @@ import { usePermission } from "@/lib/permissions";
 // WhatsApp inbox — every conversation the studio's WhatsApp number is having, shown
 // like WhatsApp itself, with the ability to reply from here.
 //
-// STAGE 1: nothing on this screen (or in the whatsapp-webhook Edge Function that fills
-// it) sends an automatic reply to anyone. Messages appear here because Green API
-// reports them; the only outbound message this screen can produce is one a human typed
-// into the reply box and pressed send on. The automated lead bot is Stage 2.
+// STAGE 1 + DRY RUN: nothing on this screen (or in the whatsapp-webhook Edge Function
+// that fills it) sends an automatic reply to anyone. Messages appear here because Green
+// API reports them; the only outbound message this screen can produce is one a human
+// typed into the reply box and pressed send on. The automated lead bot is Stage 2.
+//
+// What the dry run adds (migration 0056): every inbound message now carries the verdict
+// the Stage 2 gate would have reached — see the 🤖 markers on the bubbles and the
+// "הבוט היה עונה" filter. Reviewing those is the whole point: Stage 1's first day showed
+// that two thirds of the chats labelled "unknown" were vendors, a colleague and personal
+// chats, so `contact_type` alone was never going to be a safe enough gate to switch a
+// bot on behind. The verdicts make the new content gate checkable by reading the inbox.
 //
 // Lead creation is deliberately manual. The "צור ליד" button opens the normal
 // LeadFormDialog pre-filled from the conversation — it does NOT create a lead by
@@ -60,7 +67,13 @@ export default function WhatsAppInbox() {
   const filteredConversations = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     return conversations.filter((c) => {
-      if (contactFilter !== "all" && c.contactType !== contactFilter) return false;
+      // "would_reply" is the dry-run review queue, not a contact_type — see the filter
+      // list in ConversationList.jsx.
+      if (contactFilter === "would_reply") {
+        if (!c.botWouldReplyAt) return false;
+      } else if (contactFilter !== "all" && c.contactType !== contactFilter) {
+        return false;
+      }
       if (!q) return true;
       return (
         String(c.displayName || "").toLowerCase().includes(q) ||
@@ -75,6 +88,15 @@ export default function WhatsAppInbox() {
   // Stage 1 exists to measure before the bot is allowed to answer anybody.
   const unknownCount = useMemo(
     () => conversations.filter((c) => c.contactType === "unknown").length,
+    [conversations]
+  );
+
+  // The dry-run number, and the one the Stage 2 decision actually rests on: how many
+  // conversations the bot would have answered by itself. `unknownCount` measures how
+  // many strangers wrote in; this measures how many of them the gate let through.
+  // Reviewing the gap between the two is what the dry run is for.
+  const wouldReplyCount = useMemo(
+    () => conversations.filter((c) => c.botWouldReplyAt).length,
     [conversations]
   );
 
@@ -169,10 +191,20 @@ export default function WhatsAppInbox() {
           <span className="text-sm text-gray-500">
             {conversations.length} שיחות · {unknownCount} ממספרים לא מוכרים
           </span>
+          {wouldReplyCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setContactFilter("would_reply")}
+              className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-300 transition-colors hover:bg-emerald-500/20"
+            >
+              <Bot className="h-3.5 w-3.5" />
+              הבוט היה עונה ל-{wouldReplyCount}
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs text-blue-300">
           <AlertTriangle className="h-3.5 w-3.5" />
-          מצב האזנה בלבד — לא נשלחת שום תשובה אוטומטית
+          מצב יבש — הבוט מחליט ורושם, ולא שולח כלום
         </div>
       </div>
 
