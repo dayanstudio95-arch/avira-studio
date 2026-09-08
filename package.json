@@ -9,6 +9,7 @@
     "lint": "eslint . --quiet",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p ./jsconfig.json",
+    "test:whatsapp": "node scripts/test-whatsapp-bot.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
