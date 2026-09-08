@@ -283,11 +283,25 @@ Deno.serve(async (req: Request) => {
   try {
     const isGroup = isGroupChatId(chatId);
     const phone = chatIdToLocalPhone(chatId);
-    const displayName =
-      payload?.senderData?.senderContactName ||
-      payload?.senderData?.senderName ||
-      payload?.senderData?.chatName ||
-      null;
+    // Whose name this is depends entirely on the direction, and getting it wrong names
+    // the conversation after ourselves. Verified against Green API's documented
+    // payloads (notifications-format/{incoming,outgoing}-message):
+    //
+    //   inbound  — sender* describe the person who wrote to us. senderContactName is
+    //              their entry in our own phonebook, so it is the best of the three.
+    //   outbound — `sender` is the studio's own number, so senderName /
+    //              senderContactName are the STUDIO ("AVIRA אווירה צלמים אווירה"), not
+    //              the person we wrote to. Only `chatName` names the other side, since
+    //              the chat is keyed by `chatId` = the recipient.
+    //
+    // Reading sender* on an outbound webhook is what titled five separate chats — five
+    // different phone numbers — "AVIRA אווירה צלמים אווירה" on the first morning:
+    // every conversation whose first-ever webhook happened to be one of ours going out
+    // (a contract, a reminder, or Daniel replying from his phone) was named after us.
+    const senderData = payload?.senderData || {};
+    const displayName = isInbound
+      ? senderData.senderContactName || senderData.senderName || senderData.chatName || null
+      : senderData.chatName || null;
 
     // ---- Conversation (create or fetch) -------------------------------------
     const { data: existingRows, error: convSelectError } = await supabase
@@ -370,10 +384,27 @@ Deno.serve(async (req: Request) => {
     };
     if (isInbound) {
       updates.last_inbound_at = nowIso;
-      if (displayName && !conversation.display_name) updates.display_name = displayName;
+      // Overwrite rather than fill-if-empty. An inbound name is authoritative — it is
+      // the contact naming themselves, or our own phonebook naming them — so the newest
+      // one always wins. This is also what repairs the rows already mislabelled with the
+      // studio's own name by the outbound bug above: they heal by themselves the next
+      // time that contact writes in, with no backfill migration needed.
+      if (displayName && displayName !== conversation.display_name) {
+        updates.display_name = displayName;
+      }
     }
 
     if (isOutbound) {
+      // Self-repair for chats that may never receive another inbound message. On an
+      // outbound webhook the sender* fields are the studio's own name, so a stored
+      // display_name equal to one of them cannot be a real contact name — it can only
+      // be residue of the direction bug fixed above. `chatName` is the correct value.
+      const ourOwnName = senderData.senderContactName || senderData.senderName || null;
+      const storedIsUs = ourOwnName && conversation.display_name === ourOwnName;
+      if (displayName && (storedIsUs || !conversation.display_name)) {
+        updates.display_name = displayName;
+      }
+
       // ⚠️ THE most important line in this module. Green API reports a message the
       // studio sent from its own phone (or from any of our other Edge Functions) as
       // outgoing*MessageReceived. The moment a human is in the conversation the bot
