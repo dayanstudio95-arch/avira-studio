@@ -29,6 +29,15 @@ export default function LeadFormDialog({ isOpen, onClose, lead, initialValues, p
     coupleNames: "",
     eventDate: "",
     phoneNumber: "",
+    // Until now these were writable ONLY by the couple, through the public
+    // questionnaire (EventQuestionnaire.jsx) — the studio could see them but had no way
+    // to enter or correct one. That left no place at all to record a couple's second
+    // phone number, which matters twice: on the event day you want to be able to reach
+    // either partner, and the WhatsApp inbox classifies an incoming number by matching
+    // it against exactly these fields, so a partner who messages from the number we
+    // never stored shows up as a total stranger.
+    productionBridePhone: "",
+    productionGroomPhone: "",
     email: "avira.media1@gmail.com",
     venueName: "",
     packageChoice: "",
@@ -71,6 +80,10 @@ export default function LeadFormDialog({ isOpen, onClose, lead, initialValues, p
         coupleNames: lead.coupleNames || "",
         eventDate: lead.eventDate || "",
         phoneNumber: lead.phoneNumber || "",
+        // Loaded so that saving an unrelated edit can never wipe an answer the couple
+        // already gave in the questionnaire.
+        productionBridePhone: lead.productionBridePhone || "",
+        productionGroomPhone: lead.productionGroomPhone || "",
         email: lead.email || "avira.media1@gmail.com",
         venueName: lead.venueName || "",
         packageChoice: lead.packageChoice || "",
@@ -91,7 +104,9 @@ export default function LeadFormDialog({ isOpen, onClose, lead, initialValues, p
       // handler's note below).
       loadMasterContract().then((terms) => {
         setForm({
-          coupleNames: "", eventDate: "", phoneNumber: "", email: "avira.media1@gmail.com", venueName: "",
+          coupleNames: "", eventDate: "", phoneNumber: "",
+          productionBridePhone: "", productionGroomPhone: "",
+          email: "avira.media1@gmail.com", venueName: "",
           packageChoice: "", packageId: "", basePrice: "", discount: "", finalPrice: "",
           status: "חדש", notes: "", packageDetails: "",
           ...(initialValues || {}),
@@ -174,6 +189,12 @@ export default function LeadFormDialog({ isOpen, onClose, lead, initialValues, p
         coupleNames: form.coupleNames,
         eventDate: form.eventDate || undefined,
         phoneNumber: form.phoneNumber || undefined,
+        // `undefined` (not "") on purpose: JSON.stringify drops the key entirely, so an
+        // empty box leaves the stored value untouched rather than erasing what the
+        // couple filled in through the questionnaire. Same convention as the fields
+        // above.
+        productionBridePhone: form.productionBridePhone || undefined,
+        productionGroomPhone: form.productionGroomPhone || undefined,
         email: form.email || "avira.media1@gmail.com",
         venueName: form.venueName || undefined,
         packageChoice: form.packageChoice || undefined,
@@ -286,6 +307,19 @@ export default function LeadFormDialog({ isOpen, onClose, lead, initialValues, p
             </div>
           </div>
 
+          {/* The couple's own two numbers. Previously fillable only by the couple, in the
+              questionnaire — so a partner who wasn't the original contact had no number
+              stored anywhere, and the WhatsApp inbox tagged them "לא מוכר". */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <Label className="text-gray-300">נייד כלה</Label>
+              <Input value={form.productionBridePhone} onChange={(e) => setForm((f) => ({ ...f, productionBridePhone: e.target.value }))} className="bg-gray-800 border-gray-700 text-white mt-1" placeholder="050-0000000" />
+            </div>
+            <div>
+              <Label className="text-gray-300">נייד חתן</Label>
+              <Input value={form.productionGroomPhone} onChange={(e) => setForm((f) => ({ ...f, productionGroomPhone: e.target.value }))} className="bg-gray-800 border-gray-700 text-white mt-1" placeholder="050-0000000" />
+            </div>
+          </div>
 
           <div>
             <Label className="text-gray-300">אימייל</Label>
