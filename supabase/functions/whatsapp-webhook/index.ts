@@ -1,23 +1,29 @@
-// Green API incoming-webhook receiver — STAGE 1 + DRY RUN: RECORD ONLY, NEVER REPLY.
+// Green API incoming-webhook receiver — STAGE 2: the bot may now send a greeting.
 //
-// ⚠️ This function deliberately sends nothing. Not one message, in any code path.
-// Its entire job is to write what Green API reports into whatsapp_conversations /
-// whatsapp_messages so the inbox screen (src/pages/WhatsAppInbox.jsx) can show it.
-// The bot actually answering anyone is Stage 2 of the plan and requires a separate,
-// explicit go-ahead from the user — do not add a send call here without it. The point
-// of Stage 1 is to watch real traffic for a few days first and find out how much of it
-// is actually new leads versus existing clients and staff.
+// ⚠️ It sends ONLY when the tenant's `whatsapp_bot_enabled` setting is explicitly true.
+// That key does not exist until someone sets it in the Settings screen, and anything
+// other than an affirmative value reads as off (_shared/whatsappBotSend.ts), so the
+// default state of this function is still total silence. Authorised by the user on
+// 2026-09-08, replacing a paid third-party bot they had switched off for replying to
+// couples with things that didn't apply to them.
 //
-// DRY RUN (migration 0056): on every inbound message this now also runs the complete
-// Stage 2 gate chain (_shared/whatsappIntent.ts) and records the verdict on the message
-// row — "I would have replied to this" / "I stayed silent because X". Still without
-// sending. This exists because Stage 1's first day proved the phone-number check alone
-// is not a sufficient gate: two thirds of the chats it labelled `unknown` were vendors,
-// a colleague, and personal chats, all of them bot-eligible. Recording the verdict lets
-// the content gate be judged against a week of real messages instead of on faith.
+// The bot sends exactly one kind of message today: a greeting to a stranger whose first
+// message the gate recognised as a photography inquiry. Parsing their answer and sending
+// the price list is Stage 3 and is not wired up here yet.
 //
-// When Stage 2 is authorised, the send goes exactly where `decision.wouldReply` is
-// computed below — the gate does not need to be rewritten, only obeyed.
+// How the decision is made, and why it is trusted enough to act on:
+//   - WHO gets a reply is decided entirely by _shared/whatsappIntent.ts, unchanged by
+//     Stage 2. It was built as a dry run (migration 0056) that recorded "I would have
+//     replied to this" without sending, precisely so it could be judged against real
+//     traffic instead of on faith. That measurement found and fixed five real defects
+//     before a single message was ever sent — including a Hebrew final-letter bug that
+//     silently broke matching, and a competing lab's out-of-office auto-reply that
+//     scored as a customer asking about availability.
+//   - WHETHER the studio is currently willing to send at all — master switch, hourly
+//     ceiling, quiet hours — is decided in _shared/whatsappBotSend.ts. Every one of
+//     those guards fails closed.
+//   - The verdict is still recorded on every inbound row exactly as it was during the
+//     dry run, so the inbox remains an audit trail of what the gate decided and why.
 //
 // Why that caution: the studio runs ONE Green API instance, already used by 11+ Edge
 // Functions to send contracts, payment reminders, questionnaires, staff schedules and
@@ -53,6 +59,7 @@ import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { normalizeIsraeliPhone, chatIdToLocalPhone, isGroupChatId } from '../_shared/phone.ts';
 import { loadQuietHoursSettings, isInQuietHoursNow } from '../_shared/automationGuards.ts';
 import { decideBotReply } from '../_shared/whatsappIntent.ts';
+import { loadBotSettings, isUnderHourlyQuota, sendBotMessage, sleep } from '../_shared/whatsappBotSend.ts';
 
 const PG_UNIQUE_VIOLATION = '23505';
 
@@ -516,6 +523,42 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // ---- Stage 2: should the bot actually greet this person? ------------------
+    //
+    // `decision.wouldReply` answered "does this person qualify". The remaining checks
+    // ask "is the studio willing to send right now" — a separate question with its own
+    // switches, all of which fail closed. Quiet hours is NOT rechecked here: it is
+    // already a gate inside decideBotReply, so a message arriving at 02:00 never reaches
+    // this branch at all.
+    let greeting: string | null = null;
+    let replyDelaySeconds = 0;
+    if (decision?.wouldReply) {
+      const botSettings = await loadBotSettings(supabase, tenantId);
+      if (!botSettings) {
+        console.warn('[whatsapp-webhook] bot settings unreadable — not sending');
+      } else if (!botSettings.enabled) {
+        // The normal state until the studio flips the master switch. Not an error: the
+        // verdict above is still recorded, so the dry run keeps working unchanged.
+      } else if (!botSettings.greetingText) {
+        console.warn('[whatsapp-webhook] bot enabled but no greeting text configured — not sending');
+      } else if (!(await isUnderHourlyQuota(supabase, tenantId, botSettings.maxBotMessagesPerHour))) {
+        console.warn('[whatsapp-webhook] hourly bot quota reached — not sending');
+      } else {
+        greeting = botSettings.greetingText;
+        replyDelaySeconds = botSettings.replyDelaySeconds;
+        // ⚠️ Advance the state BEFORE sending, not after. The customer may well send
+        // three messages in a row ("היי" / "מתחתן ביוני" / "כמה זה עולה") while the
+        // reply delay is still counting down; each one is a separate webhook that would
+        // otherwise re-run this branch and greet them again. `state !== 'NEW'` is a gate
+        // inside decideBotReply, so writing it here closes that window. The cost of
+        // being wrong in this direction is a greeting that never arrives — visible in
+        // the inbox, and recoverable by hand. The cost of the other direction is
+        // greeting a stranger three times.
+        updates.state = 'AWAITING_DETAILS';
+        updates.last_bot_message_at = nowIso;
+      }
+    }
+
     const { error: updateError } = await supabase
       .from('whatsapp_conversations')
       .update(updates)
@@ -524,9 +567,38 @@ Deno.serve(async (req: Request) => {
       // The message is already safely stored; a failed aggregate update is cosmetic,
       // and returning non-200 here would make Green API redeliver a message we have.
       console.error('[whatsapp-webhook] conversation update failed:', updateError.message);
+      // ...but it is NOT cosmetic when a send is pending: the row still says state='NEW',
+      // so the next inbound message would greet this person a second time. Stand down.
+      greeting = null;
     }
 
-    // Ends here, on purpose. The verdict has been written down; no reply is sent.
+    // ---- The send, after the 200 ---------------------------------------------
+    //
+    // Green API pauses the entire webhook for 60s and retries for up to 24h if a
+    // notification is not answered promptly, so the reply delay must never be taken
+    // inside the request body. EdgeRuntime.waitUntil keeps the work alive after the
+    // response has gone back.
+    if (greeting && phone) {
+      const text = greeting;
+      const delaySeconds = replyDelaySeconds;
+      EdgeRuntime.waitUntil(
+        (async () => {
+          try {
+            await sleep(delaySeconds);
+            await sendBotMessage(supabase, {
+              tenantId,
+              conversationId: conversation.id,
+              phone,
+              text,
+            });
+          } catch (sendErr: any) {
+            // Nothing above us can catch this — the response is long gone.
+            console.error('[whatsapp-webhook] deferred greeting failed:', sendErr?.message || sendErr);
+          }
+        })()
+      );
+    }
+
     return jsonResponse({ ok: true });
   } catch (e: any) {
     // Return 500 so Green API retries in 60s — a transient DB error should not lose a
