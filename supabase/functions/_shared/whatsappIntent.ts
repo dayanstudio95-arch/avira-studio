@@ -97,13 +97,25 @@ const INQUIRY_TERMS = [
 // a chance to silence a real customer.
 const VENDOR_TERMS = [
   'שיתוף פעולה', 'שת"פ', 'שתף פעולה',
-  'אני מפיק', 'אני מפיקה', 'מפיק אירועים', 'מפיקת אירועים',
+  // 'אני מפיק' alone was too literal: שון אביטן (dry-run replay, 2026-09-08) wrote
+  // "אני המפיק של האירוע" — the definite ה breaks the substring, and he was silenced
+  // only because his message happened to carry no price word and no date. The bare
+  // 'המפיק'/'המפיקה' forms close that gap.
+  'אני מפיק', 'אני מפיקה', 'המפיק', 'המפיקה', 'מפיק אירועים', 'מפיקת אירועים',
   'אני נגן', 'אני זמר', 'אני זמרת', 'דיג׳יי', "דיג'יי", 'די ג׳יי',
   'סקסופון', 'עוגות', 'קייטרינג', 'הפקת אירועים',
   'הצעה עסקית', 'עמלה', 'קידום אתרים', 'דיוור', 'לידים', 'seo',
   'ספק', 'ספקים', 'לוגיסטיקה',
   // Coordination language — an existing job being run, not a new inquiry.
   'הגעתי', 'בדרך אליכם', 'המשמרת', 'סידור עבודה', 'הזמנת עבודה',
+  // Another business's out-of-office auto-reply. Observed in the dry-run replay: a
+  // competing album lab answered with "תודה על פנייתך. איננו זמינים כעת... לייזר לינק
+  // אלבומים", which scored service='אלבום' + inquiry='זמין' — i.e. a business saying
+  // it is UNavailable read as a customer asking about availability. These phrases are
+  // written by businesses, never by someone asking to be photographed.
+  'תודה על פנייתך', 'תודה על פנייתכם', 'איננו זמינים', 'אנחנו לא זמינים',
+  'נשיב לך', 'נחזור אליך בהקדם', 'נחזור אליכם בהקדם', 'שעות הפעילות',
+  'הודעה אוטומטית', 'מענה אוטומטי',
 ];
 
 // Date shapes: 12/7/27, 12.7.2027, 12-7-27, and the day-month-only forms. Kept
