@@ -10,9 +10,14 @@ import { buildAttentionList } from "@/lib/needsAttention";
 // so it can be tested without React — everything that can be wrong is in there, not in
 // the rendering below. This file owns only how each reason looks.
 
+// Labels are kept short deliberately. The badge sits beside the couple's name in a
+// fifth-of-the-screen column, and the name is the only part that identifies the row —
+// a longer label wins the space fight and leaves "א…" behind, which is exactly what
+// happened to the unpaid card. The full explanation is on the row's second line (the
+// rating's reason, or how many days) and in the badge's title attribute.
 const REASONS = {
-  hot: { label: "רוצה להתקדם", icon: Flame, className: "bg-red-500/20 text-red-300 border-red-500/30" },
-  silent_pricelist: { label: "קיבל מחירון ושותק", icon: MessageSquare, className: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30" },
+  hot: { label: "רוצה לסגור", icon: Flame, className: "bg-red-500/20 text-red-300 border-red-500/30" },
+  silent_pricelist: { label: "שותק", icon: MessageSquare, className: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30" },
   stale_lead: { label: "בלי מגע", icon: Clock, className: "bg-gray-600/30 text-gray-300 border-gray-600" },
 };
 
@@ -77,7 +82,8 @@ export default function NeedsAttentionCard() {
                 </div>
                 <Badge
                   variant="outline"
-                  className={`border text-xs whitespace-nowrap flex items-center gap-1 ${meta.className}`}
+                  title={item.detail || meta.label}
+                  className={`border text-xs whitespace-nowrap flex items-center gap-1 flex-shrink-0 ${meta.className}`}
                 >
                   <Icon className="w-3 h-3" />
                   {meta.label}
