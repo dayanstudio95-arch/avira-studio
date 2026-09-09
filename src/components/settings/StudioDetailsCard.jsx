@@ -115,6 +115,21 @@ export default function StudioDetailsCard() {
     return publicUrl.slice(idx + marker.length);
   };
 
+  // Clears the logo. Deliberately does NOT delete the stored file: the point of this
+  // button is recovering from a wrong upload, and someone who removes the wrong one
+  // should be able to point back at it. Orphaned logo files are a few KB.
+  const handleLogoRemove = async () => {
+    setIsUploadingLogo(true);
+    try {
+      await base44.entities.Tenant.update(user.tenant_id, { logo_url: null });
+      setLogoUrl(null);
+      toast.success("הלוגו הוסר");
+    } catch (error) {
+      toast.error("הסרת הלוגו נכשלה", { description: error.message });
+    }
+    setIsUploadingLogo(false);
+  };
+
   const handleLogoChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -212,6 +227,20 @@ export default function StudioDetailsCard() {
                   {isUploadingLogo ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <Upload className="w-4 h-4 ml-2" />}
                   {isUploadingLogo ? "מעלה..." : logoUrl ? "החלף לוגו" : "העלה לוגו"}
                 </Button>
+                {/* Until now the only way out of a wrong logo was to have the right file
+                    to hand — there was no way to simply clear it, which is a dead end for
+                    anyone who uploads the wrong image and doesn't have the original. Every
+                    consumer of logo_url already guards against it being absent (Layout,
+                    LeadContractDialog, get-lead-public), so clearing is safe. */}
+                {logoUrl && !isUploadingLogo && (
+                  <button
+                    type="button"
+                    onClick={handleLogoRemove}
+                    className="block mt-2 text-xs text-red-400 hover:text-red-300 underline"
+                  >
+                    הסר לוגו
+                  </button>
+                )}
                 <p className="text-xs text-gray-500 mt-1">PNG/JPG, עד 2MB</p>
               </div>
             )}
