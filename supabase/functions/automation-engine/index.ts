@@ -14,8 +14,13 @@
 //      - Authenticated calls (dashboard "run now" / dry-run / sync_schedule buttons,
 //        which always carry the user's Authorization header) resolve the caller's own
 //        tenant_id and operate on that tenant only.
-//      - Unauthenticated calls (meant to be triggered by a pg_cron job — not yet
-//        configured, see deployment notes) must present a shared secret via the
+//      - Unauthenticated calls (triggered by the `automation-engine-hourly` pg_cron
+//        job, `0 * * * *` — CONFIRMED active against the live DB on 2026-09-09; this
+//        comment previously said "not yet configured", which was true when written and
+//        misled a later review into believing nothing ran on a schedule at all. The
+//        cron.schedule calls are a manual dashboard step per DEPLOYMENT.md §3 and are
+//        not in the repo, so `select jobname, schedule, active from cron.job` is the
+//        only way to check — do not infer it from source) must present a shared secret via the
 //        `x-cron-secret` header (env: AUTOMATION_ENGINE_CRON_SECRET) and then loop
 //        over every tenant, running only that tenant's due automations with a
 //        service-role client explicitly filtered by tenant_id (RLS is bypassed on
