@@ -352,7 +352,11 @@ export default function Dashboard() {
             NeedsAttentionCard goes first: it is the only card here that answers "what
             should I do next" rather than "what is the state of things", and it is the
             one that turns into bookings. */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-6">
+        {/* Five across on a wide screen. Adding NeedsAttentionCard to a 4-column grid
+            left a single orphaned card on its own row, which read as broken. The
+            middle step is 3 rather than 4 for the same reason: 3+2 sits better than
+            4+1 when the row can't be filled. */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5 gap-3 sm:gap-4 md:gap-6 mb-6">
           <NeedsAttentionCard />
           <DashboardUnpaidCard events={events} onRefresh={loadEvents} />
           <RecentLeadsCard />
