@@ -8,8 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Bot, Save, AlertTriangle } from "lucide-react";
+import { Bot, Save, AlertTriangle, Upload, Image as ImageIcon } from "lucide-react";
 import { toast } from "sonner";
+import { uploadFile } from "@/api/uploadFile";
 
 // The one screen that can make this system message a stranger on its own.
 //
@@ -58,6 +59,7 @@ export default function WhatsAppBotCard() {
   const [maxPerHour, setMaxPerHour] = useState("10");
   const [pricelistUrl, setPricelistUrl] = useState("");
   const [pricelistText, setPricelistText] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
   const [settingIds, setSettingIds] = useState({});
   const [isSaving, setIsSaving] = useState(false);
 
@@ -88,6 +90,40 @@ export default function WhatsAppBotCard() {
       }
     })();
   }, []);
+
+  // Uploads straight to the public `media-uploads` bucket via the shared helper, which
+  // returns a real public URL. That directness is the point: Green API fetches this URL
+  // server-side and needs the image BYTES back, which is why a Google Drive share link
+  // cannot work — it returns a viewer page. Removing the need to paste a URL at all is
+  // what stops that mistake from being possible.
+  const handleUpload = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // let the same file be picked again after a failure
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("צריך לבחור קובץ תמונה");
+      return;
+    }
+    // WhatsApp accepts far larger, but a price list is a single page — anything above
+    // this is a full-resolution export picked by mistake, and it would be slow to load
+    // on a phone.
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("התמונה גדולה מדי (מעל 5MB). נסה לייצא אותה קטנה יותר.");
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const { file_url } = await uploadFile({ file });
+      setPricelistUrl(file_url);
+      toast.success("התמונה הועלתה. עכשיו צריך ללחוץ על שמור.");
+    } catch (err) {
+      console.error("Error uploading price list image:", err);
+      toast.error(`העלאת התמונה נכשלה: ${err?.message || "שגיאה לא ידועה"}`);
+    }
+    setIsUploading(false);
+  };
 
   const handleSave = async () => {
     const trimmedGreeting = greeting.trim();
@@ -235,20 +271,59 @@ export default function WhatsAppBotCard() {
         </div>
 
         <div>
-          <Label className="text-gray-300">קישור לתמונת המחירון (לא חובה)</Label>
+          <Label className="text-gray-300">תמונת המחירון</Label>
           <p className="text-gray-500 text-xs mt-1 mb-2">
-            אם תמלא — המחירון יישלח כתמונה. נוסח ארוך מ-1024 תווים יישלח כהודעה נפרדת מיד אחריה,
-            כדי שהקישורים בסוף לא ייחתכו.
+            העלה את תמונת המחירון והיא תישלח ללקוח יחד עם הנוסח למעלה.
+            נוסח ארוך מ-1024 תווים יישלח כהודעה נפרדת מיד אחרי התמונה, כדי שהקישורים בסוף לא ייחתכו.
           </p>
-          <Input
-            type="url"
-            value={pricelistUrl}
-            onChange={(e) => setPricelistUrl(e.target.value)}
-            disabled={!canManage}
-            placeholder="https://..."
-            className="bg-gray-800 border-gray-700 text-white"
-            dir="ltr"
-          />
+
+          {pricelistUrl ? (
+            <div className="flex items-center gap-3 rounded-lg border border-gray-700 bg-gray-800/50 p-3">
+              <img
+                src={pricelistUrl}
+                alt="תצוגה מקדימה של המחירון"
+                className="h-20 w-20 rounded object-cover border border-gray-700"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-emerald-400 text-sm flex items-center gap-1">
+                  <ImageIcon className="w-3.5 h-3.5" /> התמונה מוכנה לשליחה
+                </p>
+                {/* The preview is the real check. It loads the same public URL Green API
+                    will fetch, so an image that renders here is one WhatsApp can send —
+                    which is exactly what a Google Drive share link fails: it renders in a
+                    browser but returns an HTML page to anything that asks for the file. */}
+                <p className="text-gray-500 text-xs mt-1 break-all" dir="ltr">{pricelistUrl}</p>
+              </div>
+              {canManage && (
+                <button
+                  type="button"
+                  onClick={() => setPricelistUrl("")}
+                  className="text-xs text-red-400 hover:text-red-300 underline shrink-0"
+                >
+                  הסר
+                </button>
+              )}
+            </div>
+          ) : (
+            <label
+              className={`flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-gray-700 bg-gray-800/30 p-6 text-center ${
+                canManage && !isUploading ? "cursor-pointer hover:border-gray-600" : "opacity-60"
+              }`}
+            >
+              <Upload className="w-5 h-5 text-gray-400" />
+              <span className="text-sm text-gray-300">
+                {isUploading ? "מעלה..." : "לחץ כדי להעלות את תמונת המחירון"}
+              </span>
+              <span className="text-xs text-gray-500">JPG או PNG, עד 5MB</span>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                disabled={!canManage || isUploading}
+                onChange={handleUpload}
+              />
+            </label>
+          )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
