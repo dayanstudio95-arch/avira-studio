@@ -45,6 +45,20 @@ export default function WhatsAppInbox() {
   const [contactFilter, setContactFilter] = useState("all");
   const [leadDialogValues, setLeadDialogValues] = useState(null);
 
+  // Whether the bot is actually switched on, read from the same app_settings row the
+  // webhook reads. null while loading, so the banner renders nothing rather than
+  // flashing the wrong state. Parsed exactly as the server parses it
+  // (_shared/whatsappBotSend.ts): only an affirmative value counts as on.
+  const { data: botEnabled = null } = useQuery({
+    queryKey: ["whatsappBotEnabled"],
+    queryFn: async () => {
+      const rows = await base44.entities.AppSetting.list();
+      const row = rows.find((r) => r.key === "whatsapp_bot_enabled");
+      return ["true", "1", "yes"].includes(String(row?.value || "").toLowerCase());
+    },
+    enabled: canUseWhatsAppInbox,
+  });
+
   const { data: conversations = [], isLoading: isLoadingConversations } = useQuery({
     queryKey: ["whatsappConversations"],
     queryFn: () => base44.entities.WhatsAppConversation.list("-lastMessageAt", 300),
@@ -204,10 +218,22 @@ export default function WhatsAppInbox() {
             </button>
           )}
         </div>
-        <div className="flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs text-blue-300">
-          <AlertTriangle className="h-3.5 w-3.5" />
-          מצב יבש — הבוט מחליט ורושם, ולא שולח כלום
-        </div>
+        {/* Reflects the real master switch, not a hardcoded claim. This banner used to
+            read "מצב יבש — ...ולא שולח כלום" unconditionally, which was true during the
+            dry run and became a lie the moment Stage 2 shipped: the studio could have
+            had a live bot while the screen insisted nothing was being sent. A status
+            banner that can be wrong is worse than no banner. */}
+        {botEnabled === null ? null : botEnabled ? (
+          <div className="flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-300">
+            <Bot className="h-3.5 w-3.5" />
+            הבוט פעיל — פניות חדשות ממספרים לא מוכרים מקבלות מענה אוטומטי
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs text-blue-300">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            הבוט כבוי — ההודעות נרשמות, לא נשלחת אף תשובה
+          </div>
+        )}
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-xl border border-gray-800 md:grid-cols-[320px_1fr]">
