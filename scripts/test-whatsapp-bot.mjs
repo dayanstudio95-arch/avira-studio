@@ -433,6 +433,93 @@ section('days since — drives the follow-up queue ordering');
   check('a future timestamp clamps to 0', daysSince(daysAgo(-2)), 0);
 }
 
+// =================================================================================
+// PART 6 — the "needs attention" queue (components/dashboard/NeedsAttentionCard.jsx)
+//
+// This merges three previously separate lists, so the failure modes are all about the
+// seams: a lead counted twice under two reasons, someone who already signed being
+// chased, or the urgent rows sorting to the bottom where nobody scrolls.
+// =================================================================================
+
+const { buildAttentionList } = await loadModule(
+  'src/lib/needsAttention.js', 'attention'
+);
+
+const ago = (days) => new Date(Date.now() - days * 86400000).toISOString();
+
+section('needs attention — who gets in');
+{
+  const list = buildAttentionList(
+    [
+      { id: "c1", phone: "0501111111", leadTemperature: "hot", leadTemperatureAt: ago(1), coupleNames: "חם" },
+      { id: "c2", phone: "0502222222", state: "PRICELIST_SENT", lastBotMessageAt: ago(9), coupleNames: "שותק 9 ימים" },
+      { id: "c3", phone: "0503333333", state: "PRICELIST_SENT", lastBotMessageAt: ago(2), coupleNames: "שותק יומיים" },
+      { id: "c4", phone: "0504444444", state: "PRICELIST_SENT", lastBotMessageAt: ago(30), followupSentAt: ago(1), coupleNames: "כבר נדחף" },
+      { id: "c5", phone: "0505555555", state: "AWAITING_DETAILS", lastBotMessageAt: ago(30), coupleNames: "עוד באמצע" },
+    ],
+    []
+  );
+  const names = list.map((r) => r.name);
+  check("a hot lead is included", names.includes("חם"), true);
+  check("silent past a week is included", names.includes("שותק 9 ימים"), true);
+  check("silent only two days is NOT chased yet", names.includes("שותק יומיים"), false);
+  check("already nudged drops out of the queue", names.includes("כבר נדחף"), false);
+  check("still mid-conversation is not chased", names.includes("עוד באמצע"), false);
+}
+
+section('needs attention — CRM leads, and not chasing closed ones');
+{
+  const list = buildAttentionList([], [
+    { id: "l1", coupleNames: "ישן", status: "נשלחה הצעה", lastContactDate: ago(20) },
+    { id: "l2", coupleNames: "טרי", status: "חדש", lastContactDate: ago(1) },
+    { id: "l3", coupleNames: "חתם", status: "נסגר/חתימה", lastContactDate: ago(90) },
+    { id: "l4", coupleNames: "חוזה", status: "חוזה", lastContactDate: ago(90) },
+    { id: "l5", coupleNames: "לא רלוונטי", status: "לא רלוונטי", lastContactDate: ago(90) },
+    // Nobody ever logged contact — must still surface rather than being invisible.
+    { id: "l6", coupleNames: "בלי תאריך מגע", status: "חדש", updatedDate: ago(40) },
+  ]);
+  const names = list.map((r) => r.name);
+  check("stale lead is included", names.includes("ישן"), true);
+  check("recent lead is left alone", names.includes("טרי"), false);
+  check("a signed couple is never chased", names.includes("חתם"), false);
+  check("a contract is never chased", names.includes("חוזה"), false);
+  check("a rejected lead is never chased", names.includes("לא רלוונטי"), false);
+  check("no lastContactDate falls back to updatedDate", names.includes("בלי תאריך מגע"), true);
+}
+
+section('needs attention — a lead created from a conversation appears ONCE');
+{
+  // The exact case the merge exists for: the bot handled them, Daniel pressed "צור ליד",
+  // and now the same couple exists on both sides.
+  const list = buildAttentionList(
+    [{ id: "c1", phone: "0501234567", leadTemperature: "hot", leadTemperatureAt: ago(2), coupleNames: "יעל ואורי" }],
+    [{ id: "l1", coupleNames: "יעל ואורי", phoneNumber: "0501234567", status: "חדש", lastContactDate: ago(30) }]
+  );
+  check("counted once, not twice", list.length, 1);
+  check("kept under the more urgent reason", list[0].reason, "hot");
+}
+
+section('needs attention — order decides who gets called');
+{
+  const list = buildAttentionList(
+    [
+      { id: "c1", phone: "1", state: "PRICELIST_SENT", lastBotMessageAt: ago(8), coupleNames: "שותק 8" },
+      { id: "c2", phone: "2", state: "PRICELIST_SENT", lastBotMessageAt: ago(20), coupleNames: "שותק 20" },
+      { id: "c3", phone: "3", leadTemperature: "hot", leadTemperatureAt: ago(0), coupleNames: "חם היום" },
+    ],
+    [{ id: "l1", coupleNames: "ליד ישן", phoneNumber: "9", status: "חדש", lastContactDate: ago(60) }]
+  );
+  check(
+    "hot first, then longest-silent, CRM last",
+    list.map((r) => r.name),
+    ["חם היום", "שותק 20", "שותק 8", "ליד ישן"]
+  );
+}
+
+section('needs attention — empty and missing inputs');
+check("no data at all", buildAttentionList([], []).length, 0);
+check("undefined inputs do not throw", buildAttentionList(undefined, undefined).length, 0);
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

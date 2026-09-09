@@ -13,6 +13,7 @@ import RecentLeadsCard from "../components/dashboard/RecentLeadsCard";
 import DashboardUnpaidCard from "../components/dashboard/DashboardUnpaidCard";
 import DashboardWorkStatusCard from "../components/dashboard/DashboardWorkStatusCard";
 import DashboardMissingTeamCard from "../components/dashboard/DashboardMissingTeamCard";
+import NeedsAttentionCard from "../components/dashboard/NeedsAttentionCard";
 import { calculateNetProfit } from "../lib/profitCalculations";
 import { calculateEventFinancials } from "../lib/financialCalculations";
 
@@ -347,8 +348,12 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* Middle Cards Row */}
+        {/* Middle Cards Row.
+            NeedsAttentionCard goes first: it is the only card here that answers "what
+            should I do next" rather than "what is the state of things", and it is the
+            one that turns into bookings. */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-6">
+          <NeedsAttentionCard />
           <DashboardUnpaidCard events={events} onRefresh={loadEvents} />
           <RecentLeadsCard />
           <DashboardWorkStatusCard events={events} onRefresh={loadEvents} />
