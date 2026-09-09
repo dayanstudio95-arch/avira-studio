@@ -58,8 +58,11 @@ import { createServiceRoleClient } from '../_shared/supabaseClients.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { normalizeIsraeliPhone, chatIdToLocalPhone, isGroupChatId } from '../_shared/phone.ts';
 import { loadQuietHoursSettings, isInQuietHoursNow } from '../_shared/automationGuards.ts';
-import { decideBotReply } from '../_shared/whatsappIntent.ts';
-import { loadBotSettings, isUnderHourlyQuota, sendBotMessage, sleep } from '../_shared/whatsappBotSend.ts';
+import { decideBotReply, decideBotFollowUp } from '../_shared/whatsappIntent.ts';
+import {
+  loadBotSettings, isUnderHourlyQuota, sendBotMessage, sendPricelist, sleep,
+} from '../_shared/whatsappBotSend.ts';
+import { extractLeadDetails, mergeDetails, missingFields } from '../_shared/whatsappLeadExtract.ts';
 
 const PG_UNIQUE_VIOLATION = '23505';
 
@@ -129,6 +132,28 @@ async function resolveTenantId(supabase: any, idInstance: unknown): Promise<stri
     return null;
   }
   return data?.[0]?.tenant_id ?? null;
+}
+
+// Per-tenant Anthropic key override (Settings → אינטגרציות), same tenant_secrets
+// pattern as the WhatsApp and Morning credentials. Returns null when the tenant has no
+// key of their own, and callClaude() then falls back to the platform-wide secret.
+//
+// Unlike ai-assistant/index.ts, this must filter by tenant_id explicitly: that function
+// runs on a user-scoped client already limited by RLS, whereas the webhook uses a
+// service-role client that bypasses RLS entirely and would otherwise pick an arbitrary
+// tenant's key.
+async function loadAnthropicKey(supabase: any, tenantId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('tenant_secrets')
+    .select('value')
+    .eq('tenant_id', tenantId)
+    .eq('key', 'anthropic_api_key')
+    .limit(1);
+  if (error) {
+    console.error('[whatsapp-webhook] anthropic key lookup failed:', error.message);
+    return null;
+  }
+  return data?.[0]?.value || null;
 }
 
 async function loadWebhookToken(supabase: any, tenantId: string): Promise<string | null> {
@@ -326,7 +351,7 @@ Deno.serve(async (req: Request) => {
     // ---- Conversation (create or fetch) -------------------------------------
     const { data: existingRows, error: convSelectError } = await supabase
       .from('whatsapp_conversations')
-      .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at')
+      .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count')
       .eq('tenant_id', tenantId)
       .eq('chat_id', chatId)
       .limit(1);
@@ -350,7 +375,7 @@ Deno.serve(async (req: Request) => {
           matched_event_id: match.eventId,
           display_name: displayName,
         })
-        .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at')
+        .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count')
         .single();
 
       if (insertConvError) {
@@ -359,7 +384,7 @@ Deno.serve(async (req: Request) => {
           // the other one created.
           const { data: raced } = await supabase
             .from('whatsapp_conversations')
-            .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at')
+            .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count')
             .eq('tenant_id', tenantId)
             .eq('chat_id', chatId)
             .limit(1);
@@ -559,6 +584,106 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // ---- Stage 3: the customer answered — read it, then ask or send ----------
+    //
+    // A separate gate from the greeting's (decideBotFollowUp): intent is no longer the
+    // question here. "300 מוזמנים" contains no service word and never will, so
+    // re-requiring intent would silence every real answer the bot ever gets. Who we are
+    // talking to, and whether we should be talking at all, is unchanged.
+    let pricelistFor: { url: string; text: string } | null = null;
+    let followUpQuestion: string | null = null;
+
+    if (isInbound && !decision?.wouldReply) {
+      const flowSettings = await loadBotSettings(supabase, tenantId);
+      if (flowSettings?.enabled) {
+        // Counts the bot's own messages in this thread. Used instead of a counter
+        // column because whatsapp_messages is already the honest record of what was
+        // said, and a counter would be a second source of truth to keep in sync.
+        const { count: botMessagesSoFar } = await supabase
+          .from('whatsapp_messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('conversation_id', conversation.id)
+          .eq('direction', 'outbound_bot');
+
+        let flowQuiet = false;
+        try {
+          flowQuiet = isInQuietHoursNow(await loadQuietHoursSettings(supabase, tenantId));
+        } catch {
+          flowQuiet = true; // fail closed, same as the greeting path
+        }
+
+        const followUp = decideBotFollowUp({
+          contactType: effectiveContactType,
+          botEnabled: !!conversation.bot_enabled,
+          state: conversation.state || 'NEW',
+          isGroup,
+          typeMessage,
+          inQuietHours: flowQuiet,
+          botMessagesSoFar: botMessagesSoFar ?? 0,
+        });
+
+        if (followUp.reason === 'not_text') {
+          // They answered with a voice note or a photo. We cannot read it, and leaving
+          // them waiting is worse than admitting it — hand the thread to a human.
+          updates.state = 'HANDED_OFF';
+        } else if (followUp.reason === 'too_many_questions') {
+          // The bot has asked as much as it usefully can. Stop, don't nag.
+          updates.state = 'HANDED_OFF';
+        } else if (followUp.shouldReply) {
+          const apiKey = await loadAnthropicKey(supabase, tenantId);
+          const extracted = await extractLeadDetails(bodyText || '', apiKey);
+
+          if (extracted.failed) {
+            // Per the plan: no second attempt. A retry at temperature 0 on the same
+            // input is unlikely to differ, and a human beats a retry loop.
+            updates.state = 'HANDED_OFF';
+          } else {
+            const merged = mergeDetails(
+              {
+                coupleNames: conversation.couple_names,
+                eventDate: conversation.event_date,
+                venue: conversation.venue,
+                guestCount: conversation.guest_count,
+              },
+              extracted.details
+            );
+
+            // Persist what we learned. mergeDetails already guarantees a null never
+            // overwrites a stored value.
+            updates.couple_names = merged.coupleNames;
+            updates.event_date = merged.eventDate;
+            updates.venue = merged.venue;
+            updates.guest_count = merged.guestCount;
+
+            const stillMissing = missingFields(merged);
+            if (stillMissing.length === 0) {
+              if (flowSettings.pricelistText || flowSettings.pricelistUrl) {
+                pricelistFor = { url: flowSettings.pricelistUrl, text: flowSettings.pricelistText };
+                // Advance BEFORE sending, for the same reason as the greeting: a second
+                // message arriving mid-send must not trigger a second price list.
+                updates.state = 'PRICELIST_SENT';
+                updates.last_bot_message_at = nowIso;
+              } else {
+                // Every detail collected and nothing configured to send. The worst
+                // possible ending, so it goes to a human loudly rather than silently.
+                console.error('[whatsapp-webhook] details complete but no price list configured');
+                updates.state = 'HANDED_OFF';
+              }
+            } else {
+              // Ask only about what is actually missing — never re-ask the whole list.
+              followUpQuestion =
+                stillMissing.length === 1
+                  ? `תודה! רק עוד פרט אחד ונוכל לחזור אליכם עם הצעת מחיר — ${stillMissing[0]}?`
+                  : `תודה! רק עוד כמה פרטים ונוכל לחזור אליכם עם הצעת מחיר:\n` +
+                    stillMissing.map((f) => `• ${f}`).join('\n');
+              updates.state = 'PARTIAL_DETAILS';
+              updates.last_bot_message_at = nowIso;
+            }
+          }
+        }
+      }
+    }
+
     const { error: updateError } = await supabase
       .from('whatsapp_conversations')
       .update(updates)
@@ -570,6 +695,8 @@ Deno.serve(async (req: Request) => {
       // ...but it is NOT cosmetic when a send is pending: the row still says state='NEW',
       // so the next inbound message would greet this person a second time. Stand down.
       greeting = null;
+      pricelistFor = null;
+      followUpQuestion = null;
     }
 
     // ---- The send, after the 200 ---------------------------------------------
@@ -578,22 +705,35 @@ Deno.serve(async (req: Request) => {
     // notification is not answered promptly, so the reply delay must never be taken
     // inside the request body. EdgeRuntime.waitUntil keeps the work alive after the
     // response has gone back.
-    if (greeting && phone) {
-      const text = greeting;
-      const delaySeconds = replyDelaySeconds;
+    const deferredText = greeting || followUpQuestion;
+    if (phone && (deferredText || pricelistFor)) {
+      const text = deferredText;
+      const pricelist = pricelistFor;
+      // The greeting waits so it doesn't land in the same second the customer pressed
+      // send. A follow-up or the price list does not: by then the customer is in an
+      // active exchange and is waiting for an answer.
+      const delaySeconds = greeting ? replyDelaySeconds : 0;
       EdgeRuntime.waitUntil(
         (async () => {
           try {
             await sleep(delaySeconds);
-            await sendBotMessage(supabase, {
-              tenantId,
-              conversationId: conversation.id,
-              phone,
-              text,
-            });
+            if (text) {
+              await sendBotMessage(supabase, {
+                tenantId, conversationId: conversation.id, phone, text,
+              });
+            }
+            if (pricelist) {
+              await sendPricelist(supabase, {
+                tenantId,
+                conversationId: conversation.id,
+                phone,
+                pricelistUrl: pricelist.url,
+                pricelistText: pricelist.text,
+              });
+            }
           } catch (sendErr: any) {
             // Nothing above us can catch this — the response is long gone.
-            console.error('[whatsapp-webhook] deferred greeting failed:', sendErr?.message || sendErr);
+            console.error('[whatsapp-webhook] deferred send failed:', sendErr?.message || sendErr);
           }
         })()
       );

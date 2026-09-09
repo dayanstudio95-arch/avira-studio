@@ -332,3 +332,72 @@ export function decideBotReply(input: BotDecisionInput): BotDecision {
 
   return { wouldReply: true, reason: 'ok', intent };
 }
+
+// ---------------------------------------------------------------------------------
+// Stage 3: the follow-up gate.
+//
+// A SEPARATE decision from decideBotReply, not an extra branch inside it, because the
+// two ask opposite questions of the same conversation.
+//
+// decideBotReply guards the first word ever said to a stranger: it demands a positive
+// intent match and refuses anything past 'NEW'. Once the customer has answered that
+// greeting, intent is no longer the question — they are replying to us, and "300
+// מוזמנים" contains no service word and never would. Requiring intent again here would
+// silence every real answer the bot ever gets.
+//
+// What does NOT relax: group chats, known contacts, a conversation Daniel has spoken
+// in, quiet hours, and non-text messages. Those are about who we are talking to and
+// whether we should be talking at all, and none of that changed.
+// ---------------------------------------------------------------------------------
+
+export type FollowUpReason =
+  | 'ok'
+  | 'group'
+  | 'known_contact'
+  | 'bot_muted'
+  | 'not_in_flow'
+  | 'not_text'
+  | 'quiet_hours'
+  | 'too_many_questions';
+
+export interface FollowUpInput {
+  contactType: string;
+  botEnabled: boolean;
+  state: string;
+  isGroup: boolean;
+  typeMessage: string | null;
+  inQuietHours: boolean;
+  // How many messages the bot has already sent in this conversation, counted from
+  // whatsapp_messages rather than a counter column. See MAX_BOT_MESSAGES below.
+  botMessagesSoFar: number;
+}
+
+// The states in which the bot is mid-conversation and owes the customer a response.
+// PRICELIST_SENT is deliberately absent: once the price list is out, anything further
+// is a real question for a human. HANDED_OFF and EXPIRED are terminal.
+const IN_FLOW_STATES = ['AWAITING_DETAILS', 'PARTIAL_DETAILS'];
+
+// Greeting + at most two follow-up questions. Past that the bot is not collecting
+// details any more, it is nagging: a customer answering "מה?" or "אני אבדוק ואחזור"
+// would otherwise be asked the same question forever. Hitting this ceiling hands the
+// conversation to Daniel rather than ending it.
+export const MAX_BOT_MESSAGES = 3;
+
+export function decideBotFollowUp(input: FollowUpInput): { shouldReply: boolean; reason: FollowUpReason } {
+  const stop = (reason: FollowUpReason) => ({ shouldReply: false, reason });
+
+  if (input.isGroup) return stop('group');
+  // A contact who became a real lead or client mid-flow — most likely because Daniel
+  // pressed "צור ליד" from this very conversation. The bot must fall silent the moment
+  // the person stops being a stranger.
+  if (input.contactType !== 'unknown') return stop('known_contact');
+  if (!input.botEnabled) return stop('bot_muted');
+  if (!IN_FLOW_STATES.includes(input.state)) return stop('not_in_flow');
+  // A voice note answering our four questions is a real answer we cannot read. The
+  // caller turns this into a hand-off, not a silent drop — the customer is waiting.
+  if (!input.typeMessage || !TEXT_MESSAGE_TYPES.includes(input.typeMessage)) return stop('not_text');
+  if (input.inQuietHours) return stop('quiet_hours');
+  if (input.botMessagesSoFar >= MAX_BOT_MESSAGES) return stop('too_many_questions');
+
+  return { shouldReply: true, reason: 'ok' };
+}

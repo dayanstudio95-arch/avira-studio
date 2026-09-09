@@ -11,7 +11,7 @@
 // app_settings until someone sets it in the Settings screen. A missing value therefore
 // means silence, not "unset, so go ahead".
 
-import { sendWhatsApp } from './whatsapp.ts';
+import { sendWhatsApp, sendWhatsAppFileByUrl, WHATSAPP_CAPTION_MAX } from './whatsapp.ts';
 
 // Every knob the bot has, all of them per-tenant rows in app_settings.
 export interface BotSettings {
@@ -19,6 +19,12 @@ export interface BotSettings {
   greetingText: string;
   replyDelaySeconds: number;
   maxBotMessagesPerHour: number;
+  // Stage 3. The URL is optional — with it the price list goes out as an image with a
+  // caption, without it as plain text. The text itself is not optional: a conversation
+  // that collected every detail and then had nothing to send would be the worst
+  // outcome of the whole flow.
+  pricelistUrl: string;
+  pricelistText: string;
 }
 
 export const BOT_SETTING_KEYS = [
@@ -26,6 +32,8 @@ export const BOT_SETTING_KEYS = [
   'whatsapp_greeting_text',
   'whatsapp_reply_delay_seconds',
   'whatsapp_max_bot_messages_per_hour',
+  'whatsapp_pricelist_url',
+  'whatsapp_pricelist_text',
 ] as const;
 
 // Deliberately conservative. These apply when a tenant has never opened the settings
@@ -76,6 +84,8 @@ export async function loadBotSettings(supabase: any, tenantId: string): Promise<
     maxBotMessagesPerHour: parseIntInRange(
       get('whatsapp_max_bot_messages_per_hour'), DEFAULTS.maxBotMessagesPerHour, 1, 60
     ),
+    pricelistUrl: String(get('whatsapp_pricelist_url') ?? '').trim(),
+    pricelistText: String(get('whatsapp_pricelist_text') ?? '').trim(),
   };
 }
 
@@ -115,6 +125,64 @@ export interface BotSendOutcome {
   error?: string;
 }
 
+// Surfaces a failed send where a human will actually look. A bot that fails quietly is
+// worse than one that never ran: the conversation sits mid-flow having said nothing,
+// and the customer is waiting for a reply that is never coming.
+//
+// Schema per 0026_notifications_trigger.sql: the text column is `body` (not `message`),
+// and `type` is a free-text not-null tag — no check constraint, so the convention is a
+// snake_case event name like respond-staff-availability-public's
+// 'staff_availability_response'.
+async function notifyFailure(supabase: any, tenantId: string, phone: string, what: string) {
+  try {
+    await supabase.from('notifications').insert({
+      tenant_id: tenantId,
+      type: 'whatsapp_bot_send_failed',
+      title: 'שליחת הודעת בוט נכשלה',
+      body: `${what} (${phone}). כדאי לענות ידנית מתוך מסך השיחות.`,
+    });
+  } catch (e: any) {
+    console.error('[whatsappBotSend] notification insert failed:', e?.message || e);
+  }
+}
+
+// Records a message the bot sent, so it appears in the inbox next to everything a human
+// said, tagged `outbound_bot` and never mistakable for Daniel's own words.
+//
+// Green API's returned idMessage matters more than it looks: the outgoing*MessageReceived
+// webhook echoes this same message back to us moments later, and storing the real id
+// means that echo lands on the existing (tenant_id, id_message) unique constraint and is
+// deduped. Without it the bot's own message would be re-inserted as `outbound_human` and
+// would look like Daniel had replied — which would also permanently mute the bot in that
+// conversation, since an outbound human message sets bot_enabled = false.
+async function recordBotMessage(
+  supabase: any,
+  { tenantId, conversationId, idMessage, text, typeMessage, mediaUrl }: {
+    tenantId: string; conversationId: string; idMessage?: string;
+    text: string; typeMessage: string; mediaUrl?: string;
+  }
+) {
+  const { error } = await supabase.from('whatsapp_messages').insert({
+    tenant_id: tenantId,
+    conversation_id: conversationId,
+    id_message: idMessage || `bot-${conversationId}-${Date.now()}`,
+    direction: 'outbound_bot',
+    type_webhook: 'botSend',
+    type_message: typeMessage,
+    body_text: text,
+    media_url: mediaUrl ?? null,
+    // Left null on purpose: bot_would_reply records a decision made ABOUT an inbound
+    // message. An outbound row was never a question the gate was asked.
+    bot_would_reply: null,
+    bot_skip_reason: null,
+  });
+  if (error) {
+    // The customer has the message; only our copy of it failed. Never report this as a
+    // failed send — that would trigger a retry and message them twice.
+    console.error('[whatsappBotSend] message row insert failed (message WAS sent):', error.message);
+  }
+}
+
 // Sends one bot message and records it. Returns rather than throws: the caller is
 // running inside EdgeRuntime.waitUntil, after the 200 has already gone back to Green
 // API, so there is nobody left to throw to.
@@ -134,51 +202,87 @@ export async function sendBotMessage(
 
   if (!result.success) {
     console.error('[whatsappBotSend] send failed:', result.error);
-    // Surface it where a human will actually look. A bot that fails quietly is worse
-    // than one that never ran: the conversation sits in AWAITING_DETAILS having said
-    // nothing, and the customer is waiting for a reply that is never coming.
-    try {
-      // Schema per 0026_notifications_trigger.sql: the text column is `body` (not
-      // `message`), and `type` is a free-text not-null tag — no check constraint, so
-      // the convention is a snake_case event name like respond-staff-availability-public's
-      // 'staff_availability_response'.
-      await supabase.from('notifications').insert({
-        tenant_id: tenantId,
-        type: 'whatsapp_bot_send_failed',
-        title: 'שליחת הודעת בוט נכשלה',
-        body: `לא הצלחנו לשלוח הודעה אוטומטית ל-${phone}. כדאי לענות ידנית מתוך מסך השיחות.`,
-      });
-    } catch (notifyErr: any) {
-      console.error('[whatsappBotSend] notification insert failed:', notifyErr?.message || notifyErr);
-    }
+    await notifyFailure(supabase, tenantId, phone, 'לא הצלחנו לשלוח הודעה אוטומטית');
     return { sent: false, error: result.error };
   }
 
-  // Green API returns the id of the message it just sent. Storing it means the
-  // outgoing*MessageReceived webhook that echoes this same message back to us lands on
-  // the existing (tenant_id, id_message) unique constraint and is deduped — without it
-  // the bot's own greeting would be re-inserted a second time as `outbound_human` and
-  // would look like Daniel had replied.
-  const idMessage = (result.raw as any)?.idMessage || `bot-${conversationId}-${Date.now()}`;
-
-  const { error: insertError } = await supabase.from('whatsapp_messages').insert({
-    tenant_id: tenantId,
-    conversation_id: conversationId,
-    id_message: idMessage,
-    direction: 'outbound_bot',
-    type_webhook: 'botSend',
-    type_message: 'textMessage',
-    body_text: text,
-    // Left null on purpose: bot_would_reply is the record of a decision made ABOUT an
-    // inbound message. An outbound row was never a question the gate was asked.
-    bot_would_reply: null,
-    bot_skip_reason: null,
+  await recordBotMessage(supabase, {
+    tenantId,
+    conversationId,
+    idMessage: (result.raw as any)?.idMessage,
+    text,
+    typeMessage: 'textMessage',
   });
 
-  if (insertError) {
-    // The customer has the message; only our copy of it failed. Never report this as a
-    // failed send — that would trigger a retry and greet them twice.
-    console.error('[whatsappBotSend] message row insert failed (message WAS sent):', insertError.message);
+  return { sent: true };
+}
+
+// Sends the price list: image-with-caption, plain text, or image plus a follow-up
+// message, whichever planPricelistSend decided.
+//
+// Returns sent:true if the CUSTOMER GOT THE PRICE LIST, which is what the caller uses
+// to decide whether to move the conversation to PRICELIST_SENT. When a long list is
+// split, the image failing means they got nothing — but the follow-up text failing
+// after the image succeeded still counts as sent, because re-running would send the
+// image a second time. That residual case is reported to Daniel as a notification
+// instead, so a human closes the gap rather than the bot repeating itself.
+export async function sendPricelist(
+  supabase: any,
+  {
+    tenantId,
+    conversationId,
+    phone,
+    pricelistUrl,
+    pricelistText,
+  }: {
+    tenantId: string; conversationId: string; phone: string;
+    pricelistUrl: string; pricelistText: string;
+  }
+): Promise<BotSendOutcome> {
+  const plan = planPricelistSend(pricelistUrl, pricelistText);
+
+  if (!plan.imageUrl && !plan.followUpText) {
+    return { sent: false, error: 'no price list configured' };
+  }
+
+  if (plan.imageUrl) {
+    const fileResult = await sendWhatsAppFileByUrl(
+      supabase, phone, plan.imageUrl, 'pricelist.jpg', plan.caption ?? undefined, tenantId
+    );
+    if (!fileResult.success) {
+      console.error('[whatsappBotSend] price list image failed:', fileResult.error);
+      await notifyFailure(supabase, tenantId, phone, 'שליחת המחירון נכשלה');
+      return { sent: false, error: fileResult.error };
+    }
+    await recordBotMessage(supabase, {
+      tenantId, conversationId,
+      idMessage: (fileResult.raw as any)?.idMessage,
+      text: plan.caption || '[מחירון — תמונה]',
+      typeMessage: 'imageMessage',
+      mediaUrl: plan.imageUrl,
+    });
+  }
+
+  if (plan.followUpText) {
+    const textResult = await sendWhatsApp(supabase, phone, plan.followUpText, tenantId);
+    if (!textResult.success) {
+      console.error('[whatsappBotSend] price list text failed:', textResult.error);
+      await notifyFailure(
+        supabase, tenantId, phone,
+        plan.imageUrl
+          ? 'תמונת המחירון נשלחה אבל הטקסט עם הקישורים לא — כדאי לשלוח אותו ידנית'
+          : 'שליחת המחירון נכשלה'
+      );
+      // Image already delivered: report success so the state advances and the customer
+      // is not sent the image again.
+      return plan.imageUrl ? { sent: true } : { sent: false, error: textResult.error };
+    }
+    await recordBotMessage(supabase, {
+      tenantId, conversationId,
+      idMessage: (textResult.raw as any)?.idMessage,
+      text: plan.followUpText,
+      typeMessage: 'textMessage',
+    });
   }
 
   return { sent: true };
@@ -195,4 +299,34 @@ export async function sendBotMessage(
 export function sleep(seconds: number): Promise<void> {
   if (seconds <= 0) return Promise.resolve();
   return new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+}
+
+// How the price list has to be split to survive Green API's 1024-character caption cap.
+//
+// The studio's real price list is well over that — it carries package prices plus
+// Instagram, YouTube, a reviews link and a sample gallery. Truncating it would cut the
+// links off the end, so a long one goes out as the image with a short caption first,
+// immediately followed by the full text as its own message.
+//
+// Pure and exported so the decision is testable without sending anything.
+export function planPricelistSend(
+  pricelistUrl: string,
+  pricelistText: string,
+  shortCaption = '🧾 המחירון שלנו'
+): { imageUrl: string | null; caption: string | null; followUpText: string | null } {
+  const url = (pricelistUrl || '').trim();
+  const text = (pricelistText || '').trim();
+
+  // No image configured: the text is the whole message. WhatsApp's own limit for a
+  // plain text message is far above anything a price list will reach, so no split.
+  if (!url) return { imageUrl: null, caption: null, followUpText: text || null };
+
+  // Short enough to ride along with the image as one clean message.
+  if (text.length <= WHATSAPP_CAPTION_MAX) {
+    return { imageUrl: url, caption: text || null, followUpText: null };
+  }
+
+  // Too long: image + placeholder caption, then the real text. Never truncated — the
+  // links live at the end, which is exactly what a naive slice() would remove.
+  return { imageUrl: url, caption: shortCaption, followUpText: text };
 }

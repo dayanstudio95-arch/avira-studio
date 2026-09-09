@@ -67,9 +67,11 @@ export default function WhatsAppInbox() {
   const filteredConversations = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     return conversations.filter((c) => {
-      // "would_reply" is the dry-run review queue, not a contact_type — see the filter
-      // list in ConversationList.jsx.
-      if (contactFilter === "would_reply") {
+      // The first two filters are work queues, not contact_types — see the filter list
+      // in ConversationList.jsx.
+      if (contactFilter === "pricelist_sent") {
+        if (c.state !== "PRICELIST_SENT") return false;
+      } else if (contactFilter === "would_reply") {
         if (!c.botWouldReplyAt) return false;
       } else if (contactFilter !== "all" && c.contactType !== contactFilter) {
         return false;

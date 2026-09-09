@@ -24,11 +24,15 @@ export default function ConversationList({
   contactFilter,
   onContactFilterChange,
 }) {
-  // "would_reply" is not a contact_type — it's the dry-run review queue, and it is the
-  // one filter worth opening every day: every conversation in it is one Stage 2 would
-  // have answered on its own. Placed first because that review is the entire point of
-  // running the gate without a send path.
+  // The first two are not contact_types — they are work queues, and they are the two
+  // filters worth opening every day:
+  //   pricelist_sent — the bot has sent someone a price list and nobody has followed up
+  //                    yet. This is the studio's actual sales queue, and the reason the
+  //                    bot collects details before sending: each of these has a name, a
+  //                    date and a venue attached, so "צור ליד" opens a filled-in form.
+  //   would_reply    — every conversation the gate opened on, for auditing what it did.
   const filters = [
+    { value: "pricelist_sent", label: "🧾 נשלח מחירון" },
     { value: "would_reply", label: "🤖 הבוט היה עונה" },
     { value: "all", label: "הכל" },
     { value: "unknown", label: CONTACT_TYPE_LABELS.unknown },

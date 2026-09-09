@@ -36,6 +36,8 @@ const SETTING_KEYS = [
   "whatsapp_greeting_text",
   "whatsapp_reply_delay_seconds",
   "whatsapp_max_bot_messages_per_hour",
+  "whatsapp_pricelist_url",
+  "whatsapp_pricelist_text",
 ];
 
 const DEFAULT_GREETING =
@@ -54,6 +56,8 @@ export default function WhatsAppBotCard() {
   const [greeting, setGreeting] = useState("");
   const [delaySeconds, setDelaySeconds] = useState("45");
   const [maxPerHour, setMaxPerHour] = useState("10");
+  const [pricelistUrl, setPricelistUrl] = useState("");
+  const [pricelistText, setPricelistText] = useState("");
   const [settingIds, setSettingIds] = useState({});
   const [isSaving, setIsSaving] = useState(false);
 
@@ -77,6 +81,8 @@ export default function WhatsAppBotCard() {
         setGreeting(byKey.whatsapp_greeting_text ?? "");
         setDelaySeconds(byKey.whatsapp_reply_delay_seconds || "45");
         setMaxPerHour(byKey.whatsapp_max_bot_messages_per_hour || "10");
+        setPricelistUrl(byKey.whatsapp_pricelist_url ?? "");
+        setPricelistText(byKey.whatsapp_pricelist_text ?? "");
       } catch (e) {
         console.error("Error loading WhatsApp bot settings:", e);
       }
@@ -88,8 +94,16 @@ export default function WhatsAppBotCard() {
     // Refuse the one combination that produces silent breakage: switched on with
     // nothing to say. The server already declines to send in that state, but it does so
     // in a log nobody reads, and the studio would think the bot was working.
+    const trimmedPricelist = pricelistText.trim();
     if (enabled && !trimmedGreeting) {
       toast.error("אי אפשר להפעיל את הבוט בלי הודעת פתיחה");
+      return;
+    }
+    // The flow's whole purpose is the price list. A bot that collects every detail and
+    // then has nothing to send is the worst possible ending — the server hands those
+    // conversations to a human, but the studio would never know why.
+    if (enabled && !trimmedPricelist) {
+      toast.error("אי אפשר להפעיל את הבוט בלי נוסח מחירון — זה מה שהוא אמור לשלוח בסוף");
       return;
     }
 
@@ -100,6 +114,8 @@ export default function WhatsAppBotCard() {
         whatsapp_greeting_text: trimmedGreeting,
         whatsapp_reply_delay_seconds: String(delaySeconds || "45"),
         whatsapp_max_bot_messages_per_hour: String(maxPerHour || "10"),
+        whatsapp_pricelist_url: pricelistUrl.trim(),
+        whatsapp_pricelist_text: trimmedPricelist,
       };
       await Promise.all(
         SETTING_KEYS.map(async (key) => {
@@ -112,6 +128,7 @@ export default function WhatsAppBotCard() {
         })
       );
       setGreeting(trimmedGreeting);
+      setPricelistText(trimmedPricelist);
       toast.success(enabled ? "הבוט פעיל — הודעות ייצאו אוטומטית" : "ההגדרות נשמרו. הבוט כבוי.");
     } catch (e) {
       // Surface the real reason, per the lesson recorded in IntegrationsTab.jsx: a bare
@@ -198,6 +215,40 @@ export default function WhatsAppBotCard() {
               השתמש בנוסח מוצע
             </button>
           )}
+        </div>
+
+        {/* The end of the flow. Once the bot has collected all four details it sends
+            this, and the conversation moves to "נשלח מחירון" in the inbox. */}
+        <div className="border-t border-gray-800 pt-6">
+          <Label className="text-gray-300">נוסח המחירון</Label>
+          <p className="text-gray-500 text-xs mt-1 mb-2">
+            מה שנשלח אחרי שהלקוח ענה על כל השאלות. אפשר להעתיק בדיוק את הנוסח שאתה שולח היום ידנית.
+          </p>
+          <Textarea
+            value={pricelistText}
+            onChange={(e) => setPricelistText(e.target.value)}
+            rows={10}
+            disabled={!canManage}
+            placeholder={"מחירון 2026 ⭐\nחבילות צילום חתונה\n*המחירים כוללים 18% מע״מ\n..."}
+            className="bg-gray-800 border-gray-700 text-white"
+          />
+        </div>
+
+        <div>
+          <Label className="text-gray-300">קישור לתמונת המחירון (לא חובה)</Label>
+          <p className="text-gray-500 text-xs mt-1 mb-2">
+            אם תמלא — המחירון יישלח כתמונה. נוסח ארוך מ-1024 תווים יישלח כהודעה נפרדת מיד אחריה,
+            כדי שהקישורים בסוף לא ייחתכו.
+          </p>
+          <Input
+            type="url"
+            value={pricelistUrl}
+            onChange={(e) => setPricelistUrl(e.target.value)}
+            disabled={!canManage}
+            placeholder="https://..."
+            className="bg-gray-800 border-gray-700 text-white"
+            dir="ltr"
+          />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
