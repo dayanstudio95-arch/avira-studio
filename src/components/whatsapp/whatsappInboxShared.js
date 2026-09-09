@@ -58,6 +58,36 @@ export function botDecisionLabel(reason) {
   return BOT_DECISION_LABELS[reason] || reason;
 }
 
+// ---------------------------------------------------------------------------------
+// Lead temperature (migration 0057).
+//
+// Rated by Claude from what the customer wrote AFTER receiving the price list — the
+// one message in the conversation that says whether they are actually buying. Null
+// means nobody has replied since the price list went out, which is a different thing
+// from 'cold' and is what puts a conversation in the follow-up queue instead.
+// ---------------------------------------------------------------------------------
+export const TEMPERATURE_LABELS = {
+  hot: "🔥 רוצה להתקדם",
+  warm: "מתעניין",
+  cold: "לא מתקדם",
+};
+
+export const TEMPERATURE_COLORS = {
+  hot: "border-red-500/40 bg-red-500/15 text-red-300",
+  warm: "border-amber-500/40 bg-amber-500/15 text-amber-300",
+  cold: "border-gray-600 bg-gray-700/40 text-gray-400",
+};
+
+// Whole days since `iso`. Returns null for a missing/invalid date so callers can leave
+// the cell empty rather than rendering "לפני NaN ימים".
+export function daysSince(iso) {
+  if (!iso) return null;
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return null;
+  const days = Math.floor((Date.now() - then) / 86400000);
+  return days < 0 ? 0 : days;
+}
+
 // '972501234567@c.us' -> '0501234567' for display. Kept intentionally dumb: the
 // authoritative normalization lives server-side (_shared/phone.ts) and is already
 // stored on the conversation's `phone` column — this is only a fallback for rows

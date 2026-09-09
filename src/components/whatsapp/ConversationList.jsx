@@ -1,7 +1,7 @@
 import React from "react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Search, BotOff, Bot, MessageSquare } from "lucide-react";
+import { Search, BotOff, Bot, MessageSquare, Flame } from "lucide-react";
 import {
   CONTACT_TYPE_LABELS,
   CONTACT_TYPE_COLORS,
@@ -32,6 +32,7 @@ export default function ConversationList({
   //                    date and a venue attached, so "צור ליד" opens a filled-in form.
   //   would_reply    — every conversation the gate opened on, for auditing what it did.
   const filters = [
+    { value: "hot", label: "🔥 ליד חם" },
     { value: "pricelist_sent", label: "🧾 נשלח מחירון" },
     { value: "would_reply", label: "🤖 הבוט היה עונה" },
     { value: "all", label: "הכל" },
@@ -114,6 +115,15 @@ export default function ConversationList({
                     {!conv.botEnabled && (
                       <BotOff className="h-3.5 w-3.5 shrink-0 text-gray-500" title="הבוט מושתק בשיחה זו" />
                     )}
+                    {/* Rated from the customer's reply to the price list. Only the hot
+                        one gets an icon — a flame on every row would be wallpaper, and
+                        the whole point is that this row is the one to open first. */}
+                    {conv.leadTemperature === "hot" && (
+                      <Flame
+                        className="h-3.5 w-3.5 shrink-0 text-red-400"
+                        title={conv.leadTemperatureReason || "ליד חם"}
+                      />
+                    )}
                   </div>
                   <div className="truncate text-xs text-gray-500" dir="ltr">
                     {displayPhone(conv)}
@@ -121,6 +131,12 @@ export default function ConversationList({
                 </div>
                 <span className="shrink-0 text-[11px] text-gray-500">{formatListTime(conv.lastMessageAt)}</span>
               </div>
+
+              {/* Why the rating came out that way, so a wrong one is caught by reading
+                  rather than by trusting. Same principle as the dry run's skip reasons. */}
+              {conv.leadTemperatureReason && conv.leadTemperature === "hot" && (
+                <div className="mt-1 truncate text-[11px] text-red-300/80">{conv.leadTemperatureReason}</div>
+              )}
 
               <div className="mt-1.5 flex items-center justify-between gap-2">
                 <span className="truncate text-xs text-gray-400">{conv.lastMessagePreview || "—"}</span>

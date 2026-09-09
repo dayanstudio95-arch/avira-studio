@@ -362,6 +362,77 @@ section('price list — Green API caps a caption at 1024 chars');
   });
 }
 
+// =================================================================================
+// PART 5 — lead temperature (_shared/whatsappLeadTemperature.ts)
+//
+// Only the pure half is covered: everything after the model returns. That is where the
+// interesting failures are, and it is the part that must never write junk — the column
+// has a CHECK constraint, so an invented temperature would fail the whole conversation
+// UPDATE and cost the row its state transition over a label.
+// =================================================================================
+
+const { parseTemperatureResponse } = await loadModule(
+  'supabase/functions/_shared/whatsappLeadTemperature.ts', 'temperature'
+);
+
+section('temperature — well-formed responses');
+check(
+  'hot with a reason',
+  parseTemperatureResponse('{"temperature":"hot","reason":"מבקש לקבוע פגישה"}'),
+  { temperature: 'hot', reason: 'מבקש לקבוע פגישה' }
+);
+check(
+  'wrapped in a code fence',
+  parseTemperatureResponse('```json\n{"temperature":"warm","reason":"שואל מה כלול"}\n```').temperature,
+  'warm'
+);
+check(
+  'with a chatty preamble',
+  parseTemperatureResponse('בוודאי! הנה הניתוח:\n{"temperature":"cold","reason":"מודה ומסיים"}').temperature,
+  'cold'
+);
+check('case-insensitive', parseTemperatureResponse('{"temperature":"HOT","reason":"x"}').temperature, 'hot');
+
+section('temperature — malformed responses must yield null, never junk');
+for (const [name, input] of [
+  ['a fourth temperature the model invented', '{"temperature":"boiling","reason":"x"}'],
+  ['empty temperature', '{"temperature":"","reason":"x"}'],
+  ['missing temperature', '{"reason":"x"}'],
+  ['prose instead of JSON', 'הלקוח נשמע מעוניין מאוד'],
+  ['broken JSON', '{"temperature":"hot",'],
+  ['empty string', ''],
+  ['a JSON array, not an object', '["hot"]'],
+]) {
+  check(name, parseTemperatureResponse(input).temperature, null);
+}
+
+section('temperature — the reason is display text, not free rein');
+check('missing reason becomes null', parseTemperatureResponse('{"temperature":"hot"}').reason, null);
+check(
+  'a non-string reason is dropped, the rating survives',
+  parseTemperatureResponse('{"temperature":"hot","reason":42}'),
+  { temperature: 'hot', reason: null }
+);
+check(
+  'an essay is capped — this renders on one line in a list',
+  parseTemperatureResponse(`{"temperature":"hot","reason":"${'א'.repeat(500)}"}`).reason.length,
+  200
+);
+
+section('days since — drives the follow-up queue ordering');
+{
+  const { daysSince } = await import(
+    pathToFileURL(join(repoRoot, 'src/components/whatsapp/whatsappInboxShared.js')).href
+  );
+  const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString();
+  check('today', daysSince(daysAgo(0)), 0);
+  check('three days', daysSince(daysAgo(3)), 3);
+  check('missing date', daysSince(null), null);
+  check('garbage date', daysSince('not a date'), null);
+  // Clock skew between the browser and the server must not render "לפני -1 ימים".
+  check('a future timestamp clamps to 0', daysSince(daysAgo(-2)), 0);
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

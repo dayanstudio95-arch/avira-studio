@@ -63,8 +63,14 @@ import {
   loadBotSettings, isUnderHourlyQuota, sendBotMessage, sendPricelist, sleep,
 } from '../_shared/whatsappBotSend.ts';
 import { extractLeadDetails, mergeDetails, missingFields } from '../_shared/whatsappLeadExtract.ts';
+import { classifyReply } from '../_shared/whatsappLeadTemperature.ts';
 
 const PG_UNIQUE_VIOLATION = '23505';
+
+// Message types whose body is worth rating. Same list decideBotFollowUp uses for
+// 'not_text', kept local because that one is not exported and this is a read-only
+// check on a path that must never throw.
+const TEXT_TYPES_FOR_RATING = ['textMessage', 'extendedTextMessage', 'quotedMessage'];
 
 // Green API webhook types that carry an actual chat message we want to record.
 // Everything else (outgoingMessageStatus / stateInstanceChanged / deviceInfo /
@@ -351,7 +357,7 @@ Deno.serve(async (req: Request) => {
     // ---- Conversation (create or fetch) -------------------------------------
     const { data: existingRows, error: convSelectError } = await supabase
       .from('whatsapp_conversations')
-      .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count')
+      .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature')
       .eq('tenant_id', tenantId)
       .eq('chat_id', chatId)
       .limit(1);
@@ -375,7 +381,7 @@ Deno.serve(async (req: Request) => {
           matched_event_id: match.eventId,
           display_name: displayName,
         })
-        .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count')
+        .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature')
         .single();
 
       if (insertConvError) {
@@ -384,7 +390,7 @@ Deno.serve(async (req: Request) => {
           // the other one created.
           const { data: raced } = await supabase
             .from('whatsapp_conversations')
-            .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count')
+            .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature')
             .eq('tenant_id', tenantId)
             .eq('chat_id', chatId)
             .limit(1);
@@ -622,7 +628,35 @@ Deno.serve(async (req: Request) => {
           botMessagesSoFar: botMessagesSoFar ?? 0,
         });
 
-        if (followUp.reason === 'not_text') {
+        if (
+          followUp.reason === 'not_in_flow' &&
+          conversation.state === 'PRICELIST_SENT' &&
+          typeMessage && TEXT_TYPES_FOR_RATING.includes(typeMessage) &&
+          conversation.lead_temperature !== 'hot'
+        ) {
+          // ---- Lead temperature ------------------------------------------------
+          //
+          // The customer has the price list and is answering it. This is the single
+          // most commercially useful message in the whole conversation, and the bot
+          // deliberately stays silent for it — everything past PRICELIST_SENT belongs
+          // to a human. All that happens here is a label on the row.
+          //
+          // Re-rated on each reply until it reaches 'hot', then left alone: once the
+          // row is at the top of Daniel's list the rating has done its job, and
+          // re-rating every message in an ongoing human conversation would spend an
+          // API call per message to change nothing.
+          const apiKey = await loadAnthropicKey(supabase, tenantId);
+          const rating = await classifyReply(bodyText, apiKey);
+          if (rating.temperature) {
+            updates.lead_temperature = rating.temperature;
+            updates.lead_temperature_reason = rating.reason;
+            updates.lead_temperature_at = nowIso;
+          }
+          // A failed or unparseable rating leaves the columns untouched rather than
+          // writing null over a previous good one — classifyReply already swallowed
+          // the error, and losing an old rating to a transient API hiccup would be a
+          // worse outcome than having a slightly stale one.
+        } else if (followUp.reason === 'not_text') {
           // They answered with a voice note or a photo. We cannot read it, and leaving
           // them waiting is worse than admitting it — hand the thread to a human.
           updates.state = 'HANDED_OFF';

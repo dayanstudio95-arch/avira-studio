@@ -2,10 +2,11 @@ import React, { useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { MessageSquare, AlertTriangle, Bot } from "lucide-react";
+import { MessageSquare, AlertTriangle, Bot, Flame, Send } from "lucide-react";
 import ConversationList from "@/components/whatsapp/ConversationList";
 import ConversationThread from "@/components/whatsapp/ConversationThread";
 import LeadFormDialog from "@/components/leads/LeadFormDialog";
+import WhatsAppFollowUpDialog from "@/components/whatsapp/WhatsAppFollowUpDialog";
 import { usePermission } from "@/lib/permissions";
 
 // WhatsApp inbox — every conversation the studio's WhatsApp number is having, shown
@@ -44,6 +45,10 @@ export default function WhatsAppInbox() {
   const [searchTerm, setSearchTerm] = useState("");
   const [contactFilter, setContactFilter] = useState("all");
   const [leadDialogValues, setLeadDialogValues] = useState(null);
+  // Captured when the dialog opens: the user can change the selected conversation
+  // while the form is up, and the lead must link back to the one it was opened from.
+  const [leadDialogConversationId, setLeadDialogConversationId] = useState(null);
+  const [isFollowUpOpen, setIsFollowUpOpen] = useState(false);
 
   // Whether the bot is actually switched on, read from the same app_settings row the
   // webhook reads. null while loading, so the banner renders nothing rather than
@@ -81,9 +86,11 @@ export default function WhatsAppInbox() {
   const filteredConversations = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     return conversations.filter((c) => {
-      // The first two filters are work queues, not contact_types — see the filter list
-      // in ConversationList.jsx.
-      if (contactFilter === "pricelist_sent") {
+      // The first three filters are work queues, not contact_types — see the filter
+      // list in ConversationList.jsx.
+      if (contactFilter === "hot") {
+        if (c.leadTemperature !== "hot") return false;
+      } else if (contactFilter === "pricelist_sent") {
         if (c.state !== "PRICELIST_SENT") return false;
       } else if (contactFilter === "would_reply") {
         if (!c.botWouldReplyAt) return false;
@@ -113,6 +120,28 @@ export default function WhatsAppInbox() {
   // Reviewing the gap between the two is what the dry run is for.
   const wouldReplyCount = useMemo(
     () => conversations.filter((c) => c.botWouldReplyAt).length,
+    [conversations]
+  );
+
+  // The two commercial queues, and the reason the whole flow collects details before
+  // sending a price list rather than after.
+  //
+  // They are one population split by a single fact — did the customer reply to the
+  // price list:
+  //   hotCount      — they replied and Claude rated it as wanting to move forward.
+  //   followUpQueue — they didn't reply at all, and nobody has nudged them yet.
+  // A conversation is never in both, which is what makes "who do I chase today"
+  // answerable instead of a judgement call.
+  const hotCount = useMemo(
+    () => conversations.filter((c) => c.leadTemperature === "hot").length,
+    [conversations]
+  );
+
+  const followUpQueue = useMemo(
+    () =>
+      conversations.filter(
+        (c) => c.state === "PRICELIST_SENT" && !c.followupSentAt && !c.leadTemperature
+      ),
     [conversations]
   );
 
@@ -169,6 +198,7 @@ export default function WhatsAppInbox() {
     if (c.guestCount) noteParts.push(`כמות מוזמנים: ${c.guestCount}`);
     noteParts.push(`נוצר משיחת וואטסאפ עם ${c.phone || c.chatId}`);
 
+    setLeadDialogConversationId(c.id);
     setLeadDialogValues({
       coupleNames: c.coupleNames || c.displayName || "",
       eventDate: c.eventDate || "",
@@ -178,12 +208,35 @@ export default function WhatsAppInbox() {
     });
   };
 
-  const handleLeadSaved = () => {
+  const handleLeadSaved = async (createdLead) => {
+    const conversationId = leadDialogConversationId;
     setLeadDialogValues(null);
-    // Re-classification happens server-side on the next inbound message, so the badge
-    // will catch up on its own; refresh the list so the rest stays current.
+    setLeadDialogConversationId(null);
+
+    // Link the conversation to the lead immediately.
+    //
+    // This used to be left entirely to the server, which re-derives contact_type by
+    // phone match on the NEXT inbound message. That leaves a real gap: until then the
+    // conversation still reads `unknown`, and `unknown` is the one contact_type the bot
+    // is allowed to answer — so a person who has just become a real lead could still be
+    // greeted by the bot as a stranger. LeadFormDialog has always passed the created
+    // lead back; the inbox simply wasn't using it.
+    if (conversationId && createdLead?.id) {
+      try {
+        await base44.entities.WhatsAppConversation.update(conversationId, {
+          contactType: "lead",
+          matchedLeadId: createdLead.id,
+        });
+        toast.success("הליד נוצר והשיחה סומנה כ'ליד קיים'");
+      } catch {
+        // Not fatal: the server will still re-classify on the next inbound message.
+        toast.success("הליד נוצר. השיחה תסומן כ'ליד קיים' בהודעה הבאה");
+      }
+    } else {
+      toast.success("הליד נוצר. השיחה תסומן כ'ליד קיים' בהודעה הבאה");
+    }
+
     queryClient.invalidateQueries({ queryKey: ["whatsappConversations"] });
-    toast.success("הליד נוצר. השיחה תסומן כ'ליד קיים' בהודעה הבאה");
   };
 
   // UI-layer gate only — the real boundary is 0054_whatsapp_bot.sql's RLS policies,
@@ -207,6 +260,29 @@ export default function WhatsAppInbox() {
           <span className="text-sm text-gray-500">
             {conversations.length} שיחות · {unknownCount} ממספרים לא מוכרים
           </span>
+          {/* The two commercial counters, before the diagnostic one. These are the
+              numbers that translate into money; wouldReplyCount is for auditing the
+              gate. */}
+          {hotCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setContactFilter("hot")}
+              className="inline-flex items-center gap-1 rounded-full border border-red-500/40 bg-red-500/10 px-2.5 py-1 text-xs text-red-300 transition-colors hover:bg-red-500/20"
+            >
+              <Flame className="h-3.5 w-3.5" />
+              {hotCount} לידים חמים
+            </button>
+          )}
+          {followUpQueue.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setIsFollowUpOpen(true)}
+              className="inline-flex items-center gap-1 rounded-full border border-yellow-500/40 bg-yellow-500/10 px-2.5 py-1 text-xs text-yellow-300 transition-colors hover:bg-yellow-500/20"
+            >
+              <Send className="h-3.5 w-3.5" />
+              {followUpQueue.length} ממתינים לפולו-אפ
+            </button>
+          )}
           {wouldReplyCount > 0 && (
             <button
               type="button"
@@ -264,11 +340,21 @@ export default function WhatsAppInbox() {
       {/* Nothing is written until the user presses שמור inside this dialog. */}
       <LeadFormDialog
         isOpen={!!leadDialogValues}
-        onClose={() => setLeadDialogValues(null)}
+        onClose={() => {
+          setLeadDialogValues(null);
+          setLeadDialogConversationId(null);
+        }}
         lead={null}
         initialValues={leadDialogValues}
         packagePrices={{}}
         onSaved={handleLeadSaved}
+      />
+
+      <WhatsAppFollowUpDialog
+        isOpen={isFollowUpOpen}
+        onClose={() => setIsFollowUpOpen(false)}
+        conversations={followUpQueue}
+        onSent={() => queryClient.invalidateQueries({ queryKey: ["whatsappConversations"] })}
       />
     </div>
   );
