@@ -32,6 +32,12 @@ import { dirname, resolve } from 'node:path';
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = await mkdtemp(join(tmpdir(), 'avira-wa-test-'));
 
+// _shared/anthropic.ts reads Deno.env at module load, so importing anything that
+// reaches it from node throws before a single test runs. Every key resolves to
+// undefined on purpose: these tests exercise pure logic and must never be one
+// stray environment variable away from making a real, billable API call.
+globalThis.Deno = { env: { get: () => undefined } };
+
 async function loadModule(relPath, name) {
   const outfile = join(outDir, `${name}.mjs`);
   await build({
@@ -221,6 +227,73 @@ check(
   'a failed count fails CLOSED (unlike _shared/rateLimit.ts, which fails open by design)',
   await isUnderHourlyQuota(fakeDb({ countError: { message: 'boom' } }), 't1', 10),
   false
+);
+
+// =================================================================================
+// PART 3 — turning the customer's answer into lead details
+// (_shared/whatsappLeadExtract.ts)
+// =================================================================================
+
+const { parseIsraeliDate, mergeDetails, missingFields, EMPTY_DETAILS } =
+  await loadModule('supabase/functions/_shared/whatsappLeadExtract.ts', 'extract');
+
+// Frozen "today" so the year-completion cases don't rot.
+const TODAY = new Date(2026, 8, 9); // 2026-09-09
+
+section('the date authority — parseIsraeliDate has the final word, not the model');
+for (const [raw, expected] of [
+  ['12.7.27', '2027-07-12'],
+  ['5/6/27', '2027-06-05'],
+  ['3-11-26', '2026-11-03'],
+  ['2027-06-16', '2027-06-16'],
+  ['16 ביוני 2027', '2027-06-16'],
+  // No year given: completed to the next occurrence still in the future.
+  ['30.11', '2026-11-30'],
+  ['5.1', '2027-01-05'],
+  // Not dates. These must be rejected outright rather than coerced — a guest count or
+  // a venue name reaching the date field would put a wrong date on a real lead.
+  ['בערך 300', null],
+  ['אולם הגן', null],
+  ['300 אורחים', null],
+  ['0501234567', null],
+  // Not a real calendar day: 31 February must not silently become March 3rd.
+  ['31.2.27', null],
+]) {
+  const got = parseIsraeliDate(raw, TODAY);
+  check(`date ${JSON.stringify(raw)}`, got ? got.iso : null, expected);
+}
+
+section('merge — a later answer must never erase an earlier one');
+{
+  const stored = { coupleNames: 'יעל ואורי', eventDate: null, venue: 'גן ורדים', guestCount: null };
+  const incoming = { coupleNames: null, eventDate: '2027-06-05', venue: null, guestCount: 250 };
+  check('fills gaps without overwriting', mergeDetails(stored, incoming), {
+    coupleNames: 'יעל ואורי', eventDate: '2027-06-05', venue: 'גן ורדים', guestCount: 250,
+  });
+  check(
+    'a stored value wins over a new one',
+    mergeDetails({ venue: 'גן ורדים' }, { ...EMPTY_DETAILS, venue: 'מקום אחר' }).venue,
+    'גן ורדים'
+  );
+  check('nothing known yet', mergeDetails({}, EMPTY_DETAILS), EMPTY_DETAILS);
+}
+
+section('what is still missing — drives which question gets asked');
+check('all four', missingFields(EMPTY_DETAILS).length, 4);
+check(
+  'only the venue',
+  missingFields({ coupleNames: 'א ו-ב', eventDate: '2027-01-01', venue: null, guestCount: 100 }),
+  ['איפה האירוע מתקיים']
+);
+check(
+  'guestCount 0 counts as answered, not missing',
+  missingFields({ coupleNames: 'א', eventDate: '2027-01-01', venue: 'ב', guestCount: 0 }),
+  []
+);
+check(
+  'complete',
+  missingFields({ coupleNames: 'א ו-ב', eventDate: '2027-01-01', venue: 'ג', guestCount: 300 }),
+  []
 );
 
 await rm(outDir, { recursive: true, force: true });

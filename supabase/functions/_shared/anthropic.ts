@@ -31,6 +31,7 @@ export async function callClaude({
   messages,
   tools,
   apiKey,
+  temperature,
 }: {
   system: string;
   messages: ClaudeMessage[];
@@ -38,6 +39,11 @@ export async function callClaude({
   // Optional per-tenant override, resolved by the caller from tenant_secrets. When
   // omitted (or blank), falls back to the platform-wide PLATFORM_ANTHROPIC_API_KEY.
   apiKey?: string | null;
+  // Omitted for conversational callers (the AI assistant), which want the API default.
+  // Extraction callers pass 0: pulling a wedding date out of a customer's message is a
+  // reading task, not a writing one, and the same message must not resolve to different
+  // dates on two runs.
+  temperature?: number;
 }): Promise<{ content: ClaudeContentBlock[]; stop_reason: string }> {
   const resolvedKey = apiKey || PLATFORM_ANTHROPIC_API_KEY;
   if (!resolvedKey) {
@@ -57,6 +63,7 @@ export async function callClaude({
       system,
       messages,
       ...(tools ? { tools } : {}),
+      ...(temperature === undefined ? {} : { temperature }),
     }),
   });
 
