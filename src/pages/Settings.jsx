@@ -38,6 +38,7 @@ import StudioSignatureCard from "../components/settings/StudioSignatureCard";
 import QuietHoursCard from "../components/settings/QuietHoursCard";
 import FinancialDefaultsCard from "../components/settings/FinancialDefaultsCard";
 import DataBackupCard from "../components/settings/DataBackupCard";
+import RecycleBinCard from "../components/settings/RecycleBinCard";
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 import { DEFAULT_CONTRACT_TERMS } from "@/lib/defaultContractTerms";
@@ -758,8 +759,9 @@ export default function Settings() {
           <TabsContent value="data">
             {/* Above the CSV tools on purpose: those exist for reading data in Excel
                 and drop most columns; this is the one that actually protects it. */}
-            <div className="mb-6">
+            <div className="mb-6 space-y-6">
               <DataBackupCard />
+              <RecycleBinCard />
             </div>
             <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm">
               <CardHeader className="border-b border-gray-800">
