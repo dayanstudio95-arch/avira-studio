@@ -292,25 +292,62 @@ export default function Leads() {
     }
   };
 
+  // Records a ₪500 deposit against the selected leads.
+  //
+  // ⚠️ This used to write `totalPaid: 500` as a flat overwrite, without reading the
+  // existing value or `invoicesList`. Including one lead who had already paid ₪8,000
+  // in the selection rewrote them as having paid ₪500 — silently, with no undo, and
+  // `leads` is not covered by the audit trigger (0024 covers settings tables only).
+  // It also set `depositInvoiceIssued: true` while issuing no invoice at all.
+  //
+  // It now ADDS to what is already recorded, and skips any lead that already has
+  // payments on file — those need a real invoice through InvoiceDialog, not a bulk
+  // flag. `generate-morning-invoice/index.ts` derives totalPaid by summing
+  // `invoices_list`; this stays consistent with that rather than fighting it.
+  const DEPOSIT_AMOUNT = 500;
+
   const handleBulkDeposit = async () => {
     if (selectedIds.size === 0) return;
-    if (!confirm(`עדכן מקדמה ₪500 עבור ${selectedIds.size} לידים?`)) return;
+
+    const selectedLeads = leads.filter(l => selectedIds.has(l.id));
+    // Anyone with money already recorded is left alone. Guessing on top of a real
+    // payment history is exactly how the old version corrupted data.
+    const alreadyPaid = selectedLeads.filter(
+      l => Number(l.totalPaid) > 0 || (Array.isArray(l.invoicesList) && l.invoicesList.length > 0)
+    );
+    const eligible = selectedLeads.filter(l => !alreadyPaid.includes(l));
+
+    if (eligible.length === 0) {
+      toast.error('לכל הלידים שנבחרו כבר רשומים תשלומים — יש להפיק להם חשבונית ידנית');
+      return;
+    }
+
+    const skipNote = alreadyPaid.length
+      ? `\n\n⚠️ ${alreadyPaid.length} לידים יידלגו כי כבר רשומים להם תשלומים:\n${alreadyPaid.slice(0, 5).map(l => l.coupleNames).join(', ')}`
+      : '';
+    if (!confirm(
+      `לרשום מקדמה של ₪${DEPOSIT_AMOUNT} ל-${eligible.length} לידים?${skipNote}\n\n` +
+      `שים לב: זו רק רישום במערכת — לא מופקת חשבונית.`
+    )) return;
+
     try {
       setConvertingId('deposit');
-      const selectedLeads = leads.filter(l => selectedIds.has(l.id));
-      await Promise.all(selectedLeads.map(lead =>
-        base44.entities.Lead.update(lead.id, {
-          manualPayment: 500,
-          totalPaid: 500,
-          remainingBalance: (lead.finalPrice || 0) - 500,
-          depositInvoiceIssued: true,
-        })
-      ));
-      toast.success(`עודכנה מקדמה ₪500 ל-${selectedIds.size} לידים`);
+      await Promise.all(eligible.map(lead => {
+        const newTotal = Number(lead.totalPaid || 0) + DEPOSIT_AMOUNT;
+        return base44.entities.Lead.update(lead.id, {
+          manualPayment: DEPOSIT_AMOUNT,
+          totalPaid: newTotal,
+          remainingBalance: Math.max(0, Number(lead.finalPrice || 0) - newTotal),
+          // NOT setting depositInvoiceIssued — no invoice was issued here. The old
+          // code set it anyway, so the flag claimed a Green Invoice document existed
+          // for leads that had never had one.
+        });
+      }));
+      toast.success(`נרשמה מקדמה ₪${DEPOSIT_AMOUNT} ל-${eligible.length} לידים`);
       setSelectedIds(new Set());
       await loadData();
     } catch (error) {
-      toast.error('שגיאה בעדכון מקדמה');
+      toast.error(`שגיאה בעדכון מקדמה: ${error?.message || 'שגיאה לא ידועה'}`);
     } finally {
       setConvertingId(null);
     }

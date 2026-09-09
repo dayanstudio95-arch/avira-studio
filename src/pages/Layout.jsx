@@ -114,6 +114,10 @@ const secondaryNavItems = [
   { title: "מדריך אלבום",       url: "/AlbumGuideSettings",                icon: FileText },
   { title: "ניהול חשבוניות",    url: createPageUrl("AllInvoicesPage"),     icon: FileText },
   { title: "אישור הודעות",      url: "/PendingApprovals",                  icon: Bell },
+  // Routed in App.jsx since forever but never listed here, so there was no way to
+  // reach it — the one screen that shows whether the automations actually ran, and
+  // which messages failed.
+  { title: "יומן אוטומציות",     url: "/AutomationLogs",                    icon: FileText },
   { title: "מדריך",             url: "/Guide",                             icon: BookOpen },
 ];
 

@@ -22,16 +22,29 @@ export default function AutomationLogs() {
   const [selectedAutomation, setSelectedAutomation] = useState("all");
   const [runningNow, setRunningNow] = useState(null);
 
+  // `automation_runs` has no `created_at` column — 0001_init.sql defines `started_at`,
+  // and no migration ever added one. `src/api/entities.js` maps "created_date" onto
+  // created_at, so this asked PostgREST for a column that doesn't exist, got a 42703,
+  // and — with no try/catch — left `loading` true forever. This page, the studio's only
+  // window into automation failures, showed a spinner and nothing else.
+  // SystemAdvisor.jsx and AutomationsDashboard.jsx already sort by "-started_at".
   const load = async () => {
     setLoading(true);
-    const [r, m, a] = await Promise.all([
-      base44.entities.AutomationRun.list("-created_date", 100),
-      base44.entities.AutomationMessageLog.list("-created_date", 500),
-      base44.entities.Automation.list()
-    ]);
-    setRuns(r);
-    setMessages(m);
-    setAutomations(a);
+    try {
+      const [r, m, a] = await Promise.all([
+        base44.entities.AutomationRun.list("-started_at", 100),
+        base44.entities.AutomationMessageLog.list("-created_date", 500),
+        base44.entities.Automation.list()
+      ]);
+      setRuns(r);
+      setMessages(m);
+      setAutomations(a);
+    } catch (e) {
+      // Show the reason rather than spinning. A diagnostics screen that fails silently
+      // is worse than no diagnostics screen.
+      console.error("Error loading automation logs:", e);
+      toast.error(`שגיאה בטעינת יומן האוטומציות: ${e?.message || "שגיאה לא ידועה"}`);
+    }
     setLoading(false);
   };
 

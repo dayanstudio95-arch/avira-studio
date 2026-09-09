@@ -2,15 +2,26 @@
 // Invoked from src/pages/Events.jsx (bulk "send questionnaire" action) with
 // { eventIds, month, year, messageTemplate }.
 //
-// KNOWN PRE-EXISTING BUG, preserved as-is: `debugMode` defaults to `true` in the
-// original and the frontend never passes it at all — meaning this feature has
-// always only console.log'd what it WOULD send and never actually sent a message
-// or set questionnaireSentAt in production. Flipping the default would mean this
-// port starts actually sending real WhatsApp messages to real couples the moment
-// it's deployed, which is a meaningful behavior change with real-world side effects
-// — left as `true` here to avoid an unreviewed change with customer-facing impact.
-// To enable real sending, pass `debugMode: false` explicitly in the invoke payload
-// (e.g. after adding a toggle to the Events.jsx UI).
+// FIXED 2026-09-09 — this function never sent anything, and said it had.
+//
+// `debugMode` defaulted to `true` and Events.jsx never passed it, so every "send
+// questionnaire" ran the console.log branch. That alone would have been dormant. What
+// made it harmful is that the debug branch did `logEntry.success = true; sent++`, so
+// the function returned a non-zero `sent` and the UI announced "✅ נשלחו 12 שאלונים
+// בהצלחה". The studio believed couples had been asked to fill in the questionnaire
+// when nothing had gone out, and `questionnaire_sent_at` stayed null — so the "שאלון
+// חסר" flags in the rest of the app quietly agreed with the lie.
+//
+// The previous author left the default as `true` deliberately, to avoid an unreviewed
+// change that starts messaging real couples. That caution was right at the time; the
+// user reviewed and approved the change on 2026-09-09, and Events.jsx now confirms
+// the recipient count before invoking.
+//
+// Two things changed, and the second matters more than the first:
+//   1. `debugMode` now defaults to false — the function does what its name says.
+//   2. The debug branch no longer counts toward `sent`. It reports `wouldSend`
+//      instead, and the response carries `debugMode` back, so a caller physically
+//      cannot render a dry run as a successful send again.
 //
 // Make.com webhook (MAKE_WEBHOOK_URL) replaced with the shared Green API
 // sendWhatsApp() helper for the non-debug path, per the site-wide Make.com
@@ -30,7 +41,7 @@ Deno.serve(async (req) => {
     if (!user) return jsonResponse({ error: 'Unauthorized' }, { status: 401 });
 
     const supabase = createUserClient(req);
-    const { eventIds, messageTemplate, debugMode = true, testPhone, limit, month, year } = await req.json();
+    const { eventIds, messageTemplate, debugMode = false, testPhone, limit, month, year } = await req.json();
 
     if (!month || !year) return jsonResponse({ error: 'month and year are required' }, { status: 400 });
 
@@ -57,7 +68,8 @@ Deno.serve(async (req) => {
       'היי {coupleNames}, ההתרגשות בשיאה! 🥂\nלקראת האירוע שלכם, אנחנו רוצים לוודא שכל הפרטים מסונכרנים אצלנו במערכת. 📋\nנשמח אם תוכלו למלא את השאלון הקצר בקישור הבא כדי שנוכל לתת לכם את השירות הטוב ביותר ❤️\n{questionnaireUrl}\nתודה! אווירה צלמים 📸';
 
     const logEntries: Array<Record<string, unknown>> = [];
-    let sent = 0;
+    let sent = 0;      // real WhatsApp messages delivered
+    let wouldSend = 0; // debugMode only — never conflated with `sent`
 
     for (const eventId of eventsToProcess) {
       try {
@@ -99,12 +111,13 @@ Deno.serve(async (req) => {
         };
 
         if (debugMode === true) {
-          console.log(`[DEBUG] Would send to ${event.couple_names} (${targetPhone}): ${message}`);
-          logEntry.success = true;
+          // Counted separately from `sent`, on purpose. Reporting a dry run as a send
+          // is the bug this function is named after.
+          console.log(`[DEBUG] Would send to ${event.couple_names} (${targetPhone})`);
           logEntry.debugMode = true;
           logEntries.push(logEntry);
-          sent++;
-        } else if (debugMode === false) {
+          wouldSend++;
+        } else {
           const result = await sendWhatsApp(supabase, targetPhone, message);
           if (!result.success) {
             logEntry.reason = result.error;
@@ -123,11 +136,23 @@ Deno.serve(async (req) => {
       await delay(3000 + Math.floor(Math.random() * 2000));
     }
 
+    // Dry-run entries are neither sent nor failed — excluding them keeps `failed`
+    // meaning "we tried and it didn't work", which is what the caller shows the user.
     const failedList = logEntries
-      .filter((e) => !e.success)
+      .filter((e) => !e.success && !e.debugMode)
       .map((e) => ({ coupleNames: e.coupleNames || 'unknown', eventId: e.eventId, reason: e.reason }));
 
-    return jsonResponse({ success: true, sent, failed: failedList.length, total: eventsToProcess.length, failedList, logs: logEntries });
+    return jsonResponse({
+      success: true,
+      // Echoed back so the caller can never present a dry run as a real send.
+      debugMode: debugMode === true,
+      sent,
+      wouldSend,
+      failed: failedList.length,
+      total: eventsToProcess.length,
+      failedList,
+      logs: logEntries,
+    });
   } catch (error) {
     return jsonResponse({ error: error.message }, { status: 500 });
   }

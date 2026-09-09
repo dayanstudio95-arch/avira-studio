@@ -38,6 +38,18 @@ export default function Events() {
 
   useEffect(() => {
     loadEvents();
+    // The questionnaire wording is editable in הגדרות ← תבניות הודעה, but nothing ever
+    // loaded it here — `questionnaireTemplate` stayed '' forever, so the bulk send
+    // always fell back to the hardcoded DEFAULT_TEMPLATE below and every edit the
+    // studio made to that template was silently ignored.
+    (async () => {
+      try {
+        const rows = await base44.entities.AppSetting.filter({ key: "template_questionnaire" });
+        if (rows?.[0]?.value) setQuestionnaireTemplate(rows[0].value);
+      } catch (e) {
+        console.error("Error loading questionnaire template:", e);
+      }
+    })();
   }, []);
 
   const loadEvents = async () => {
@@ -163,16 +175,39 @@ export default function Events() {
         return;
       }
 
+      // Real WhatsApp messages to real couples, so it asks first. Until 2026-09-09 this
+      // call silently ran the Edge Function's debug branch and then announced
+      // "✅ נשלחו N שאלונים בהצלחה" for messages that were never sent — see the header
+      // of supabase/functions/send-questionnaire-to-events/index.ts.
+      const names = toSend.slice(0, 5).map(e => e.coupleNames).filter(Boolean).join(', ');
+      const more = toSend.length > 5 ? ` ועוד ${toSend.length - 5}` : '';
+      if (!window.confirm(
+        `לשלוח שאלון הכנה ל-${toSend.length} זוגות בוואטסאפ?\n\n${names}${more}\n\nההודעות נשלחות בפועל.`
+      )) {
+        setQuestionnaireLoading(false);
+        return;
+      }
+
       const res = await base44.functions.invoke('sendQuestionnaireToEvents', {
         eventIds: toSend.map(e => e.id),
         month: targetMonth,
         year: targetYear,
         messageTemplate: questionnaireTemplate || DEFAULT_TEMPLATE,
-        progressCallback: (progress) => setSendProgress(progress)
+        // NOTE: no progressCallback. It used to be passed here, but the payload is
+        // JSON.stringify'd on the way to the Edge Function, which drops functions
+        // silently — the progress bar could never have moved.
       });
-      
-      const sent = res.data?.sent || 0;
-      alert(`✅ נשלחו ${sent} שאלונים בהצלחה!`);
+
+      // Report what the server actually did, including the dry-run case, rather than
+      // assuming a non-zero count means messages went out.
+      const { sent = 0, wouldSend = 0, failed = 0, debugMode } = res.data || {};
+      if (debugMode) {
+        alert(`⚠️ ריצת בדיקה — לא נשלחה אף הודעה.\nהיו נשלחים ${wouldSend} שאלונים.`);
+      } else if (failed > 0) {
+        alert(`נשלחו ${sent} שאלונים.\n⚠️ ${failed} נכשלו — בדוק את מספרי הטלפון שלהם.`);
+      } else {
+        alert(`✅ נשלחו ${sent} שאלונים בהצלחה!`);
+      }
       setShowQuestionnaireModal(false);
       setCheckedEvents(new Set());
       setSendProgress({ sent: 0, total: 0 });
