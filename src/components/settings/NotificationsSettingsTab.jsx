@@ -145,11 +145,20 @@ export default function NotificationsSettingsTab() {
             <div className="w-8 h-8 bg-yellow-500/20 rounded-lg flex items-center justify-center">
               <Mail className="w-4 h-4 text-yellow-400" />
             </div>
-            גיבוי חודשי של אירועים — במייל
+            גיבוי חודשי מלא — במייל
           </CardTitle>
           <p className="text-gray-400 text-sm">
-            אחת לחודש תישלח לכתובת שתגדירו כאן רשימה מלאה של כל האירועים העתידיים — תאריך, זוג, מקום, טלפון
-            וכל חברי הצוות המשובצים — כדי שתמיד יהיה עותק עדכני זמין גם אם המערכת אינה נגישה.
+            {/* Copy updated 2026-09-10 alongside the function rewrite. It used to
+                describe an upcoming-events list, which is all it sent; saying that now
+                would understate what arrives and, worse, leave the studio thinking the
+                money and contracts are not covered when they are. */}
+            אחת לחודש תישלח לכתובת שתגדירו כאן <strong>עותק מלא של כל הנתונים</strong> כקובץ מצורף —
+            לידים, חוזים, תשלומים, אירועים, צוות וחבילות — יחד עם רשימת האירועים הקרובים בגוף המייל.
+            הקובץ דחוס (<code>.gz</code>); לחיצה כפולה פותחת אותו.
+            <br />
+            <span className="text-amber-400/90">
+              ⚠️ אם השליחה נכשלת — תופיע התראה בפעמון שבראש המסך. אין שקט מדומה.
+            </span>
           </p>
         </CardHeader>
         <CardContent className="p-6 space-y-4">
