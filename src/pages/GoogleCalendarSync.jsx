@@ -22,15 +22,24 @@ const HEBREW_MONTHS = [
 // Also renders a full "all events in the system" table (not just the ones
 // with a sync problem) so the user can see at a glance which events are
 // green (synced) vs red (not synced / failed) — and lets them select any
-// subset of already-synced events to manually trigger a Google Calendar
-// crew invite for, independent of syncing itself. Syncing an event
-// (sync-event-to-calendar / reconcile-calendar-sync, see
-// _shared/googleCalendarSync.ts's pushEventToAccount) never emails
-// attendees — the `sendUpdates` query param is deliberately left empty —
-// so "sync everything" and "invite the crew" are already two fully
-// separate actions; this page just exposes the second one as an explicit,
-// selectable, manual step instead of it happening implicitly per-assignment
-// (as it still does automatically in EventsTableWithBulkDelete.jsx).
+// subset of already-synced events and add their crew to the calendar event.
+//
+// ⚠️ Wording corrected 2026-09-10 — this used to say "שלח זימון יומן (מייל)" and
+// report "נשלחו N זימונים בהצלחה". No email or notification of any kind is sent, and
+// none ever was on this path: `send-staff-invite` just GETs the event, appends the
+// staff member's address to `attendees`, and PATCHes it back — with no `sendUpdates`
+// param, exactly like pushEventToAccount. Saying "מייל" made the button read as
+// something to be careful with, and made its success toast a claim about an email that
+// did not exist. Same family of bug as the questionnaire's "נשלחו N שאלונים".
+//
+// It is also now largely redundant: buildEventPayload puts the same attendees into
+// every sync, so a normal sync already adds the crew. This button only matters for an
+// event that was synced BEFORE its crew was assigned and has not been touched since.
+//
+// Syncing never emails attendees either — `sendUpdates` is deliberately the empty
+// string in _shared/googleCalendarSync.ts:178, so the URLs carry no query param and
+// Google treats that as "do not notify". Note attendees ARE still added, so the event
+// still appears on each photographer's own calendar.
 export default function GoogleCalendarSync() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [accounts, setAccounts] = useState([]);
@@ -250,15 +259,15 @@ export default function GoogleCalendarSync() {
           else failCount++;
         });
       }
-      const parts = [`נשלחו ${successCount} זימונים בהצלחה`];
+      const parts = [`${successCount} חברי צוות נוספו לאירועים ביומן`];
       if (failCount > 0) parts.push(`${failCount} נכשלו`);
-      if (skippedCount > 0) parts.push(`${skippedCount} אירועים ללא צוות לזימון`);
+      if (skippedCount > 0) parts.push(`${skippedCount} אירועים ללא צוות`);
       if (successCount > 0) toast.success(parts.join(", "));
       else toast.warning(parts.join(", "));
       setSelectedEventIds(new Set());
       await loadData();
     } catch (e) {
-      toast.error("שגיאה בשליחת זימונים: " + e.message);
+      toast.error("שגיאה בהוספת הצוות ליומן: " + e.message);
     }
     setSendingInvites(false);
   };
@@ -314,7 +323,7 @@ export default function GoogleCalendarSync() {
       if (syncFail > 0) parts.push(`${syncFail} נכשלו`);
       if (withInvites) {
         parts.push(`נשלחו ${inviteSuccess} זימוני צוות`);
-        if (inviteFail > 0) parts.push(`${inviteFail} זימונים נכשלו`);
+        if (inviteFail > 0) parts.push(`${inviteFail} הוספות צוות נכשלו`);
         if (inviteSkipped > 0) parts.push(`${inviteSkipped} אירועים ללא צוות`);
       }
       if (syncFail === 0) toast.success(parts.join(", "));
@@ -552,13 +561,13 @@ export default function GoogleCalendarSync() {
                   className="bg-green-600 hover:bg-green-700 text-white gap-1.5"
                 >
                   {sendingInvites ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                  שלח זימון יומן לצוות ({selectedEventIds.size})
+                  הוסף את הצוות לאירועים ביומן ({selectedEventIds.size})
                 </Button>
               </div>
             </div>
             <p className="text-xs text-gray-500 mb-3">
-              סימון תיבה מאפשר בחירת אירועים (רק כאלה שכבר סונכרנו ליומן הראשי) ושליחת זימון יומן (מייל) לחברי הצוות שלהם —
-              בנפרד לגמרי מהסנכרון עצמו, שלעולם לא שולח זימון אוטומטית.
+              מוסיף את חברי הצוות של האירועים המסומנים כמשתתפים באירוע ביומן.
+              ⚠️ לא נשלח מייל ולא נשלחת התראה — הסנכרון הרגיל מוסיף אותם ממילא, כך שכפתור זה נחוץ רק כדי להשלים אירוע שסונכרן לפני שהצוות שובץ.
             </p>
             {allEvents.length === 0 ? (
               <p className="text-gray-500 text-sm py-4 text-center">אין אירועים במערכת</p>
@@ -725,7 +734,7 @@ export default function GoogleCalendarSync() {
               נמצאו <span className="text-white font-semibold">{eventsInSelectedMonth.length}</span> אירועים ב-{HEBREW_MONTHS[syncMonth - 1]} {syncYear}
             </p>
             <p className="text-xs text-gray-500">
-              בחר אם לסנכרן את האירועים האלה ליומן Google בלבד, או לסנכרן ולשלוח מיד גם זימון יומן (מייל) לכל חברי הצוות המשויכים בהם (לא כולל עורך).
+              סנכרון בלבד מספיק ברוב המקרים — הוא כבר מוסיף את הצוות לאירוע. האפשרות השנייה רק מוסיפה מעבר נוסף על כל חבר צוות, ולא שולחת מייל או התראה.
             </p>
           </div>
           <DialogFooter className="flex-col sm:flex-col gap-2">
@@ -735,7 +744,7 @@ export default function GoogleCalendarSync() {
               className="w-full bg-green-600 hover:bg-green-700 text-white gap-1.5"
             >
               {syncRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              סנכרן ושלח זימון לצוות
+              סנכרן + הוסף צוות שוב
             </Button>
             <Button
               onClick={() => handleRunMonthSync(false)}
@@ -744,7 +753,7 @@ export default function GoogleCalendarSync() {
               className="w-full border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700 gap-1.5"
             >
               {syncRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-              סנכרן בלבד (ללא זימון)
+              סנכרן בלבד (מומלץ)
             </Button>
           </DialogFooter>
         </DialogContent>
