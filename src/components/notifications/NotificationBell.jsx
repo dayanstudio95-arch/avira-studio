@@ -4,14 +4,21 @@ import { usePermission } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Bell, FileCheck, CheckCheck } from "lucide-react";
+import { Bell, FileCheck, CheckCheck, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import { he } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 
-// In-app notifications bell — v1 scope: contract-signed only (migration
-// 0026_notifications_trigger.sql). Visible only to owner/admin/studio_manager
+// In-app notifications bell — the one place in the app that reports things nobody
+// asked to see. Started as contract-signed only (migration
+// 0026_notifications_trigger.sql); it now also carries the FAILURE notifications that
+// background jobs write when they cannot reach the studio any other way (a failed
+// monthly backup, a contract alert that never made it to WhatsApp). Those are the whole
+// reason those jobs stopped answering 200 on failure, so they must be legible AS
+// failures here — hence the separate icon and colour below, instead of the same cheerful
+// yellow as "a couple just signed!".
+// Visible only to owner/admin/studio_manager
 // (matches the notifications table's own admin-only RLS — a non-admin role's
 // query would just come back empty anyway, but gating in the UI too avoids a
 // pointless polling request for roles that can never see anything here).
@@ -21,6 +28,11 @@ import { createPageUrl } from "@/utils";
 const TYPE_ICONS = {
   contract_signed: FileCheck,
 };
+
+// Written by monthly-events-backup/index.ts and contract-signed-webhook/index.ts.
+// Anything ending in _failed gets the same treatment, so a future job that reports a
+// failure is legible here without touching this file.
+const isFailure = (type) => typeof type === "string" && type.endsWith("_failed");
 
 export default function NotificationBell() {
   const { isAdmin } = usePermission();
@@ -143,7 +155,8 @@ export default function NotificationBell() {
           ) : (
             <div className="divide-y divide-gray-800">
               {notifications.map((n) => {
-                const Icon = TYPE_ICONS[n.type] || Bell;
+                const failed = isFailure(n.type);
+                const Icon = failed ? AlertTriangle : (TYPE_ICONS[n.type] || Bell);
                 return (
                   <button
                     key={n.id}
@@ -152,7 +165,9 @@ export default function NotificationBell() {
                       !n.isRead ? "bg-blue-500/10" : ""
                     }`}
                   >
-                    <Icon className="w-4 h-4 text-yellow-400 mt-0.5 shrink-0" />
+                    <Icon
+                      className={`w-4 h-4 mt-0.5 shrink-0 ${failed ? "text-red-400" : "text-yellow-400"}`}
+                    />
                     <div className="flex-1 min-w-0">
                       <p className={`text-sm ${!n.isRead ? "font-semibold text-white" : "text-gray-300"}`}>
                         {n.title}

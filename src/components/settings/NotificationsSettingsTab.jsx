@@ -116,6 +116,15 @@ export default function NotificationsSettingsTab() {
               כרגע פעילה התראה אחת: <strong>חתימת חוזה</strong> — ברגע שליד חותם על חוזה (בין אם דרך הקישור
               הציבורי ובין אם ידנית במערכת), תישלח הודעת וואטסאפ למספר שתגדירו כאן, וגם תופיע התראה בתוך
               המערכת (פעמון בראש התפריט) לכל בעל תפקיד ניהולי.
+              <br />
+              {/* Added 2026-09-10 with the webhook fix. Until then a failed WhatsApp
+                  alert was invisible: the function logged the error and answered
+                  success. Saying this out loud here is half the fix — the studio has to
+                  know the bell is the backstop, or they will keep trusting a silent
+                  WhatsApp. */}
+              <span className="text-amber-400/90">
+                ⚠️ אם הודעת הוואטסאפ נכשלת — תופיע התראה אדומה בפעמון עם שם הזוג. לא נשארים בלי לדעת.
+              </span>
             </p>
           </div>
           <div>
