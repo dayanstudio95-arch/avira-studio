@@ -23,7 +23,20 @@ export interface SendEmailResult {
   error?: string;
 }
 
-export async function sendEmail(to: string, subject: string, html: string): Promise<SendEmailResult> {
+// Resend takes attachments as base64 in the JSON body. Kept optional so the existing
+// plain-HTML callers are untouched.
+export interface EmailAttachment {
+  filename: string;
+  /** base64-encoded file content */
+  content: string;
+}
+
+export async function sendEmail(
+  to: string,
+  subject: string,
+  html: string,
+  attachments?: EmailAttachment[]
+): Promise<SendEmailResult> {
   if (!RESEND_API_KEY) {
     return { success: false, error: 'RESEND_API_KEY not configured' };
   }
@@ -43,6 +56,7 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
         to: [to],
         subject,
         html,
+        ...(attachments && attachments.length > 0 ? { attachments } : {}),
       }),
     });
 
