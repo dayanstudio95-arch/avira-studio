@@ -3,7 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { Trash2, Save, Play, Settings, Edit, X, Check } from "lucide-react";
+import { Trash2, Play, Edit, X, Check } from "lucide-react";
 import { STAFF_JOB_ROLES } from "@/lib/staffRoles";
 
 export default function TeamAutomationTab() {
@@ -20,21 +20,26 @@ export default function TeamAutomationTab() {
   const [isRunningMonthly, setIsRunningMonthly] = useState(false);
   const [isRunningDaily, setIsRunningDaily] = useState(false);
 
-  // Template states
-  const [showMonthlyTemplate, setShowMonthlyTemplate] = useState(false);
-  const [monthlyTemplate, setMonthlyTemplate] = useState("");
-  const [showDailyTemplate, setShowDailyTemplate] = useState(false);
-  const [dailyTemplate, setDailyTemplate] = useState("");
-  // template_questionnaire_reminder's editor used to live here too, but this whole
-  // card grid is `pointer-events-none` (disabled — see the banner below), making it
-  // permanently unreachable even though the template itself is still live-consumed
-  // by supabase/functions/send-questionnaire-reminders. Moved to the one accessible,
-  // canonical template editor: MessageTemplatesTab.jsx.
+  // The message-template editors that used to live on this card are gone (2026-09-10).
+  //
+  // They wrote `template_monthly_schedule` and `template_daily_brief` into app_settings,
+  // and NOTHING read them: monthly-crew-schedule and daily-event-brief build their text
+  // from `automations.message_template`, edited in לוח אוטומציות ← הגדרות אוטומציה, which
+  // works correctly. So the studio could edit the wording here, get "התבנית נשמרה
+  // בהצלחה", and see no change — two screens that look like the same thing where only
+  // one has any effect.
+  //
+  // Removed rather than wired up: there is no reason for two ways to set one message,
+  // and the working one already has a live preview. The stored app_settings rows are
+  // left untouched — this only removes the UI, so nothing is lost.
+  //
+  // (template_questionnaire_reminder's editor was moved out earlier for a different
+  // reason: this card grid is `pointer-events-none`, so it was unreachable. It lives in
+  // MessageTemplatesTab.jsx and IS consumed by send-questionnaire-reminders.)
 
   // Load data
   useEffect(() => {
     loadStaffMembers();
-    loadTemplates();
   }, []);
 
   const loadStaffMembers = async () => {
@@ -46,18 +51,6 @@ export default function TeamAutomationTab() {
       toast.error("שגיאה בטעינת אנשי הצוות");
     } finally {
       setIsLoadingStaff(false);
-    }
-  };
-
-  const loadTemplates = async () => {
-    try {
-      const settings = await base44.entities.AppSetting.list();
-      const monthlyTpl = settings.find(s => s.key === 'template_monthly_schedule')?.value;
-      const dailyTpl = settings.find(s => s.key === 'template_daily_brief')?.value;
-      if (monthlyTpl) setMonthlyTemplate(monthlyTpl);
-      if (dailyTpl) setDailyTemplate(dailyTpl);
-    } catch (error) {
-      console.error("Error loading templates:", error);
     }
   };
 
@@ -113,20 +106,6 @@ export default function TeamAutomationTab() {
       loadStaffMembers();
     } catch (error) {
       toast.error("שגיאה במחיקת אנשי צוות");
-    }
-  };
-
-  const handleSaveTemplate = async (key, value) => {
-    try {
-      const existing = await base44.entities.AppSetting.filter({ key });
-      if (existing.length > 0) {
-        await base44.entities.AppSetting.update(existing[0].id, { value });
-      } else {
-        await base44.entities.AppSetting.create({ key, value });
-      }
-      toast.success("התבנית נשמרה בהצלחה");
-    } catch (error) {
-      toast.error("שגיאה בשמירת התבנית");
     }
   };
 
@@ -283,32 +262,7 @@ export default function TeamAutomationTab() {
                 <Play className="w-3 h-3" />
                 {isRunningMonthly ? "מריץ..." : "הפעל עכשיו"}
               </Button>
-              <button
-                onClick={() => setShowMonthlyTemplate(!showMonthlyTemplate)}
-                className="px-3 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm"
-              >
-                <Settings className="w-4 h-4" />
-              </button>
             </div>
-            {showMonthlyTemplate && (
-              <div className="bg-gray-900 border border-gray-600 rounded p-3 space-y-2">
-                <p className="text-xs text-gray-400">עריכת תבנית הודעה</p>
-                <textarea
-                  className="w-full bg-gray-950 text-white text-xs border border-gray-700 rounded p-2 resize-none focus:outline-none focus:border-blue-500"
-                  rows={4}
-                  value={monthlyTemplate}
-                  onChange={e => setMonthlyTemplate(e.target.value)}
-                />
-                <Button
-                  size="sm"
-                  onClick={() => handleSaveTemplate("template_monthly_schedule", monthlyTemplate)}
-                  className="w-full bg-green-600 hover:bg-green-700 text-white gap-2"
-                >
-                  <Save className="w-3 h-3" />
-                  שמור
-                </Button>
-              </div>
-            )}
           </div>
 
           {/* סיכום יומי */}
@@ -331,32 +285,7 @@ export default function TeamAutomationTab() {
                 <Play className="w-3 h-3" />
                 {isRunningDaily ? "מריץ..." : "הפעל עכשיו"}
               </Button>
-              <button
-                onClick={() => setShowDailyTemplate(!showDailyTemplate)}
-                className="px-3 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm"
-              >
-                <Settings className="w-4 h-4" />
-              </button>
             </div>
-            {showDailyTemplate && (
-              <div className="bg-gray-900 border border-gray-600 rounded p-3 space-y-2">
-                <p className="text-xs text-gray-400">עריכת תבנית הודעה</p>
-                <textarea
-                  className="w-full bg-gray-950 text-white text-xs border border-gray-700 rounded p-2 resize-none focus:outline-none focus:border-blue-500"
-                  rows={4}
-                  value={dailyTemplate}
-                  onChange={e => setDailyTemplate(e.target.value)}
-                />
-                <Button
-                  size="sm"
-                  onClick={() => handleSaveTemplate("template_daily_brief", dailyTemplate)}
-                  className="w-full bg-green-600 hover:bg-green-700 text-white gap-2"
-                >
-                  <Save className="w-3 h-3" />
-                  שמור
-                </Button>
-              </div>
-            )}
           </div>
         </div>
       </div>
