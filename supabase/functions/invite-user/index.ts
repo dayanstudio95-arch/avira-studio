@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Forbidden — רק בעלים או מנהל יכולים להזמין משתמשים' }, { status: 403 });
     }
 
-    const { email, fullName, role, phone, password, origin } = await req.json();
+    const { email, fullName, role, phone, password } = await req.json();
 
     if (!email || typeof email !== 'string' || !EMAIL_RE.test(email)) {
       return jsonResponse({ error: 'כתובת אימייל לא תקינה' }, { status: 400 });
@@ -117,12 +117,13 @@ Deno.serve(async (req) => {
       }
       usedManualPassword = true;
     } else {
-      // Always use the fixed production app URL for the invite email's link — never trust
-      // the caller-supplied `origin`. If the admin sends an invite while running the app
-      // locally (localhost dev server), a client-derived origin would bake a `localhost`
-      // link into the email, which is unreachable for the invited teammate. `origin` is
-      // kept as a last-resort fallback only in case APP_BASE_URL is ever unset.
-      const redirectTo = `${Deno.env.get('APP_BASE_URL') || origin || Deno.env.get('SUPABASE_URL') || ''}/accept-invite`;
+      // Always the fixed production app URL — the client-supplied `origin` is no longer
+      // even a fallback, so a dev machine can never bake its own address into a production
+      // email. But note: this value was NEVER the real reason invite links went to
+      // localhost. Supabase Auth ignores redirectTo unless it is on the dashboard's
+      // Redirect URLs allow-list, and that list was empty until 2026-09-13 — see the
+      // longer note in create-tenant/index.ts and DEPLOYMENT.md §2.1.
+      const redirectTo = `${Deno.env.get('APP_BASE_URL') || Deno.env.get('SUPABASE_URL') || ''}/accept-invite`;
 
       const { data, error } = await serviceClient.auth.admin.inviteUserByEmail(email, {
         data: { full_name: fullName || null },

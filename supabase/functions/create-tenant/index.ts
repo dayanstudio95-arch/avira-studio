@@ -33,7 +33,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Forbidden — רק בעלים יכול ליצור סטודיו חדש' }, { status: 403 });
     }
 
-    const { studioName, email, fullName, origin } = await req.json();
+    const { studioName, email, fullName } = await req.json();
 
     if (!studioName || typeof studioName !== 'string' || !studioName.trim()) {
       return jsonResponse({ error: 'יש להזין שם סטודיו' }, { status: 400 });
@@ -57,11 +57,18 @@ Deno.serve(async (req) => {
 
     // 2. Invite the new owner (same auth.admin flow as invite-user — lands on /accept-invite
     //    to set their password).
-    // Always use the fixed production app URL, never the caller-supplied `origin` — if this
-    // is invoked while running the app locally, a client-derived origin would bake an
-    // unreachable `localhost` link into the invite email (see invite-user/index.ts for the
-    // same fix, applied there first after this exact bug was reported in production).
-    const redirectTo = `${Deno.env.get('APP_BASE_URL') || origin || Deno.env.get('SUPABASE_URL') || ''}/accept-invite`;
+    //
+    // ⚠️ READ THIS BEFORE TOUCHING THE LINK AGAIN. The "invite link goes to localhost" bug
+    // has been reported THREE times (Aug 2026 ×2, 2026-09-13). The first two fixes were both
+    // here, in what this function writes into the link — and both were beside the point.
+    // The real cause was Supabase Auth's own URL Configuration: Site URL was still the
+    // default http://localhost:3000 and the Redirect URLs allow-list was EMPTY, so Supabase
+    // ignored whatever redirectTo we sent and fell back to its default. No value in this
+    // file can fix that. See DEPLOYMENT.md §2.1. If this recurs, check the dashboard first.
+    //
+    // The client-supplied `origin` is no longer a fallback at all: a dev machine sending an
+    // invite must never be able to bake its own address into a production email.
+    const redirectTo = `${Deno.env.get('APP_BASE_URL') || Deno.env.get('SUPABASE_URL') || ''}/accept-invite`;
     const { data: inviteData, error: inviteError } = await serviceClient.auth.admin.inviteUserByEmail(email, {
       data: { full_name: fullName || null },
       redirectTo,

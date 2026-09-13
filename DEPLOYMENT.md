@@ -108,6 +108,30 @@ by the platform into every function's environment already — no manual secrets
 needed for most of these. The Google Calendar functions are the exception; see
 section 4 for the secrets they require.
 
+### 2.1 ⚠️ Auth URL Configuration — the setting that broke every emailed link, three times
+
+**Dashboard → Authentication → URL Configuration.** Set once per project:
+
+| Field | Value |
+|---|---|
+| Site URL | `https://new.avira-studio.com` |
+| Redirect URLs | `https://new.avira-studio.com/**` |
+
+Why this section exists: until 2026-09-13 this project still had Supabase's defaults —
+Site URL `http://localhost:3000` and an **empty** Redirect URLs list. Supabase only honours
+the `redirectTo` an Edge Function passes (`invite-user`, `create-tenant`, `resend-invite`)
+if it matches that allow-list; otherwise it **silently** redirects to Site URL. So every
+invite and recovery email this project ever sent landed on `ERR_CONNECTION_REFUSED` at
+localhost, regardless of what the code wrote into the link.
+
+The bug was reported three times (Aug 2026 ×2, Sep 2026). Both earlier fixes changed the
+value the functions put in the link (`APP_BASE_URL`, dropping the browser-supplied
+origin). Both were correct hygiene and both were irrelevant to the actual cause. The
+"manual password" invite mode was added as a workaround for the same symptom.
+
+**If an emailed link ever goes to localhost again, check this screen before reading any
+code.** Confirm with a real invite to an address you control, and click the link.
+
 ## 3. Schedule `automation-engine` to actually run periodically
 
 This is the one function nothing in the frontend calls on its own — it needs an
