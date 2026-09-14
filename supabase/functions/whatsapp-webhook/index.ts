@@ -78,10 +78,39 @@ const TEXT_TYPES_FOR_RATING = ['textMessage', 'extendedTextMessage', 'quotedMess
 const INBOUND_TYPES = ['incomingMessageReceived'];
 const OUTBOUND_TYPES = ['outgoingMessageReceived', 'outgoingAPIMessageReceived'];
 
+// Click-to-WhatsApp ad attribution, present on the FIRST message a person sends after
+// tapping one of the studio's Facebook/Instagram ads. Verified against a real stored
+// payload on 2026-09-15 (chat 972544251272): extendedTextMessageData carried
+// sourceType "ad", conversionSource "FB_Ads", sourceId (the ad id), sourceUrl (fb.me),
+// title and description (the ad copy), plus ctwaClid. Only the first message has it.
+interface AdContext {
+  sourceId: string | null;
+  sourceUrl: string | null;
+  title: string | null;
+  description: string | null;
+}
+
 interface ExtractedMessage {
   typeMessage: string | null;
   bodyText: string | null;
   mediaUrl: string | null;
+  adContext: AdContext | null;
+}
+
+function extractAdContext(messageData: any): AdContext | null {
+  const ext = messageData?.extendedTextMessageData;
+  if (!ext || typeof ext !== 'object') return null;
+  // Either marker is enough; both were present on the real payload. `ctwaClid` is the
+  // Click-To-WhatsApp click id and only Meta sets it.
+  const isAd = ext.sourceType === 'ad' || (typeof ext.ctwaClid === 'string' && ext.ctwaClid.length > 0);
+  if (!isAd) return null;
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+  return {
+    sourceId: str(ext.sourceId),
+    sourceUrl: str(ext.sourceUrl),
+    title: str(ext.title),
+    description: str(ext.description),
+  };
 }
 
 // Defensive extractor: Green API has ~15 message shapes and adds more over time. We
@@ -89,7 +118,7 @@ interface ExtractedMessage {
 // name — the complete payload is stored in `raw` either way, so nothing is ever lost.
 function extractMessage(messageData: any): ExtractedMessage {
   if (!messageData || typeof messageData !== 'object') {
-    return { typeMessage: null, bodyText: null, mediaUrl: null };
+    return { typeMessage: null, bodyText: null, mediaUrl: null, adContext: null };
   }
   const typeMessage: string | null = messageData.typeMessage ?? null;
 
@@ -116,7 +145,7 @@ function extractMessage(messageData: any): ExtractedMessage {
     }
   }
 
-  return { typeMessage, bodyText, mediaUrl };
+  return { typeMessage, bodyText, mediaUrl, adContext: extractAdContext(messageData) };
 }
 
 // Resolves which tenant this instance belongs to. There is no tenant_id anywhere in a
@@ -357,7 +386,7 @@ Deno.serve(async (req: Request) => {
     // ---- Conversation (create or fetch) -------------------------------------
     const { data: existingRows, error: convSelectError } = await supabase
       .from('whatsapp_conversations')
-      .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature')
+      .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature, source')
       .eq('tenant_id', tenantId)
       .eq('chat_id', chatId)
       .limit(1);
@@ -381,7 +410,7 @@ Deno.serve(async (req: Request) => {
           matched_event_id: match.eventId,
           display_name: displayName,
         })
-        .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature')
+        .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature, source')
         .single();
 
       if (insertConvError) {
@@ -390,7 +419,7 @@ Deno.serve(async (req: Request) => {
           // the other one created.
           const { data: raced } = await supabase
             .from('whatsapp_conversations')
-            .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature')
+            .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature, source')
             .eq('tenant_id', tenantId)
             .eq('chat_id', chatId)
             .limit(1);
@@ -402,7 +431,10 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const { typeMessage, bodyText, mediaUrl } = extractMessage(payload?.messageData);
+    const { typeMessage, bodyText, mediaUrl, adContext } = extractMessage(payload?.messageData);
+    // Only inbound messages can come from an ad; on an outbound webhook the same fields
+    // would describe a link preview the studio itself sent.
+    const inboundAd = isInbound ? adContext : null;
     const direction = isInbound ? 'inbound' : 'outbound_human';
 
     // ---- Re-classification (must happen BEFORE the verdict) -----------------
@@ -470,6 +502,7 @@ Deno.serve(async (req: Request) => {
         bodyText,
         inQuietHours,
         alreadyDecidedToReply: !!conversation.bot_would_reply_at,
+        fromAd: !!inboundAd || conversation.source === 'facebook_ad',
       });
     }
 
@@ -505,6 +538,13 @@ Deno.serve(async (req: Request) => {
     };
     if (isInbound) {
       updates.last_inbound_at = nowIso;
+      // Ad attribution is written once and never overwritten: the first message is the
+      // only one that carries it, and "where did this person come from" does not change.
+      if (inboundAd && !conversation.source) {
+        updates.source = 'facebook_ad';
+        updates.source_ad_id = inboundAd.sourceId;
+        updates.source_ad_title = inboundAd.title;
+      }
       // Overwrite rather than fill-if-empty. An inbound name is authoritative — it is
       // the contact naming themselves, or our own phonebook naming them — so the newest
       // one always wins. This is also what repairs the rows already mislabelled with the

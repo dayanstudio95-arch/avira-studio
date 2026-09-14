@@ -196,6 +196,11 @@ export default function WhatsAppInbox() {
     const c = selectedConversation;
     const noteParts = [];
     if (c.guestCount) noteParts.push(`כמות מוזמנים: ${c.guestCount}`);
+    // `leads` has no source column yet, so the attribution rides in the notes — enough
+    // to answer "did this one come from the ad?" when it closes.
+    if (c.source === "facebook_ad") {
+      noteParts.push(`הגיע דרך מודעה בפייסבוק${c.sourceAdTitle ? ` (${c.sourceAdTitle})` : ""}`);
+    }
     noteParts.push(`נוצר משיחת וואטסאפ עם ${c.phone || c.chatId}`);
 
     setLeadDialogConversationId(c.id);

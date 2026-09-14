@@ -94,6 +94,23 @@ for (const text of [
   'מחפשים צלמת לברית, מה החבילות שלכם?',
 ]) check(text, decideBotReply({ ...inquiryBase, bodyText: text }).wouldReply, true);
 
+section('came through a Facebook ad — the words no longer matter (2026-09-15)');
+// The real one: Meta's pre-filled text for the studio's own wedding-photography ad.
+// English, no service word, no date. Silent without the ad context, answered with it.
+const adPrefill = 'Hello! Can I get more info on this?';
+check('ad prefill, no ad context → silent', decideBotReply({ ...inquiryBase, bodyText: adPrefill }).wouldReply, false);
+check('ad prefill, from ad → replies', decideBotReply({ ...inquiryBase, bodyText: adPrefill, fromAd: true }).wouldReply, true);
+check('from ad, reason is ok', decideBotReply({ ...inquiryBase, bodyText: adPrefill, fromAd: true }).reason, 'ok');
+check('from ad, intent records it', decideBotReply({ ...inquiryBase, bodyText: adPrefill, fromAd: true }).intent.matchedAd, true);
+check('from ad, prefill deleted → still replies', decideBotReply({ ...inquiryBase, bodyText: '', fromAd: true }).wouldReply, true);
+check('from ad, just "היי" → replies', decideBotReply({ ...inquiryBase, bodyText: 'היי', fromAd: true }).wouldReply, true);
+// The ad does not switch off the rest of the chain.
+check('from ad, but a colleague → silent', decideBotReply({ ...inquiryBase, bodyText: 'היי אני צלם, מה המחירים שלכם?', fromAd: true }).wouldReply, false);
+check('from ad, but known contact → silent', decideBotReply({ ...inquiryBase, bodyText: adPrefill, fromAd: true, contactType: 'lead' }).reason, 'known_contact');
+check('from ad, but quiet hours → silent', decideBotReply({ ...inquiryBase, bodyText: adPrefill, fromAd: true, inQuietHours: true }).reason, 'quiet_hours');
+check('from ad, but bot muted → silent', decideBotReply({ ...inquiryBase, bodyText: adPrefill, fromAd: true, botEnabled: false }).reason, 'bot_muted');
+check('from ad, but not first message → silent', decideBotReply({ ...inquiryBase, bodyText: adPrefill, fromAd: true, state: 'HANDED_OFF' }).reason, 'not_first_message');
+
 section('not an inquiry — must stay silent');
 for (const text of [
   'היי',

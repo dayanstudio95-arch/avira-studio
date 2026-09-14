@@ -200,9 +200,28 @@ export interface IntentResult {
   matchedVendor: string | null;
   matchedSelfEvent: string | null;
   matchedDate: boolean;
+  // The message arrived through a Click-to-WhatsApp ad (Green API passes the ad's
+  // sourceType/sourceId/title/description on the first message). See DetectOptions.
+  matchedAd: boolean;
 }
 
-export function detectLeadIntent(bodyText: string | null | undefined): IntentResult {
+export interface DetectOptions {
+  // 2026-09-15. A real message that the gate got wrong: "Hello! Can I get more info on
+  // this?" — no Hebrew, no service word, no date. It was Meta's pre-filled text for the
+  // studio's own Facebook ad for wedding photography, and the sender was a stranger who
+  // had just tapped that ad. The word lists could never see that; the payload could —
+  // extendedTextMessageData carried `sourceType: "ad"`, the ad id, title and copy.
+  //
+  // An ad tap stands alone, like a self-event term, and for the same reason: it is
+  // evidence about WHO is writing, not about which words they used. Someone who tapped
+  // a "wedding photography discount" ad and opened a chat is a customer by
+  // construction. The text is still read for the vendor veto — a colleague can tap an
+  // ad too — but nothing else is required of it, including being in Hebrew.
+  fromAd?: boolean;
+}
+
+export function detectLeadIntent(bodyText: string | null | undefined, opts: DetectOptions = {}): IntentResult {
+  const fromAd = !!opts.fromAd;
   const empty: IntentResult = {
     isInquiry: false,
     matchedService: null,
@@ -210,8 +229,12 @@ export function detectLeadIntent(bodyText: string | null | undefined): IntentRes
     matchedVendor: null,
     matchedSelfEvent: null,
     matchedDate: false,
+    matchedAd: fromAd,
   };
-  if (!bodyText || typeof bodyText !== 'string' || !bodyText.trim()) return empty;
+  if (!bodyText || typeof bodyText !== 'string' || !bodyText.trim()) {
+    // No text to veto on. An ad tap with the pre-filled text deleted is still an ad tap.
+    return fromAd ? { ...empty, isInquiry: true } : empty;
+  }
 
   const text = normalize(bodyText);
 
@@ -229,13 +252,14 @@ export function detectLeadIntent(bodyText: string | null | undefined): IntentRes
     // the sender identifying themselves as the customer, and the vendor list carries
     // the phrasings ('יש לי זוג', 'אני מפיק'…) that let someone say it about a stranger.
     isInquiry: !matchedVendor && (
-      !!matchedSelfEvent || (!!matchedService && (!!matchedInquiry || matchedDate))
+      fromAd || !!matchedSelfEvent || (!!matchedService && (!!matchedInquiry || matchedDate))
     ),
     matchedService,
     matchedInquiry,
     matchedVendor,
     matchedSelfEvent,
     matchedDate,
+    matchedAd: fromAd,
   };
 }
 
@@ -285,6 +309,12 @@ export interface BotDecisionInput {
   // messages would be counted as four separate "the bot would have replied" events and
   // the measured hit rate would be inflated by exactly the people who talk the most.
   alreadyDecidedToReply: boolean;
+  // This message carries Click-to-WhatsApp ad context, OR the conversation was opened
+  // by one that did. The second half matters: only the FIRST message from an ad carries
+  // the context, so a stranger who taps the ad, gets no reply (quiet hours, say) and
+  // writes "hello?" an hour later must still be recognised. The webhook stores the
+  // source on the conversation for exactly that reason.
+  fromAd?: boolean;
 }
 
 const TEXT_MESSAGE_TYPES = ['textMessage', 'extendedTextMessage', 'quotedMessage'];
@@ -297,6 +327,7 @@ export function decideBotReply(input: BotDecisionInput): BotDecision {
     matchedVendor: null,
     matchedSelfEvent: null,
     matchedDate: false,
+    matchedAd: false,
   };
   const stop = (reason: BotDecisionReason): BotDecision => ({ wouldReply: false, reason, intent: noIntent });
 
@@ -327,7 +358,7 @@ export function decideBotReply(input: BotDecisionInput): BotDecision {
   // than one that doesn't reply at all.
   if (input.inQuietHours) return stop('quiet_hours');
 
-  const intent = detectLeadIntent(input.bodyText);
+  const intent = detectLeadIntent(input.bodyText, { fromAd: !!input.fromAd });
   if (!intent.isInquiry) return { wouldReply: false, reason: 'no_intent', intent };
 
   return { wouldReply: true, reason: 'ok', intent };

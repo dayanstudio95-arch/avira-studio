@@ -140,6 +140,18 @@ export default function ConversationList({
 
               <div className="mt-1.5 flex items-center justify-between gap-2">
                 <span className="truncate text-xs text-gray-400">{conv.lastMessagePreview || "—"}</span>
+                {/* Came in through a Facebook/Instagram ad (migration 0060). Shown next to
+                    the contact type because it changes what the row means: an "unknown"
+                    who tapped the studio's wedding ad is a lead, not a stranger. */}
+                {conv.source === "facebook_ad" && (
+                  <Badge
+                    variant="outline"
+                    className="shrink-0 text-[10px] border-blue-500/50 text-blue-300"
+                    title={conv.sourceAdTitle ? `מודעה: ${conv.sourceAdTitle}` : "הגיע דרך מודעה"}
+                  >
+                    📣 מודעה
+                  </Badge>
+                )}
                 <Badge
                   variant="outline"
                   className={`shrink-0 text-[10px] ${CONTACT_TYPE_COLORS[conv.contactType] || CONTACT_TYPE_COLORS.unknown}`}
