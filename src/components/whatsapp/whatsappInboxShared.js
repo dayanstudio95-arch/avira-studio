@@ -92,6 +92,16 @@ export function daysSince(iso) {
 // authoritative normalization lives server-side (_shared/phone.ts) and is already
 // stored on the conversation's `phone` column — this is only a fallback for rows
 // where normalization failed (e.g. a non-Israeli number).
+// Digits only, Israeli-local form. "+972 54-425-1272", "972544251272@c.us" and
+// "054-4251272" all become "0544251272", so a number pasted from WhatsApp in any format
+// matches the row. Added 2026-09-15 after the owner searched a number exactly as
+// WhatsApp displays it and got "no conversations".
+export function phoneDigits(value) {
+  let d = String(value || "").split("@")[0].replace(/\D/g, "");
+  if (d.startsWith("972")) d = "0" + d.slice(3);
+  return d;
+}
+
 export function displayPhone(conversation) {
   if (!conversation) return "";
   if (conversation.phone) return conversation.phone;

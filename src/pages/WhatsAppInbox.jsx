@@ -8,6 +8,7 @@ import ConversationThread from "@/components/whatsapp/ConversationThread";
 import LeadFormDialog from "@/components/leads/LeadFormDialog";
 import WhatsAppFollowUpDialog from "@/components/whatsapp/WhatsAppFollowUpDialog";
 import { usePermission } from "@/lib/permissions";
+import { phoneDigits } from "@/components/whatsapp/whatsappInboxShared";
 
 // WhatsApp inbox — every conversation the studio's WhatsApp number is having, shown
 // like WhatsApp itself, with the ability to reply from here.
@@ -98,11 +99,16 @@ export default function WhatsAppInbox() {
         return false;
       }
       if (!q) return true;
+      // Numbers are compared digits-to-digits (see phoneDigits) — the exact string the
+      // owner pastes from WhatsApp never matches what the webhook stores otherwise.
+      const qDigits = phoneDigits(q);
+      const phoneHit =
+        qDigits.length >= 3 &&
+        (phoneDigits(c.phone).includes(qDigits) || phoneDigits(c.chatId).includes(qDigits));
       return (
+        phoneHit ||
         String(c.displayName || "").toLowerCase().includes(q) ||
-        String(c.coupleNames || "").toLowerCase().includes(q) ||
-        String(c.phone || "").includes(q) ||
-        String(c.chatId || "").includes(q)
+        String(c.coupleNames || "").toLowerCase().includes(q)
       );
     });
   }, [conversations, searchTerm, contactFilter]);
