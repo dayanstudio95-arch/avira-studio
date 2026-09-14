@@ -2,12 +2,13 @@ import React, { useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { MessageSquare, AlertTriangle, Bot, Flame, Send, Settings2 } from "lucide-react";
+import { MessageSquare, AlertTriangle, Bot, Flame, Send, Settings2, FlaskConical, X } from "lucide-react";
 import ConversationList from "@/components/whatsapp/ConversationList";
 import ConversationThread from "@/components/whatsapp/ConversationThread";
 import LeadFormDialog from "@/components/leads/LeadFormDialog";
 import WhatsAppFollowUpDialog, { FOLLOWUP_AFTER_DAYS_KEY } from "@/components/whatsapp/WhatsAppFollowUpDialog";
 import WhatsAppFollowUpSettingsDialog from "@/components/whatsapp/WhatsAppFollowUpSettingsDialog";
+import BotSimulator from "@/components/whatsapp/BotSimulator";
 import { usePermission } from "@/lib/permissions";
 import { phoneDigits, daysSince } from "@/components/whatsapp/whatsappInboxShared";
 import { isStalledFlow, isMediaFromStranger } from "@/lib/needsAttention";
@@ -53,6 +54,7 @@ export default function WhatsAppInbox() {
   const [leadDialogConversationId, setLeadDialogConversationId] = useState(null);
   const [isFollowUpOpen, setIsFollowUpOpen] = useState(false);
   const [isFollowUpSettingsOpen, setIsFollowUpSettingsOpen] = useState(false);
+  const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
 
   // Whether the bot is actually switched on, read from the same app_settings row the
   // webhook reads. null while loading, so the banner renders nothing rather than
@@ -346,6 +348,15 @@ export default function WhatsAppInbox() {
             <Settings2 className="h-3.5 w-3.5" />
             הגדרות פולו-אפ
           </button>
+          <button
+            type="button"
+            onClick={() => setIsSimulatorOpen(true)}
+            className="inline-flex items-center gap-1 rounded-full border border-gray-600 bg-gray-800/60 px-2.5 py-1 text-xs text-gray-300 transition-colors hover:bg-gray-700"
+            title="מה הבוט היה עונה להודעה מסוימת — בלי לשלוח כלום"
+          >
+            <FlaskConical className="h-3.5 w-3.5" />
+            בדוק את הבוט
+          </button>
           {wouldReplyCount > 0 && (
             <button
               type="button"
@@ -412,6 +423,22 @@ export default function WhatsAppInbox() {
         packagePrices={{}}
         onSaved={handleLeadSaved}
       />
+
+      {isSimulatorOpen && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" dir="rtl">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl max-w-2xl w-full max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-5 border-b border-gray-800">
+              <h2 className="text-white text-lg font-semibold">בדוק מה הבוט היה עונה</h2>
+              <button onClick={() => setIsSimulatorOpen(false)} className="text-gray-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5">
+              <BotSimulator />
+            </div>
+          </div>
+        </div>
+      )}
 
       <WhatsAppFollowUpSettingsDialog
         isOpen={isFollowUpSettingsOpen}
