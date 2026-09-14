@@ -87,6 +87,11 @@ export default function WhatsAppInbox() {
   const filteredConversations = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     return conversations.filter((c) => {
+      // Groups are hidden from every view except their own chip (owner's request,
+      // 2026-09-15: "אני לא רוצה לראות את הקבוצות במערכת"). They are still recorded by
+      // the webhook — the bot never replies in one, and the rows are the audit trail of
+      // that — they just don't belong in a sales inbox.
+      if (c.contactType === "group") return contactFilter === "group";
       // The first three filters are work queues, not contact_types — see the filter
       // list in ConversationList.jsx.
       if (contactFilter === "hot") {
@@ -115,6 +120,12 @@ export default function WhatsAppInbox() {
 
   // How much of the inbound traffic is actually new business — the single number
   // Stage 1 exists to measure before the bot is allowed to answer anybody.
+  // Header count matches what the list shows by default — groups are hidden there.
+  const nonGroupCount = useMemo(
+    () => conversations.filter((c) => c.contactType !== "group").length,
+    [conversations]
+  );
+
   const unknownCount = useMemo(
     () => conversations.filter((c) => c.contactType === "unknown").length,
     [conversations]
@@ -269,7 +280,7 @@ export default function WhatsAppInbox() {
           <MessageSquare className="h-6 w-6 text-yellow-400" />
           <h1 className="text-2xl font-bold text-white">שיחות וואטסאפ</h1>
           <span className="text-sm text-gray-500">
-            {conversations.length} שיחות · {unknownCount} ממספרים לא מוכרים
+            {nonGroupCount} שיחות · {unknownCount} ממספרים לא מוכרים
           </span>
           {/* The two commercial counters, before the diagnostic one. These are the
               numbers that translate into money; wouldReplyCount is for auditing the

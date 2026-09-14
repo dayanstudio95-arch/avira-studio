@@ -40,6 +40,9 @@ export default function ConversationList({
     { value: "lead", label: CONTACT_TYPE_LABELS.lead },
     { value: "client", label: CONTACT_TYPE_LABELS.client },
     { value: "staff", label: CONTACT_TYPE_LABELS.staff },
+    // The only way to see group chats — they are hidden from every other filter,
+    // including "הכל". See the filter in WhatsAppInbox.jsx.
+    { value: "group", label: "קבוצות" },
   ];
 
   // `min-h-0` is load-bearing, not cosmetic. This is a grid item in an auto-sized row,
