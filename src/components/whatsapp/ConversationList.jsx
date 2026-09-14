@@ -34,14 +34,17 @@ export default function ConversationList({
   const filters = [
     { value: "hot", label: "🔥 ליד חם" },
     { value: "pricelist_sent", label: "🧾 נשלח מחירון" },
+    // followup_sent — everyone who has already been nudged, so what happened after the
+    //                 nudge can be read in one place (owner's request, 2026-09-15).
+    { value: "followup_sent", label: "📨 נשלח פולו-אפ" },
     { value: "would_reply", label: "🤖 הבוט היה עונה" },
     { value: "all", label: "הכל" },
     { value: "unknown", label: CONTACT_TYPE_LABELS.unknown },
     { value: "lead", label: CONTACT_TYPE_LABELS.lead },
     { value: "client", label: CONTACT_TYPE_LABELS.client },
+    // Staff and groups are hidden from every other filter, including "הכל" — these
+    // two chips are the only way to see them. See the filter in WhatsAppInbox.jsx.
     { value: "staff", label: CONTACT_TYPE_LABELS.staff },
-    // The only way to see group chats — they are hidden from every other filter,
-    // including "הכל". See the filter in WhatsAppInbox.jsx.
     { value: "group", label: "קבוצות" },
   ];
 

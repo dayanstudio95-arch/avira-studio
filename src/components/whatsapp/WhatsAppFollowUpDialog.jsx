@@ -25,7 +25,12 @@ import { conversationTitle, daysSince } from "./whatsappInboxShared";
 // Who is in the queue is decided by the caller (WhatsAppInbox), which passes only
 // conversations at state PRICELIST_SENT with no followup_sent_at.
 
-const DEFAULT_TEMPLATE = `היי {{names}} 😊
+// Both keys are edited permanently in WhatsAppFollowUpSettingsDialog.jsx (the
+// "הגדרות פולו-אפ" button on the inbox). The edit box below is per-send only.
+export const FOLLOWUP_TEMPLATE_KEY = "template_whatsapp_followup";
+export const FOLLOWUP_AFTER_DAYS_KEY = "whatsapp_followup_after_days";
+
+export const DEFAULT_TEMPLATE = `היי {{names}} 😊
 רצינו לוודא שקיבלתם את המחירון ולבדוק אם יש שאלות.
 נשמח לשמור לכם את התאריך {{event_date}} — נותרו לנו מעט תאריכים בעונה.
 
@@ -53,7 +58,7 @@ export default function WhatsAppFollowUpDialog({ isOpen, onClose, conversations,
     setCheckedIds(new Set(queue.filter((c) => c.phone).map((c) => c.id)));
     (async () => {
       try {
-        const rows = await base44.entities.AppSetting.filter({ key: "template_whatsapp_followup" });
+        const rows = await base44.entities.AppSetting.filter({ key: FOLLOWUP_TEMPLATE_KEY });
         setTemplate(rows?.[0]?.value || DEFAULT_TEMPLATE);
       } catch {
         setTemplate(DEFAULT_TEMPLATE);
@@ -160,7 +165,7 @@ export default function WhatsAppFollowUpDialog({ isOpen, onClose, conversations,
                 />
                 <p className="text-gray-500 text-xs mt-1">
                   ניתן להשתמש ב- {"{{names}}"}, {"{{event_date}}"}, {"{{venue}}"} — כל אחד יקבל הודעה מותאמת.
-                  העריכה כאן היא לשליחה הזו בלבד; לשמירה קבועה — הגדרות ← תבניות הודעה.
+                  העריכה כאן היא לשליחה הזו בלבד; לשמירה קבועה — כפתור "הגדרות פולו-אפ" בראש מסך השיחות.
                 </p>
               </>
             ) : (

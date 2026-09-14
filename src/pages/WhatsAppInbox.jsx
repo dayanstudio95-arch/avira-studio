@@ -2,13 +2,14 @@ import React, { useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { MessageSquare, AlertTriangle, Bot, Flame, Send } from "lucide-react";
+import { MessageSquare, AlertTriangle, Bot, Flame, Send, Settings2 } from "lucide-react";
 import ConversationList from "@/components/whatsapp/ConversationList";
 import ConversationThread from "@/components/whatsapp/ConversationThread";
 import LeadFormDialog from "@/components/leads/LeadFormDialog";
-import WhatsAppFollowUpDialog from "@/components/whatsapp/WhatsAppFollowUpDialog";
+import WhatsAppFollowUpDialog, { FOLLOWUP_AFTER_DAYS_KEY } from "@/components/whatsapp/WhatsAppFollowUpDialog";
+import WhatsAppFollowUpSettingsDialog from "@/components/whatsapp/WhatsAppFollowUpSettingsDialog";
 import { usePermission } from "@/lib/permissions";
-import { phoneDigits } from "@/components/whatsapp/whatsappInboxShared";
+import { phoneDigits, daysSince } from "@/components/whatsapp/whatsappInboxShared";
 
 // WhatsApp inbox — every conversation the studio's WhatsApp number is having, shown
 // like WhatsApp itself, with the ability to reply from here.
@@ -50,6 +51,7 @@ export default function WhatsAppInbox() {
   // while the form is up, and the lead must link back to the one it was opened from.
   const [leadDialogConversationId, setLeadDialogConversationId] = useState(null);
   const [isFollowUpOpen, setIsFollowUpOpen] = useState(false);
+  const [isFollowUpSettingsOpen, setIsFollowUpSettingsOpen] = useState(false);
 
   // Whether the bot is actually switched on, read from the same app_settings row the
   // webhook reads. null while loading, so the banner renders nothing rather than
@@ -61,6 +63,19 @@ export default function WhatsAppInbox() {
       const rows = await base44.entities.AppSetting.list();
       const row = rows.find((r) => r.key === "whatsapp_bot_enabled");
       return ["true", "1", "yes"].includes(String(row?.value || "").toLowerCase());
+    },
+    enabled: canUseWhatsAppInbox,
+  });
+
+  // Days of silence after the price list before someone enters the follow-up queue.
+  // Set in WhatsAppFollowUpSettingsDialog; 0 (the default) is the behaviour the queue
+  // always had.
+  const { data: followUpAfterDays = 0 } = useQuery({
+    queryKey: ["whatsappFollowUpAfterDays"],
+    queryFn: async () => {
+      const rows = await base44.entities.AppSetting.filter({ key: FOLLOWUP_AFTER_DAYS_KEY });
+      const n = parseInt(rows?.[0]?.value, 10);
+      return Number.isFinite(n) && n >= 0 ? n : 0;
     },
     enabled: canUseWhatsAppInbox,
   });
@@ -92,12 +107,17 @@ export default function WhatsAppInbox() {
       // the webhook — the bot never replies in one, and the rows are the audit trail of
       // that — they just don't belong in a sales inbox.
       if (c.contactType === "group") return contactFilter === "group";
+      // Same for staff (2026-09-15, "אותו דבר לגבי צוות"): a photographer confirming a
+      // shift is not a sales conversation.
+      if (c.contactType === "staff") return contactFilter === "staff";
       // The first three filters are work queues, not contact_types — see the filter
       // list in ConversationList.jsx.
       if (contactFilter === "hot") {
         if (c.leadTemperature !== "hot") return false;
       } else if (contactFilter === "pricelist_sent") {
         if (c.state !== "PRICELIST_SENT") return false;
+      } else if (contactFilter === "followup_sent") {
+        if (!c.followupSentAt) return false;
       } else if (contactFilter === "would_reply") {
         if (!c.botWouldReplyAt) return false;
       } else if (contactFilter !== "all" && c.contactType !== contactFilter) {
@@ -120,9 +140,9 @@ export default function WhatsAppInbox() {
 
   // How much of the inbound traffic is actually new business — the single number
   // Stage 1 exists to measure before the bot is allowed to answer anybody.
-  // Header count matches what the list shows by default — groups are hidden there.
-  const nonGroupCount = useMemo(
-    () => conversations.filter((c) => c.contactType !== "group").length,
+  // Header count matches what the list shows by default — groups and staff are hidden.
+  const visibleCount = useMemo(
+    () => conversations.filter((c) => c.contactType !== "group" && c.contactType !== "staff").length,
     [conversations]
   );
 
@@ -157,9 +177,16 @@ export default function WhatsAppInbox() {
   const followUpQueue = useMemo(
     () =>
       conversations.filter(
-        (c) => c.state === "PRICELIST_SENT" && !c.followupSentAt && !c.leadTemperature
+        (c) =>
+          c.state === "PRICELIST_SENT" &&
+          !c.followupSentAt &&
+          !c.leadTemperature &&
+          // Not before the configured number of silent days has passed. A row with no
+          // lastBotMessageAt can't be measured, so it stays in (fail open here is
+          // harmless: nothing sends without a click).
+          (followUpAfterDays === 0 || (daysSince(c.lastBotMessageAt) ?? followUpAfterDays) >= followUpAfterDays)
       ),
-    [conversations]
+    [conversations, followUpAfterDays]
   );
 
   const toggleBotMutation = useMutation({
@@ -280,7 +307,7 @@ export default function WhatsAppInbox() {
           <MessageSquare className="h-6 w-6 text-yellow-400" />
           <h1 className="text-2xl font-bold text-white">שיחות וואטסאפ</h1>
           <span className="text-sm text-gray-500">
-            {nonGroupCount} שיחות · {unknownCount} ממספרים לא מוכרים
+            {visibleCount} שיחות · {unknownCount} ממספרים לא מוכרים
           </span>
           {/* The two commercial counters, before the diagnostic one. These are the
               numbers that translate into money; wouldReplyCount is for auditing the
@@ -305,6 +332,15 @@ export default function WhatsAppInbox() {
               {followUpQueue.length} ממתינים לפולו-אפ
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => setIsFollowUpSettingsOpen(true)}
+            className="inline-flex items-center gap-1 rounded-full border border-gray-600 bg-gray-800/60 px-2.5 py-1 text-xs text-gray-300 transition-colors hover:bg-gray-700"
+            title="נוסח הפולו-אפ ומתי שיחה נכנסת לתור"
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+            הגדרות פולו-אפ
+          </button>
           {wouldReplyCount > 0 && (
             <button
               type="button"
@@ -370,6 +406,12 @@ export default function WhatsAppInbox() {
         initialValues={leadDialogValues}
         packagePrices={{}}
         onSaved={handleLeadSaved}
+      />
+
+      <WhatsAppFollowUpSettingsDialog
+        isOpen={isFollowUpSettingsOpen}
+        onClose={() => setIsFollowUpSettingsOpen(false)}
+        onSaved={() => queryClient.invalidateQueries({ queryKey: ["whatsappFollowUpAfterDays"] })}
       />
 
       <WhatsAppFollowUpDialog
