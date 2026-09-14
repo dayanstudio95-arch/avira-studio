@@ -10,7 +10,7 @@ import WhatsAppFollowUpDialog, { FOLLOWUP_AFTER_DAYS_KEY } from "@/components/wh
 import WhatsAppFollowUpSettingsDialog from "@/components/whatsapp/WhatsAppFollowUpSettingsDialog";
 import BotSimulator from "@/components/whatsapp/BotSimulator";
 import { usePermission } from "@/lib/permissions";
-import { phoneDigits, daysSince } from "@/components/whatsapp/whatsappInboxShared";
+import { phoneDigits, daysSince, CONTACT_TYPE_LABELS } from "@/components/whatsapp/whatsappInboxShared";
 import { isStalledFlow, isMediaFromStranger } from "@/lib/needsAttention";
 
 // WhatsApp inbox — every conversation the studio's WhatsApp number is having, shown
@@ -195,6 +195,27 @@ export default function WhatsAppInbox() {
       ),
     [conversations, followUpAfterDays]
   );
+
+  // Manual contact-type override (migration 0062). Stamped so the webhook never
+  // re-derives it from the phone tables; see ContactTypeBadge.jsx for why it matters.
+  const changeContactTypeMutation = useMutation({
+    mutationFn: ({ id, contactType }) =>
+      base44.entities.WhatsAppConversation.update(id, {
+        contactType,
+        contactTypeManualAt: new Date().toISOString(),
+      }),
+    onSuccess: (_, { contactType }) => {
+      queryClient.invalidateQueries({ queryKey: ["whatsappConversations"] });
+      toast.success(
+        contactType === "unknown"
+          ? "סומן כ'לא מוכר' — הבוט יוכל לענות בשיחה הזו"
+          : `סומן כ'${CONTACT_TYPE_LABELS[contactType] || contactType}' — הבוט לא יענה בשיחה הזו`
+      );
+    },
+    onError: (err) => toast.error(err.message || "שגיאה בשינוי סוג איש הקשר"),
+  });
+  const handleChangeContactType = (conv, contactType) =>
+    changeContactTypeMutation.mutate({ id: conv.id, contactType });
 
   const toggleBotMutation = useMutation({
     mutationFn: ({ id, botEnabled }) =>
@@ -396,6 +417,7 @@ export default function WhatsAppInbox() {
           onSearchChange={setSearchTerm}
           contactFilter={contactFilter}
           onContactFilterChange={setContactFilter}
+          onChangeContactType={handleChangeContactType}
         />
         <ConversationThread
           conversation={selectedConversation}
@@ -408,6 +430,7 @@ export default function WhatsAppInbox() {
           }
           isTogglingBot={toggleBotMutation.isPending}
           onCreateLead={handleOpenCreateLead}
+          onChangeContactType={handleChangeContactType}
         />
       </div>
 

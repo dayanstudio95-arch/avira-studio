@@ -1,10 +1,10 @@
 import React from "react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import ContactTypeBadge from "./ContactTypeBadge";
 import { Search, BotOff, Bot, MessageSquare, Flame } from "lucide-react";
 import {
   CONTACT_TYPE_LABELS,
-  CONTACT_TYPE_COLORS,
   conversationTitle,
   displayPhone,
   formatListTime,
@@ -23,6 +23,7 @@ export default function ConversationList({
   onSearchChange,
   contactFilter,
   onContactFilterChange,
+  onChangeContactType,
 }) {
   // The first two are not contact_types — they are work queues, and they are the two
   // filters worth opening every day:
@@ -102,11 +103,21 @@ export default function ConversationList({
         {conversations.map((conv) => {
           const isSelected = conv.id === selectedId;
           return (
-            <button
+            // A div, not a <button>: the contact-type tag inside is its own button
+            // (a dropdown), and a button inside a button is invalid HTML that browsers
+            // untangle unpredictably. Keyboard access is kept by hand.
+            <div
               key={conv.id}
-              type="button"
+              role="button"
+              tabIndex={0}
               onClick={() => onSelect(conv.id)}
-              className={`w-full border-b border-gray-800/70 px-3 py-3 text-right transition-colors ${
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onSelect(conv.id);
+                }
+              }}
+              className={`w-full cursor-pointer border-b border-gray-800/70 px-3 py-3 text-right transition-colors ${
                 isSelected ? "bg-gray-800" : "hover:bg-gray-800/50"
               }`}
             >
@@ -163,14 +174,13 @@ export default function ConversationList({
                     📣 מודעה
                   </Badge>
                 )}
-                <Badge
-                  variant="outline"
-                  className={`shrink-0 text-[10px] ${CONTACT_TYPE_COLORS[conv.contactType] || CONTACT_TYPE_COLORS.unknown}`}
-                >
-                  {CONTACT_TYPE_LABELS[conv.contactType] || conv.contactType}
-                </Badge>
+                <ContactTypeBadge
+                  conversation={conv}
+                  className="shrink-0"
+                  onChange={onChangeContactType ? (type) => onChangeContactType(conv, type) : undefined}
+                />
               </div>
-            </button>
+            </div>
           );
         })}
       </div>

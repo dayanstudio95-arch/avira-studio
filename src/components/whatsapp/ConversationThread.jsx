@@ -1,14 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
+import ContactTypeBadge from "./ContactTypeBadge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Send, UserPlus, MessageSquare, ExternalLink } from "lucide-react";
 import MessageBubble from "./MessageBubble";
 import {
-  CONTACT_TYPE_COLORS,
-  CONTACT_TYPE_LABELS,
   STATE_LABELS,
   conversationTitle,
   displayPhone,
@@ -28,6 +27,7 @@ export default function ConversationThread({
   onToggleBot,
   isTogglingBot,
   onCreateLead,
+  onChangeContactType,
 }) {
   const [draft, setDraft] = useState("");
   const bottomRef = useRef(null);
@@ -71,12 +71,10 @@ export default function ConversationThread({
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h2 className="truncate text-lg font-semibold text-white">{conversationTitle(conversation)}</h2>
-              <Badge
-                variant="outline"
-                className={`text-[10px] ${CONTACT_TYPE_COLORS[conversation.contactType] || CONTACT_TYPE_COLORS.unknown}`}
-              >
-                {CONTACT_TYPE_LABELS[conversation.contactType] || conversation.contactType}
-              </Badge>
+              <ContactTypeBadge
+                conversation={conversation}
+                onChange={onChangeContactType ? (type) => onChangeContactType(conversation, type) : undefined}
+              />
               <Badge variant="outline" className="border-gray-700 bg-gray-800 text-[10px] text-gray-400">
                 {STATE_LABELS[conversation.state] || conversation.state}
               </Badge>

@@ -67,7 +67,7 @@ import {
 } from '../_shared/whatsappBotSend.ts';
 import { extractLeadDetails, mergeDetails, missingFields } from '../_shared/whatsappLeadExtract.ts';
 import { classifyReply } from '../_shared/whatsappLeadTemperature.ts';
-import { classifyContact } from '../_shared/whatsappContact.ts';
+import { classifyContact, type ContactMatch } from '../_shared/whatsappContact.ts';
 import { sendHotLeadAlert } from '../_shared/whatsappStudioAlerts.ts';
 
 const PG_UNIQUE_VIOLATION = '23505';
@@ -328,7 +328,7 @@ Deno.serve(async (req: Request) => {
     // ---- Conversation (create or fetch) -------------------------------------
     const { data: existingRows, error: convSelectError } = await supabase
       .from('whatsapp_conversations')
-      .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature, source, hot_alert_sent_at, matched_lead_id')
+      .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature, source, hot_alert_sent_at, matched_lead_id, contact_type_manual_at')
       .eq('tenant_id', tenantId)
       .eq('chat_id', chatId)
       .limit(1);
@@ -352,7 +352,7 @@ Deno.serve(async (req: Request) => {
           matched_event_id: match.eventId,
           display_name: displayName,
         })
-        .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature, source, hot_alert_sent_at, matched_lead_id')
+        .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature, source, hot_alert_sent_at, matched_lead_id, contact_type_manual_at')
         .single();
 
       if (insertConvError) {
@@ -361,7 +361,7 @@ Deno.serve(async (req: Request) => {
           // the other one created.
           const { data: raced } = await supabase
             .from('whatsapp_conversations')
-            .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature, source, hot_alert_sent_at, matched_lead_id')
+            .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature, source, hot_alert_sent_at, matched_lead_id, contact_type_manual_at')
             .eq('tenant_id', tenantId)
             .eq('chat_id', chatId)
             .limit(1);
@@ -393,7 +393,9 @@ Deno.serve(async (req: Request) => {
     // trade worth making for a decision that Stage 2 will act on.
     let effectiveContactType = conversation.contact_type;
     let reclassified: ContactMatch | null = null;
-    if (conversation.contact_type === 'unknown' && !isGroup && phone) {
+    // A type the owner set by hand (migration 0062) is never re-derived from the phone
+    // tables — that click is the more informed answer.
+    if (conversation.contact_type === 'unknown' && !conversation.contact_type_manual_at && !isGroup && phone) {
       const match = await classifyContact(supabase, tenantId, phone);
       if (match.contactType !== 'unknown') {
         reclassified = match;
