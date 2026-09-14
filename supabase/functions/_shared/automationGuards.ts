@@ -37,7 +37,7 @@ function getJerusalemOffsetMinutes(utcDate: Date): number {
   return Math.round((ilMs - utcMs) / 60000);
 }
 
-function israelDateTimeToUTC(targetDateStr: string, h: number, min: number): Date {
+export function israelDateTimeToUTC(targetDateStr: string, h: number, min: number): Date {
   const [year, month, day] = targetDateStr.split('-').map(Number);
   const roughUTC = new Date(Date.UTC(year, month - 1, day, h, min, 0));
   const offsetMinutes = getJerusalemOffsetMinutes(roughUTC);
@@ -46,14 +46,14 @@ function israelDateTimeToUTC(targetDateStr: string, h: number, min: number): Dat
   return new Date(roughUTC.getTime() - offsetMinutes2 * 60000);
 }
 
-function getJerusalemNowHHMM(): { hh: number; mm: number } {
+export function getJerusalemNowHHMM(): { hh: number; mm: number } {
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit', hour12: false,
   }).formatToParts(new Date()).reduce((acc: Record<string, string>, p) => { acc[p.type] = p.value; return acc; }, {});
   return { hh: parseInt(parts.hour, 10) % 24, mm: parseInt(parts.minute, 10) };
 }
 
-function getJerusalemTodayDateStr(): string {
+export function getJerusalemTodayDateStr(): string {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(new Date());
@@ -104,6 +104,36 @@ export function isInQuietHoursNow(settings: QuietHoursSettings): boolean {
 
   if (startMin < endMin) return nowMin >= startMin && nowMin < endMin;
   return nowMin >= startMin || nowMin < endMin; // overnight wrap
+}
+
+// When does the current (or next) quiet-hours window END, as a UTC instant?
+//
+// Added 2026-09-15 for the WhatsApp bot's deferred sends: a message the bot would have
+// sent at 23:30 is held and sent at this moment instead of being dropped. Returns null
+// when quiet hours are off or misconfigured (in which case nothing should be deferred
+// in the first place — isInQuietHoursNow is false for the same inputs).
+//
+// `now` is injectable so the two boundary cases are testable: the end is later today,
+// or it has already passed and the next one is tomorrow. Jerusalem wall clock, same
+// as everything else in this file.
+export function nextQuietHoursEnd(settings: QuietHoursSettings, now: Date = new Date()): Date | null {
+  if (!settings.quiet_hours_enabled) return null;
+  const startMin = parseHHMM(settings.quiet_hours_start);
+  const endMin = parseHHMM(settings.quiet_hours_end);
+  if (startMin === null || endMin === null || startMin === endMin) return null;
+
+  const todayStr = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(now);
+  const endToday = israelDateTimeToUTC(todayStr, Math.floor(endMin / 60), endMin % 60);
+  if (endToday.getTime() > now.getTime()) return endToday;
+
+  // Already past today's end: the next window ends tomorrow at the same wall time.
+  const tomorrow = new Date(now.getTime() + 24 * 3600 * 1000);
+  const tomorrowStr = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(tomorrow);
+  return israelDateTimeToUTC(tomorrowStr, Math.floor(endMin / 60), endMin % 60);
 }
 
 // Cross-run duplicate protection: has this automation already sent successfully

@@ -25,6 +25,16 @@ export interface BotSettings {
   // outcome of the whole flow.
   pricelistUrl: string;
   pricelistText: string;
+  // 2026-09-15. Optional greeting for people who arrive through a Facebook/Instagram
+  // ad (whatsapp_conversations.source = 'facebook_ad'); empty means "use the regular
+  // greeting". Lets the opener acknowledge the promotion they tapped.
+  greetingTextAd: string;
+  // The one-time "still here?" for a conversation that went quiet mid-flow. Has a
+  // default because, unlike the greeting, nobody is asked to write it before switching
+  // the bot on — and a nudge that fails to send for want of text would be a silent hole.
+  flowNudgeText: string;
+  // Jerusalem hour (0-23) at which the daily digest goes to the studio's alert number.
+  digestHour: number;
 }
 
 export const BOT_SETTING_KEYS = [
@@ -34,13 +44,20 @@ export const BOT_SETTING_KEYS = [
   'whatsapp_max_bot_messages_per_hour',
   'whatsapp_pricelist_url',
   'whatsapp_pricelist_text',
+  'whatsapp_greeting_text_ad',
+  'whatsapp_flow_nudge_text',
+  'whatsapp_digest_hour',
 ] as const;
+
+export const DEFAULT_FLOW_NUDGE_TEXT =
+  'היי, עדיין כאן 🙂 אם תשלחו לנו את הפרטים החסרים נחזור אליכם עם הצעת מחיר';
 
 // Deliberately conservative. These apply when a tenant has never opened the settings
 // screen, which is also the state in which nobody has agreed to anything.
 const DEFAULTS = {
   replyDelaySeconds: 45,
   maxBotMessagesPerHour: 10,
+  digestHour: 8,
 };
 
 // app_settings stores everything as text, so "false", "0" and "" all have to mean off.
@@ -86,6 +103,9 @@ export async function loadBotSettings(supabase: any, tenantId: string): Promise<
     ),
     pricelistUrl: String(get('whatsapp_pricelist_url') ?? '').trim(),
     pricelistText: String(get('whatsapp_pricelist_text') ?? '').trim(),
+    greetingTextAd: String(get('whatsapp_greeting_text_ad') ?? '').trim(),
+    flowNudgeText: String(get('whatsapp_flow_nudge_text') ?? '').trim() || DEFAULT_FLOW_NUDGE_TEXT,
+    digestHour: parseIntInRange(get('whatsapp_digest_hour'), DEFAULTS.digestHour, 0, 23),
   };
 }
 
@@ -133,13 +153,18 @@ export interface BotSendOutcome {
 // and `type` is a free-text not-null tag — no check constraint, so the convention is a
 // snake_case event name like respond-staff-availability-public's
 // 'staff_availability_response'.
-async function notifyFailure(supabase: any, tenantId: string, phone: string, what: string) {
+export async function notifyFailure(
+  supabase: any, tenantId: string, phone: string, what: string,
+  type = 'whatsapp_bot_send_failed'
+) {
   try {
     await supabase.from('notifications').insert({
       tenant_id: tenantId,
-      type: 'whatsapp_bot_send_failed',
+      type,
       title: 'שליחת הודעת בוט נכשלה',
-      body: `${what} (${phone}). כדאי לענות ידנית מתוך מסך השיחות.`,
+      body: phone && phone !== '—'
+        ? `${what} (${phone}). כדאי לענות ידנית מתוך מסך השיחות.`
+        : `${what}. כדאי לבדוק את חיבור הוואטסאפ בהגדרות ← אינטגרציות.`,
     });
   } catch (e: any) {
     console.error('[whatsappBotSend] notification insert failed:', e?.message || e);
@@ -155,11 +180,17 @@ async function notifyFailure(supabase: any, tenantId: string, phone: string, wha
 // deduped. Without it the bot's own message would be re-inserted as `outbound_human` and
 // would look like Daniel had replied — which would also permanently mute the bot in that
 // conversation, since an outbound human message sets bot_enabled = false.
+// What a bot message IS, recorded as `bot:<kind>` in whatsapp_messages.type_webhook
+// (2026-09-15; earlier rows carry the constant 'botSend' and are left as they are).
+// Two readers depend on the tag: the daily digest counts greetings and price lists by
+// it, and the flow budget excludes 'bot:nudge' (see BOT_BUDGET_EXCLUDED_KINDS).
+export type BotSendKind = 'greeting' | 'question' | 'pricelist' | 'nudge';
+
 async function recordBotMessage(
   supabase: any,
-  { tenantId, conversationId, idMessage, text, typeMessage, mediaUrl }: {
+  { tenantId, conversationId, idMessage, text, typeMessage, mediaUrl, kind }: {
     tenantId: string; conversationId: string; idMessage?: string;
-    text: string; typeMessage: string; mediaUrl?: string;
+    text: string; typeMessage: string; mediaUrl?: string; kind: BotSendKind;
   }
 ) {
   const { error } = await supabase.from('whatsapp_messages').insert({
@@ -167,7 +198,7 @@ async function recordBotMessage(
     conversation_id: conversationId,
     id_message: idMessage || `bot-${conversationId}-${Date.now()}`,
     direction: 'outbound_bot',
-    type_webhook: 'botSend',
+    type_webhook: `bot:${kind}`,
     type_message: typeMessage,
     body_text: text,
     media_url: mediaUrl ?? null,
@@ -196,7 +227,8 @@ export async function sendBotMessage(
     conversationId,
     phone,
     text,
-  }: { tenantId: string; conversationId: string; phone: string; text: string }
+    kind,
+  }: { tenantId: string; conversationId: string; phone: string; text: string; kind: BotSendKind }
 ): Promise<BotSendOutcome> {
   const result = await sendWhatsApp(supabase, phone, text, tenantId);
 
@@ -212,6 +244,7 @@ export async function sendBotMessage(
     idMessage: (result.raw as any)?.idMessage,
     text,
     typeMessage: 'textMessage',
+    kind,
   });
 
   return { sent: true };
@@ -260,6 +293,7 @@ export async function sendPricelist(
       text: plan.caption || '[מחירון — תמונה]',
       typeMessage: 'imageMessage',
       mediaUrl: plan.imageUrl,
+      kind: 'pricelist',
     });
   }
 
@@ -282,6 +316,7 @@ export async function sendPricelist(
       idMessage: (textResult.raw as any)?.idMessage,
       text: plan.followUpText,
       typeMessage: 'textMessage',
+      kind: 'pricelist',
     });
   }
 
@@ -329,4 +364,108 @@ export function planPricelistSend(
   // Too long: image + placeholder caption, then the real text. Never truncated — the
   // links live at the end, which is exactly what a naive slice() would remove.
   return { imageUrl: url, caption: shortCaption, followUpText: text };
+}
+
+// ---------------------------------------------------------------------------------
+// Deferred sends (2026-09-15) — what the bot would have said during quiet hours.
+//
+// The webhook composes the exact messages at decision time and stores them in
+// whatsapp_deferred_sends (migration 0061); the hourly tick (whatsappHousekeeping.ts)
+// sends them once the window ends. Composition is pure so the shape is testable; the
+// executor mirrors sendBotMessage / sendPricelist exactly, including the rule that an
+// image already delivered counts as sent even when its follow-up text fails.
+// ---------------------------------------------------------------------------------
+
+export type DeferredSendItem =
+  | { type: 'text'; text: string }
+  | { type: 'file'; url: string; caption: string | null };
+
+export function composeSends(
+  kind: BotSendKind,
+  opts: { text?: string; pricelistUrl?: string; pricelistText?: string }
+): DeferredSendItem[] {
+  if (kind === 'pricelist') {
+    const plan = planPricelistSend(opts.pricelistUrl || '', opts.pricelistText || '');
+    const items: DeferredSendItem[] = [];
+    if (plan.imageUrl) items.push({ type: 'file', url: plan.imageUrl, caption: plan.caption });
+    if (plan.followUpText) items.push({ type: 'text', text: plan.followUpText });
+    return items;
+  }
+  const text = (opts.text || '').trim();
+  return text ? [{ type: 'text', text }] : [];
+}
+
+export async function executeSends(
+  supabase: any,
+  { tenantId, conversationId, phone, sends, kind }: {
+    tenantId: string; conversationId: string; phone: string;
+    sends: DeferredSendItem[]; kind: BotSendKind;
+  }
+): Promise<BotSendOutcome> {
+  let delivered = false;
+  for (const item of sends) {
+    if (item.type === 'file') {
+      const r = await sendWhatsAppFileByUrl(supabase, phone, item.url, 'pricelist.jpg', item.caption ?? undefined, tenantId);
+      if (!r.success) {
+        await notifyFailure(supabase, tenantId, phone, 'שליחת המחירון (דחויה) נכשלה');
+        return { sent: delivered, error: r.error };
+      }
+      await recordBotMessage(supabase, {
+        tenantId, conversationId, idMessage: (r.raw as any)?.idMessage,
+        text: item.caption || '[מחירון — תמונה]', typeMessage: 'imageMessage', mediaUrl: item.url, kind,
+      });
+      delivered = true;
+    } else {
+      const r = await sendWhatsApp(supabase, phone, item.text, tenantId);
+      if (!r.success) {
+        await notifyFailure(
+          supabase, tenantId, phone,
+          delivered
+            ? 'תמונת המחירון נשלחה אבל הטקסט עם הקישורים לא — כדאי לשלוח אותו ידנית'
+            : 'לא הצלחנו לשלוח הודעה אוטומטית (דחויה)'
+        );
+        return { sent: delivered, error: r.error };
+      }
+      await recordBotMessage(supabase, {
+        tenantId, conversationId, idMessage: (r.raw as any)?.idMessage,
+        text: item.text, typeMessage: 'textMessage', kind,
+      });
+      delivered = true;
+    }
+  }
+  return { sent: delivered };
+}
+
+// One pending row per conversation. A newer decision supersedes an older one — the
+// customer who tapped an ad at 23:00 and sent their details at 23:40 should get the
+// price list at 08:00, not the greeting that asks for the details they already sent.
+export async function enqueueDeferredSend(
+  supabase: any,
+  { tenantId, conversationId, kind, expectedState, payload, sendAfter }: {
+    tenantId: string; conversationId: string; kind: 'greeting' | 'flow';
+    expectedState: string; payload: DeferredSendItem[]; sendAfter: Date;
+  }
+): Promise<{ ok: boolean; error?: string }> {
+  if (payload.length === 0) return { ok: false, error: 'nothing to send' };
+  const { error: cancelErr } = await supabase
+    .from('whatsapp_deferred_sends')
+    .update({ cancelled_reason: 'superseded' })
+    .eq('conversation_id', conversationId)
+    .is('sent_at', null)
+    .is('cancelled_reason', null);
+  if (cancelErr) console.error('[whatsappBotSend] deferred supersede failed:', cancelErr.message);
+
+  const { error } = await supabase.from('whatsapp_deferred_sends').insert({
+    tenant_id: tenantId,
+    conversation_id: conversationId,
+    kind,
+    expected_state: expectedState,
+    payload,
+    send_after: sendAfter.toISOString(),
+  });
+  if (error) {
+    console.error('[whatsappBotSend] deferred enqueue failed:', error.message);
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
 }

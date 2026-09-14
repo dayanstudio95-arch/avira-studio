@@ -37,6 +37,11 @@ export default function ConversationList({
     // followup_sent — everyone who has already been nudged, so what happened after the
     //                 nudge can be read in one place (owner's request, 2026-09-15).
     { value: "followup_sent", label: "📨 נשלח פולו-אפ" },
+    // Two holes found on 2026-09-15: mid-flow conversations that went quiet were in no
+    // queue, and a stranger whose first message was a voice note got silence with
+    // nobody told. Both predicates live in src/lib/needsAttention.js.
+    { value: "stalled_flow", label: "🕐 לא סיימו פרטים" },
+    { value: "media_stranger", label: "📎 מדיה ממספר לא מוכר" },
     { value: "would_reply", label: "🤖 הבוט היה עונה" },
     { value: "all", label: "הכל" },
     { value: "unknown", label: CONTACT_TYPE_LABELS.unknown },

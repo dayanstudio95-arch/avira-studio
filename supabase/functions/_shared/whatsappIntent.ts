@@ -283,7 +283,11 @@ export type BotDecisionReason =
   | 'bot_muted'
   | 'not_first_message'
   | 'not_text'
+  // Kept for rows written before 2026-09-15; the gate no longer produces it.
   | 'quiet_hours'
+  // 2026-09-15: everything passed INCLUDING intent, only the clock said no. The webhook
+  // queues the greeting for the end of quiet hours instead of dropping the person.
+  | 'quiet_hours_deferred'
   | 'no_intent';
 
 export interface BotDecision {
@@ -353,13 +357,19 @@ export function decideBotReply(input: BotDecisionInput): BotDecision {
   // "we cannot tell", and pretending otherwise would inflate the measured hit rate.)
   if (!input.typeMessage || !TEXT_MESSAGE_TYPES.includes(input.typeMessage)) return stop('not_text');
 
+  const intent = detectLeadIntent(input.bodyText, { fromAd: !!input.fromAd });
+  if (!intent.isInquiry) return { wouldReply: false, reason: 'no_intent', intent };
+
   // Same tenant-level do-not-disturb window as every other automation
   // (_shared/automationGuards.ts). A bot that messages a stranger at 02:00 is worse
   // than one that doesn't reply at all.
-  if (input.inQuietHours) return stop('quiet_hours');
-
-  const intent = detectLeadIntent(input.bodyText, { fromAd: !!input.fromAd });
-  if (!intent.isInquiry) return { wouldReply: false, reason: 'no_intent', intent };
+  //
+  // Checked AFTER intent since 2026-09-15, and the reason code says "deferred": until
+  // then a night-time inquiry was dropped outright — the customer got nothing in the
+  // morning either, unless they wrote again. Now the verdict carries the intent, and
+  // the webhook holds the greeting until the window ends. Order matters for the record
+  // too: a night message with no intent is recorded as no_intent, which is the truth.
+  if (input.inQuietHours) return { wouldReply: false, reason: 'quiet_hours_deferred', intent };
 
   return { wouldReply: true, reason: 'ok', intent };
 }
@@ -414,6 +424,17 @@ const IN_FLOW_STATES = ['AWAITING_DETAILS', 'PARTIAL_DETAILS'];
 // conversation to Daniel rather than ending it.
 export const MAX_BOT_MESSAGES = 3;
 
+// Bot sends that do NOT count toward MAX_BOT_MESSAGES. The one-time "still here?"
+// nudge (2026-09-15) is housekeeping, not a question: if it consumed the budget, a
+// customer who came back after the nudge could be handed off before the price list.
+// Matched against whatsapp_messages.type_webhook, which whatsappBotSend.ts tags
+// `bot:<kind>`.
+export const BOT_BUDGET_EXCLUDED_KINDS = ['bot:nudge'];
+
+// Exported for the housekeeping tick (nudge + drainer), which must apply the same
+// in-flow definition the gate does rather than a copy of it.
+export { IN_FLOW_STATES };
+
 export function decideBotFollowUp(input: FollowUpInput): { shouldReply: boolean; reason: FollowUpReason } {
   const stop = (reason: FollowUpReason) => ({ shouldReply: false, reason });
 
@@ -427,8 +448,12 @@ export function decideBotFollowUp(input: FollowUpInput): { shouldReply: boolean;
   // A voice note answering our four questions is a real answer we cannot read. The
   // caller turns this into a hand-off, not a silent drop — the customer is waiting.
   if (!input.typeMessage || !TEXT_MESSAGE_TYPES.includes(input.typeMessage)) return stop('not_text');
-  if (input.inQuietHours) return stop('quiet_hours');
   if (input.botMessagesSoFar >= MAX_BOT_MESSAGES) return stop('too_many_questions');
+  // Last, since 2026-09-15: 'quiet_hours' now means "everything else passed, only the
+  // clock said no", and the webhook treats it as "process the answer, hold the reply"
+  // rather than as a drop. Before this reorder a customer answering at 23:30 was
+  // silently stuck in AWAITING_DETAILS.
+  if (input.inQuietHours) return stop('quiet_hours');
 
   return { shouldReply: true, reason: 'ok' };
 }

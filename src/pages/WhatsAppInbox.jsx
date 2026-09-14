@@ -10,6 +10,7 @@ import WhatsAppFollowUpDialog, { FOLLOWUP_AFTER_DAYS_KEY } from "@/components/wh
 import WhatsAppFollowUpSettingsDialog from "@/components/whatsapp/WhatsAppFollowUpSettingsDialog";
 import { usePermission } from "@/lib/permissions";
 import { phoneDigits, daysSince } from "@/components/whatsapp/whatsappInboxShared";
+import { isStalledFlow, isMediaFromStranger } from "@/lib/needsAttention";
 
 // WhatsApp inbox — every conversation the studio's WhatsApp number is having, shown
 // like WhatsApp itself, with the ability to reply from here.
@@ -118,6 +119,10 @@ export default function WhatsAppInbox() {
         if (c.state !== "PRICELIST_SENT") return false;
       } else if (contactFilter === "followup_sent") {
         if (!c.followupSentAt) return false;
+      } else if (contactFilter === "stalled_flow") {
+        if (!isStalledFlow(c)) return false;
+      } else if (contactFilter === "media_stranger") {
+        if (!isMediaFromStranger(c)) return false;
       } else if (contactFilter === "would_reply") {
         if (!c.botWouldReplyAt) return false;
       } else if (contactFilter !== "all" && c.contactType !== contactFilter) {

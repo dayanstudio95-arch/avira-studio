@@ -50,6 +50,7 @@ export const BOT_DECISION_LABELS = {
   not_first_message: "לא ההודעה הראשונה בשיחה",
   not_text: "הודעה שאינה טקסט — אי אפשר לבדוק תוכן",
   quiet_hours: "שעות שקט",
+  quiet_hours_deferred: "שעות שקט — ההודעה תישלח בסיום שעות השקט",
   no_intent: "לא זוהתה פנייה לצילום אירוע",
 };
 

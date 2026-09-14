@@ -57,13 +57,18 @@ import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createServiceRoleClient } from '../_shared/supabaseClients.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { normalizeIsraeliPhone, chatIdToLocalPhone, isGroupChatId } from '../_shared/phone.ts';
-import { loadQuietHoursSettings, isInQuietHoursNow } from '../_shared/automationGuards.ts';
-import { decideBotReply, decideBotFollowUp } from '../_shared/whatsappIntent.ts';
+import {
+  loadQuietHoursSettings, isInQuietHoursNow, nextQuietHoursEnd, type QuietHoursSettings,
+} from '../_shared/automationGuards.ts';
+import { decideBotReply, decideBotFollowUp, BOT_BUDGET_EXCLUDED_KINDS } from '../_shared/whatsappIntent.ts';
 import {
   loadBotSettings, isUnderHourlyQuota, sendBotMessage, sendPricelist, sleep,
+  composeSends, enqueueDeferredSend, type DeferredSendItem,
 } from '../_shared/whatsappBotSend.ts';
 import { extractLeadDetails, mergeDetails, missingFields } from '../_shared/whatsappLeadExtract.ts';
 import { classifyReply } from '../_shared/whatsappLeadTemperature.ts';
+import { classifyContact } from '../_shared/whatsappContact.ts';
+import { sendHotLeadAlert } from '../_shared/whatsappStudioAlerts.ts';
 
 const PG_UNIQUE_VIOLATION = '23505';
 
@@ -221,71 +226,8 @@ function tokensMatch(a: string, b: string): boolean {
   return diff === 0;
 }
 
-interface ContactMatch {
-  contactType: 'unknown' | 'lead' | 'client' | 'staff' | 'group';
-  leadId: string | null;
-  eventId: string | null;
-}
-
-// THE safety check of this whole module.
-//
-// Phones are compared in normalized local form on BOTH sides: the DB stores
-// '0501234567' (sometimes with spaces/dashes/bidi junk from a paste), while Green API
-// delivers '972501234567@c.us'. Comparing the raw strings matches nothing, which would
-// classify every existing client and every photographer as an unknown stranger — and,
-// in Stage 2, price-list them. That is why this normalizes in JS over a small set of
-// phone columns instead of doing an `.eq()` in SQL.
-//
-// Precedence is deliberate: client (has a signed event) beats lead beats staff, so a
-// couple who is also in the leads table is never treated as a fresh inquiry.
-async function classifyContact(supabase: any, tenantId: string, phone: string | null): Promise<ContactMatch> {
-  const none: ContactMatch = { contactType: 'unknown', leadId: null, eventId: null };
-  if (!phone) return none;
-
-  const [leadsRes, eventsRes, staffRes, profilesRes] = await Promise.all([
-    supabase
-      .from('leads')
-      .select('id, phone_number, signed_phone_number, production_bride_phone, production_groom_phone')
-      .eq('tenant_id', tenantId),
-    supabase.from('events').select('id, phone_number').eq('tenant_id', tenantId),
-    supabase.from('staff_members').select('id, phone_number').eq('tenant_id', tenantId),
-    supabase.from('profiles').select('id, phone').eq('tenant_id', tenantId),
-  ]);
-
-  if (leadsRes.error || eventsRes.error || staffRes.error || profilesRes.error) {
-    // Fail CLOSED, unlike the rate limiter: if we can't prove this number is a
-    // stranger, we must not let a later stage treat it as one. 'staff' is the safest
-    // label because the bot never acts on it.
-    console.error(
-      '[whatsapp-webhook] contact classification failed, defaulting to staff (bot-silent):',
-      leadsRes.error?.message || eventsRes.error?.message || staffRes.error?.message || profilesRes.error?.message
-    );
-    return { contactType: 'staff', leadId: null, eventId: null };
-  }
-
-  const matches = (value: unknown) => !!value && normalizeIsraeliPhone(value) === phone;
-
-  const event = (eventsRes.data || []).find((e: any) => matches(e.phone_number));
-  if (event) return { contactType: 'client', leadId: null, eventId: event.id };
-
-  const leads = leadsRes.data || [];
-  const productionLead = leads.find(
-    (l: any) => matches(l.production_bride_phone) || matches(l.production_groom_phone)
-  );
-  if (productionLead) return { contactType: 'client', leadId: productionLead.id, eventId: null };
-
-  const lead = leads.find((l: any) => matches(l.phone_number) || matches(l.signed_phone_number));
-  if (lead) return { contactType: 'lead', leadId: lead.id, eventId: null };
-
-  if ((staffRes.data || []).some((s: any) => matches(s.phone_number))) {
-    return { contactType: 'staff', leadId: null, eventId: null };
-  }
-  if ((profilesRes.data || []).some((p: any) => matches(p.phone))) {
-    return { contactType: 'staff', leadId: null, eventId: null };
-  }
-
-  return none;
-}
+// classifyContact moved to _shared/whatsappContact.ts (2026-09-15) so the simulator
+// runs the exact same classification as this webhook.
 
 Deno.serve(async (req: Request) => {
   const preflight = handleOptions(req);
@@ -386,7 +328,7 @@ Deno.serve(async (req: Request) => {
     // ---- Conversation (create or fetch) -------------------------------------
     const { data: existingRows, error: convSelectError } = await supabase
       .from('whatsapp_conversations')
-      .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature, source')
+      .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature, source, hot_alert_sent_at, matched_lead_id')
       .eq('tenant_id', tenantId)
       .eq('chat_id', chatId)
       .limit(1);
@@ -410,7 +352,7 @@ Deno.serve(async (req: Request) => {
           matched_event_id: match.eventId,
           display_name: displayName,
         })
-        .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature, source')
+        .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature, source, hot_alert_sent_at, matched_lead_id')
         .single();
 
       if (insertConvError) {
@@ -419,7 +361,7 @@ Deno.serve(async (req: Request) => {
           // the other one created.
           const { data: raced } = await supabase
             .from('whatsapp_conversations')
-            .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature, source')
+            .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature, source, hot_alert_sent_at, matched_lead_id')
             .eq('tenant_id', tenantId)
             .eq('chat_id', chatId)
             .limit(1);
@@ -467,6 +409,14 @@ Deno.serve(async (req: Request) => {
     //
     // Only inbound messages get a verdict. Outbound rows are left null so that "the bot
     // chose silence" is never confused with "nothing was ever asked of the bot".
+    // Ad attribution on this message, or stamped on the conversation by an earlier one
+    // (only the first message after the ad tap carries it).
+    const fromAd = !!inboundAd || conversation.source === 'facebook_ad';
+    // Kept from the gate for the deferral path: the end of the quiet window is when a
+    // held message goes out. null when the lookup failed (then nothing is deferred).
+    let quietSettings: QuietHoursSettings | null = null;
+    let deferredSendAfter: Date | null = null;
+
     let decision: ReturnType<typeof decideBotReply> | null = null;
     if (isInbound) {
       // Quiet hours costs a DB read, so it's only fetched when the cheap gates have
@@ -483,13 +433,15 @@ Deno.serve(async (req: Request) => {
       let inQuietHours = false;
       if (cheapGatesPass) {
         try {
-          inQuietHours = isInQuietHoursNow(await loadQuietHoursSettings(supabase, tenantId));
+          quietSettings = await loadQuietHoursSettings(supabase, tenantId);
+          inQuietHours = isInQuietHoursNow(quietSettings);
         } catch (quietErr: any) {
           // Fail CLOSED, like classifyContact. If we can't tell what time it is for
           // this tenant, "the bot would have messaged a stranger" is the claim we are
           // least entitled to make.
           console.error('[whatsapp-webhook] quiet-hours lookup failed, assuming quiet:', quietErr?.message || quietErr);
           inQuietHours = true;
+          quietSettings = null;
         }
       }
 
@@ -502,7 +454,7 @@ Deno.serve(async (req: Request) => {
         bodyText,
         inQuietHours,
         alreadyDecidedToReply: !!conversation.bot_would_reply_at,
-        fromAd: !!inboundAd || conversation.source === 'facebook_ad',
+        fromAd,
       });
     }
 
@@ -603,8 +555,19 @@ Deno.serve(async (req: Request) => {
     // this branch at all.
     let greeting: string | null = null;
     let replyDelaySeconds = 0;
-    if (decision?.wouldReply) {
+    // What to hold for the end of quiet hours (2026-09-15). Written after the
+    // conversation update succeeds, never before.
+    let deferredEnqueue: { kind: 'greeting' | 'flow'; expectedState: string; payload: DeferredSendItem[] } | null = null;
+    // Told to the studio after the row is updated — the first time a lead is rated hot.
+    let hotAlert: { reason: string | null; replyText: string | null } | null = null;
+
+    if (decision?.wouldReply || decision?.reason === 'quiet_hours_deferred') {
       const botSettings = await loadBotSettings(supabase, tenantId);
+      // Someone who tapped the studio's ad gets the ad-specific opener when one is
+      // configured, so the message can acknowledge the promotion they came for.
+      const greetingText = botSettings
+        ? (fromAd && botSettings.greetingTextAd ? botSettings.greetingTextAd : botSettings.greetingText)
+        : '';
       if (!botSettings) {
         console.warn('[whatsapp-webhook] bot settings unreadable — not sending');
       } else if (!botSettings.enabled) {
@@ -612,10 +575,29 @@ Deno.serve(async (req: Request) => {
         // verdict above is still recorded, so the dry run keeps working unchanged.
       } else if (!botSettings.greetingText) {
         console.warn('[whatsapp-webhook] bot enabled but no greeting text configured — not sending');
+      } else if (decision?.reason === 'quiet_hours_deferred') {
+        // Quiet hours: hold the greeting until the window ends instead of dropping the
+        // person. State advances NOW, for the same reason as the live path below and one
+        // more: a second message tonight then goes through Stage 3 as a real answer, and
+        // its send supersedes this greeting — at 08:00 they get the right question or
+        // the price list, not an opener asking for details they already sent.
+        const sendAfter = quietSettings ? nextQuietHoursEnd(quietSettings) : null;
+        if (!sendAfter) {
+          console.warn('[whatsapp-webhook] quiet hours but no window end — not deferring');
+        } else {
+          deferredEnqueue = {
+            kind: 'greeting',
+            expectedState: 'AWAITING_DETAILS',
+            payload: composeSends('greeting', { text: greetingText }),
+          };
+          updates.state = 'AWAITING_DETAILS';
+          if (!conversation.bot_would_reply_at) updates.bot_would_reply_at = nowIso;
+          deferredSendAfter = sendAfter;
+        }
       } else if (!(await isUnderHourlyQuota(supabase, tenantId, botSettings.maxBotMessagesPerHour))) {
         console.warn('[whatsapp-webhook] hourly bot quota reached — not sending');
       } else {
-        greeting = botSettings.greetingText;
+        greeting = greetingText;
         replyDelaySeconds = botSettings.replyDelaySeconds;
         // ⚠️ Advance the state BEFORE sending, not after. The customer may well send
         // three messages in a row ("היי" / "מתחתן ביוני" / "כמה זה עולה") while the
@@ -645,18 +627,28 @@ Deno.serve(async (req: Request) => {
         // Counts the bot's own messages in this thread. Used instead of a counter
         // column because whatsapp_messages is already the honest record of what was
         // said, and a counter would be a second source of truth to keep in sync.
+        // The one-time nudge is excluded: it is housekeeping, not a question, and must
+        // not eat the budget the price list needs (BOT_BUDGET_EXCLUDED_KINDS).
         const { count: botMessagesSoFar } = await supabase
           .from('whatsapp_messages')
           .select('id', { count: 'exact', head: true })
           .eq('conversation_id', conversation.id)
-          .eq('direction', 'outbound_bot');
+          .eq('direction', 'outbound_bot')
+          .not('type_webhook', 'in', `(${BOT_BUDGET_EXCLUDED_KINDS.map((k) => `"${k}"`).join(',')})`);
 
         let flowQuiet = false;
+        let flowQuietSettings: QuietHoursSettings | null = null;
         try {
-          flowQuiet = isInQuietHoursNow(await loadQuietHoursSettings(supabase, tenantId));
+          flowQuietSettings = await loadQuietHoursSettings(supabase, tenantId);
+          flowQuiet = isInQuietHoursNow(flowQuietSettings);
         } catch {
           flowQuiet = true; // fail closed, same as the greeting path
+          flowQuietSettings = null;
         }
+        // 'quiet_hours' now means "everything else passed": the answer is processed
+        // exactly as by day, and only the reply is held (2026-09-15 — before this, the
+        // answer was dropped and the conversation stuck).
+        const holdForQuiet = (followUp: { reason: string }) => followUp.reason === 'quiet_hours';
 
         const followUp = decideBotFollowUp({
           contactType: effectiveContactType,
@@ -691,6 +683,12 @@ Deno.serve(async (req: Request) => {
             updates.lead_temperature = rating.temperature;
             updates.lead_temperature_reason = rating.reason;
             updates.lead_temperature_at = nowIso;
+            // First time hot → tell the studio (2026-09-15). Once per conversation:
+            // hot_alert_sent_at is set here and re-checked on every later message.
+            if (rating.temperature === 'hot' && !conversation.hot_alert_sent_at) {
+              updates.hot_alert_sent_at = nowIso;
+              hotAlert = { reason: rating.reason, replyText: bodyText };
+            }
           }
           // A failed or unparseable rating leaves the columns untouched rather than
           // writing null over a previous good one — classifyReply already swallowed
@@ -703,7 +701,7 @@ Deno.serve(async (req: Request) => {
         } else if (followUp.reason === 'too_many_questions') {
           // The bot has asked as much as it usefully can. Stop, don't nag.
           updates.state = 'HANDED_OFF';
-        } else if (followUp.shouldReply) {
+        } else if (followUp.shouldReply || holdForQuiet(followUp)) {
           const apiKey = await loadAnthropicKey(supabase, tenantId);
           const extracted = await extractLeadDetails(bodyText || '', apiKey);
 
@@ -730,13 +728,31 @@ Deno.serve(async (req: Request) => {
             updates.guest_count = merged.guestCount;
 
             const stillMissing = missingFields(merged);
-            if (stillMissing.length === 0) {
+            const quietEnd = holdForQuiet(followUp) && flowQuietSettings ? nextQuietHoursEnd(flowQuietSettings) : null;
+            const hold = holdForQuiet(followUp) && !!quietEnd;
+            if (holdForQuiet(followUp) && !quietEnd) {
+              // Quiet hours, but we cannot say when they end (the settings read failed
+              // and the check failed closed). Never send now; the details are saved and
+              // the conversation stays in flow, so the next message picks up from here.
+              console.warn('[whatsapp-webhook] quiet hours with unknown window end — holding without a deferred row');
+            } else if (stillMissing.length === 0) {
               if (flowSettings.pricelistText || flowSettings.pricelistUrl) {
-                pricelistFor = { url: flowSettings.pricelistUrl, text: flowSettings.pricelistText };
                 // Advance BEFORE sending, for the same reason as the greeting: a second
                 // message arriving mid-send must not trigger a second price list.
                 updates.state = 'PRICELIST_SENT';
-                updates.last_bot_message_at = nowIso;
+                if (hold) {
+                  deferredEnqueue = {
+                    kind: 'flow',
+                    expectedState: 'PRICELIST_SENT',
+                    payload: composeSends('pricelist', {
+                      pricelistUrl: flowSettings.pricelistUrl, pricelistText: flowSettings.pricelistText,
+                    }),
+                  };
+                  deferredSendAfter = quietEnd;
+                } else {
+                  pricelistFor = { url: flowSettings.pricelistUrl, text: flowSettings.pricelistText };
+                  updates.last_bot_message_at = nowIso;
+                }
               } else {
                 // Every detail collected and nothing configured to send. The worst
                 // possible ending, so it goes to a human loudly rather than silently.
@@ -745,13 +761,23 @@ Deno.serve(async (req: Request) => {
               }
             } else {
               // Ask only about what is actually missing — never re-ask the whole list.
-              followUpQuestion =
+              const question =
                 stillMissing.length === 1
                   ? `תודה! רק עוד פרט אחד ונוכל לחזור אליכם עם הצעת מחיר — ${stillMissing[0]}?`
                   : `תודה! רק עוד כמה פרטים ונוכל לחזור אליכם עם הצעת מחיר:\n` +
                     stillMissing.map((f) => `• ${f}`).join('\n');
               updates.state = 'PARTIAL_DETAILS';
-              updates.last_bot_message_at = nowIso;
+              if (hold) {
+                deferredEnqueue = {
+                  kind: 'flow',
+                  expectedState: 'PARTIAL_DETAILS',
+                  payload: composeSends('question', { text: question }),
+                };
+                deferredSendAfter = quietEnd;
+              } else {
+                followUpQuestion = question;
+                updates.last_bot_message_at = nowIso;
+              }
             }
           }
         }
@@ -771,6 +797,42 @@ Deno.serve(async (req: Request) => {
       greeting = null;
       pricelistFor = null;
       followUpQuestion = null;
+      deferredEnqueue = null;
+      hotAlert = null;
+    }
+
+    // A held message is only queued once the state that justifies it is on the row.
+    if (deferredEnqueue && deferredSendAfter) {
+      await enqueueDeferredSend(supabase, {
+        tenantId,
+        conversationId: conversation.id,
+        kind: deferredEnqueue.kind,
+        expectedState: deferredEnqueue.expectedState,
+        payload: deferredEnqueue.payload,
+        sendAfter: deferredSendAfter,
+      });
+    }
+
+    // The hot-lead alert runs after the 200, in its own waitUntil: the send block below
+    // only runs when a bot message is pending, and a PRICELIST_SENT conversation never
+    // has one. Never throws — sendHotLeadAlert swallows everything.
+    if (hotAlert) {
+      const alert = hotAlert;
+      EdgeRuntime.waitUntil(
+        sendHotLeadAlert(supabase, {
+          tenantId,
+          conversation: {
+            couple_names: updates.couple_names ?? conversation.couple_names,
+            display_name: conversation.display_name,
+            event_date: updates.event_date ?? conversation.event_date,
+            venue: updates.venue ?? conversation.venue,
+            matched_lead_id: conversation.matched_lead_id,
+          },
+          phone,
+          reason: alert.reason,
+          replyText: alert.replyText,
+        })
+      );
     }
 
     // ---- The send, after the 200 ---------------------------------------------
@@ -794,6 +856,7 @@ Deno.serve(async (req: Request) => {
             if (text) {
               await sendBotMessage(supabase, {
                 tenantId, conversationId: conversation.id, phone, text,
+                kind: greeting ? 'greeting' : 'question',
               });
             }
             if (pricelist) {

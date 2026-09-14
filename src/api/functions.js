@@ -62,6 +62,7 @@ const FUNCTION_MAP = {
   sendStaffScheduleMessage: 'send-staff-schedule-message',
   shareEventInfoWithTeam: 'share-event-info-with-team',
   whatsappManager: 'whatsapp-manager',
+  whatsappBotSimulate: 'whatsapp-bot-simulate',
   monthlyCrewSchedule: 'monthly-crew-schedule',
   sendQuestionnaireReminders: 'send-questionnaire-reminders',
   dailyEventBrief: 'daily-event-brief',

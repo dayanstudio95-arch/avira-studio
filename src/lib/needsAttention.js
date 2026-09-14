@@ -27,7 +27,38 @@ export const STALE_DAYS = 7;
 // noise is what makes a queue get ignored.
 export const CLOSED_STATUSES = ["נסגר/חתימה", "חוזה", "לא רלוונטי"];
 
-export const REASON_RANK = { hot: 0, silent_pricelist: 1, stale_lead: 2 };
+export const REASON_RANK = {
+  hot: 0,
+  media_from_stranger: 1,
+  silent_pricelist: 2,
+  stalled_flow: 3,
+  stale_lead: 4,
+};
+
+// Two more reasons since 2026-09-15, both found by reading the code rather than by a
+// complaint — which is the point of putting them here, where they get seen.
+//
+// A stranger whose first message the bot could not read (voice note, photo): the gate
+// says not_text and the conversation sits at NEW, in no queue at all. The bot must not
+// guess at a voice note; a human should listen to it.
+export function isMediaFromStranger(c) {
+  if (!c || c.contactType !== "unknown" || c.state !== "NEW") return false;
+  if (c.botLastDecision !== "not_text" || c.botEnabled === false) return false;
+  const days = daysSince(c.lastInboundAt);
+  return days !== null && days <= 7;
+}
+
+// Mid-flow and silent: the bot asked for details, a day passed, no answer. Mirrors
+// isStalledInFlow in supabase/functions/_shared/whatsappHousekeeping.ts, which sends
+// the one-time nudge; this is the human-side view of the same population.
+export function isStalledFlow(c) {
+  if (!c || !["AWAITING_DETAILS", "PARTIAL_DETAILS"].includes(c.state)) return false;
+  if (c.botEnabled === false || !c.lastBotMessageAt) return false;
+  const days = daysSince(c.lastBotMessageAt);
+  if (days === null || days < 1) return false;
+  if (!c.lastInboundAt) return true;
+  return new Date(c.lastInboundAt).getTime() < new Date(c.lastBotMessageAt).getTime();
+}
 
 export function buildAttentionList(conversations, leads) {
   const rows = [];
@@ -44,6 +75,26 @@ export function buildAttentionList(conversations, leads) {
         name: c.coupleNames || c.displayName || c.phone,
         detail: c.leadTemperatureReason || "",
         days: daysSince(c.leadTemperatureAt),
+      });
+      if (c.phone) seenPhones.add(c.phone);
+    } else if (isMediaFromStranger(c)) {
+      rows.push({
+        key: `c-${c.id}`,
+        reason: "media_from_stranger",
+        target: "/WhatsAppInbox",
+        name: c.displayName || c.phone,
+        detail: "שלחו הודעה קולית או תמונה — הבוט לא יכול לקרוא",
+        days: daysSince(c.lastInboundAt),
+      });
+      if (c.phone) seenPhones.add(c.phone);
+    } else if (isStalledFlow(c)) {
+      rows.push({
+        key: `c-${c.id}`,
+        reason: "stalled_flow",
+        target: "/WhatsAppInbox",
+        name: c.coupleNames || c.displayName || c.phone,
+        detail: c.nudgeSentAt ? "נשלחה תזכורת, עדיין שקט" : "התחילו ולא סיימו למסור פרטים",
+        days: daysSince(c.lastBotMessageAt),
       });
       if (c.phone) seenPhones.add(c.phone);
     } else if (c.state === "PRICELIST_SENT" && !c.followupSentAt) {

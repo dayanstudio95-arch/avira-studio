@@ -39,6 +39,7 @@ import { createServiceRoleClient, getRequestUser } from '../_shared/supabaseClie
 import { sendWhatsApp as sendWhatsAppGreenApi } from '../_shared/whatsapp.ts';
 import { EVENT_TEAM_ROLE_LABELS as ROLE_LABELS } from '../_shared/staffRoles.ts';
 import { loadQuietHoursSettings, isInQuietHoursNow, wasAlreadySentToday, type QuietHoursSettings } from '../_shared/automationGuards.ts';
+import { runWhatsAppHousekeeping } from '../_shared/whatsappHousekeeping.ts';
 
 function getTargetMonth(mode: string) {
   const now = new Date();
@@ -1323,7 +1324,17 @@ Deno.serve(async (req) => {
     const perTenantResults = [];
     for (const t of tenants || []) {
       const result = await handleForTenant(supabase, t.id, body);
-      perTenantResults.push({ tenant_id: t.id, ...result });
+      // WhatsApp bot housekeeping (2026-09-15) rides this tick rather than owning a
+      // cron job of its own: deferred quiet-hours sends, the one-time mid-flow nudge,
+      // and the daily digest. Cron path only — never on a dashboard "run now" — and
+      // isolated, so a failure here cannot take the automations down with it.
+      let whatsapp = null;
+      try {
+        whatsapp = await runWhatsAppHousekeeping(supabase, t.id);
+      } catch (e: any) {
+        console.error('[automationEngine] whatsapp housekeeping failed for tenant', t.id, e?.message || e);
+      }
+      perTenantResults.push({ tenant_id: t.id, ...result, whatsapp });
     }
 
     return jsonResponse({ success: true, tenants: perTenantResults.length, results: perTenantResults });

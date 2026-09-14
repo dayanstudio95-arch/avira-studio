@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Flame, Clock, MessageSquare, Target } from "lucide-react";
+import { Flame, Clock, MessageSquare, Target, Paperclip, Hourglass } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { buildAttentionList } from "@/lib/needsAttention";
 
@@ -17,7 +17,9 @@ import { buildAttentionList } from "@/lib/needsAttention";
 // rating's reason, or how many days) and in the badge's title attribute.
 const REASONS = {
   hot: { label: "רוצה לסגור", icon: Flame, className: "bg-red-500/20 text-red-300 border-red-500/30" },
+  media_from_stranger: { label: "מדיה", icon: Paperclip, className: "bg-blue-500/20 text-blue-300 border-blue-500/30" },
   silent_pricelist: { label: "שותק", icon: MessageSquare, className: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30" },
+  stalled_flow: { label: "לא סיימו", icon: Hourglass, className: "bg-orange-500/20 text-orange-300 border-orange-500/30" },
   stale_lead: { label: "בלי מגע", icon: Clock, className: "bg-gray-600/30 text-gray-300 border-gray-600" },
 };
 

@@ -107,7 +107,7 @@ check('from ad, just "היי" → replies', decideBotReply({ ...inquiryBase, bod
 // The ad does not switch off the rest of the chain.
 check('from ad, but a colleague → silent', decideBotReply({ ...inquiryBase, bodyText: 'היי אני צלם, מה המחירים שלכם?', fromAd: true }).wouldReply, false);
 check('from ad, but known contact → silent', decideBotReply({ ...inquiryBase, bodyText: adPrefill, fromAd: true, contactType: 'lead' }).reason, 'known_contact');
-check('from ad, but quiet hours → silent', decideBotReply({ ...inquiryBase, bodyText: adPrefill, fromAd: true, inQuietHours: true }).reason, 'quiet_hours');
+check('from ad, but quiet hours → held for later', decideBotReply({ ...inquiryBase, bodyText: adPrefill, fromAd: true, inQuietHours: true }).reason, 'quiet_hours_deferred');
 check('from ad, but bot muted → silent', decideBotReply({ ...inquiryBase, bodyText: adPrefill, fromAd: true, botEnabled: false }).reason, 'bot_muted');
 check('from ad, but not first message → silent', decideBotReply({ ...inquiryBase, bodyText: adPrefill, fromAd: true, state: 'HANDED_OFF' }).reason, 'not_first_message');
 
@@ -173,7 +173,7 @@ section('the gate chain — all with a perfect inquiry body');
     ['mid-conversation', { state: 'AWAITING_DETAILS' }, 'not_first_message'],
     ['already greeted once', { alreadyDecidedToReply: true }, 'not_first_message'],
     ['voice note', { typeMessage: 'audioMessage' }, 'not_text'],
-    ['quiet hours', { inQuietHours: true }, 'quiet_hours'],
+    ['quiet hours', { inQuietHours: true }, 'quiet_hours_deferred'],
   ];
   for (const [name, override, expectedReason] of chain) {
     const d = decideBotReply({ ...inquiryBase, bodyText: perfect, ...override });
@@ -473,6 +473,7 @@ section('needs attention — who gets in');
       { id: "c3", phone: "0503333333", state: "PRICELIST_SENT", lastBotMessageAt: ago(2), coupleNames: "שותק יומיים" },
       { id: "c4", phone: "0504444444", state: "PRICELIST_SENT", lastBotMessageAt: ago(30), followupSentAt: ago(1), coupleNames: "כבר נדחף" },
       { id: "c5", phone: "0505555555", state: "AWAITING_DETAILS", lastBotMessageAt: ago(30), coupleNames: "עוד באמצע" },
+      { id: "c6", phone: "0506666666", state: "AWAITING_DETAILS", lastBotMessageAt: ago(0), coupleNames: "נשאל היום" },
     ],
     []
   );
@@ -481,7 +482,10 @@ section('needs attention — who gets in');
   check("silent past a week is included", names.includes("שותק 9 ימים"), true);
   check("silent only two days is NOT chased yet", names.includes("שותק יומיים"), false);
   check("already nudged drops out of the queue", names.includes("כבר נדחף"), false);
-  check("still mid-conversation is not chased", names.includes("עוד באמצע"), false);
+  // Until 2026-09-15 this asserted the opposite — and that was the hole: a person the
+  // bot asked 30 days ago and never heard from again was in no queue at all.
+  check("stalled mid-conversation IS chased now", list.find((r) => r.name === "עוד באמצע")?.reason, "stalled_flow");
+  check("asked today is not chased yet", names.includes("נשאל היום"), false);
 }
 
 section('needs attention — CRM leads, and not chasing closed ones');
@@ -536,6 +540,142 @@ section('needs attention — order decides who gets called');
 section('needs attention — empty and missing inputs');
 check("no data at all", buildAttentionList([], []).length, 0);
 check("undefined inputs do not throw", buildAttentionList(undefined, undefined).length, 0);
+
+// =================================================================================
+// PART 7 — quiet hours hold instead of drop; nudge; digest; alerts (2026-09-15)
+//
+// Two real holes drove this: a customer answering the bot at 23:30 was dropped and
+// stuck, and a night-time first message was never greeted. Everything below is the
+// pure half of the fix; the sending half is guarded by the same rules as the live path.
+// =================================================================================
+
+section('gate — quiet hours no longer swallow intent');
+{
+  const q = { ...inquiryBase, inQuietHours: true };
+  const held = decideBotReply({ ...q, bodyText: 'היי, כמה עולה צילום חתונה?' });
+  check('inquiry at night → deferred, not dropped', [held.wouldReply, held.reason], [false, 'quiet_hours_deferred']);
+  check('…and the intent is carried for the enqueue', held.intent.isInquiry, true);
+  check('no intent at night → no_intent (the truth, not "quiet")', decideBotReply({ ...q, bodyText: 'היי' }).reason, 'no_intent');
+  check('a vendor at night is still a vendor', decideBotReply({ ...q, bodyText: 'היי אני צלם, מה המחירים?' }).reason, 'no_intent');
+  check('voice note at night is still not_text', decideBotReply({ ...q, bodyText: null, typeMessage: 'audioMessage' }).reason, 'not_text');
+}
+
+section('follow-up gate — quiet hours are checked LAST');
+check('budget exhausted at night → too_many_questions, not quiet', decideBotFollowUp({ ...flowBase, inQuietHours: true, botMessagesSoFar: MAX_BOT_MESSAGES }).reason, 'too_many_questions');
+check('otherwise quiet_hours = "everything passed, hold the reply"', decideBotFollowUp({ ...flowBase, inQuietHours: true }).reason, 'quiet_hours');
+
+const { composeSends, DEFAULT_FLOW_NUDGE_TEXT } =
+  await loadModule('supabase/functions/_shared/whatsappBotSend.ts', 'botsend3');
+
+section('composeSends — the exact payload a deferred row carries');
+check('greeting → one text', composeSends('greeting', { text: 'שלום' }), [{ type: 'text', text: 'שלום' }]);
+check('empty greeting → nothing', composeSends('greeting', { text: '  ' }), []);
+check('question → one text', composeSends('question', { text: 'מתי?' }), [{ type: 'text', text: 'מתי?' }]);
+check('short price list with image → file only',
+  composeSends('pricelist', { pricelistUrl: 'https://x/p.jpg', pricelistText: 'קצר' }),
+  [{ type: 'file', url: 'https://x/p.jpg', caption: 'קצר' }]);
+check('long price list with image → file + text',
+  composeSends('pricelist', { pricelistUrl: 'https://x/p.jpg', pricelistText: 'א'.repeat(1100) }).map((i) => i.type),
+  ['file', 'text']);
+check('price list without image → text only',
+  composeSends('pricelist', { pricelistUrl: '', pricelistText: 'טקסט' }),
+  [{ type: 'text', text: 'טקסט' }]);
+
+section('new settings — ad greeting, nudge text, digest hour');
+{
+  const none = await loadBotSettings(fakeDb({ settingsRows: [] }), 't1');
+  check('ad greeting defaults empty (= use the regular one)', none.greetingTextAd, '');
+  check('nudge text has a default — a nudge must never fail for want of words', none.flowNudgeText, DEFAULT_FLOW_NUDGE_TEXT);
+  check('digest hour defaults to 8', none.digestHour, 8);
+  for (const [value, expected] of [['6', 6], ['30', 23], ['-1', 0], ['abc', 8]]) {
+    const s = await loadBotSettings(fakeDb({ settingsRows: settingRows({ whatsapp_digest_hour: value }) }), 't1');
+    check(`digest hour ${JSON.stringify(value)} → ${expected}`, s.digestHour, expected);
+  }
+  const custom = await loadBotSettings(fakeDb({ settingsRows: settingRows({ whatsapp_flow_nudge_text: ' עדיין כאן ' }) }), 't1');
+  check('custom nudge text is trimmed and kept', custom.flowNudgeText, 'עדיין כאן');
+}
+
+const { nextQuietHoursEnd } = await loadModule('supabase/functions/_shared/automationGuards.ts', 'guards');
+
+section('nextQuietHoursEnd — when a held message goes out (Jerusalem, IDT = UTC+3 in September)');
+{
+  const win = { quiet_hours_enabled: true, quiet_hours_start: '22:00', quiet_hours_end: '08:00' };
+  check('disabled → null', nextQuietHoursEnd({ ...win, quiet_hours_enabled: false }, new Date('2026-09-15T00:30:00Z')), null);
+  check('misconfigured → null', nextQuietHoursEnd({ ...win, quiet_hours_end: 'x' }, new Date('2026-09-15T00:30:00Z')), null);
+  check('03:30 local → today 08:00 local', nextQuietHoursEnd(win, new Date('2026-09-15T00:30:00Z'))?.toISOString(), '2026-09-15T05:00:00.000Z');
+  check('23:00 local → tomorrow 08:00 local', nextQuietHoursEnd(win, new Date('2026-09-15T20:00:00Z'))?.toISOString(), '2026-09-16T05:00:00.000Z');
+}
+
+const { composeDigest } = await loadModule('supabase/functions/_shared/whatsappDigest.ts', 'digest');
+
+section('daily digest — the morning message');
+{
+  const base = {
+    newStrangers: 3, greetings: 2, pricelists: 1, hotLeads: ['נועה ואיתי'], waitingFollowUp: 4,
+    stalledFlow: 1, mediaFromStrangers: 0, deferredPending: 0, inboundMessages: 12, botEnabled: true,
+  };
+  const t = composeDigest(base, '15/09/2026');
+  check('names the hot lead', t.includes('נועה ואיתי'), true);
+  check('no warning when the line is alive', t.includes('⚠️'), false);
+  check('silent 24h → the disconnect warning', composeDigest({ ...base, inboundMessages: 0 }, 'x').includes('ייתכן שהחיבור לוואטסאפ נותק'), true);
+  check('bot off is stated', composeDigest({ ...base, botEnabled: false }, 'x').includes('הבוט כבוי'), true);
+  check('all zeros still produces a message', composeDigest({ ...base, newStrangers: 0, greetings: 0, pricelists: 0, hotLeads: [], waitingFollowUp: 0, stalledFlow: 0, inboundMessages: 0 }, 'x').length > 20, true);
+  check('media count only when non-zero', t.includes('הודעה קולית'), false);
+  check('media count shown when non-zero', composeDigest({ ...base, mediaFromStrangers: 2 }, 'x').includes('הודעה קולית'), true);
+}
+
+const { composeHotLeadAlert } = await loadModule('supabase/functions/_shared/whatsappStudioAlerts.ts', 'alerts');
+
+section('hot-lead alert — what the owner reads');
+{
+  const t = composeHotLeadAlert({
+    tenantId: 't', phone: '0501234567', reason: 'רוצה לקבוע פגישה',
+    replyText: 'נשמע מעולה, מתי אפשר להיפגש?',
+    conversation: { couple_names: 'דנה ורון', event_date: '2027-06-16', venue: 'אחוזה' },
+  });
+  check('names + why + the reply', ['דנה ורון', 'רוצה לקבוע פגישה', 'מתי אפשר להיפגש'].every((x) => t.includes(x)), true);
+  check('falls back to the phone when nameless', composeHotLeadAlert({ tenantId: 't', phone: '0501234567', reason: null, replyText: null, conversation: {} }).includes('0501234567'), true);
+}
+
+const { isStalledInFlow } = await loadModule('supabase/functions/_shared/whatsappHousekeeping.ts', 'housekeeping');
+
+section('stalled mid-flow — who gets the one-time nudge');
+{
+  const now = Date.now();
+  const h = (n) => new Date(now - n * 3600000).toISOString();
+  check('asked 30h ago, never answered', isStalledInFlow({ state: 'AWAITING_DETAILS', last_bot_message_at: h(30), last_inbound_at: h(31) }, now), true);
+  check('asked 30h ago, no inbound at all', isStalledInFlow({ state: 'PARTIAL_DETAILS', last_bot_message_at: h(30), last_inbound_at: null }, now), true);
+  check('asked 30h ago but they answered since', isStalledInFlow({ state: 'AWAITING_DETAILS', last_bot_message_at: h(30), last_inbound_at: h(2) }, now), false);
+  check('asked 5h ago → too soon', isStalledInFlow({ state: 'AWAITING_DETAILS', last_bot_message_at: h(5), last_inbound_at: h(6) }, now), false);
+  check('price list already sent → not in flow', isStalledInFlow({ state: 'PRICELIST_SENT', last_bot_message_at: h(30), last_inbound_at: h(31) }, now), false);
+  check('never greeted → nothing to nudge', isStalledInFlow({ state: 'AWAITING_DETAILS', last_bot_message_at: null, last_inbound_at: h(31) }, now), false);
+}
+
+section('needs attention — media from a stranger, and stalled flows');
+{
+  const media = { id: 'm1', phone: '11', contactType: 'unknown', state: 'NEW', botLastDecision: 'not_text', botEnabled: true, lastInboundAt: ago(1), displayName: 'קול' };
+  check('voice note from a stranger is in', buildAttentionList([media], []).map((r) => r.reason), ['media_from_stranger']);
+  check('…not after 8 days', buildAttentionList([{ ...media, lastInboundAt: ago(8) }], []).length, 0);
+  check('…not once a human took over', buildAttentionList([{ ...media, botEnabled: false }], []).length, 0);
+  check('…not if the gate said something else', buildAttentionList([{ ...media, botLastDecision: 'no_intent' }], []).length, 0);
+
+  const stalled = { id: 's1', phone: '12', contactType: 'unknown', state: 'PARTIAL_DETAILS', botEnabled: true, lastBotMessageAt: ago(2), lastInboundAt: ago(3), coupleNames: 'תקוע' };
+  check('stalled mid-flow is in', buildAttentionList([stalled], []).map((r) => r.reason), ['stalled_flow']);
+  check('…not if they answered after the bot', buildAttentionList([{ ...stalled, lastInboundAt: ago(1) }], []).length, 0);
+  check('…not on the same day', buildAttentionList([{ ...stalled, lastBotMessageAt: ago(0) }], []).length, 0);
+  check('after the nudge the detail says so', buildAttentionList([{ ...stalled, nudgeSentAt: ago(1) }], [])[0].detail.includes('תזכורת'), true);
+
+  const order = buildAttentionList(
+    [
+      { id: 'c1', phone: '1', state: 'PRICELIST_SENT', lastBotMessageAt: ago(9), coupleNames: 'שותק' },
+      stalled,
+      media,
+      { id: 'c3', phone: '3', leadTemperature: 'hot', leadTemperatureAt: ago(0), coupleNames: 'חם' },
+    ],
+    [{ id: 'l1', coupleNames: 'ליד ישן', phoneNumber: '9', status: 'חדש', lastContactDate: ago(60) }]
+  );
+  check('order: hot → media → silent → stalled → CRM', order.map((r) => r.reason), ['hot', 'media_from_stranger', 'silent_pricelist', 'stalled_flow', 'stale_lead']);
+}
 
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);

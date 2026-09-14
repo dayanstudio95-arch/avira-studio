@@ -8,9 +8,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Bot, Save, AlertTriangle, Upload, Image as ImageIcon } from "lucide-react";
+import { Bot, Save, AlertTriangle, Upload, Image as ImageIcon, FlaskConical, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { uploadFile } from "@/api/uploadFile";
+import { botDecisionLabel, CONTACT_TYPE_LABELS } from "@/components/whatsapp/whatsappInboxShared";
 
 // The one screen that can make this system message a stranger on its own.
 //
@@ -39,7 +40,17 @@ const SETTING_KEYS = [
   "whatsapp_max_bot_messages_per_hour",
   "whatsapp_pricelist_url",
   "whatsapp_pricelist_text",
+  // 2026-09-15
+  "whatsapp_greeting_text_ad",
+  "whatsapp_flow_nudge_text",
+  "whatsapp_digest_hour",
 ];
+
+// Must match DEFAULT_FLOW_NUDGE_TEXT in supabase/functions/_shared/whatsappBotSend.ts —
+// the server falls back to it when the setting is empty, so the screen shows the same
+// words the customer would get.
+const DEFAULT_NUDGE =
+  "היי, עדיין כאן 🙂 אם תשלחו לנו את הפרטים החסרים נחזור אליכם עם הצעת מחיר";
 
 const DEFAULT_GREETING =
   "שלום! שמחים שפניתם לאווירה סטודיו 📸\n" +
@@ -59,7 +70,17 @@ export default function WhatsAppBotCard() {
   const [maxPerHour, setMaxPerHour] = useState("10");
   const [pricelistUrl, setPricelistUrl] = useState("");
   const [pricelistText, setPricelistText] = useState("");
+  const [greetingAd, setGreetingAd] = useState("");
+  const [nudgeText, setNudgeText] = useState("");
+  const [digestHour, setDigestHour] = useState("8");
   const [isUploading, setIsUploading] = useState(false);
+
+  // Simulator — sends nothing, see supabase/functions/whatsapp-bot-simulate.
+  const [simPhone, setSimPhone] = useState("");
+  const [simText, setSimText] = useState("");
+  const [simFromAd, setSimFromAd] = useState(false);
+  const [simResult, setSimResult] = useState(null);
+  const [isSimulating, setIsSimulating] = useState(false);
   const [settingIds, setSettingIds] = useState({});
   const [isSaving, setIsSaving] = useState(false);
 
@@ -85,6 +106,9 @@ export default function WhatsAppBotCard() {
         setMaxPerHour(byKey.whatsapp_max_bot_messages_per_hour || "10");
         setPricelistUrl(byKey.whatsapp_pricelist_url ?? "");
         setPricelistText(byKey.whatsapp_pricelist_text ?? "");
+        setGreetingAd(byKey.whatsapp_greeting_text_ad ?? "");
+        setNudgeText(byKey.whatsapp_flow_nudge_text ?? "");
+        setDigestHour(byKey.whatsapp_digest_hour || "8");
       } catch (e) {
         console.error("Error loading WhatsApp bot settings:", e);
       }
@@ -152,6 +176,9 @@ export default function WhatsAppBotCard() {
         whatsapp_max_bot_messages_per_hour: String(maxPerHour || "10"),
         whatsapp_pricelist_url: pricelistUrl.trim(),
         whatsapp_pricelist_text: trimmedPricelist,
+        whatsapp_greeting_text_ad: greetingAd.trim(),
+        whatsapp_flow_nudge_text: nudgeText.trim(),
+        whatsapp_digest_hour: String(Math.min(23, Math.max(0, parseInt(digestHour, 10) || 0))),
       };
       await Promise.all(
         SETTING_KEYS.map(async (key) => {
@@ -173,6 +200,26 @@ export default function WhatsAppBotCard() {
       toast.error(`שגיאה בשמירת ההגדרות: ${e?.message || "שגיאה לא ידועה"}`);
     }
     setIsSaving(false);
+  };
+
+  const handleSimulate = async () => {
+    if (!simText.trim()) {
+      toast.error("כתוב הודעה לבדיקה");
+      return;
+    }
+    setIsSimulating(true);
+    setSimResult(null);
+    try {
+      const res = await base44.functions.invoke("whatsappBotSimulate", {
+        phone: simPhone.trim() || undefined,
+        text: simText,
+        fromAd: simFromAd,
+      });
+      setSimResult(res?.data || null);
+    } catch (e) {
+      toast.error(`הבדיקה נכשלה: ${e?.message || "שגיאה לא ידועה"}`);
+    }
+    setIsSimulating(false);
   };
 
   return (
@@ -251,6 +298,22 @@ export default function WhatsAppBotCard() {
               השתמש בנוסח מוצע
             </button>
           )}
+        </div>
+
+        <div>
+          <Label className="text-gray-300">הודעת פתיחה למי שהגיע ממודעה (לא חובה)</Label>
+          <p className="text-gray-500 text-xs mt-1 mb-2">
+            מי שלחץ על מודעה בפייסבוק/אינסטגרם ופתח צ'אט יקבל את הנוסח הזה במקום הרגיל — כדאי להזכיר בו את
+            ההטבה שבגללה לחצו. ריק = הודעת הפתיחה הרגילה.
+          </p>
+          <Textarea
+            value={greetingAd}
+            onChange={(e) => setGreetingAd(e.target.value)}
+            rows={5}
+            disabled={!canManage}
+            placeholder={"היי! ראינו שהגעתם דרך המודעה 📣 ההטבה לסטודנטים וזוגות צעירים שמורה לכם.\nכדי שנחזור עם הצעה מדויקת נשמח לכמה פרטים: ..."}
+            className="bg-gray-800 border-gray-700 text-white"
+          />
         </div>
 
         {/* The end of the flow. Once the bot has collected all four details it sends
@@ -361,6 +424,45 @@ export default function WhatsAppBotCard() {
           </div>
         </div>
 
+        <div className="border-t border-gray-800 pt-6">
+          <Label className="text-gray-300">תזכורת למי שלא סיים למסור פרטים</Label>
+          <p className="text-gray-500 text-xs mt-1 mb-2">
+            הבוט שאל, הם לא ענו יממה — נשלחת הודעת דחיפה אחת בלבד, ואז השיחה מופיעה אצלך תחת "לא סיימו פרטים".
+            לא נשלחת בשעות השקט.
+          </p>
+          <Textarea
+            value={nudgeText}
+            onChange={(e) => setNudgeText(e.target.value)}
+            rows={3}
+            disabled={!canManage}
+            placeholder={DEFAULT_NUDGE}
+            className="bg-gray-800 border-gray-700 text-white"
+          />
+          {!nudgeText.trim() && (
+            <p className="text-gray-500 text-xs mt-1">ריק = הנוסח המוצע למעלה.</p>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <Label className="text-gray-300">שעת הסיכום היומי</Label>
+            <p className="text-gray-500 text-xs mt-1 mb-2">
+              כל בוקר תקבל בוואטסאפ (למספר ההתראות שבהגדרות ← התראות) סיכום: פניות, מחירונים, לידים חמים, ומי מחכה לך.
+              שעה בין 0 ל-23.
+            </p>
+            <Input
+              type="number"
+              min={0}
+              max={23}
+              value={digestHour}
+              onChange={(e) => setDigestHour(e.target.value)}
+              disabled={!canManage}
+              className="bg-gray-800 border-gray-700 text-white"
+              dir="ltr"
+            />
+          </div>
+        </div>
+
         {canManage && (
           <div className="flex justify-end pt-2">
             <Button onClick={handleSave} disabled={isSaving} className="bg-yellow-500 hover:bg-yellow-600 text-black">
@@ -371,6 +473,103 @@ export default function WhatsAppBotCard() {
         )}
         {!canManage && (
           <p className="text-gray-500 text-sm">רק מנהל מערכת יכול לשנות את הגדרות הבוט.</p>
+        )}
+
+        {/* The simulator (2026-09-15). "Why didn't it answer?" was asked twice in one
+            week and each time took a database query. This runs the real gate chain —
+            same contact lookup, same settings, same clock — and sends nothing. */}
+        {canManage && (
+          <div className="border-t border-gray-800 pt-6 space-y-3">
+            <div>
+              <Label className="text-gray-300 flex items-center gap-2">
+                <FlaskConical className="w-4 h-4 text-blue-400" />
+                בדוק מה הבוט היה עונה
+              </Label>
+              <p className="text-gray-500 text-xs mt-1">
+                הקלד הודעה (ומספר, אם יש) ותראה מה הבוט היה עושה — ולמה. שום דבר לא נשלח.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Input
+                value={simPhone}
+                onChange={(e) => setSimPhone(e.target.value)}
+                placeholder="050-1234567 (לא חובה)"
+                className="bg-gray-800 border-gray-700 text-white"
+                dir="ltr"
+              />
+              <div className="sm:col-span-2 flex items-center gap-3 text-sm text-gray-300">
+                <Switch checked={simFromAd} onCheckedChange={setSimFromAd} />
+                הגיע דרך מודעה בפייסבוק
+              </div>
+            </div>
+            <Textarea
+              value={simText}
+              onChange={(e) => setSimText(e.target.value)}
+              rows={3}
+              placeholder="היי, כמה עולה צילום חתונה?"
+              className="bg-gray-800 border-gray-700 text-white"
+            />
+            <Button
+              onClick={handleSimulate}
+              disabled={isSimulating}
+              variant="outline"
+              className="border-gray-600 text-gray-200"
+            >
+              {isSimulating ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <FlaskConical className="w-4 h-4 ml-2" />}
+              {isSimulating ? "בודק..." : "בדוק"}
+            </Button>
+
+            {simResult && (
+              <div
+                className={`rounded-lg border p-4 space-y-2 text-sm ${
+                  simResult.wouldSend
+                    ? "border-emerald-700/60 bg-emerald-950/30"
+                    : "border-gray-700 bg-gray-800/40"
+                }`}
+              >
+                <p className={`font-medium ${simResult.wouldSend ? "text-emerald-300" : "text-gray-200"}`}>
+                  {simResult.wouldSend
+                    ? simResult.reason === "quiet_hours_deferred"
+                      ? "✅ הבוט היה עונה — בסיום שעות השקט"
+                      : "✅ הבוט היה עונה"
+                    : "🔇 הבוט היה שותק"}
+                </p>
+                <p className="text-gray-300">{botDecisionLabel(simResult.reason)}</p>
+                <p className="text-gray-400 text-xs">
+                  זיהוי המספר: {CONTACT_TYPE_LABELS[simResult.contactType] || simResult.contactType}
+                  {simResult.inQuietHours ? " · שעות שקט עכשיו" : ""}
+                  {!simResult.masterEnabled ? " · הבוט כבוי" : ""}
+                </p>
+                {simResult.intent && (
+                  <p className="text-gray-400 text-xs">
+                    מילים שתפסו:{" "}
+                    {[
+                      simResult.intent.matchedService && `שירות "${simResult.intent.matchedService}"`,
+                      simResult.intent.matchedInquiry && `מחיר/זמינות "${simResult.intent.matchedInquiry}"`,
+                      simResult.intent.matchedSelfEvent && `אירוע עצמי "${simResult.intent.matchedSelfEvent}"`,
+                      simResult.intent.matchedDate && "תאריך",
+                      simResult.intent.matchedAd && "הגיע ממודעה",
+                      simResult.intent.matchedVendor && `⛔ ספק "${simResult.intent.matchedVendor}"`,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ") || "אף מילה"}
+                  </p>
+                )}
+                {simResult.wouldSend && simResult.greeting && (
+                  <div className="bg-gray-900/60 border border-gray-700 rounded p-2 text-gray-200 text-xs whitespace-pre-wrap">
+                    {simResult.greeting}
+                  </div>
+                )}
+                {simResult.notes?.length > 0 && (
+                  <ul className="list-disc pr-4 text-xs text-amber-300/90 space-y-0.5">
+                    {simResult.notes.map((n, i) => (
+                      <li key={i}>{n}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
         )}
       </CardContent>
     </Card>

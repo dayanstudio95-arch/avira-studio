@@ -70,8 +70,15 @@ send-album-sketch, send-questionnaire-reminders, send-questionnaire-to-events,
 send-staff-invite, send-staff-schedule-message, send-to-couple, send-to-editor,
 send-whatsapp-message, share-event-info-with-team, sign-lead-public,
 submit-production-questionnaire, sync-all-signed-leads, sync-event-to-calendar,
-sync-lead-to-event, whatsapp-manager
+sync-lead-to-event, whatsapp-manager, whatsapp-webhook, whatsapp-bot-simulate
 ```
+
+**WhatsApp bot housekeeping (2026-09-15)** — deferred quiet-hours sends, the one-time
+mid-flow nudge and the daily digest all run inside `automation-engine`'s existing
+hourly cron tick (`_shared/whatsappHousekeeping.ts`). There is deliberately **no
+separate cron job and no new secret** for them: redeploying `automation-engine` is the
+whole deployment. Migration `0061` must be applied first (the webhook writes
+`whatsapp_deferred_sends`).
 
 **Important — `google-calendar-oauth-callback` and `calendar-sync-webhook` must both
 deploy with `verify_jwt=false`.** Google's OAuth redirect hits the first with no
