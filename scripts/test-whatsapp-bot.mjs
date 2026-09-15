@@ -677,6 +677,62 @@ section('needs attention — media from a stranger, and stalled flows');
   check('order: hot → media → silent → stalled → CRM', order.map((r) => r.reason), ['hot', 'media_from_stranger', 'silent_pricelist', 'stalled_flow', 'stale_lead']);
 }
 
+// =================================================================================
+// PART 8 — "מצא מחליף" (src/lib/staffReplacement.js, 2026-09-15)
+//
+// Everyone in the role is pre-ticked; the only judgement is who NOT to pre-tick, and
+// each of those must carry a reason the owner can read.
+// =================================================================================
+
+const { pickReplacementCandidates, buildTeamWithAssignment, namesBookedOnDate } =
+  await loadModule('src/lib/staffReplacement.js', 'replacement');
+
+section('replacement — who is pre-ticked');
+{
+  const staff = [
+    { id: 'a', name: 'אבי', role: 'photographer', phoneNumber: '0501' },
+    { id: 'b', name: 'בני', role: 'photographer', phoneNumber: '0502' },
+    { id: 'c', name: 'גל', role: 'photographer', phoneNumber: null },
+    { id: 'd', name: 'דנה', role: 'photographer', phoneNumber: '0504' },
+    { id: 'e', name: 'עומר', role: 'photographer', phoneNumber: '0505' },
+    { id: 'v', name: 'וידאו', role: 'videographer', phoneNumber: '0506' },
+  ];
+  const eventTeam = [{ role: 'photographer1', staffMemberName: 'אבי' }, { role: 'videographer', staffMemberName: 'וידאו' }];
+  const eventsOnDate = [
+    { id: 'this', date: '2027-06-16', team: eventTeam },
+    { id: 'other', date: '2027-06-16', team: [{ role: 'photographer2', staffMemberName: 'דנה' }] },
+    { id: 'another-day', date: '2027-06-17', team: [{ role: 'photographer1', staffMemberName: 'עומר' }] },
+  ];
+  const out = pickReplacementCandidates({
+    staffMembers: staff, jobRole: 'photographer', eventTeam, eventsOnDate,
+    eventId: 'this', eventDate: '2027-06-16', excludeName: 'בני',
+  });
+  const by = Object.fromEntries(out.map((c) => [c.staff.name, c]));
+  check('only the role', Object.keys(by).sort(), ['אבי', 'בני', 'גל', 'דנה', 'עומר'].sort());
+  check('already on this event → not ticked, says so', [by['אבי'].preselected, by['אבי'].reason], [false, 'כבר משובץ כאן']);
+  check('the one who cancelled → not ticked', [by['בני'].preselected, by['בני'].reason], [false, 'זה מי שביטל']);
+  check('no phone → not ticked', [by['גל'].preselected, by['גל'].reason], [false, 'אין טלפון']);
+  check('booked on another event that day (other slot!) → not ticked', [by['דנה'].preselected, by['דנה'].reason], [false, 'משובץ באירוע אחר באותו יום']);
+  check('booked on another DAY → ticked', [by['עומר'].preselected, by['עומר'].reason], [true, null]);
+  check('booked names ignore the event itself', [...namesBookedOnDate(eventsOnDate, '2027-06-16', 'this')], ['דנה']);
+}
+
+section('replacement — assigning into a slot');
+{
+  const staff = { name: 'עומר', defaultRate: 1000, ratesByRole: [{ role: 'photographer2', rate: 1200 }] };
+  const team = [
+    { role: 'photographer1', staffMemberName: 'אבי', cost: 900, isPaid: true, progressStatus: 'done' },
+    { role: 'photographer2', staffMemberName: 'בני', cost: 800, isPaid: false, progressStatus: 'pending' },
+  ];
+  const next = buildTeamWithAssignment(team, 'photographer2', staff);
+  check('replaces the occupant of that slot', next.find((m) => m.role === 'photographer2').staffMemberName, 'עומר');
+  check('per-slot rate wins over default', next.find((m) => m.role === 'photographer2').cost, 1200);
+  check('default rate when no per-slot rate', buildTeamWithAssignment(team, 'photographer1', staff).find((m) => m.role === 'photographer1').cost, 1000);
+  check('other slots untouched', next.find((m) => m.role === 'photographer1'), team[0]);
+  check('input not mutated', team.find((m) => m.role === 'photographer2').staffMemberName, 'בני');
+  check('fresh assignment is unpaid and pending', [next[1].isPaid, next[1].progressStatus], [false, 'pending']);
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

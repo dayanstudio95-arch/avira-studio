@@ -7,7 +7,7 @@ import StaffAssignmentRoleList from "./StaffAssignmentRoleList";
 // gold "בחר" popover picker). The actual assignment UI lives in
 // StaffAssignmentRoleList.jsx so StaffScheduling.jsx's desktop views can
 // render the exact same structure without duplicating this logic.
-export default function MobileStaffAssignmentSheet({ event, isOpen, onClose, staffMembers, events, onRefresh, sendCalendarInviteByName }) {
+export default function MobileStaffAssignmentSheet({ event, isOpen, onClose, staffMembers, events, onRefresh, sendCalendarInviteByName, onFindReplacement }) {
   if (!event) return null;
 
   return (
@@ -23,6 +23,7 @@ export default function MobileStaffAssignmentSheet({ event, isOpen, onClose, sta
             events={events}
             onRefresh={onRefresh}
             sendCalendarInviteByName={sendCalendarInviteByName}
+            onFindReplacement={onFindReplacement}
           />
         </div>
       </SheetContent>

@@ -13,7 +13,7 @@ import { StaffPickerCell } from "./EventsTableWithBulkDelete";
 // logic, per the studio's explicit request to match the mobile layout on
 // desktop too -- desktop previously had its own, different "אנשי צוות זמינים"
 // grid + role-toggle-buttons design here.
-export default function StaffAssignmentRoleList({ event, staffMembers, events, onRefresh, sendCalendarInviteByName }) {
+export default function StaffAssignmentRoleList({ event, staffMembers, events, onRefresh, sendCalendarInviteByName, onFindReplacement }) {
   const [editingKey, setEditingKey] = useState(null);
   const [editingEditor, setEditingEditor] = useState(false);
   const [removingKey, setRemovingKey] = useState(null);
@@ -104,10 +104,10 @@ export default function StaffAssignmentRoleList({ event, staffMembers, events, o
   });
 
   const roles = [
-    { role: "photo1", roleKey: "photographer1", label: "צלם 1", color: "bg-blue-500/20 text-blue-400 border-blue-500/30", icon: "📸", staffList: photographers },
-    { role: "photo2", roleKey: "photographer2", label: "צלם 2", color: "bg-blue-500/20 text-blue-400 border-blue-500/30", icon: "📸", staffList: photographers },
-    { role: "video1", roleKey: "videographer", label: "וידאו 1", color: "bg-pink-500/20 text-pink-400 border-pink-500/30", icon: "🎥", staffList: videographers },
-    { role: "video2", roleKey: "videographer2", label: "וידאו 2", color: "bg-pink-500/20 text-pink-400 border-pink-500/30", icon: "🎥", staffList: videographers },
+    { role: "photo1", roleKey: "photographer1", jobRole: "photographer", label: "צלם 1", color: "bg-blue-500/20 text-blue-400 border-blue-500/30", icon: "📸", staffList: photographers },
+    { role: "photo2", roleKey: "photographer2", jobRole: "photographer", label: "צלם 2", color: "bg-blue-500/20 text-blue-400 border-blue-500/30", icon: "📸", staffList: photographers },
+    { role: "video1", roleKey: "videographer", jobRole: "videographer", label: "וידאו 1", color: "bg-pink-500/20 text-pink-400 border-pink-500/30", icon: "🎥", staffList: videographers },
+    { role: "video2", roleKey: "videographer2", jobRole: "videographer", label: "וידאו 2", color: "bg-pink-500/20 text-pink-400 border-pink-500/30", icon: "🎥", staffList: videographers },
   ];
 
   return (
@@ -139,6 +139,19 @@ export default function StaffAssignmentRoleList({ event, staffMembers, events, o
                 r.roleKey,
                 assigned.staffMemberName,
                 (m) => m.role !== r.roleKey
+              )}
+              {/* 2026-09-15: the person in this slot cancelled — ask everyone else in
+                  the role for this date in one go (StaffAvailabilityModal, replacement
+                  mode). The occupant stays until someone says yes and gets assigned. */}
+              {assigned && onFindReplacement && (
+                <button
+                  type="button"
+                  onClick={() => onFindReplacement(r.jobRole, assigned.staffMemberName, liveEvent)}
+                  title={`${assigned.staffMemberName} ביטל/ה? מצא מחליף לתפקיד ${r.label}`}
+                  className="shrink-0 min-h-[36px] px-3 py-2 rounded-md text-xs font-semibold border transition-colors bg-orange-500/15 text-orange-300 border-orange-500/30 hover:bg-orange-500/25"
+                >
+                  🔁 מחליף
+                </button>
               )}
             </div>
           </div>

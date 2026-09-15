@@ -16,6 +16,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { sendCalendarInviteByName } from "@/lib/calendarInvites";
 import MobileStaffAssignmentSheet from "@/components/events/MobileStaffAssignmentSheet";
 import StaffAssignmentRoleList from "@/components/events/StaffAssignmentRoleList";
+import StaffAvailabilityModal from "@/components/leads/StaffAvailabilityModal";
 
 // Module-level so the array isn't rebuilt on every render. Short form on mobile
 // (a 7-column month grid leaves ~48px per column on a phone, where "ראשון" wraps).
@@ -43,6 +44,10 @@ export default function StaffScheduling() {
   // instead of the desktop-oriented Dialog+renderStaffList, so mobile users get
   // one consistent per-role picker experience across both pages.
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
+  // "מצא מחליף" (2026-09-15): which event + role + who cancelled; null = closed.
+  const [replacementTarget, setReplacementTarget] = useState(null);
+  const openReplacement = (jobRole, excludeName, forEvent) =>
+    setReplacementTarget({ event: forEvent, jobRole, excludeName });
   const [sortMode, setSortMode] = useState('date');
   const [filterMissing, setFilterMissing] = useState(true);
   const [isEditingOrder, setIsEditingOrder] = useState(false);
@@ -228,6 +233,7 @@ export default function StaffScheduling() {
           events={events}
           onRefresh={loadData}
           sendCalendarInviteByName={sendCalendarInviteByName}
+          onFindReplacement={openReplacement}
         />
       )}
     </>
@@ -645,6 +651,24 @@ export default function StaffScheduling() {
           events={events}
           onRefresh={loadData}
           sendCalendarInviteByName={sendCalendarInviteByName}
+          onFindReplacement={openReplacement}
+        />
+
+        <StaffAvailabilityModal
+          open={!!replacementTarget}
+          onClose={() => setReplacementTarget(null)}
+          onSent={() => setReplacementTarget(null)}
+          staffMembers={staffMembers}
+          eventDate={replacementTarget?.event?.date}
+          venue={replacementTarget?.event?.venue}
+          coupleNames={replacementTarget?.event?.coupleNames}
+          leadId={replacementTarget?.event?.sourceLeadId || null}
+          eventId={replacementTarget?.event?.id}
+          eventTeam={replacementTarget?.event?.team || []}
+          eventsOnDate={events}
+          replacement={replacementTarget ? { jobRole: replacementTarget.jobRole, excludeName: replacementTarget.excludeName } : null}
+          existingRequests={[]}
+          onStaffMembersChanged={loadData}
         />
       </div>
     </div>

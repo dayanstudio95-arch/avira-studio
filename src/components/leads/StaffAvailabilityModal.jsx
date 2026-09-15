@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { STAFF_JOB_ROLES } from "@/lib/staffRoles";
 import { generateRawToken, hashToken } from "@/lib/albumTokens";
+import { pickReplacementCandidates } from "@/lib/staffReplacement";
 
 // Only these two job roles are relevant for an "is a crew member free on this
 // date" check — editors/graphic designers aren't booked per-event-date the
@@ -29,11 +30,19 @@ function buildDefaultMessage({ roleLabel, eventDate, venue, coupleNames }) {
 // placeholders shown as chips there. Falls back to buildDefaultMessage's
 // hardcoded string (mirrors the template's own defaultValue) if no template
 // was saved yet or the fetch fails.
-async function buildMessage({ roleLabel, eventDate, venue, coupleNames }) {
+// `replacement` picks the "מצא מחליף" wording (template_staff_replacement_check) and
+// falls back to the ordinary availability template when that one was never saved.
+async function buildMessage({ roleLabel, eventDate, venue, coupleNames, replacement = false }) {
   const dateStr = eventDate ? format(new Date(eventDate), "d/M/yyyy") : "";
   try {
-    const rows = await base44.entities.AppSetting.filter({ key: "template_staff_availability_check" });
-    const tpl = rows?.[0]?.value;
+    const keys = replacement
+      ? ["template_staff_replacement_check", "template_staff_availability_check"]
+      : ["template_staff_availability_check"];
+    let tpl = null;
+    for (const key of keys) {
+      const rows = await base44.entities.AppSetting.filter({ key });
+      if (rows?.[0]?.value) { tpl = rows[0].value; break; }
+    }
     if (tpl) {
       return tpl
         .replace(/\{\{role\}\}/g, roleLabel || "")
@@ -76,7 +85,15 @@ export default function StaffAvailabilityModal({
   eventId,
   existingRequests,
   onStaffMembersChanged,
+  // 2026-09-15 — "מצא מחליף". Non-null switches to replacement mode: everyone in the
+  // picked role is pre-ticked except those with a reason not to be (already on this
+  // event, booked elsewhere that day, no phone, or `excludeName` — the one who
+  // cancelled). `{ jobRole }` skips the role picker; `{}` shows it.
+  replacement = null,
+  eventTeam = null,
+  eventsOnDate = null,
 }) {
+  const isReplacement = !!replacement;
   // 'photographer' | 'videographer' | 'favorites' (send flow, combined roles) |
   // 'manage-favorites' (checklist to mark who's a favorite) | null (role picker)
   const [selectedRole, setSelectedRole] = useState(null);
@@ -88,6 +105,25 @@ export default function StaffAvailabilityModal({
   // (Leads.jsx) to refetch staffMembers over the network (onStaffMembersChanged is fired
   // in the background so the parent stays in sync for next time too).
   const [favoriteOverrides, setFavoriteOverrides] = useState(new Map());
+  // Replacement mode needs to know who is booked that day on OTHER events. The caller
+  // may pass `eventsOnDate`; otherwise fetched here, once per open.
+  const [fetchedEventsOnDate, setFetchedEventsOnDate] = useState(null);
+
+  useEffect(() => {
+    if (!open || !isReplacement || eventsOnDate || !eventDate) return;
+    let mounted = true;
+    base44.entities.Event.filter({ date: eventDate })
+      .then((rows) => { if (mounted) setFetchedEventsOnDate(rows || []); })
+      .catch(() => { if (mounted) setFetchedEventsOnDate([]); });
+    return () => { mounted = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isReplacement, eventDate]);
+
+  // Jump straight to the role when the caller already knows it.
+  useEffect(() => {
+    if (open && isReplacement && replacement?.jobRole) handlePickRole(replacement.jobRole);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isReplacement, replacement?.jobRole]);
 
   useEffect(() => {
     if (!open) {
@@ -97,6 +133,7 @@ export default function StaffAvailabilityModal({
       setMessage("");
       setIsSending(false);
       setFavoriteOverrides(new Map());
+      setFetchedEventsOnDate(null);
     }
   }, [open]);
 
@@ -118,6 +155,27 @@ export default function StaffAvailabilityModal({
     return staffMembersWithFavorites.filter((s) => s.role === selectedRole);
   }, [selectedRole, staffMembersWithFavorites]);
 
+  // Replacement mode: why each person is (not) pre-ticked. Recomputed when the
+  // same-day events arrive, and the pre-selection follows it.
+  const candidates = useMemo(() => {
+    if (!isReplacement || !selectedRole || selectedRole === "favorites" || selectedRole === "manage-favorites") return null;
+    return pickReplacementCandidates({
+      staffMembers: staffMembersWithFavorites,
+      jobRole: selectedRole,
+      eventTeam: eventTeam || [],
+      eventsOnDate: eventsOnDate || fetchedEventsOnDate || [],
+      eventId,
+      eventDate,
+      excludeName: replacement?.excludeName || null,
+    });
+  }, [isReplacement, selectedRole, staffMembersWithFavorites, eventTeam, eventsOnDate, fetchedEventsOnDate, eventId, eventDate, replacement?.excludeName]);
+  const reasonFor = (staffId) => candidates?.find((c) => c.staff.id === staffId)?.reason || null;
+
+  useEffect(() => {
+    if (!candidates) return;
+    setSelectedIds(new Set(candidates.filter((c) => c.preselected).map((c) => c.staff.id)));
+  }, [candidates]);
+
   const handlePickRole = async (roleValue) => {
     const roleLabel =
       roleValue === "favorites"
@@ -126,7 +184,7 @@ export default function StaffAvailabilityModal({
     setSelectedRole(roleValue);
     setSelectedIds(new Set());
     setMessage(buildDefaultMessage({ roleLabel, eventDate, venue, coupleNames })); // instant fallback while the saved template loads
-    const msg = await buildMessage({ roleLabel, eventDate, venue, coupleNames });
+    const msg = await buildMessage({ roleLabel, eventDate, venue, coupleNames, replacement: isReplacement });
     setMessage(msg);
   };
 
@@ -167,7 +225,8 @@ export default function StaffAvailabilityModal({
     const rawToken = generateRawToken();
     const tokenHash = await hashToken(rawToken);
     await base44.entities.StaffAvailabilityRequest.create({
-      leadId,
+      // Nullable since migration 0063: a request can stand on an event alone.
+      leadId: leadId || null,
       eventId: eventId || null,
       staffMemberId: staffMember.id,
       staffNameSnapshot: staffMember.name,
@@ -226,13 +285,15 @@ export default function StaffAvailabilityModal({
                 <ArrowRight className="w-4 h-4" />
               </button>
             )}
-            {selectedRole === "manage-favorites" ? "בחירת מועדפים" : "זמינות צלם"}
+            {selectedRole === "manage-favorites" ? "בחירת מועדפים" : isReplacement ? "🔁 מצא מחליף" : "זמינות צלם"}
           </DialogTitle>
         </DialogHeader>
 
         {!selectedRole ? (
           <div className="space-y-2 py-2">
-            <p className="text-sm text-gray-400 mb-3">בחר/י תפקיד כדי לראות את אנשי הצוות</p>
+            <p className="text-sm text-gray-400 mb-3">
+              {isReplacement ? "מי ביטל? בחר/י את התפקיד — כולם בתפקיד יסומנו, חוץ ממי שכבר משובץ באותו יום" : "בחר/י תפקיד כדי לראות את אנשי הצוות"}
+            </p>
             {AVAILABILITY_ROLES.map((r) => {
               const Icon = ROLE_ICON[r.value];
               return (
@@ -246,7 +307,7 @@ export default function StaffAvailabilityModal({
                 </Button>
               );
             })}
-            <div className="pt-2 mt-2 border-t border-gray-700/50 space-y-2">
+            {!isReplacement && <div className="pt-2 mt-2 border-t border-gray-700/50 space-y-2">
               <Button
                 onClick={() => handlePickRole("favorites")}
                 className="w-full flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-600 text-gray-900 font-semibold py-5 rounded-xl"
@@ -262,7 +323,7 @@ export default function StaffAvailabilityModal({
                 <ListChecks className="w-4 h-4" />
                 בחירת מועדפים
               </Button>
-            </div>
+            </div>}
           </div>
         ) : selectedRole === "manage-favorites" ? (
           <div className="space-y-3 py-2">
@@ -337,6 +398,8 @@ export default function StaffAvailabilityModal({
                       </div>
                       {!s.phoneNumber ? (
                         <span className="text-xs text-gray-500">אין טלפון</span>
+                      ) : reasonFor(s.id) && !selectedIds.has(s.id) ? (
+                        <span className="text-xs text-amber-400/90">{reasonFor(s.id)}</span>
                       ) : (
                         latestStatusFor(s.id) && (
                           <span className={`text-xs ${STATUS_BADGE[latestStatusFor(s.id)]?.className || "text-gray-500"}`}>

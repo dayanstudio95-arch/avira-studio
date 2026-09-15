@@ -4,7 +4,6 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetClose } from "@/comp
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { format } from "date-fns";
 import {
   Loader2, CheckCircle2, ExternalLink, FileDown, Copy, ClipboardCheck,
@@ -13,8 +12,7 @@ import {
 import { toast } from "sonner";
 import InvoiceDialog from "@/components/invoice/InvoiceDialog";
 import StaffAvailabilityModal from "@/components/leads/StaffAvailabilityModal";
-import { eventTeamRoleLabel, teamRoleSlotsForJobRole } from "@/lib/staffRoles";
-import { sendCalendarInviteByName } from "@/lib/calendarInvites";
+import AvailabilityPills from "@/components/events/AvailabilityPills";
 import {
   PRODUCTION_QUESTIONNAIRE_FIELDS,
   PRODUCTION_QUESTIONNAIRE_LONG_TEXT_FIELDS,
@@ -68,11 +66,10 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
   const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
   const [availabilityRequests, setAvailabilityRequests] = useState([]);
 
-  // Assign-from-availability-pill flow: click an "available" pill -> confirm ->
-  // pick role slot if ambiguous -> optionally overwrite -> assign + calendar invite.
-  const [assignCandidate, setAssignCandidate] = useState(null); // the availability-request row being assigned, or null
-  const [assignRoleSlot, setAssignRoleSlot] = useState(null);
-  const [isAssigningStaff, setIsAssigningStaff] = useState(false);
+  // "מצא מחליף" (2026-09-15): opens the availability modal in replacement mode —
+  // everyone in the role pre-ticked except those already booked that day.
+  const [replacementMode, setReplacementMode] = useState(false);
+  // Assign-from-availability-pill flow lives in AvailabilityPills.jsx since 2026-09-15.
   // Optimistic local reflection of safeEvent.team after an assign, so the panel
   // updates instantly without calling onEventUpdated (which some parents use to
   // close the panel entirely -- see EventsTableWithBulkDelete.jsx).
@@ -101,11 +98,9 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
   }, [event?.id, lead?.id]);
 
   useEffect(() => {
-    if (lead?.id) {
-      loadLeadInvoices();
-      loadAvailabilityRequests();
-    }
-  }, [lead?.id]);
+    if (lead?.id) loadLeadInvoices();
+    if (lead?.id || safeEvent?.id) loadAvailabilityRequests();
+  }, [lead?.id, safeEvent?.id]);
 
   // Discard the optimistic local team override whenever the parent hands down fresh
   // event data (panel reopened, another action's own refresh, etc.) so it can never
@@ -118,9 +113,17 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
   // re-asking creates a new row rather than mutating a prior one, so we only care
   // about the most recent ask/answer for the status pills below).
   const loadAvailabilityRequests = async () => {
-    if (!lead?.id) return;
+    if (!lead?.id && !safeEvent?.id) return;
     try {
-      const rows = await base44.entities.StaffAvailabilityRequest.filter({ leadId: lead.id }, "-requestedAt");
+      // By lead and by event, merged: a request made from the event side (no lead) and
+      // one made from the lead side both belong to the same wedding.
+      const [byLead, byEvent] = await Promise.all([
+        lead?.id ? base44.entities.StaffAvailabilityRequest.filter({ leadId: lead.id }, "-requestedAt") : [],
+        safeEvent?.id ? base44.entities.StaffAvailabilityRequest.filter({ eventId: safeEvent.id }, "-requestedAt") : [],
+      ]);
+      const rows = [...(byLead || []), ...(byEvent || [])].sort(
+        (a, b) => new Date(b.requestedAt || 0) - new Date(a.requestedAt || 0)
+      );
       const latestByStaff = new Map();
       for (const row of rows) {
         if (!latestByStaff.has(row.staffMemberId)) latestByStaff.set(row.staffMemberId, row);
@@ -491,69 +494,6 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
   const balance = (lead?.finalPrice || 0) - displayTotalPaid;
 
   // Derived values for the "assign to team?" dialog, kept in sync with assignCandidate/assignRoleSlot.
-  const assignStaffMember = assignCandidate
-    ? staffMembers?.find((s) => s.id === assignCandidate.staffMemberId)
-    : null;
-  const assignJobRole = assignStaffMember?.role || assignCandidate?.role;
-  const assignCandidateSlots = assignCandidate ? teamRoleSlotsForJobRole(assignJobRole) : [];
-  const assignOccupiedBy = assignCandidate
-    ? team.find((m) => m.role === assignRoleSlot)?.staffMemberName
-    : null;
-  const isAlreadyAssignedHere =
-    !!assignOccupiedBy && assignOccupiedBy === (assignStaffMember?.name || assignCandidate?.staffNameSnapshot);
-
-  const openAssignDialog = (request) => {
-    const staffMember = staffMembers?.find((s) => s.id === request.staffMemberId);
-    const jobRole = staffMember?.role || request.role;
-    const candidateSlots = teamRoleSlotsForJobRole(jobRole);
-
-    if (candidateSlots.length === 0) {
-      toast.error("לא נמצא תפקיד מתאים בצוות האירוע עבור איש הצוות הזה");
-      return;
-    }
-
-    const currentTeam = localTeamOverride ?? (safeEvent?.team || []);
-    const firstEmpty = candidateSlots.find((slot) => !currentTeam.some((m) => m.role === slot));
-    setAssignRoleSlot(firstEmpty || candidateSlots[0]);
-    setAssignCandidate(request);
-  };
-
-  const handleConfirmAssign = async () => {
-    if (!safeEvent || !assignCandidate || !assignRoleSlot) return;
-    setIsAssigningStaff(true);
-    try {
-      const staffName = assignStaffMember?.name || assignCandidate.staffNameSnapshot;
-
-      let cost = assignStaffMember?.defaultRate || 0;
-      if (assignStaffMember?.ratesByRole?.length) {
-        const roleRate = assignStaffMember.ratesByRole.find((r) => r.role === assignRoleSlot);
-        if (roleRate) cost = roleRate.rate;
-      }
-
-      const currentTeam = localTeamOverride ?? (safeEvent.team || []);
-      const newTeam = currentTeam.filter((m) => m.role !== assignRoleSlot);
-      newTeam.push({ role: assignRoleSlot, staffMemberName: staffName, cost, isPaid: false, progressStatus: "pending" });
-
-      await base44.entities.Event.update(safeEvent.id, { team: newTeam });
-      setLocalTeamOverride(newTeam);
-
-      if (assignStaffMember) {
-        await sendCalendarInviteByName(safeEvent.id, staffName);
-      } else {
-        console.warn("Assigned staff member not found in active staff list; skipped calendar invite.", assignCandidate.staffMemberId);
-      }
-
-      toast.success(`${staffName} שובץ/ה בהצלחה ל${eventTeamRoleLabel(assignRoleSlot)}`);
-      setAssignCandidate(null);
-      setAssignRoleSlot(null);
-    } catch (error) {
-      console.error("Error assigning staff to event team:", error);
-      toast.error("שגיאה בשיבוץ איש הצוות");
-    } finally {
-      setIsAssigningStaff(false);
-    }
-  };
-
   if (!lead && !event) return null;
 
   return (
@@ -703,37 +643,37 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
 
             {/* בדיקת זמינות צלם/וידאו — פותח פופאפ לבחירת תפקיד ואז אנשי צוות
                 לשליחת הודעת וואטסאפ בדיקת זמינות לתאריך/מיקום האירוע */}
-            {lead && (
-              <Button
-                onClick={() => setShowAvailabilityModal(true)}
-                className="w-full flex items-center justify-center gap-2 bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 rounded-xl text-sm"
-              >
-                <Send className="w-4 h-4" />
-                זמינות צלם
-              </Button>
+            {(lead || safeEvent) && (
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => { setReplacementMode(false); setShowAvailabilityModal(true); }}
+                  className="flex-1 flex items-center justify-center gap-2 bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 rounded-xl text-sm"
+                >
+                  <Send className="w-4 h-4" />
+                  זמינות צלם
+                </Button>
+                {/* A booked event lost a crew member: ask everyone in the role at once,
+                    with those already booked that day unticked. */}
+                {safeEvent && (
+                  <Button
+                    onClick={() => { setReplacementMode(true); setShowAvailabilityModal(true); }}
+                    className="flex-1 flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-700 text-white font-semibold py-3 rounded-xl text-sm"
+                    title="צלם ביטל? שולח בדיקת זמינות לכל מי שבתפקיד לתאריך הזה"
+                  >
+                    🔁 מצא מחליף
+                  </Button>
+                )}
+              </div>
             )}
 
-            {lead && availabilityRequests.length > 0 && (
-              <div className="flex gap-2 flex-wrap">
-                {availabilityRequests.map((r) => {
-                  const isClickable = r.status === "available" && !!safeEvent;
-                  return (
-                    <Badge
-                      key={r.id}
-                      onClick={isClickable ? () => openAssignDialog(r) : undefined}
-                      className={`text-xs font-medium border ${
-                        r.status === "available"
-                          ? "bg-green-500/20 text-green-400 border-green-500/30"
-                          : r.status === "declined"
-                          ? "bg-red-500/20 text-red-400 border-red-500/30"
-                          : "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
-                      } ${isClickable ? "cursor-pointer hover:bg-green-500/30 transition-colors" : ""}`}
-                    >
-                      {r.staffNameSnapshot} — {r.status === "available" ? "✅ פנוי" : r.status === "declined" ? "❌ לא פנוי" : "⏳ ממתין"}
-                    </Badge>
-                  );
-                })}
-              </div>
+            {(lead || safeEvent) && availabilityRequests.length > 0 && (
+              <AvailabilityPills
+                requests={availabilityRequests}
+                staffMembers={staffMembers}
+                event={safeEvent}
+                team={team}
+                onAssigned={(newTeam) => setLocalTeamOverride(newTeam)}
+              />
             )}
 
             {/* שורת סטטוסים */}
@@ -1285,92 +1225,6 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
         </DialogContent>
       </Dialog>
 
-      {/* Dialog שיבוץ איש צוות מתוך פס הזמינות */}
-      <Dialog
-        open={!!assignCandidate}
-        onOpenChange={(open) => {
-          if (!open) {
-            setAssignCandidate(null);
-            setAssignRoleSlot(null);
-          }
-        }}
-      >
-        <DialogContent className="bg-gray-900 border-gray-700 text-white" dir="rtl">
-          <DialogHeader>
-            <DialogTitle>
-              לשבץ את {assignStaffMember?.name || assignCandidate?.staffNameSnapshot} לאירוע?
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            {assignCandidateSlots.length > 1 && (
-              <div className="space-y-1.5">
-                <label className="text-xs text-gray-400">תפקיד בצוות</label>
-                <Select value={assignRoleSlot || undefined} onValueChange={setAssignRoleSlot}>
-                  <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-gray-900 border-gray-700 text-white">
-                    {assignCandidateSlots.map((slot) => (
-                      <SelectItem key={slot} value={slot}>
-                        {eventTeamRoleLabel(slot)}
-                        {team.some((m) => m.role === slot)
-                          ? ` (תפוס: ${team.find((m) => m.role === slot).staffMemberName})`
-                          : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {isAlreadyAssignedHere ? (
-              <p className="text-sm text-gray-400">
-                כבר משובץ/ת לתפקיד {eventTeamRoleLabel(assignRoleSlot)} באירוע זה.
-              </p>
-            ) : assignOccupiedBy ? (
-              <div className="bg-amber-900/20 border border-amber-700/50 rounded-lg p-3 text-sm text-amber-200">
-                <span className="font-semibold">{assignOccupiedBy}</span> משובץ/ת כרגע לתפקיד{" "}
-                {eventTeamRoleLabel(assignRoleSlot)}. האם להחליף בשיבוץ של{" "}
-                {assignStaffMember?.name || assignCandidate?.staffNameSnapshot}?
-              </div>
-            ) : null}
-          </div>
-          <DialogFooter className="gap-2 flex-row-reverse">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setAssignCandidate(null);
-                setAssignRoleSlot(null);
-              }}
-              disabled={isAssigningStaff}
-              className="border-gray-700 bg-gray-800 text-gray-300"
-            >
-              ביטול
-            </Button>
-            <Button
-              onClick={handleConfirmAssign}
-              disabled={isAssigningStaff || isAlreadyAssignedHere}
-              className={
-                assignOccupiedBy && !isAlreadyAssignedHere
-                  ? "bg-amber-600 hover:bg-amber-700 text-white"
-                  : "bg-green-600 hover:bg-green-700 text-white"
-              }
-            >
-              {isAssigningStaff ? (
-                <>
-                  <Loader2 className="w-4 h-4 ml-2 animate-spin" />
-                  משבץ...
-                </>
-              ) : assignOccupiedBy && !isAlreadyAssignedHere ? (
-                "החלף שיבוץ"
-              ) : (
-                "שבץ"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <StaffAvailabilityModal
         open={showAvailabilityModal}
         onClose={() => setShowAvailabilityModal(false)}
@@ -1382,8 +1236,10 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
         eventDate={eventDate}
         venue={venue}
         coupleNames={coupleNames}
-        leadId={lead?.id}
+        leadId={lead?.id || safeEvent?.sourceLeadId || null}
         eventId={safeEvent?.id}
+        eventTeam={team}
+        replacement={replacementMode ? {} : null}
         existingRequests={availabilityRequests}
         onStaffMembersChanged={onStaffMembersChanged}
       />
