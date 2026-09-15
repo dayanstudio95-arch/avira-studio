@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { X, Send, Loader2, CheckSquare, Square, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { conversationTitle, daysSince } from "./whatsappInboxShared";
+import { followUpReferenceDate } from "@/lib/followUpQueue";
 
 // "Everyone who got a price list and then went quiet" — the studio's actual sales
 // queue, and the thing Daniel asked for in the same breath as the bot itself:
@@ -48,7 +49,7 @@ export default function WhatsAppFollowUpDialog({ isOpen, onClose, conversations,
     () =>
       (conversations || [])
         .slice()
-        .sort((a, b) => new Date(a.lastBotMessageAt || 0) - new Date(b.lastBotMessageAt || 0)),
+        .sort((a, b) => new Date(followUpReferenceDate(a) || 0) - new Date(followUpReferenceDate(b) || 0)),
     [conversations]
   );
 
@@ -136,7 +137,7 @@ export default function WhatsAppFollowUpDialog({ isOpen, onClose, conversations,
           <div>
             <h2 className="text-white text-lg font-semibold">שליחת פולו-אפ</h2>
             <p className="text-gray-400 text-sm mt-0.5">
-              {queue.length} שיחות שקיבלו מחירון ועדיין לא נשלח אליהן פולו-אפ
+              {queue.length} שיחות שקיבלו מחירון (מהבוט או סומנו ידנית) ועדיין לא נשלח אליהן פולו-אפ
             </p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white">
@@ -186,7 +187,7 @@ export default function WhatsAppFollowUpDialog({ isOpen, onClose, conversations,
 
             <div className="space-y-2">
               {queue.map((c) => {
-                const days = daysSince(c.lastBotMessageAt);
+                const days = daysSince(followUpReferenceDate(c));
                 const disabled = !c.phone;
                 return (
                   <div

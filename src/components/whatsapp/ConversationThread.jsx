@@ -5,7 +5,7 @@ import ContactTypeBadge from "./ContactTypeBadge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, UserPlus, MessageSquare, ExternalLink } from "lucide-react";
+import { Send, UserPlus, MessageSquare, ExternalLink, Tag } from "lucide-react";
 import MessageBubble from "./MessageBubble";
 import {
   STATE_LABELS,
@@ -28,6 +28,8 @@ export default function ConversationThread({
   isTogglingBot,
   onCreateLead,
   onChangeContactType,
+  onToggleFollowUpFlag,
+  isFlaggedForFollowUp,
 }) {
   const [draft, setDraft] = useState("");
   const bottomRef = useRef(null);
@@ -93,6 +95,26 @@ export default function ConversationThread({
                 <ExternalLink className="h-3 w-3" />
                 ליד קיים
               </Link>
+            )}
+
+            {/* Manual follow-up flag (2026-09-15): puts this conversation in the
+                "ממתינים לפולו-אפ" queue even when the bot never sent the price list —
+                e.g. the owner sent it from his own phone. Toggle. */}
+            {onToggleFollowUpFlag && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onToggleFollowUpFlag(!isFlaggedForFollowUp)}
+                className={
+                  isFlaggedForFollowUp
+                    ? "border-yellow-500/50 bg-yellow-500/15 text-yellow-300 hover:bg-yellow-500/25"
+                    : "border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700"
+                }
+                title={isFlaggedForFollowUp ? "מסומן לפולו-אפ — לחץ להסרה" : "הכנס לרשימת הממתינים לפולו-אפ"}
+              >
+                <Tag className="ml-1 h-4 w-4" />
+                {isFlaggedForFollowUp ? "בפולו-אפ ✓" : "לפולו-אפ"}
+              </Button>
             )}
 
             <Button

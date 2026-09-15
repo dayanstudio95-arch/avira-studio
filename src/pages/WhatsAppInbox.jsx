@@ -10,8 +10,9 @@ import WhatsAppFollowUpDialog, { FOLLOWUP_AFTER_DAYS_KEY } from "@/components/wh
 import WhatsAppFollowUpSettingsDialog from "@/components/whatsapp/WhatsAppFollowUpSettingsDialog";
 import BotSimulator from "@/components/whatsapp/BotSimulator";
 import { usePermission } from "@/lib/permissions";
-import { phoneDigits, daysSince, CONTACT_TYPE_LABELS } from "@/components/whatsapp/whatsappInboxShared";
+import { phoneDigits, CONTACT_TYPE_LABELS } from "@/components/whatsapp/whatsappInboxShared";
 import { isStalledFlow, isMediaFromStranger } from "@/lib/needsAttention";
+import { isAwaitingFollowUp, isManuallyFlagged } from "@/lib/followUpQueue";
 
 // WhatsApp inbox — every conversation the studio's WhatsApp number is having, shown
 // like WhatsApp itself, with the ability to reply from here.
@@ -119,6 +120,8 @@ export default function WhatsAppInbox() {
         if (c.leadTemperature !== "hot") return false;
       } else if (contactFilter === "pricelist_sent") {
         if (c.state !== "PRICELIST_SENT") return false;
+      } else if (contactFilter === "awaiting_followup") {
+        if (!isAwaitingFollowUp(c, followUpAfterDays)) return false;
       } else if (contactFilter === "followup_sent") {
         if (!c.followupSentAt) return false;
       } else if (contactFilter === "stalled_flow") {
@@ -143,7 +146,7 @@ export default function WhatsAppInbox() {
         String(c.coupleNames || "").toLowerCase().includes(q)
       );
     });
-  }, [conversations, searchTerm, contactFilter]);
+  }, [conversations, searchTerm, contactFilter, followUpAfterDays]);
 
   // How much of the inbound traffic is actually new business — the single number
   // Stage 1 exists to measure before the bot is allowed to answer anybody.
@@ -182,19 +185,21 @@ export default function WhatsAppInbox() {
   );
 
   const followUpQueue = useMemo(
-    () =>
-      conversations.filter(
-        (c) =>
-          c.state === "PRICELIST_SENT" &&
-          !c.followupSentAt &&
-          !c.leadTemperature &&
-          // Not before the configured number of silent days has passed. A row with no
-          // lastBotMessageAt can't be measured, so it stays in (fail open here is
-          // harmless: nothing sends without a click).
-          (followUpAfterDays === 0 || (daysSince(c.lastBotMessageAt) ?? followUpAfterDays) >= followUpAfterDays)
-      ),
+    () => conversations.filter((c) => isAwaitingFollowUp(c, followUpAfterDays)),
     [conversations, followUpAfterDays]
   );
+
+  // Manual follow-up flag (migration 0064): the owner sent the price list from his own
+  // phone, or simply wants this one chased. Toggle — a second press clears it.
+  const toggleFollowUpFlagMutation = useMutation({
+    mutationFn: ({ id, flag }) =>
+      base44.entities.WhatsAppConversation.update(id, { followupFlaggedAt: flag ? new Date().toISOString() : null }),
+    onSuccess: (_, { flag }) => {
+      queryClient.invalidateQueries({ queryKey: ["whatsappConversations"] });
+      toast.success(flag ? "סומן לפולו-אפ — יופיע ברשימת הממתינים" : "הסימון לפולו-אפ הוסר");
+    },
+    onError: (err) => toast.error(err.message || "שגיאה בסימון לפולו-אפ"),
+  });
 
   // Manual contact-type override (migration 0062). Stamped so the webhook never
   // re-derives it from the phone tables; see ContactTypeBadge.jsx for why it matters.
@@ -431,6 +436,10 @@ export default function WhatsAppInbox() {
           isTogglingBot={toggleBotMutation.isPending}
           onCreateLead={handleOpenCreateLead}
           onChangeContactType={handleChangeContactType}
+          onToggleFollowUpFlag={(flag) =>
+            selectedConversation && toggleFollowUpFlagMutation.mutate({ id: selectedConversation.id, flag })
+          }
+          isFlaggedForFollowUp={selectedConversation ? isManuallyFlagged(selectedConversation) : false}
         />
       </div>
 

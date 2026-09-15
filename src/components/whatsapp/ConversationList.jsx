@@ -35,6 +35,10 @@ export default function ConversationList({
   const filters = [
     { value: "hot", label: "🔥 ליד חם" },
     { value: "pricelist_sent", label: "🧾 נשלח מחירון" },
+    // awaiting_followup — got the price list (from the bot, or flagged by hand) and
+    //                     nobody has heard back. THE list to chase; the header button
+    //                     "ממתינים לפולו-אפ" sends to exactly this set.
+    { value: "awaiting_followup", label: "⏳ קיבלו מחירון ולא ענו" },
     // followup_sent — everyone who has already been nudged, so what happened after the
     //                 nudge can be read in one place (owner's request, 2026-09-15).
     { value: "followup_sent", label: "📨 נשלח פולו-אפ" },
@@ -165,6 +169,11 @@ export default function ConversationList({
                 {/* Came in through a Facebook/Instagram ad (migration 0060). Shown next to
                     the contact type because it changes what the row means: an "unknown"
                     who tapped the studio's wedding ad is a lead, not a stranger. */}
+                {conv.followupFlaggedAt && (!conv.followupSentAt || new Date(conv.followupFlaggedAt) > new Date(conv.followupSentAt)) && (
+                  <Badge variant="outline" className="shrink-0 text-[10px] border-yellow-500/50 text-yellow-300" title="סומן ידנית לפולו-אפ">
+                    🏷️ פולו-אפ
+                  </Badge>
+                )}
                 {conv.source === "facebook_ad" && (
                   <Badge
                     variant="outline"

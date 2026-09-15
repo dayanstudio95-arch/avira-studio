@@ -733,6 +733,33 @@ section('replacement — assigning into a slot');
   check('fresh assignment is unpaid and pending', [next[1].isPaid, next[1].progressStatus], [false, 'pending']);
 }
 
+// =================================================================================
+// PART 9 — the follow-up queue (src/lib/followUpQueue.js, 2026-09-15)
+// =================================================================================
+
+const { isAwaitingFollowUp, isManuallyFlagged, followUpReferenceDate } =
+  await loadModule('src/lib/followUpQueue.js', 'followup');
+
+section('follow-up queue — bot path and manual flag');
+{
+  const botSilent = { state: 'PRICELIST_SENT', lastBotMessageAt: ago(3) };
+  check('price list sent, silent → in', isAwaitingFollowUp(botSilent), true);
+  check('…but they replied (rated) → out', isAwaitingFollowUp({ ...botSilent, leadTemperature: 'warm' }), false);
+  check('…already nudged → out', isAwaitingFollowUp({ ...botSilent, followupSentAt: ago(1) }), false);
+  check('threshold 2 days, silent 3 → in', isAwaitingFollowUp(botSilent, 2), true);
+  check('threshold 5 days, silent 3 → not yet', isAwaitingFollowUp(botSilent, 5), false);
+  check('mid-flow is not the queue', isAwaitingFollowUp({ state: 'AWAITING_DETAILS', lastBotMessageAt: ago(9) }), false);
+
+  const manual = { state: 'NEW', followupFlaggedAt: ago(0) };
+  check('flagged by hand → in, whatever the state', isAwaitingFollowUp(manual), true);
+  check('flag ignores the day threshold — he asked for it now', isAwaitingFollowUp(manual, 5), true);
+  check('flag older than the last nudge → out', isManuallyFlagged({ followupFlaggedAt: ago(5), followupSentAt: ago(1) }), false);
+  check('re-flagged after a nudge → in again', isManuallyFlagged({ followupFlaggedAt: ago(0), followupSentAt: ago(1) }), true);
+  check('reference date: price list for bot rows', followUpReferenceDate(botSilent), botSilent.lastBotMessageAt);
+  check('reference date: the flag for manual rows', followUpReferenceDate(manual), manual.followupFlaggedAt);
+  check('null-safe', isAwaitingFollowUp(null), false);
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
