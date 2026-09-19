@@ -2,6 +2,7 @@ import React from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingUp } from "lucide-react";
+import { calculateNetProfit } from "@/lib/profitCalculations";
 
 const MONTHS_HE = ["ינו", "פבר", "מרץ", "אפר", "מאי", "יונ", "יול", "אוג", "ספט", "אוק", "נוב", "דצמ"];
 
@@ -12,7 +13,9 @@ export default function DashboardMonthlyChart({ events, year }) {
       return d.getFullYear() === year && d.getMonth() === idx;
     });
     const income = monthEvents.reduce((s, e) => s + (e.totalAmountGross || 0), 0);
-    const profit = monthEvents.reduce((s, e) => s + (e.profitNet || 0), 0);
+    // Never read e.profitNet raw: the column is NULL on most events and stale on the
+    // rest (see calculateNetProfit). Reading it made this chart's profit bars ~0.
+    const profit = monthEvents.reduce((s, e) => s + calculateNetProfit(e), 0);
     return { month, income, profit };
   });
 

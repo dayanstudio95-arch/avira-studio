@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Event } from "@/entities/Event";
 import { base44 } from "@/api/base44Client";
 import { calculateNetProfit } from "../lib/profitCalculations";
-import { calculateEventFinancials } from "../lib/financialCalculations";
+import { getEventVatAmount, getEventTeamCost } from "../lib/financialCalculations";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -85,8 +85,8 @@ export default function Reports() {
       'Date': event.date,
       'Couple': event.coupleNames,
       'Gross Amount': event.totalAmountGross,
-      'VAT': event.vatAmount != null ? event.vatAmount : calculateEventFinancials(event).vatAmount,
-      'Expenses': (event.team || []).reduce((sum, member) => sum + (member.cost || 0), 0),
+      'VAT': getEventVatAmount(event),
+      'Expenses': getEventTeamCost(event),
       'Net Profit': calculateNetProfit(event, staffMembers),
       'Payment Status': event.clientPaymentStatus
     }));
@@ -199,7 +199,7 @@ export default function Reports() {
             </div>
 
             {/* Monthly Overview Chart */}
-            <MonthlyChart events={events} isLoading={isLoading} staffMembers={staffMembers} />
+            <MonthlyChart events={events} isLoading={isLoading} staffMembers={staffMembers} year={selectedYear} />
           </TabsContent>
 
           {/* Daily Tab */}
@@ -264,7 +264,7 @@ export default function Reports() {
             </div>
 
             {/* Monthly Overview Chart for Annual View */}
-            <MonthlyChart events={events} isLoading={isLoading} staffMembers={staffMembers} />
+            <MonthlyChart events={events} isLoading={isLoading} staffMembers={staffMembers} year={selectedYear} />
           </TabsContent>
         </Tabs>
       </div>

@@ -1,16 +1,20 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { calculateNetProfit } from "../../lib/profitCalculations";
+import { getEventTeamCost } from "../../lib/financialCalculations";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { Calendar } from "lucide-react";
 
 const MONTHS = ["ינו", "פבר", "מרץ", "אפר", "מאי", "יונ", "יול", "אוג", "ספט", "אוק", "נוב", "דצמ"];
 
-export default function MonthlyChart({ events, isLoading, staffMembers = [] }) {
+// `year` comes from the page's year selector. It used to be hardcoded to the current
+// year here, so choosing 2027 changed the summary above and left this chart on 2026.
+export default function MonthlyChart({ events, isLoading, staffMembers = [], year }) {
+  const shownYear = year || new Date().getFullYear();
   const processMonthlyData = () => {
     if (!events.length) return [];
 
-    const currentYear = new Date().getFullYear();
+    const currentYear = shownYear;
     const monthlyData = Array(12).fill(null).map((_, index) => ({
       month: MONTHS[index],
       monthIndex: index,
@@ -24,8 +28,8 @@ export default function MonthlyChart({ events, isLoading, staffMembers = [] }) {
       const eventDate = new Date(event.date);
       if (eventDate.getFullYear() === currentYear) {
         const monthIndex = eventDate.getMonth();
-        const expenses = (event.team || []).reduce((sum, member) => sum + (member.cost || 0), 0);
-        
+        const expenses = getEventTeamCost(event);
+
         monthlyData[monthIndex].income += event.totalAmountGross || 0;
         monthlyData[monthIndex].expenses += expenses;
         monthlyData[monthIndex].profit += calculateNetProfit(event, staffMembers);
@@ -58,7 +62,7 @@ export default function MonthlyChart({ events, isLoading, staffMembers = [] }) {
       <CardHeader>
         <CardTitle className="text-white flex items-center gap-2">
           <Calendar className="w-5 h-5 text-yellow-400" />
-          סקירה חודשית - {new Date().getFullYear()}
+          סקירה חודשית - {shownYear}
         </CardTitle>
       </CardHeader>
       <CardContent>

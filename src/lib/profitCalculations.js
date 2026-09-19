@@ -1,26 +1,31 @@
-import { getVatPercent } from './financialCalculations';
+import { getVatPercent, getEventVatAmount, getEventTeamCost } from './financialCalculations';
 
 /**
- * רווח נקי לאירוע — מהשדה השמור ב-DB אם קיים, אחרת חישוב חי
+ * רווח נקי לאירוע = מחיר ברוטו − מע"מ − עלות הצוות שנרשמה באירוע.
+ *
+ * FIXED 2026-09-19, after the owner asked whether the Reports page adds up. It did not:
+ * on the same card, "Total Expenses" summed team[].cost while "Net Profit" came from
+ * here — and this function did two things that made the lines disagree:
+ *
+ *   1. When `staffMembers` was passed (Dashboard, Reports), it REPLACED each member's
+ *      snapshotted cost with that staff member's CURRENT per-role rate. Raise a
+ *      photographer's rate today and the profit of every wedding he ever shot dropped,
+ *      while the expenses line next to it did not move. December 2026 showed
+ *      147,000 − 22,423.74 − 44,500 = 80,076.26 on paper and 77,076.27 on screen.
+ *      team[].cost is a snapshot on purpose (see staffRates.js, Dashboard.jsx) and it is
+ *      the number Payments.jsx actually pays out — so it is the expense.
+ *   2. It returned the stored events.profit_net when present. That column is written
+ *      only by the event save forms, and every staff-assignment path writes `team`
+ *      without touching it, so a stored value goes stale the first time the crew changes.
+ *
+ * Now it is always computed, from the same VAT figure the reports display
+ * (getEventVatAmount), so gross − VAT − expenses = profit holds to the agora on every
+ * screen. `staffMembers` is kept in the signature for the existing callers and ignored.
  */
-export const calculateNetProfit = (event, staffMembers = []) => {
+export const calculateNetProfit = (event, _staffMembers = []) => {
   if (!event || !event.totalAmountGross) return 0;
-  if (event.profitNet != null) return event.profitNet;
-
-  const amountBeforeVat = event.totalAmountGross / (1 + getVatPercent(event) / 100);
-  const teamExpenses = (event.team || []).reduce((sum, member) => {
-    let cost = parseFloat(member.cost) || 0;
-    if (member.staffMemberName && staffMembers.length > 0) {
-      const staff = staffMembers.find(s => s.name === member.staffMemberName);
-      if (staff?.ratesByRole?.length > 0) {
-        const roleRate = staff.ratesByRole.find(r => r.role === member.role);
-        if (roleRate) cost = parseFloat(roleRate.rate) || 0;
-      }
-    }
-    return sum + cost;
-  }, 0);
-
-  return amountBeforeVat - teamExpenses;
+  const profit = event.totalAmountGross - getEventVatAmount(event) - getEventTeamCost(event);
+  return Math.round(profit * 100) / 100;
 };
 
 /**

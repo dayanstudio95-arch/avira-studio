@@ -24,6 +24,24 @@ export const getVatPercent = (event, fallbackPercent = 18) =>
   event?.vatPercent ?? fallbackPercent;
 
 /**
+ * The VAT figure every report shows for an event: the stored events.vat_amount when it
+ * exists, otherwise the extract formula from the gross price. One helper so the VAT
+ * line and the profit line can never be computed from two different numbers
+ * (2026-09-19 — see calculateNetProfit in profitCalculations.js).
+ */
+export const getEventVatAmount = (event) => {
+  if (!event) return 0;
+  if (event.vatAmount != null) return Number(event.vatAmount) || 0;
+  const gross = event.totalAmountGross || 0;
+  const before = Math.round((gross / (1 + getVatPercent(event) / 100)) * 100) / 100;
+  return Math.round((gross - before) * 100) / 100;
+};
+
+/** What the studio actually pays its crew for this event — the snapshotted costs. */
+export const getEventTeamCost = (event) =>
+  (event?.team || []).reduce((sum, m) => sum + (parseFloat(m?.cost) || 0), 0);
+
+/**
  * Calculate financial details for an event
  * @param {Object} event - Event data
  * @returns {Object} Calculated financial data

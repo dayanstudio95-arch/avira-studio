@@ -4,19 +4,25 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { TrendingUp } from "lucide-react";
 
 import { calculateNetProfit } from "../../lib/profitCalculations";
+import { getEventTeamCost } from "../../lib/financialCalculations";
 
 export default function ReportsChart({ events, period, isLoading, staffMembers = [] }) {
   const processChartData = () => {
     if (!events.length) return [];
 
-    const data = events.map(event => ({
-      name: event.coupleNames.split(' ')[0] || 'Event',
-      income: event.totalAmountGross || 0,
-      expenses: (event.team || []).reduce((sum, member) => sum + (member.cost || 0), 0),
-      profit: calculateNetProfit(event, staffMembers)
-    }));
+    // Every event in the period, oldest first. This used to be `.slice(0, 10)` with a
+    // "top 10" comment — it was simply the first ten of a date-descending list, so a
+    // month with 26 weddings drew 10 bars under a summary that counted 26.
+    const data = [...events]
+      .sort((a, b) => new Date(a.date) - new Date(b.date))
+      .map(event => ({
+        name: (event.coupleNames || '').split(' ')[0] || 'אירוע',
+        income: event.totalAmountGross || 0,
+        expenses: getEventTeamCost(event),
+        profit: calculateNetProfit(event, staffMembers)
+      }));
 
-    return data.slice(0, 10); // Show top 10 events
+    return data;
   };
 
   const chartData = processChartData();
@@ -25,7 +31,7 @@ export default function ReportsChart({ events, period, isLoading, staffMembers =
     return (
       <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm">
         <CardHeader>
-          <CardTitle className="text-white">Income vs Expenses</CardTitle>
+          <CardTitle className="text-white">הכנסות מול הוצאות</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="h-80 flex items-center justify-center">
@@ -42,14 +48,14 @@ export default function ReportsChart({ events, period, isLoading, staffMembers =
         <CardHeader>
           <CardTitle className="text-white flex items-center gap-2">
             <TrendingUp className="w-5 h-5 text-yellow-400" />
-            Income vs Expenses
+            הכנסות מול הוצאות — לפי אירוע
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="h-80 flex items-center justify-center">
             <div className="text-center text-gray-500">
               <TrendingUp className="w-12 h-12 mx-auto mb-4 text-gray-600" />
-              <p>No data available for this period</p>
+              <p>אין נתונים לתקופה הזו</p>
             </div>
           </div>
         </CardContent>
@@ -70,10 +76,14 @@ export default function ReportsChart({ events, period, isLoading, staffMembers =
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis 
-                dataKey="name" 
+              <XAxis
+                dataKey="name"
                 stroke="#9CA3AF"
-                fontSize={12}
+                fontSize={chartData.length > 14 ? 10 : 12}
+                interval={0}
+                angle={chartData.length > 14 ? -45 : 0}
+                textAnchor={chartData.length > 14 ? "end" : "middle"}
+                height={chartData.length > 14 ? 50 : 30}
               />
               <YAxis 
                 stroke="#9CA3AF"
@@ -89,8 +99,8 @@ export default function ReportsChart({ events, period, isLoading, staffMembers =
                 }}
                 formatter={(value, name) => [`₪${value.toLocaleString()}`, name]}
               />
-              <Bar dataKey="income" fill="#F59E0B" name="Income" radius={[2, 2, 0, 0]} />
-              <Bar dataKey="expenses" fill="#EF4444" name="Expenses" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="income" fill="#F59E0B" name="הכנסה ברוטו" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="expenses" fill="#EF4444" name="הוצאות צוות" radius={[2, 2, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>

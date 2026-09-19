@@ -760,6 +760,45 @@ section('follow-up queue — bot path and manual flag');
   check('null-safe', isAwaitingFollowUp(null), false);
 }
 
+// =================================================================================
+// PART 10 — money: the reports must add up (src/lib/profitCalculations.js, 2026-09-19)
+//
+// Not bot code, but this is the only test runner in the repo and these ~60 lines have
+// now produced three production money bugs. The rule under test is one sentence:
+// gross − VAT − crew cost = profit, from the numbers the screen shows.
+// =================================================================================
+
+const { calculateNetProfit } = await loadModule('src/lib/profitCalculations.js', 'profit');
+const { getEventVatAmount, getEventTeamCost } = await loadModule('src/lib/financialCalculations.js', 'fin');
+
+section('net profit — adds up, and ignores everything that made it not');
+{
+  const team = [{ role: 'photographer1', staffMemberName: 'אבי', cost: 1500 }, { role: 'videographer', staffMemberName: 'בני', cost: '2000' }];
+  const e = { totalAmountGross: 11800, vatPercent: 18, team };
+  check('VAT extracted from gross', getEventVatAmount(e), 1800);
+  check('crew cost = the snapshot (strings too)', getEventTeamCost(e), 3500);
+  check('profit = gross − VAT − crew', calculateNetProfit(e), 6500);
+
+  const raisedRates = [{ name: 'אבי', ratesByRole: [{ role: 'photographer1', rate: 2500 }] }];
+  check('a rate raised TODAY does not rewrite a past wedding', calculateNetProfit(e, raisedRates), 6500);
+  check('a stale stored profit_net is ignored', calculateNetProfit({ ...e, profitNet: 1 }), 6500);
+  check('stored VAT is the VAT used', calculateNetProfit({ ...e, vatAmount: 1700 }), 6600);
+  check('VAT-exempt event (0%)', calculateNetProfit({ totalAmountGross: 10000, vatPercent: 0, team }), 6500);
+  check('no team yet → profit is the pre-VAT price', calculateNetProfit({ totalAmountGross: 11800, vatPercent: 18 }), 10000);
+  check('no price → 0', calculateNetProfit({ team }), 0);
+
+  // The three months from the owner's screenshots: the summary must reconcile.
+  const month = [
+    { totalAmountGross: 12000, vatPercent: 18, team: [{ cost: 4400 }] },
+    { totalAmountGross: 13700, vatPercent: 18, team: [{ cost: 5300 }] },
+    { totalAmountGross: 12000, vatPercent: 18, team: [] },
+  ];
+  const sum = (f) => Math.round(month.reduce((s, x) => s + f(x), 0) * 100) / 100;
+  check('Σprofit = Σgross − ΣVAT − Σexpenses, to the agora',
+    sum(calculateNetProfit),
+    Math.round((sum((x) => x.totalAmountGross) - sum(getEventVatAmount) - sum(getEventTeamCost)) * 100) / 100);
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
