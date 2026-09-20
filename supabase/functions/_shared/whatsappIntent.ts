@@ -375,6 +375,38 @@ export function decideBotReply(input: BotDecisionInput): BotDecision {
 }
 
 // ---------------------------------------------------------------------------------
+// Lead temperature: which replies get rated hot / warm / cold.
+//
+// FIXED 2026-09-23. The rating used to live INSIDE decideBotFollowUp's chain, so it only
+// ran when that gate reached 'not_in_flow' — which requires the bot to still be switched
+// on in the conversation. The bot is muted the moment the owner answers from his phone,
+// sends a follow-up from the dialog, or creates a lead, so in practice the only replies
+// ever rated were the ones that arrived BEFORE he touched the conversation. The 🔥 chip
+// stayed empty for two weeks and the hot-lead WhatsApp alert never fired. Rating sends
+// nothing to the customer, so it has no business depending on whether the bot may talk.
+//
+// Rated: an inbound text reply, in a conversation that was sent the price list, from
+// someone who is still a stranger or has since become a lead (the owner pressing
+// "צור ליד" must not silence it). Not rated: groups, staff, signed clients ("תודה
+// רבה!" from a couple already booked is not a sales signal), media, and conversations
+// already at 'hot' (the rating has done its job).
+// ---------------------------------------------------------------------------------
+export function shouldRateReply(input: {
+  isInbound: boolean;
+  isGroup: boolean;
+  state: string | null | undefined;
+  contactType: string;
+  typeMessage: string | null;
+  currentTemperature: string | null | undefined;
+}): boolean {
+  if (!input.isInbound || input.isGroup) return false;
+  if (input.state !== 'PRICELIST_SENT') return false;
+  if (input.contactType !== 'unknown' && input.contactType !== 'lead') return false;
+  if (!input.typeMessage || !TEXT_MESSAGE_TYPES.includes(input.typeMessage)) return false;
+  return input.currentTemperature !== 'hot';
+}
+
+// ---------------------------------------------------------------------------------
 // Stage 3: the follow-up gate.
 //
 // A SEPARATE decision from decideBotReply, not an extra branch inside it, because the

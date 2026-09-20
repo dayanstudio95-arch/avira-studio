@@ -875,6 +875,35 @@ section('credit and undo are per period');
     [...undoablePaymentIds(payments)].sort(), ['a2', 'old', 's1']);
 }
 
+// =================================================================================
+// PART 12 — which replies get rated hot / warm / cold (shouldRateReply, 2026-09-23)
+//
+// The rating lived inside the bot's follow-up gate, which requires the bot to be ON in
+// the conversation — and the bot is muted the moment the owner touches a chat. The 🔥
+// chip stayed empty for two weeks. These cases pin the fix: "is the bot muted?" must
+// never be part of the question.
+// =================================================================================
+
+const { shouldRateReply } = await loadModule('supabase/functions/_shared/whatsappIntent.ts', 'rate');
+
+section('rating a reply to the price list');
+{
+  const base = { isInbound: true, isGroup: false, state: 'PRICELIST_SENT', contactType: 'unknown', typeMessage: 'textMessage', currentTemperature: null };
+  check('a stranger replies to the price list → rated', shouldRateReply(base), true);
+  check('…the input has no botEnabled at all, so a muted bot cannot block it', 'botEnabled' in base, false);
+  check('became a lead ("צור ליד") → still rated', shouldRateReply({ ...base, contactType: 'lead' }), true);
+  check('a signed client saying thanks → not a sales signal', shouldRateReply({ ...base, contactType: 'client' }), false);
+  check('staff → no', shouldRateReply({ ...base, contactType: 'staff' }), false);
+  check('a group → no', shouldRateReply({ ...base, isGroup: true }), false);
+  check('the studio\'s own message → no', shouldRateReply({ ...base, isInbound: false }), false);
+  check('price list not sent yet → no', shouldRateReply({ ...base, state: 'AWAITING_DETAILS' }), false);
+  check('never greeted → no', shouldRateReply({ ...base, state: 'NEW' }), false);
+  check('voice note / photo → no', shouldRateReply({ ...base, typeMessage: 'audioMessage' }), false);
+  check('already hot → left alone', shouldRateReply({ ...base, currentTemperature: 'hot' }), false);
+  check('warm is re-rated on the next reply', shouldRateReply({ ...base, currentTemperature: 'warm' }), true);
+  check('cold is re-rated on the next reply', shouldRateReply({ ...base, currentTemperature: 'cold' }), true);
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

@@ -60,7 +60,7 @@ import { normalizeIsraeliPhone, chatIdToLocalPhone, isGroupChatId } from '../_sh
 import {
   loadQuietHoursSettings, isInQuietHoursNow, nextQuietHoursEnd, type QuietHoursSettings,
 } from '../_shared/automationGuards.ts';
-import { decideBotReply, decideBotFollowUp, BOT_BUDGET_EXCLUDED_KINDS } from '../_shared/whatsappIntent.ts';
+import { decideBotReply, decideBotFollowUp, shouldRateReply, BOT_BUDGET_EXCLUDED_KINDS } from '../_shared/whatsappIntent.ts';
 import {
   loadBotSettings, isUnderHourlyQuota, sendBotMessage, sendPricelist, sleep,
   composeSends, enqueueDeferredSend, type DeferredSendItem,
@@ -72,10 +72,6 @@ import { sendHotLeadAlert } from '../_shared/whatsappStudioAlerts.ts';
 
 const PG_UNIQUE_VIOLATION = '23505';
 
-// Message types whose body is worth rating. Same list decideBotFollowUp uses for
-// 'not_text', kept local because that one is not exported and this is a read-only
-// check on a path that must never throw.
-const TEXT_TYPES_FOR_RATING = ['textMessage', 'extendedTextMessage', 'quotedMessage'];
 
 // Green API webhook types that carry an actual chat message we want to record.
 // Everything else (outgoingMessageStatus / stateInstanceChanged / deviceInfo /
@@ -614,6 +610,41 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // ---- Lead temperature — independent of the bot gate ---------------------
+    //
+    // The customer has the price list and is answering it: the single most commercially
+    // useful message in the conversation. All that happens here is a label on the row and
+    // a note to the studio — nothing is ever sent to the customer, which is why this does
+    // NOT depend on the bot being on in the conversation (it used to, and the bot is muted
+    // the moment the owner touches a chat, so almost nothing was ever rated; see
+    // shouldRateReply). Re-rated on each reply until it reaches 'hot', then left alone.
+    if (
+      shouldRateReply({
+        isInbound,
+        isGroup,
+        state: conversation.state,
+        contactType: effectiveContactType,
+        typeMessage,
+        currentTemperature: conversation.lead_temperature,
+      })
+    ) {
+      const ratingKey = await loadAnthropicKey(supabase, tenantId);
+      const rating = await classifyReply(bodyText, ratingKey);
+      if (rating.temperature) {
+        updates.lead_temperature = rating.temperature;
+        updates.lead_temperature_reason = rating.reason;
+        updates.lead_temperature_at = nowIso;
+        // First time hot → tell the studio. Once per conversation: hot_alert_sent_at is
+        // set here and re-checked on every later message.
+        if (rating.temperature === 'hot' && !conversation.hot_alert_sent_at) {
+          updates.hot_alert_sent_at = nowIso;
+          hotAlert = { reason: rating.reason, replyText: bodyText };
+        }
+      }
+      // A failed or unparseable rating leaves the columns untouched rather than writing
+      // null over a previous good one — classifyReply already swallowed the error.
+    }
+
     // ---- Stage 3: the customer answered — read it, then ask or send ----------
     //
     // A separate gate from the greeting's (decideBotFollowUp): intent is no longer the
@@ -662,41 +693,7 @@ Deno.serve(async (req: Request) => {
           botMessagesSoFar: botMessagesSoFar ?? 0,
         });
 
-        if (
-          followUp.reason === 'not_in_flow' &&
-          conversation.state === 'PRICELIST_SENT' &&
-          typeMessage && TEXT_TYPES_FOR_RATING.includes(typeMessage) &&
-          conversation.lead_temperature !== 'hot'
-        ) {
-          // ---- Lead temperature ------------------------------------------------
-          //
-          // The customer has the price list and is answering it. This is the single
-          // most commercially useful message in the whole conversation, and the bot
-          // deliberately stays silent for it — everything past PRICELIST_SENT belongs
-          // to a human. All that happens here is a label on the row.
-          //
-          // Re-rated on each reply until it reaches 'hot', then left alone: once the
-          // row is at the top of Daniel's list the rating has done its job, and
-          // re-rating every message in an ongoing human conversation would spend an
-          // API call per message to change nothing.
-          const apiKey = await loadAnthropicKey(supabase, tenantId);
-          const rating = await classifyReply(bodyText, apiKey);
-          if (rating.temperature) {
-            updates.lead_temperature = rating.temperature;
-            updates.lead_temperature_reason = rating.reason;
-            updates.lead_temperature_at = nowIso;
-            // First time hot → tell the studio (2026-09-15). Once per conversation:
-            // hot_alert_sent_at is set here and re-checked on every later message.
-            if (rating.temperature === 'hot' && !conversation.hot_alert_sent_at) {
-              updates.hot_alert_sent_at = nowIso;
-              hotAlert = { reason: rating.reason, replyText: bodyText };
-            }
-          }
-          // A failed or unparseable rating leaves the columns untouched rather than
-          // writing null over a previous good one — classifyReply already swallowed
-          // the error, and losing an old rating to a transient API hiccup would be a
-          // worse outcome than having a slightly stale one.
-        } else if (followUp.reason === 'not_text') {
+        if (followUp.reason === 'not_text') {
           // They answered with a voice note or a photo. We cannot read it, and leaving
           // them waiting is worse than admitting it — hand the thread to a human.
           updates.state = 'HANDED_OFF';
