@@ -334,14 +334,53 @@ export default function WhatsAppInbox() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-2rem)] flex-col p-4" dir="rtl">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <MessageSquare className="h-6 w-6 text-yellow-400" />
-          <h1 className="text-2xl font-bold text-white">שיחות וואטסאפ</h1>
-          <span className="text-sm text-gray-500">
-            {visibleCount} שיחות · {unknownCount} ממספרים לא מוכרים
-          </span>
+    // MOBILE (rewritten 2026-09-23 after the owner reported the page was unusable on a
+    // phone). Three things were wrong, all from a desktop-only layout:
+    //   1. The title row held seven pills with no wrapping, so it was wider than the
+    //      screen and the WHOLE PAGE scrolled sideways — every screenshot he sent was
+    //      cut off on the right.
+    //   2. `grid-cols-1` stacked the list and the thread in one clipped column, showing
+    //      half of each. A phone shows one at a time: the list, or — once a conversation
+    //      is picked — the thread with a back button.
+    //   3. The height assumed no app header; on mobile Layout.jsx adds one (~73px), so
+    //      the composer sat below the fold. `dvh` also tracks the browser's own chrome.
+    // Desktop (md and up) renders exactly as before.
+    <div
+      className={`flex h-[calc(100dvh-73px)] min-w-0 flex-col overflow-x-hidden p-2 md:h-[calc(100vh-2rem)] md:p-4 ${
+        selectedConversation ? "max-md:p-0" : ""
+      }`}
+      dir="rtl"
+    >
+      <div className={`mb-2 min-w-0 md:mb-3 ${selectedConversation ? "hidden md:block" : ""}`}>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <MessageSquare className="h-5 w-5 shrink-0 text-yellow-400 md:h-6 md:w-6" />
+            <h1 className="truncate text-lg font-bold text-white md:text-2xl">שיחות וואטסאפ</h1>
+            <span className="hidden text-sm text-gray-500 lg:inline">
+              {visibleCount} שיחות · {unknownCount} ממספרים לא מוכרים
+            </span>
+          </div>
+        {/* Reflects the real master switch, not a hardcoded claim. This banner used to
+              read "מצב יבש — ...ולא שולח כלום" unconditionally, which was true during the
+              dry run and became a lie the moment Stage 2 shipped: the studio could have
+              had a live bot while the screen insisted nothing was being sent. A status
+              banner that can be wrong is worse than no banner. */}
+          {botEnabled === null ? null : botEnabled ? (
+            <div className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-300">
+              <Bot className="h-3.5 w-3.5" />
+              <span className="md:hidden">הבוט פעיל</span>
+              <span className="hidden md:inline">הבוט פעיל — פניות חדשות ממספרים לא מוכרים מקבלות מענה אוטומטי</span>
+            </div>
+          ) : (
+            <div className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs text-blue-300">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              <span className="md:hidden">הבוט כבוי</span>
+              <span className="hidden md:inline">הבוט כבוי — ההודעות נרשמות, לא נשלחת אף תשובה</span>
+            </div>
+          )}
+        </div>
+        {/* One horizontally scrollable strip on a phone; wraps normally on desktop. */}
+        <div className="-mx-2 mt-2 flex items-center gap-2 overflow-x-auto px-2 pb-1 [scrollbar-width:none] md:mx-0 md:flex-wrap md:overflow-visible md:px-0 [&::-webkit-scrollbar]:hidden">
           {/* The two commercial counters, before the diagnostic one. These are the
               numbers that translate into money; wouldReplyCount is for auditing the
               gate. */}
@@ -349,7 +388,7 @@ export default function WhatsAppInbox() {
             <button
               type="button"
               onClick={() => setContactFilter("hot")}
-              className="inline-flex items-center gap-1 rounded-full border border-red-500/40 bg-red-500/10 px-2.5 py-1 text-xs text-red-300 transition-colors hover:bg-red-500/20"
+              className="inline-flex items-center gap-1 rounded-full border border-red-500/40 bg-red-500/10 shrink-0 whitespace-nowrap px-2.5 py-1 text-xs text-red-300 transition-colors hover:bg-red-500/20"
             >
               <Flame className="h-3.5 w-3.5" />
               {hotCount} לידים חמים
@@ -359,7 +398,7 @@ export default function WhatsAppInbox() {
             <button
               type="button"
               onClick={() => setIsFollowUpOpen(true)}
-              className="inline-flex items-center gap-1 rounded-full border border-yellow-500/40 bg-yellow-500/10 px-2.5 py-1 text-xs text-yellow-300 transition-colors hover:bg-yellow-500/20"
+              className="inline-flex items-center gap-1 rounded-full border border-yellow-500/40 bg-yellow-500/10 shrink-0 whitespace-nowrap px-2.5 py-1 text-xs text-yellow-300 transition-colors hover:bg-yellow-500/20"
             >
               <Send className="h-3.5 w-3.5" />
               {followUpQueue.length} ממתינים לפולו-אפ
@@ -368,7 +407,7 @@ export default function WhatsAppInbox() {
           <button
             type="button"
             onClick={() => setIsFollowUpSettingsOpen(true)}
-            className="inline-flex items-center gap-1 rounded-full border border-gray-600 bg-gray-800/60 px-2.5 py-1 text-xs text-gray-300 transition-colors hover:bg-gray-700"
+            className="inline-flex items-center gap-1 rounded-full border border-gray-600 bg-gray-800/60 shrink-0 whitespace-nowrap px-2.5 py-1 text-xs text-gray-300 transition-colors hover:bg-gray-700"
             title="נוסח הפולו-אפ ומתי שיחה נכנסת לתור"
           >
             <Settings2 className="h-3.5 w-3.5" />
@@ -377,7 +416,7 @@ export default function WhatsAppInbox() {
           <button
             type="button"
             onClick={() => setIsSimulatorOpen(true)}
-            className="inline-flex items-center gap-1 rounded-full border border-gray-600 bg-gray-800/60 px-2.5 py-1 text-xs text-gray-300 transition-colors hover:bg-gray-700"
+            className="inline-flex items-center gap-1 rounded-full border border-gray-600 bg-gray-800/60 shrink-0 whitespace-nowrap px-2.5 py-1 text-xs text-gray-300 transition-colors hover:bg-gray-700"
             title="מה הבוט היה עונה להודעה מסוימת — בלי לשלוח כלום"
           >
             <FlaskConical className="h-3.5 w-3.5" />
@@ -387,32 +426,17 @@ export default function WhatsAppInbox() {
             <button
               type="button"
               onClick={() => setContactFilter("would_reply")}
-              className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-300 transition-colors hover:bg-emerald-500/20"
+              className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 shrink-0 whitespace-nowrap px-2.5 py-1 text-xs text-emerald-300 transition-colors hover:bg-emerald-500/20"
             >
               <Bot className="h-3.5 w-3.5" />
               הבוט היה עונה ל-{wouldReplyCount}
             </button>
           )}
         </div>
-        {/* Reflects the real master switch, not a hardcoded claim. This banner used to
-            read "מצב יבש — ...ולא שולח כלום" unconditionally, which was true during the
-            dry run and became a lie the moment Stage 2 shipped: the studio could have
-            had a live bot while the screen insisted nothing was being sent. A status
-            banner that can be wrong is worse than no banner. */}
-        {botEnabled === null ? null : botEnabled ? (
-          <div className="flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-300">
-            <Bot className="h-3.5 w-3.5" />
-            הבוט פעיל — פניות חדשות ממספרים לא מוכרים מקבלות מענה אוטומטי
-          </div>
-        ) : (
-          <div className="flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs text-blue-300">
-            <AlertTriangle className="h-3.5 w-3.5" />
-            הבוט כבוי — ההודעות נרשמות, לא נשלחת אף תשובה
-          </div>
-        )}
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden rounded-xl border border-gray-800 md:grid-cols-[320px_1fr]">
+      <div className={`grid min-h-0 min-w-0 flex-1 grid-cols-1 overflow-hidden border-gray-800 md:grid-cols-[320px_1fr] md:rounded-xl md:border ${selectedConversation ? "" : "rounded-xl border"}`}>
+        <div className={`min-h-0 min-w-0 ${selectedConversation ? "hidden md:block" : ""}`}>
         <ConversationList
           conversations={filteredConversations}
           isLoading={isLoadingConversations}
@@ -424,7 +448,10 @@ export default function WhatsAppInbox() {
           onContactFilterChange={setContactFilter}
           onChangeContactType={handleChangeContactType}
         />
+        </div>
+        <div className={`min-h-0 min-w-0 ${selectedConversation ? "" : "hidden md:block"}`}>
         <ConversationThread
+          onBack={() => setSelectedId(null)}
           conversation={selectedConversation}
           messages={messages}
           isLoading={isLoadingMessages}
@@ -441,6 +468,7 @@ export default function WhatsAppInbox() {
           }
           isFlaggedForFollowUp={selectedConversation ? isManuallyFlagged(selectedConversation) : false}
         />
+        </div>
       </div>
 
       {/* Nothing is written until the user presses שמור inside this dialog. */}

@@ -5,7 +5,7 @@ import ContactTypeBadge from "./ContactTypeBadge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, UserPlus, MessageSquare, ExternalLink, Tag } from "lucide-react";
+import { Send, UserPlus, MessageSquare, ExternalLink, Tag, ArrowRight } from "lucide-react";
 import MessageBubble from "./MessageBubble";
 import {
   STATE_LABELS,
@@ -30,6 +30,8 @@ export default function ConversationThread({
   onChangeContactType,
   onToggleFollowUpFlag,
   isFlaggedForFollowUp,
+  // Mobile only: the page shows the list OR the thread, so the thread needs a way back.
+  onBack,
 }) {
   const [draft, setDraft] = useState("");
   const bottomRef = useRef(null);
@@ -68,25 +70,43 @@ export default function ConversationThread({
   return (
     <div className="flex h-full min-h-0 flex-col bg-gray-900/30">
       {/* Header */}
-      <div className="border-b border-gray-800 bg-gray-900/80 p-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h2 className="truncate text-lg font-semibold text-white">{conversationTitle(conversation)}</h2>
-              <ContactTypeBadge
-                conversation={conversation}
-                onChange={onChangeContactType ? (type) => onChangeContactType(conversation, type) : undefined}
-              />
-              <Badge variant="outline" className="border-gray-700 bg-gray-800 text-[10px] text-gray-400">
-                {STATE_LABELS[conversation.state] || conversation.state}
-              </Badge>
-            </div>
-            <div className="mt-0.5 text-xs text-gray-500" dir="ltr">
-              {displayPhone(conversation)}
+      <div className="min-w-0 border-b border-gray-800 bg-gray-900/80 p-2 md:p-3">
+        {/* A COLUMN on a phone, a row on desktop. As a wrapping row, the title block
+            (flex-1, basis 0) and the full-width action strip both "fit" on one line, so
+            the title collapsed to zero width and its badges painted over the buttons —
+            caught in a 375px preview before this shipped. */}
+        <div className="flex min-w-0 flex-col gap-2 md:flex-row md:flex-wrap md:items-center md:justify-between md:gap-3">
+          <div className="min-w-0 md:flex-1">
+            <div className="flex min-w-0 items-center gap-2">
+              {onBack && (
+                <button
+                  type="button"
+                  onClick={onBack}
+                  className="-mr-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-300 hover:bg-gray-800 md:hidden"
+                  aria-label="חזרה לרשימת השיחות"
+                >
+                  <ArrowRight className="h-5 w-5" />
+                </button>
+              )}
+              <div className="min-w-0 flex-1">
+                <h2 className="truncate text-base font-semibold text-white md:text-lg">{conversationTitle(conversation)}</h2>
+                <div className="truncate text-xs text-gray-500" dir="ltr" style={{ textAlign: "right" }}>
+                  {displayPhone(conversation)}
+                </div>
+              </div>
+              <div className="flex shrink-0 flex-col items-end gap-1 md:flex-row md:items-center md:gap-2">
+                <ContactTypeBadge
+                  conversation={conversation}
+                  onChange={onChangeContactType ? (type) => onChangeContactType(conversation, type) : undefined}
+                />
+                <Badge variant="outline" className="whitespace-nowrap border-gray-700 bg-gray-800 text-[10px] text-gray-400">
+                  {STATE_LABELS[conversation.state] || conversation.state}
+                </Badge>
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="-mx-2 flex min-w-0 items-center gap-2 overflow-x-auto px-2 [scrollbar-width:none] md:mx-0 md:w-auto md:gap-3 md:overflow-visible md:px-0 [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
             {conversation.matchedLeadId && (
               <Link
                 to="/Leads"
@@ -146,7 +166,7 @@ export default function ConversationThread({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 space-y-3 overflow-y-auto p-4">
+      <div className="min-w-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden p-2 md:p-4">
         {isLoading && <div className="text-center text-sm text-gray-500">טוען הודעות…</div>}
         {!isLoading && dayGroups.length === 0 && (
           <div className="text-center text-sm text-gray-500">אין הודעות בשיחה זו</div>
@@ -165,7 +185,7 @@ export default function ConversationThread({
       </div>
 
       {/* Reply box */}
-      <div className="border-t border-gray-800 bg-gray-900/80 p-3">
+      <div className="border-t border-gray-800 bg-gray-900/80 p-2 md:p-3">
         <div className="flex items-end gap-2">
           <Textarea
             value={draft}
@@ -178,19 +198,19 @@ export default function ConversationThread({
                 handleSend();
               }
             }}
-            placeholder="כתבו הודעה… (Enter לשליחה, Shift+Enter לשורה חדשה)"
+            placeholder="כתבו הודעה…"
             rows={2}
-            className="min-h-[44px] resize-none border-gray-700 bg-gray-800 text-white placeholder:text-gray-500"
+            className="min-h-[44px] resize-none border-gray-700 bg-gray-800 text-base text-white placeholder:text-gray-500 md:text-sm"
           />
           <Button
             onClick={handleSend}
             disabled={!draft.trim() || isSending}
-            className="h-[44px] bg-yellow-400 text-gray-900 hover:bg-yellow-500"
+            className="h-[44px] w-[52px] shrink-0 bg-yellow-400 text-gray-900 hover:bg-yellow-500"
           >
             <Send className="h-4 w-4" />
           </Button>
         </div>
-        <p className="mt-1.5 text-[11px] text-gray-500">
+        <p className="mt-1.5 hidden text-[11px] text-gray-500 md:block">
           שליחה מכאן מגיעה מהמספר של הסטודיו, ומשתיקה את הבוט בשיחה הזו. ההודעה תופיע בשרשור תוך כמה שניות.
         </p>
       </div>

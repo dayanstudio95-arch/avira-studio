@@ -65,24 +65,26 @@ export default function ConversationList({
   // truncates the list at the bottom of the panel — no scrollbar, no way to reach the
   // older conversations. Zeroing the minimum caps the row at the container height.
   return (
-    <div className="flex h-full min-h-0 flex-col border-l border-gray-800 bg-gray-900/60">
-      <div className="space-y-3 border-b border-gray-800 p-3">
+    <div className="flex h-full min-h-0 min-w-0 flex-col border-gray-800 bg-gray-900/60 md:border-l">
+      <div className="min-w-0 space-y-2 border-b border-gray-800 p-2 md:space-y-3 md:p-3">
         <div className="relative">
           <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
           <Input
             value={searchTerm}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="חיפוש לפי שם או מספר"
-            className="border-gray-700 bg-gray-800 pr-9 text-white placeholder:text-gray-500"
+            className="border-gray-700 bg-gray-800 pr-9 text-base text-white placeholder:text-gray-500 md:text-sm"
           />
         </div>
-        <div className="flex flex-wrap gap-1.5">
+        {/* Twelve chips wrapped into three rows on a phone and pushed the list off
+            screen. There they are one swipeable row; desktop wraps as before. */}
+        <div className="-mx-2 flex gap-1.5 overflow-x-auto px-2 pb-1 [scrollbar-width:none] md:mx-0 md:flex-wrap md:overflow-visible md:px-0 md:pb-0 [&::-webkit-scrollbar]:hidden">
           {filters.map((f) => (
             <button
               key={f.value}
               type="button"
               onClick={() => onContactFilterChange(f.value)}
-              className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+              className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs transition-colors md:px-2.5 md:py-1 ${
                 contactFilter === f.value
                   ? "border-yellow-500/50 bg-yellow-500/20 text-yellow-300"
                   : "border-gray-700 bg-gray-800 text-gray-400 hover:text-gray-200"

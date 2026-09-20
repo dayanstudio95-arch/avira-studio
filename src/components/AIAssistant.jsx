@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { X, Send, Bot, Loader2, MessageSquare, CheckCircle, AlertCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import StructuredAnswer from "./AIAssistantStructuredAnswer";
 
@@ -35,6 +36,8 @@ function rowToMessage(row) {
 }
 
 export default function AIAssistant() {
+  const { pathname } = useLocation();
+  const hideOnMobile = pathname.toLowerCase().includes('whatsappinbox');
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState("");
@@ -156,7 +159,10 @@ export default function AIAssistant() {
         <motion.div
           initial={{ x: 100, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
-          className="fixed bottom-6 right-6 z-50"
+          // On a phone the WhatsApp inbox has a message composer along the bottom edge;
+          // this button sat on top of it, exactly where the text starts in RTL. Hidden
+          // there on mobile only — the assistant is still one tap away on every other page.
+          className={`fixed bottom-6 right-6 z-50 ${hideOnMobile ? "hidden md:block" : ""}`}
         >
           <Button
             onClick={() => setIsOpen(true)}
