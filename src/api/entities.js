@@ -185,6 +185,10 @@ export const entities = {
   // customer conversations, unlike leads/events which any tenant member can read.
   // The webhook itself writes via a service-role client and never touches these
   // entities; WhatsAppInbox.jsx reads them and updates only botEnabled.
+  // Lump-sum staff payments (migration 0065). Read here; WRITTEN only through the
+  // record_staff_payment / undo_staff_payment RPCs so closing events and recording the
+  // money are one transaction.
+  StaffPayment: createEntity('staff_payments'),
   WhatsAppConversation: createEntity('whatsapp_conversations'),
   WhatsAppMessage: createEntity('whatsapp_messages'),
 };

@@ -799,6 +799,54 @@ section('net profit — adds up, and ignores everything that made it not');
     Math.round((sum((x) => x.totalAmountGross) - sum(getEventVatAmount) - sum(getEventTeamCost)) * 100) / 100);
 }
 
+// =================================================================================
+// PART 11 — lump-sum staff payments (src/lib/staffPaymentAllocation.js, 2026-09-20)
+//
+// The preview the owner confirms must match what record_staff_payment (0065) does:
+// oldest first, stop at the first that doesn't fit, the rest is credit.
+// =================================================================================
+
+const { unpaidRowsForStaff, allocatePayment, creditByStaff, latestPaymentIdByStaff } =
+  await loadModule('src/lib/staffPaymentAllocation.js', 'staffpay');
+
+section('staff payments — the owner\'s own example: 6,000 against events of 1,800');
+{
+  const ev = (id, date, extra = {}) => ({ id, date, coupleNames: id, team: [{ staffMemberName: 'רודי', role: 'photographer1', cost: 1800, ...extra }] });
+  const events = [
+    ev('d', '2026-08-27'), ev('a', '2026-08-20'), ev('c', '2026-08-26'), ev('b', '2026-08-24'),
+    ev('paid', '2026-08-01', { isPaid: true }),
+    ev('future', '2027-01-01'),
+    { id: 'other', date: '2026-08-10', coupleNames: 'other', team: [{ staffMemberName: 'דרור', cost: 1200 }] },
+    { id: 'free', date: '2026-08-11', coupleNames: 'free', team: [{ staffMemberName: 'רודי', cost: 0 }] },
+  ];
+  const rows = unpaidRowsForStaff(events, 'רודי', '2026-09-20');
+  check('only his, unpaid, costed, already happened — oldest first', rows.map((r) => r.eventId), ['a', 'b', 'c', 'd']);
+
+  const p1 = allocatePayment({ amount: 6000, creditBefore: 0, rows });
+  check('6,000 closes three', p1.covered.map((r) => r.eventId), ['a', 'b', 'c']);
+  check('…applies 5,400', p1.applied, 5400);
+  check('…and keeps 600 as credit', p1.creditAfter, 600);
+  check('…and names what is next', p1.firstUncovered.eventId, 'd');
+
+  const remaining = rows.slice(3);
+  const p2 = allocatePayment({ amount: 1200, creditBefore: 600, rows: remaining });
+  check('1,200 + the 600 credit closes the fourth', [p2.covered.length, p2.applied, p2.creditAfter], [1, 1800, 0]);
+
+  check('too little for anything → all credit', allocatePayment({ amount: 1000, creditBefore: 0, rows }).creditAfter, 1000);
+  check('more than everything → the surplus is credit', allocatePayment({ amount: 10000, creditBefore: 0, rows }).creditAfter, 2800);
+  check('never skips ahead to a cheaper, newer event',
+    allocatePayment({ amount: 2000, creditBefore: 0, rows: [{ eventId: 'big', cost: 2500 }, { eventId: 'small', cost: 1800 }] }).covered.length, 0);
+  check('agorot do not drift', allocatePayment({ amount: 0.3, creditBefore: 0, rows: [{ eventId: 'x', cost: 0.1 }, { eventId: 'y', cost: 0.2 }] }).creditAfter, 0);
+
+  const payments = [
+    { id: 'p1', staffMemberName: 'רודי', amount: 6000, appliedAmount: 5400, createdAt: '2026-09-01T10:00:00Z' },
+    { id: 'p2', staffMemberName: 'רודי', amount: 1200, appliedAmount: 1800, createdAt: '2026-09-10T10:00:00Z' },
+    { id: 'p3', staffMemberName: 'דרור', amount: 500, appliedAmount: 0, createdAt: '2026-09-05T10:00:00Z' },
+  ];
+  check('credit is derived: Σ(amount − applied)', creditByStaff(payments), { 'רודי': 0, 'דרור': 500 });
+  check('only the latest payment per person can be undone', latestPaymentIdByStaff(payments), { 'רודי': 'p2', 'דרור': 'p3' });
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

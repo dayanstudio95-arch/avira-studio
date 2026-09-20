@@ -6,13 +6,18 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { WalletCards, Check, User, Calendar, Coins, CalendarDays, MessageCircle, History, Receipt } from 'lucide-react';
+import { WalletCards, Check, User, Calendar, Coins, CalendarDays, MessageCircle, History, Receipt, Banknote, Undo2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SUPPLIER_VAT_RATE } from '@/lib/financialCalculations';
 import StaffPaymentDetailDialog from '@/components/payments/StaffPaymentDetailDialog';
+import RecordStaffPaymentDialog from '@/components/payments/RecordStaffPaymentDialog';
+import { supabase } from '@/api/supabaseClient';
+import { toast } from 'sonner';
+import { unpaidRowsForStaff, creditByStaff, latestPaymentIdByStaff } from '@/lib/staffPaymentAllocation';
+const StaffPayment = base44.entities.StaffPayment;
 
 export default function Payments() {
     const [events, setEvents] = useState([]);
@@ -24,15 +29,24 @@ export default function Payments() {
     const [selectedPayments, setSelectedPayments] = useState({});
     const [selectedReceipts, setSelectedReceipts] = useState({});
     const [detailDialogStaff, setDetailDialogStaff] = useState(null);
+    // Lump-sum payments (migration 0065): real payments in round sums, closed against
+    // events oldest-first, the remainder kept as the person's credit.
+    const [staffPayments, setStaffPayments] = useState([]);
+    const [recordPaymentFor, setRecordPaymentFor] = useState(null); // staff name | null
+    const [undoingPaymentId, setUndoingPaymentId] = useState(null);
 
     const loadData = async () => {
         setIsLoading(true);
-        const [allEvents, allStaff] = await Promise.all([
+        const [allEvents, allStaff, allPayments] = await Promise.all([
             Event.list('-date'),
             StaffMember.list(),
+            // Tolerant on purpose: before migration 0065 is applied this table doesn't
+            // exist, and the rest of the page must keep working exactly as before.
+            StaffPayment.list('-createdDate').catch(() => []),
         ]);
         setEvents(allEvents);
         setStaffMembers(allStaff);
+        setStaffPayments(allPayments || []);
         setIsLoading(false);
     };
 
@@ -318,6 +332,32 @@ export default function Payments() {
         return (selectedReceipts[staffName] || []).includes(paymentKey);
     };
 
+    const credits = useMemo(() => creditByStaff(staffPayments), [staffPayments]);
+    const latestPaymentIds = useMemo(() => latestPaymentIdByStaff(staffPayments), [staffPayments]);
+    const totalCredit = Object.values(credits).reduce((s, c) => s + Math.max(0, c), 0);
+    // Payments recorded in the period shown (by the date the money actually moved).
+    const paymentsInPeriod = useMemo(() => staffPayments.filter((p) => {
+        const d = new Date(p.paidOn);
+        return d.getFullYear() === selectedYear && (selectedMonth === "all" || d.getMonth() === parseInt(selectedMonth));
+    }), [staffPayments, selectedYear, selectedMonth]);
+    // People holding credit who have nothing owed in the month on screen still need to be
+    // visible — that money is real.
+    const creditOnlyNames = Object.entries(credits).filter(([n, c]) => c > 0 && !paymentsOwed[n]).map(([n]) => n);
+
+    const handleUndoPayment = async (payment) => {
+        if (!window.confirm(`לבטל את התשלום של ₪${Number(payment.amount).toLocaleString()} ל${payment.staffMemberName}?\nהאירועים שנסגרו בתשלום הזה יחזרו ל"לא שולם".`)) return;
+        setUndoingPaymentId(payment.id);
+        try {
+            const { error } = await supabase.rpc('undo_staff_payment', { p_payment_id: payment.id });
+            if (error) throw error;
+            toast.success('התשלום בוטל');
+            await loadData();
+        } catch (e) {
+            toast.error(`ביטול התשלום נכשל: ${e?.message || 'שגיאה לא ידועה'}`);
+        }
+        setUndoingPaymentId(null);
+    };
+
     const totalOwedAmount = Object.values(paymentsOwed).reduce((sum, staff) => sum + staff.total, 0);
     const totalPaidAmount = Object.values(paymentsHistory).reduce((sum, staff) => sum + staff.total, 0);
 
@@ -409,6 +449,17 @@ export default function Payments() {
                                 <p className="text-2xl md:text-4xl font-bold text-red-400">
                                    ₪{totalOwedAmount.toLocaleString()}
                                 </p>
+                                {totalCredit > 0 && (
+                                    <p className="text-sm text-emerald-400 mt-2">
+                                        מתוכם כבר שולם על החשבון: ₪{totalCredit.toLocaleString()} (יתרות זכות של הצוות)
+                                    </p>
+                                )}
+                                {creditOnlyNames.length > 0 && (
+                                    <p className="text-xs text-gray-400 mt-1">
+                                        יתרת זכות בלי חוב פתוח בתקופה הזו:{' '}
+                                        {creditOnlyNames.map((n) => `${n} ₪${credits[n].toLocaleString()}`).join(' · ')}
+                                    </p>
+                                )}
                             </CardContent>
                         </Card>
 
@@ -433,7 +484,24 @@ export default function Payments() {
                                                             <span className="text-xs font-normal text-gray-500 mr-1 hidden sm:inline">(כולל מע"מ: ₪{Math.round(data.total * SUPPLIER_VAT_RATE).toLocaleString()})</span>
                                                         </p>
                                                         <p className="text-xs font-normal text-gray-500 sm:hidden">כולל מע"מ: ₪{Math.round(data.total * SUPPLIER_VAT_RATE).toLocaleString()}</p>
+                                                        {(credits[name] || 0) > 0 && (
+                                                            <p className="text-xs text-emerald-400 mt-0.5">
+                                                                יתרת זכות ₪{credits[name].toLocaleString()} · נטו לתשלום ₪{Math.max(0, data.total - credits[name]).toLocaleString()}
+                                                            </p>
+                                                        )}
                                                     </div>
+                                                    <Button
+                                                       size="sm"
+                                                       onClick={(e) => {
+                                                           e.stopPropagation();
+                                                           setRecordPaymentFor(name);
+                                                       }}
+                                                       className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-2 font-semibold"
+                                                       title="שילמת סכום עגול (למשל מזומן)? המערכת תסגור אירועים מהישן לחדש ותשמור את השארית כיתרה"
+                                                   >
+                                                       <Banknote className="w-3 h-3 ml-1"/>
+                                                       רשום תשלום
+                                                   </Button>
                                                     <Button
                                                        size="sm"
                                                        onClick={(e) => {
@@ -534,6 +602,49 @@ export default function Payments() {
                                 </p>
                             </CardContent>
                         </Card>
+
+                        {paymentsInPeriod.length > 0 && (
+                            <Card className="bg-gray-900/50 border-emerald-500/20 mb-6">
+                                <CardContent className="p-4 md:p-6">
+                                    <p className="text-white font-semibold mb-3 flex items-center gap-2">
+                                        <Banknote className="w-4 h-4 text-emerald-400" />
+                                        תשלומים שנרשמו בתקופה
+                                    </p>
+                                    <div className="space-y-2">
+                                        {paymentsInPeriod.map((p) => (
+                                            <div key={p.id} className="rounded-lg bg-gray-800/50 p-3 text-sm">
+                                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                                    <span className="text-white font-medium">
+                                                        {p.staffMemberName} · ₪{Number(p.amount).toLocaleString()}
+                                                        <span className="text-gray-400 font-normal"> · {format(new Date(p.paidOn), 'd/M/yy')} · {({cash:'מזומן',transfer:'העברה',bit:'ביט',check:'צ׳ק',other:'אחר'})[p.method] || p.method}</span>
+                                                    </span>
+                                                    {latestPaymentIds[p.staffMemberName] === p.id && (
+                                                        <Button
+                                                            size="sm"
+                                                            variant="outline"
+                                                            onClick={() => handleUndoPayment(p)}
+                                                            disabled={undoingPaymentId === p.id}
+                                                            className="border-gray-600 bg-transparent text-gray-300 hover:bg-gray-700 text-xs h-7"
+                                                            title="אפשר לבטל רק את התשלום האחרון של כל איש צוות"
+                                                        >
+                                                            <Undo2 className="w-3 h-3 ml-1" />
+                                                            {undoingPaymentId === p.id ? 'מבטל...' : 'בטל תשלום'}
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                                <p className="text-xs text-gray-400 mt-1">
+                                                    {(p.covered || []).length > 0
+                                                        ? `סגר: ${(p.covered || []).map((c) => c.coupleNames).join(', ')}`
+                                                        : 'לא סגר אירוע במלואו'}
+                                                    {Number(p.creditAfter) > 0 ? ` · יתרת זכות אחריו ₪${Number(p.creditAfter).toLocaleString()}` : ''}
+                                                    {p.note ? ` · ${p.note}` : ''}
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        )}
 
                         <Accordion type="multiple" className="w-full space-y-4">
                             {Object.keys(paymentsHistory).length > 0 ? Object.entries(paymentsHistory).map(([name, data]) => {
@@ -645,6 +756,15 @@ export default function Payments() {
                         </Accordion>
                     </TabsContent>
                 </Tabs>
+
+                <RecordStaffPaymentDialog
+                    open={!!recordPaymentFor}
+                    onOpenChange={(isOpen) => { if (!isOpen) setRecordPaymentFor(null); }}
+                    staffName={recordPaymentFor}
+                    rows={recordPaymentFor ? unpaidRowsForStaff(events, recordPaymentFor) : []}
+                    credit={recordPaymentFor ? (credits[recordPaymentFor] || 0) : 0}
+                    onRecorded={loadData}
+                />
 
                 <StaffPaymentDetailDialog
                     open={!!detailDialogStaff}
