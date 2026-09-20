@@ -534,7 +534,15 @@ export default function Layout({ children }) {
           </SidebarFooter>
         </Sidebar>
 
-        <main className="flex-1 flex flex-col bg-gray-950">
+        {/* min-w-0 is load-bearing. <main> is a flex ITEM of the sidebar wrapper's row
+            (ui/sidebar.jsx: "flex min-h-svh w-full"), and a flex item's default
+            min-width is `auto` — its content's min-content width. One long nowrap /
+            `truncate` string anywhere on a page (a WhatsApp message preview, a row of
+            pills) therefore made <main> WIDER THAN THE SCREEN, and on a phone the whole
+            app panned left and right. Reproduced on 2026-09-23 in a mirror of this
+            shell: 465px of main on a 375px screen without it, 375px with it. Truncation
+            and inner horizontal scrollers only work once this is zero. */}
+        <main className="flex-1 flex flex-col min-w-0 bg-gray-950">
           <header className="bg-gray-900/50 backdrop-blur-sm border-b border-gray-800 px-6 py-4 md:hidden">
             <div className="flex items-center gap-4">
               <SidebarTrigger className="hover:bg-gray-800 p-2 rounded-lg transition-colors duration-200 text-gray-300" />
