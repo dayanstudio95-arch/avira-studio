@@ -16,7 +16,8 @@ import StaffPaymentDetailDialog from '@/components/payments/StaffPaymentDetailDi
 import RecordStaffPaymentDialog from '@/components/payments/RecordStaffPaymentDialog';
 import { supabase } from '@/api/supabaseClient';
 import { toast } from 'sonner';
-import { unpaidRowsForStaff, creditByStaff, latestPaymentIdByStaff } from '@/lib/staffPaymentAllocation';
+import { unpaidRowsForStaff, creditByStaff, creditForExactPeriod, undoablePaymentIds, periodRange } from '@/lib/staffPaymentAllocation';
+const MONTHS_HE = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
 const StaffPayment = base44.entities.StaffPayment;
 
 export default function Payments() {
@@ -332,8 +333,17 @@ export default function Payments() {
         return (selectedReceipts[staffName] || []).includes(paymentKey);
     };
 
-    const credits = useMemo(() => creditByStaff(staffPayments), [staffPayments]);
-    const latestPaymentIds = useMemo(() => latestPaymentIdByStaff(staffPayments), [staffPayments]);
+    // The period on screen — a payment is recorded ON it (migration 0066).
+    const range = useMemo(() => periodRange(selectedYear, selectedMonth), [selectedYear, selectedMonth]);
+    const periodLabel = selectedMonth === 'all' ? `${selectedYear}` : `${MONTHS_HE[parseInt(selectedMonth)]} ${selectedYear}`;
+    const credits = useMemo(() => creditByStaff(staffPayments, range), [staffPayments, range]);
+    const undoableIds = useMemo(() => undoablePaymentIds(staffPayments), [staffPayments]);
+    const paymentPeriodText = (p) => {
+        if (!p.periodFrom) return '';
+        const f = new Date(p.periodFrom);
+        const t = new Date(p.periodTo);
+        return f.getMonth() === t.getMonth() && f.getFullYear() === t.getFullYear() ? `${MONTHS_HE[f.getMonth()]} ${f.getFullYear()}` : `${f.getFullYear()}`;
+    };
     const totalCredit = Object.values(credits).reduce((s, c) => s + Math.max(0, c), 0);
     // Payments recorded in the period shown (by the date the money actually moved).
     const paymentsInPeriod = useMemo(() => staffPayments.filter((p) => {
@@ -359,6 +369,26 @@ export default function Payments() {
     };
 
     const totalOwedAmount = Object.values(paymentsOwed).reduce((sum, staff) => sum + staff.total, 0);
+    // What is actually left to pay: each person's open events minus their credit, never
+    // below zero (a person paid ahead is not owed a negative amount).
+    const totalRemaining = Object.entries(paymentsOwed).reduce(
+        (sum, [n, d]) => sum + Math.max(0, d.total - Math.max(0, credits[n] || 0)), 0);
+    const totalOffset = totalOwedAmount - totalRemaining;
+
+    // Per-card numbers. "החודש: 7,200 · שולם 6,000 · נשאר 1,200" — the month as a whole,
+    // however the money got there (events ticked paid + payment credit).
+    const cardNumbers = (name, data) => {
+        const credit = Math.max(0, credits[name] || 0);
+        const paidEventsTotal = paymentsHistory[name]?.total || 0;
+        return {
+            credit,
+            paidEventsTotal,
+            remaining: Math.max(0, data.total - credit),
+            overpaid: Math.max(0, credit - data.total),
+            monthTotal: data.total + paidEventsTotal,
+            paid: paidEventsTotal + credit,
+        };
+    };
     const totalPaidAmount = Object.values(paymentsHistory).reduce((sum, staff) => sum + staff.total, 0);
 
     if (isLoading) {
@@ -445,13 +475,13 @@ export default function Payments() {
                     <TabsContent value="owed">
                         <Card className="bg-gray-900/50 border-yellow-400/20 mb-8">
                             <CardContent className="p-4 md:p-6">
-                                <p className="text-gray-400 text-base md:text-lg">סך הכל חובות לצוות</p>
+                                <p className="text-gray-400 text-base md:text-lg">{totalOffset > 0 ? 'נשאר לשלם לצוות' : 'סך הכל חובות לצוות'}</p>
                                 <p className="text-2xl md:text-4xl font-bold text-red-400">
-                                   ₪{totalOwedAmount.toLocaleString()}
+                                   ₪{totalRemaining.toLocaleString()}
                                 </p>
-                                {totalCredit > 0 && (
+                                {totalOffset > 0 && (
                                     <p className="text-sm text-emerald-400 mt-2">
-                                        מתוכם כבר שולם על החשבון: ₪{totalCredit.toLocaleString()} (יתרות זכות של הצוות)
+                                        חוב ₪{totalOwedAmount.toLocaleString()} − כבר שולם על החשבון ₪{totalOffset.toLocaleString()}
                                     </p>
                                 )}
                                 {creditOnlyNames.length > 0 && (
@@ -478,17 +508,20 @@ export default function Payments() {
                                                 {/* Row 2: amount + buttons */}
                                                 <div className="flex flex-wrap items-center gap-2">
                                                     <div className="text-right flex-1 min-w-0">
-                                                        <p className="text-gray-400 text-xs">סה״כ לתשלום</p>
+                                                        {(() => { const n = cardNumbers(name, data); return (<>
+                                                        <p className="text-gray-400 text-xs">{n.credit > 0 ? 'נשאר לשלם' : 'סה״כ לתשלום'}</p>
                                                         <p className="text-base font-bold text-red-400">
-                                                            ₪{data.total.toLocaleString()}
-                                                            <span className="text-xs font-normal text-gray-500 mr-1 hidden sm:inline">(כולל מע"מ: ₪{Math.round(data.total * SUPPLIER_VAT_RATE).toLocaleString()})</span>
+                                                            ₪{n.remaining.toLocaleString()}
+                                                            <span className="text-xs font-normal text-gray-500 mr-1 hidden sm:inline">(כולל מע"מ: ₪{Math.round(n.remaining * SUPPLIER_VAT_RATE).toLocaleString()})</span>
                                                         </p>
-                                                        <p className="text-xs font-normal text-gray-500 sm:hidden">כולל מע"מ: ₪{Math.round(data.total * SUPPLIER_VAT_RATE).toLocaleString()}</p>
-                                                        {(credits[name] || 0) > 0 && (
+                                                        <p className="text-xs font-normal text-gray-500 sm:hidden">כולל מע"מ: ₪{Math.round(n.remaining * SUPPLIER_VAT_RATE).toLocaleString()}</p>
+                                                        {(n.credit > 0 || n.paidEventsTotal > 0) && (
                                                             <p className="text-xs text-emerald-400 mt-0.5">
-                                                                יתרת זכות ₪{credits[name].toLocaleString()} · נטו לתשלום ₪{Math.max(0, data.total - credits[name]).toLocaleString()}
+                                                                {selectedMonth === 'all' ? 'בתקופה' : 'החודש'}: ₪{n.monthTotal.toLocaleString()} · שולם ₪{n.paid.toLocaleString()} · נשאר ₪{n.remaining.toLocaleString()}
+                                                                {n.overpaid > 0 ? ` · שולם מראש ₪${n.overpaid.toLocaleString()}` : ''}
                                                             </p>
                                                         )}
+                                                    </>); })()}
                                                     </div>
                                                     <Button
                                                        size="sm"
@@ -618,14 +651,14 @@ export default function Payments() {
                                                         {p.staffMemberName} · ₪{Number(p.amount).toLocaleString()}
                                                         <span className="text-gray-400 font-normal"> · {format(new Date(p.paidOn), 'd/M/yy')} · {({cash:'מזומן',transfer:'העברה',bit:'ביט',check:'צ׳ק',other:'אחר'})[p.method] || p.method}</span>
                                                     </span>
-                                                    {latestPaymentIds[p.staffMemberName] === p.id && (
+                                                    {undoableIds.has(p.id) && (
                                                         <Button
                                                             size="sm"
                                                             variant="outline"
                                                             onClick={() => handleUndoPayment(p)}
                                                             disabled={undoingPaymentId === p.id}
                                                             className="border-gray-600 bg-transparent text-gray-300 hover:bg-gray-700 text-xs h-7"
-                                                            title="אפשר לבטל רק את התשלום האחרון של כל איש צוות"
+                                                            title="אפשר לבטל רק את התשלום האחרון של כל איש צוות בכל תקופה"
                                                         >
                                                             <Undo2 className="w-3 h-3 ml-1" />
                                                             {undoingPaymentId === p.id ? 'מבטל...' : 'בטל תשלום'}
@@ -636,6 +669,7 @@ export default function Payments() {
                                                     {(p.covered || []).length > 0
                                                         ? `סגר: ${(p.covered || []).map((c) => c.coupleNames).join(', ')}`
                                                         : 'לא סגר אירוע במלואו'}
+                                                    {paymentPeriodText(p) ? ` · על חשבון ${paymentPeriodText(p)}` : ' · ללא תקופה (רישום ישן)'}
                                                     {Number(p.creditAfter) > 0 ? ` · יתרת זכות אחריו ₪${Number(p.creditAfter).toLocaleString()}` : ''}
                                                     {p.note ? ` · ${p.note}` : ''}
                                                 </p>
@@ -761,8 +795,9 @@ export default function Payments() {
                     open={!!recordPaymentFor}
                     onOpenChange={(isOpen) => { if (!isOpen) setRecordPaymentFor(null); }}
                     staffName={recordPaymentFor}
-                    rows={recordPaymentFor ? unpaidRowsForStaff(events, recordPaymentFor) : []}
-                    credit={recordPaymentFor ? (credits[recordPaymentFor] || 0) : 0}
+                    rows={recordPaymentFor ? unpaidRowsForStaff(events, recordPaymentFor, undefined, range) : []}
+                    credit={recordPaymentFor ? creditForExactPeriod(staffPayments, recordPaymentFor, range) : 0}
+                    period={{ ...range, label: periodLabel }}
                     onRecorded={loadData}
                 />
 

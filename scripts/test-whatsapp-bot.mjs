@@ -802,49 +802,77 @@ section('net profit — adds up, and ignores everything that made it not');
 // =================================================================================
 // PART 11 — lump-sum staff payments (src/lib/staffPaymentAllocation.js, 2026-09-20)
 //
-// The preview the owner confirms must match what record_staff_payment (0065) does:
-// oldest first, stop at the first that doesn't fit, the rest is credit.
+// The preview the owner confirms must match what record_staff_payment (0066) does:
+// inside the period on screen, oldest first, stop at the first that doesn't fit, the
+// rest is credit FOR THAT PERIOD. The first version (0065) closed against all history —
+// his 6,000 for August landed on older months and August still read 7,200. The
+// "older months are not touched" cases below exist because of that.
 // =================================================================================
 
-const { unpaidRowsForStaff, allocatePayment, creditByStaff, latestPaymentIdByStaff } =
+const { unpaidRowsForStaff, allocatePayment, creditByStaff, creditForExactPeriod, undoablePaymentIds, periodRange } =
   await loadModule('src/lib/staffPaymentAllocation.js', 'staffpay');
 
-section('staff payments — the owner\'s own example: 6,000 against events of 1,800');
+section('period range — the month on screen, or the year for "all months"');
+check('August 2026', periodRange(2026, '7'), { from: '2026-08-01', to: '2026-08-31' });
+check('February 2028 (leap)', periodRange(2028, '1'), { from: '2028-02-01', to: '2028-02-29' });
+check('all months → the year', periodRange(2026, 'all'), { from: '2026-01-01', to: '2026-12-31' });
+
+section("staff payments — the owner's own example: 7,200 owed for August, 6,000 paid");
 {
   const ev = (id, date, extra = {}) => ({ id, date, coupleNames: id, team: [{ staffMemberName: 'רודי', role: 'photographer1', cost: 1800, ...extra }] });
   const events = [
     ev('d', '2026-08-27'), ev('a', '2026-08-20'), ev('c', '2026-08-26'), ev('b', '2026-08-24'),
+    ev('july', '2026-07-10'),
     ev('paid', '2026-08-01', { isPaid: true }),
     ev('future', '2027-01-01'),
     { id: 'other', date: '2026-08-10', coupleNames: 'other', team: [{ staffMemberName: 'דרור', cost: 1200 }] },
     { id: 'free', date: '2026-08-11', coupleNames: 'free', team: [{ staffMemberName: 'רודי', cost: 0 }] },
   ];
-  const rows = unpaidRowsForStaff(events, 'רודי', '2026-09-20');
-  check('only his, unpaid, costed, already happened — oldest first', rows.map((r) => r.eventId), ['a', 'b', 'c', 'd']);
+  const august = periodRange(2026, '7');
+
+  check('no period → everything unpaid, oldest first (July too)',
+    unpaidRowsForStaff(events, 'רודי', '2026-09-20').map((r) => r.eventId), ['july', 'a', 'b', 'c', 'd']);
+  const rows = unpaidRowsForStaff(events, 'רודי', '2026-09-20', august);
+  check('August only — July is not in it', rows.map((r) => r.eventId), ['a', 'b', 'c', 'd']);
+  check('…his, unpaid, costed, already happened', rows.length, 4);
 
   const p1 = allocatePayment({ amount: 6000, creditBefore: 0, rows });
-  check('6,000 closes three', p1.covered.map((r) => r.eventId), ['a', 'b', 'c']);
+  check('6,000 closes three August events', p1.covered.map((r) => r.eventId), ['a', 'b', 'c']);
   check('…applies 5,400', p1.applied, 5400);
-  check('…and keeps 600 as credit', p1.creditAfter, 600);
-  check('…and names what is next', p1.firstUncovered.eventId, 'd');
+  check('…keeps 600 as credit', p1.creditAfter, 600);
+  check('…names the one still open', p1.firstUncovered.eventId, 'd');
+  // What the card then says: 1,800 still open − 600 credit = 1,200 left.
+  check('"נשאר לשלם" = open − credit = 1,200', 1800 - p1.creditAfter, 1200);
 
-  const remaining = rows.slice(3);
-  const p2 = allocatePayment({ amount: 1200, creditBefore: 600, rows: remaining });
-  check('1,200 + the 600 credit closes the fourth', [p2.covered.length, p2.applied, p2.creditAfter], [1, 1800, 0]);
+  const p2 = allocatePayment({ amount: 1200, creditBefore: 600, rows: rows.slice(3) });
+  check('paying the 1,200 closes the last one', [p2.covered.length, p2.applied, p2.creditAfter], [1, 1800, 0]);
 
   check('too little for anything → all credit', allocatePayment({ amount: 1000, creditBefore: 0, rows }).creditAfter, 1000);
-  check('more than everything → the surplus is credit', allocatePayment({ amount: 10000, creditBefore: 0, rows }).creditAfter, 2800);
+  check('more than the month → the surplus is credit', allocatePayment({ amount: 10000, creditBefore: 0, rows }).creditAfter, 2800);
   check('never skips ahead to a cheaper, newer event',
     allocatePayment({ amount: 2000, creditBefore: 0, rows: [{ eventId: 'big', cost: 2500 }, { eventId: 'small', cost: 1800 }] }).covered.length, 0);
   check('agorot do not drift', allocatePayment({ amount: 0.3, creditBefore: 0, rows: [{ eventId: 'x', cost: 0.1 }, { eventId: 'y', cost: 0.2 }] }).creditAfter, 0);
+}
 
+section('credit and undo are per period');
+{
+  const aug = periodRange(2026, '7');
+  const sep = periodRange(2026, '8');
+  const year = periodRange(2026, 'all');
   const payments = [
-    { id: 'p1', staffMemberName: 'רודי', amount: 6000, appliedAmount: 5400, createdAt: '2026-09-01T10:00:00Z' },
-    { id: 'p2', staffMemberName: 'רודי', amount: 1200, appliedAmount: 1800, createdAt: '2026-09-10T10:00:00Z' },
-    { id: 'p3', staffMemberName: 'דרור', amount: 500, appliedAmount: 0, createdAt: '2026-09-05T10:00:00Z' },
+    { id: 'a1', staffMemberName: 'רודי', amount: 6000, appliedAmount: 5400, periodFrom: aug.from, periodTo: aug.to, createdAt: '2026-09-01T10:00:00Z' },
+    { id: 'a2', staffMemberName: 'רודי', amount: 500, appliedAmount: 0, periodFrom: aug.from, periodTo: aug.to, createdAt: '2026-09-02T10:00:00Z' },
+    { id: 's1', staffMemberName: 'רודי', amount: 2000, appliedAmount: 1800, periodFrom: sep.from, periodTo: sep.to, createdAt: '2026-09-03T10:00:00Z' },
+    { id: 'old', staffMemberName: 'דרור', amount: 300, appliedAmount: 0, periodFrom: null, periodTo: null, createdAt: '2026-09-04T10:00:00Z' },
   ];
-  check('credit is derived: Σ(amount − applied)', creditByStaff(payments), { 'רודי': 0, 'דרור': 500 });
-  check('only the latest payment per person can be undone', latestPaymentIdByStaff(payments), { 'רודי': 'p2', 'דרור': 'p3' });
+  check('August view: August credit only (+ undated legacy)', creditByStaff(payments, aug), { 'רודי': 1100, 'דרור': 300 });
+  check('September view: not August\'s leftover', creditByStaff(payments, sep), { 'רודי': 200, 'דרור': 300 });
+  check('year view: all of the year', creditByStaff(payments, year), { 'רודי': 1300, 'דרור': 300 });
+  check('a new August payment starts from August credit only', creditForExactPeriod(payments, 'רודי', aug), 1100);
+  check('a new September payment starts from September credit only', creditForExactPeriod(payments, 'רודי', sep), 200);
+  check('a new payment for a fresh month starts from zero', creditForExactPeriod(payments, 'רודי', periodRange(2026, '9')), 0);
+  check('undo: the latest of each person AND period, so fixing August does not need September undone',
+    [...undoablePaymentIds(payments)].sort(), ['a2', 'old', 's1']);
 }
 
 await rm(outDir, { recursive: true, force: true });

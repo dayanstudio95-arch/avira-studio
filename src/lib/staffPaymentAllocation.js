@@ -14,20 +14,37 @@
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
-// Every unpaid, costed, already-happened row of `staffName` across ALL events — not
-// just the month the page is filtered to. Oldest first.
-export function unpaidRowsForStaff(events, staffName, today = new Date()) {
+// The period a payment is made ON: the month (or, with "all months", the year) the
+// Payments page is showing. { from, to } as YYYY-MM-DD, inclusive.
+export function periodRange(year, month) {
+  if (month === "all" || month === undefined || month === null) {
+    return { from: `${year}-01-01`, to: `${year}-12-31` };
+  }
+  const m = parseInt(month, 10);
+  const last = new Date(year, m + 1, 0).getDate();
+  const mm = String(m + 1).padStart(2, "0");
+  return { from: `${year}-${mm}-01`, to: `${year}-${mm}-${String(last).padStart(2, "0")}` };
+}
+
+// Every unpaid, costed, already-happened row of `staffName` INSIDE `range` (when given),
+// oldest first. The range matters: 0065 closed against all history, and the owner's first
+// payment landed on old months while every event of the month he was looking at stayed
+// open (fixed in 0066).
+export function unpaidRowsForStaff(events, staffName, today = new Date(), range = null) {
   const todayStr = typeof today === "string" ? today : today.toISOString().slice(0, 10);
   const rows = [];
   for (const e of events || []) {
-    if (!e?.date || String(e.date).slice(0, 10) > todayStr) continue;
+    if (!e?.date) continue;
+    const day = String(e.date).slice(0, 10);
+    if (day > todayStr) continue;
+    if (range && (day < range.from || day > range.to)) continue;
     (e.team || []).forEach((m, index) => {
       const cost = parseFloat(m?.cost) || 0;
       if (m?.staffMemberName !== staffName || m?.isPaid || cost <= 0) return;
       rows.push({
         eventId: e.id,
         coupleNames: e.coupleNames,
-        date: String(e.date).slice(0, 10),
+        date: day,
         role: m.role,
         index,
         cost,
@@ -55,25 +72,45 @@ export function allocatePayment({ amount, creditBefore = 0, rows }) {
   return { covered, applied, creditAfter: available, firstUncovered };
 }
 
-// Running credit per staff name: sum(amount − appliedAmount). Derived, never stored.
-export function creditByStaff(payments) {
+const dayOf = (v) => (v ? String(v).slice(0, 10) : null);
+
+// Credit to DISPLAY for a viewed range: a payment counts when its period lies inside the
+// viewed range, or when it has no period at all (the rows written before 0066).
+// Derived — sum(amount − appliedAmount) — never a stored balance that could drift.
+export function creditByStaff(payments, range = null) {
   const out = {};
   for (const p of payments || []) {
     const name = p?.staffMemberName;
     if (!name) continue;
+    const from = dayOf(p.periodFrom);
+    const to = dayOf(p.periodTo);
+    if (range && from && to && (from < range.from || to > range.to)) continue;
     out[name] = round2((out[name] || 0) + (Number(p.amount) || 0) - (Number(p.appliedAmount) || 0));
   }
   return out;
 }
 
-// Only a person's most recent payment may be undone (see undo_staff_payment).
-export function latestPaymentIdByStaff(payments) {
-  const latest = {};
+// The credit a NEW payment on exactly this period starts from — must match
+// record_staff_payment, which sums payments with the identical period.
+export function creditForExactPeriod(payments, staffName, range) {
+  let total = 0;
   for (const p of payments || []) {
-    const cur = latest[p.staffMemberName];
-    if (!cur || new Date(p.createdAt || p.createdDate || 0) > new Date(cur.createdAt || cur.createdDate || 0)) {
-      latest[p.staffMemberName] = p;
-    }
+    if (p?.staffMemberName !== staffName) continue;
+    if (dayOf(p.periodFrom) !== (range ? range.from : null) || dayOf(p.periodTo) !== (range ? range.to : null)) continue;
+    total += (Number(p.amount) || 0) - (Number(p.appliedAmount) || 0);
   }
-  return Object.fromEntries(Object.entries(latest).map(([k, v]) => [k, v.id]));
+  return round2(total);
+}
+
+// Which payments may be undone: the most recent of each person AND period
+// (undo_staff_payment enforces the same). Returns a Set of payment ids.
+export function undoablePaymentIds(payments) {
+  const latest = new Map();
+  for (const p of payments || []) {
+    const key = `${p.staffMemberName}|${dayOf(p.periodFrom)}|${dayOf(p.periodTo)}`;
+    const cur = latest.get(key);
+    const at = (x) => new Date(x.createdAt || x.createdDate || 0).getTime();
+    if (!cur || at(p) > at(cur)) latest.set(key, p);
+  }
+  return new Set([...latest.values()].map((p) => p.id));
 }

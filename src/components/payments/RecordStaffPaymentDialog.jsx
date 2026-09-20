@@ -15,13 +15,14 @@ import { allocatePayment } from "@/lib/staffPaymentAllocation";
 // in cash and "זה לא תמיד יוצא בול לפי אירוע": 6,000 against events of 1,800.
 //
 // The preview below is computed with the same rule the database applies
-// (record_staff_payment, migration 0065): oldest first, stop at the first event that
-// doesn't fit, the rest stays as credit. He sees exactly what will be closed BEFORE
-// confirming — this is money, and "trust me" is not an interface.
+// (record_staff_payment, migration 0066): within the period on screen, oldest first, stop
+// at the first event that doesn't fit, the rest stays as credit FOR THAT PERIOD. He sees
+// exactly what will be closed BEFORE confirming — this is money, and "trust me" is not
+// an interface.
 //
-// `rows` are ALL of this person's unpaid past events, not only the month the page is
-// filtered to; an older unpaid event from a previous month is closed first, and the
-// preview says so.
+// `rows` are only this person's unpaid past events INSIDE the period. The first version
+// (0065) closed against all history; his first payment for August landed on older months
+// and August still read 7,200. A payment is now made ON a month.
 
 const METHODS = [
   { value: "cash", label: "מזומן" },
@@ -33,7 +34,7 @@ const METHODS = [
 
 const money = (n) => `₪${(Math.round((n || 0) * 100) / 100).toLocaleString("he-IL", { maximumFractionDigits: 2 })}`;
 
-export default function RecordStaffPaymentDialog({ open, onOpenChange, staffName, rows, credit, onRecorded }) {
+export default function RecordStaffPaymentDialog({ open, onOpenChange, staffName, rows, credit, period, onRecorded }) {
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("cash");
   const [paidOn, setPaidOn] = useState(() => new Date().toISOString().slice(0, 10));
@@ -69,6 +70,9 @@ export default function RecordStaffPaymentDialog({ open, onOpenChange, staffName
         p_method: method,
         p_paid_on: paidOn,
         p_note: note.trim() || null,
+        // The period on screen: this payment closes THAT period's events only.
+        p_period_from: period?.from || null,
+        p_period_to: period?.to || null,
       });
       if (error) throw error;
       const closed = data?.covered?.length || 0;
@@ -94,15 +98,20 @@ export default function RecordStaffPaymentDialog({ open, onOpenChange, staffName
             רישום תשלום — {staffName}
           </DialogTitle>
         </DialogHeader>
+        {period?.label && (
+          <p className="text-sm text-emerald-300 -mt-1">
+            התשלום נרשם על <strong>{period.label}</strong> — ייסגרו רק אירועים של התקופה הזו.
+          </p>
+        )}
 
         <div className="space-y-4 py-1">
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-3">
-              <p className="text-gray-400 text-xs">פתוח לתשלום (אירועים שעברו)</p>
+              <p className="text-gray-400 text-xs">פתוח לתשלום בתקופה</p>
               <p className="text-red-400 font-bold text-lg">{money(totalOwed)}</p>
             </div>
             <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-3">
-              <p className="text-gray-400 text-xs">יתרת זכות קיימת</p>
+              <p className="text-gray-400 text-xs">יתרת זכות מתשלומים קודמים בתקופה</p>
               <p className="text-emerald-400 font-bold text-lg">{money(credit || 0)}</p>
             </div>
           </div>
@@ -187,7 +196,7 @@ export default function RecordStaffPaymentDialog({ open, onOpenChange, staffName
                 </p>
               )}
               <p className="text-xs text-gray-500">
-                נסגרים מהישן לחדש, רק אירועים שכבר התקיימו. אפשר לבטל את התשלום האחרון מלשונית ההיסטוריה.
+                נסגרים מהישן לחדש בתוך התקופה, רק אירועים שכבר התקיימו. את התשלום האחרון אפשר לבטל מלשונית ההיסטוריה.
               </p>
             </div>
           )}
