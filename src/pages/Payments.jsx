@@ -375,11 +375,19 @@ export default function Payments() {
         (sum, [n, d]) => sum + Math.max(0, d.total - Math.max(0, credits[n] || 0)), 0);
     const totalOffset = totalOwedAmount - totalRemaining;
 
-    // Per-card numbers: what is left to pay after the credit from payments on account.
+    // Per-card numbers. "החודש: 7,200 · שולם 6,000 · נשאר 1,200" — the month as a whole,
+    // however the money got there (events ticked paid + payment credit).
     const cardNumbers = (name, data) => {
         const credit = Math.max(0, credits[name] || 0);
-        return { credit, remaining: Math.max(0, data.total - credit) };
-    };
+        const paidEventsTotal = paymentsHistory[name]?.total || 0;
+        return {
+            credit,
+            paidEventsTotal,
+            remaining: Math.max(0, data.total - credit),
+            overpaid: Math.max(0, credit - data.total),
+            monthTotal: data.total + paidEventsTotal,
+            paid: paidEventsTotal + credit,
+        };
     };
     const totalPaidAmount = Object.values(paymentsHistory).reduce((sum, staff) => sum + staff.total, 0);
 
@@ -507,6 +515,10 @@ export default function Payments() {
                                                             <span className="text-xs font-normal text-gray-500 mr-1 hidden sm:inline">(כולל מע"מ: ₪{Math.round(n.remaining * SUPPLIER_VAT_RATE).toLocaleString()})</span>
                                                         </p>
                                                         <p className="text-xs font-normal text-gray-500 sm:hidden">כולל מע"מ: ₪{Math.round(n.remaining * SUPPLIER_VAT_RATE).toLocaleString()}</p>
+                                                        {(n.credit > 0 || n.paidEventsTotal > 0) && (
+                                                            <p className="text-xs text-emerald-400 mt-0.5">
+                                                                {selectedMonth === 'all' ? 'בתקופה' : 'החודש'}: ₪{n.monthTotal.toLocaleString()} · שולם ₪{n.paid.toLocaleString()} · נשאר ₪{n.remaining.toLocaleString()}
+                                                                {n.overpaid > 0 ? ` · שולם מראש ₪${n.overpaid.toLocaleString()}` : ''}
                                                             </p>
                                                         )}
                                                     </>); })()}
