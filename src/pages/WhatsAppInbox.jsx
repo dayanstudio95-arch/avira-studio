@@ -11,7 +11,6 @@ import WhatsAppFollowUpSettingsDialog from "@/components/whatsapp/WhatsAppFollow
 import BotSimulator from "@/components/whatsapp/BotSimulator";
 import { usePermission } from "@/lib/permissions";
 import { phoneDigits, CONTACT_TYPE_LABELS } from "@/components/whatsapp/whatsappInboxShared";
-import { isStalledFlow, isMediaFromStranger } from "@/lib/needsAttention";
 import { isAwaitingFollowUp, isManuallyFlagged } from "@/lib/followUpQueue";
 
 // WhatsApp inbox — every conversation the studio's WhatsApp number is having, shown
@@ -48,7 +47,8 @@ export default function WhatsAppInbox() {
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [contactFilter, setContactFilter] = useState("all");
+  // Opens on "לא מוכר" — new people, the actual work — not on everything (2026-09-23).
+  const [contactFilter, setContactFilter] = useState("unknown");
   const [leadDialogValues, setLeadDialogValues] = useState(null);
   // Captured when the dialog opens: the user can change the selected conversation
   // while the form is up, and the lead must link back to the one it was opened from.
@@ -124,10 +124,7 @@ export default function WhatsAppInbox() {
         if (!isAwaitingFollowUp(c, followUpAfterDays)) return false;
       } else if (contactFilter === "followup_sent") {
         if (!c.followupSentAt) return false;
-      } else if (contactFilter === "stalled_flow") {
-        if (!isStalledFlow(c)) return false;
-      } else if (contactFilter === "media_stranger") {
-        if (!isMediaFromStranger(c)) return false;
+
       } else if (contactFilter === "would_reply") {
         if (!c.botWouldReplyAt) return false;
       } else if (contactFilter !== "all" && c.contactType !== contactFilter) {
@@ -397,7 +394,7 @@ export default function WhatsAppInbox() {
           {followUpQueue.length > 0 && (
             <button
               type="button"
-              onClick={() => setIsFollowUpOpen(true)}
+              onClick={() => setContactFilter("awaiting_followup")}
               className="inline-flex items-center gap-1 rounded-full border border-yellow-500/40 bg-yellow-500/10 shrink-0 whitespace-nowrap px-2.5 py-1 text-xs text-yellow-300 transition-colors hover:bg-yellow-500/20"
             >
               <Send className="h-3.5 w-3.5" />
@@ -447,6 +444,9 @@ export default function WhatsAppInbox() {
           contactFilter={contactFilter}
           onContactFilterChange={setContactFilter}
           onChangeContactType={handleChangeContactType}
+          awaitingCount={followUpQueue.length}
+          hotCount={hotCount}
+          onSendFollowUp={() => setIsFollowUpOpen(true)}
         />
         </div>
         <div className={`min-h-0 min-w-0 ${selectedConversation ? "" : "hidden md:block"}`}>

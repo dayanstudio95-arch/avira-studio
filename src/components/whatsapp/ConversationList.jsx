@@ -24,39 +24,50 @@ export default function ConversationList({
   contactFilter,
   onContactFilterChange,
   onChangeContactType,
+  awaitingCount = 0,
+  hotCount = 0,
+  onSendFollowUp,
 }) {
-  // The first two are not contact_types — they are work queues, and they are the two
-  // filters worth opening every day:
-  //   pricelist_sent — the bot has sent someone a price list and nobody has followed up
-  //                    yet. This is the studio's actual sales queue, and the reason the
-  //                    bot collects details before sending: each of these has a name, a
-  //                    date and a venue attached, so "צור ליד" opens a filled-in form.
-  //   would_reply    — every conversation the gate opened on, for auditing what it did.
-  const filters = [
-    { value: "hot", label: "🔥 ליד חם" },
-    { value: "pricelist_sent", label: "🧾 נשלח מחירון" },
-    // awaiting_followup — got the price list (from the bot, or flagged by hand) and
-    //                     nobody has heard back. THE list to chase; the header button
-    //                     "ממתינים לפולו-אפ" sends to exactly this set.
-    { value: "awaiting_followup", label: "⏳ קיבלו מחירון ולא ענו" },
-    // followup_sent — everyone who has already been nudged, so what happened after the
-    //                 nudge can be read in one place (owner's request, 2026-09-15).
-    { value: "followup_sent", label: "📨 נשלח פולו-אפ" },
-    // Two holes found on 2026-09-15: mid-flow conversations that went quiet were in no
-    // queue, and a stranger whose first message was a voice note got silence with
-    // nobody told. Both predicates live in src/lib/needsAttention.js.
-    { value: "stalled_flow", label: "🕐 לא סיימו פרטים" },
-    { value: "media_stranger", label: "📎 מדיה ממספר לא מוכר" },
-    { value: "would_reply", label: "🤖 הבוט היה עונה" },
-    { value: "all", label: "הכל" },
+  const [showMore, setShowMore] = React.useState(false);
+  // Reorganised 2026-09-23 at the owner's request. The inbox opens on "לא מוכר" (new
+  // people, the actual work) with everything about follow-up next to it; everything else
+  // is one tap away under "עוד". Two chips were dropped — "לא סיימו פרטים" and "מדיה
+  // ממספר לא מוכר": both populations still appear on the dashboard's needs-attention
+  // card and in the morning digest, and the mid-flow nudge still runs.
+  //
+  //   awaiting_followup — got the price list (from the bot, or flagged by hand) and
+  //                       nobody has heard back. THE list to chase: the bar above the
+  //                       list sends to exactly this set.
+  //   followup_sent     — already nudged, waiting for an answer.
+  //   hot               — replied to the price list wanting to move forward.
+  const primaryFilters = [
     { value: "unknown", label: CONTACT_TYPE_LABELS.unknown },
+    { value: "awaiting_followup", label: "⏳ ממתינים לפולו-אפ", count: awaitingCount },
+    { value: "followup_sent", label: "📨 נשלח פולו-אפ" },
+    { value: "hot", label: "🔥 ליד חם", count: hotCount },
+    { value: "all", label: "הכל" },
+  ];
+  const moreFilters = [
     { value: "lead", label: CONTACT_TYPE_LABELS.lead },
     { value: "client", label: CONTACT_TYPE_LABELS.client },
     // Staff and groups are hidden from every other filter, including "הכל" — these
     // two chips are the only way to see them. See the filter in WhatsAppInbox.jsx.
     { value: "staff", label: CONTACT_TYPE_LABELS.staff },
     { value: "group", label: "קבוצות" },
+    { value: "pricelist_sent", label: "🧾 נשלח מחירון" },
+    { value: "would_reply", label: "🤖 הבוט היה עונה" },
   ];
+  const moreActive = moreFilters.some((f) => f.value === contactFilter);
+  const showMoreRow = showMore || moreActive;
+
+  const chipClass = (active) =>
+    `shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs transition-colors md:px-2.5 md:py-1 ${
+      active
+        ? "border-yellow-500/50 bg-yellow-500/20 text-yellow-300"
+        : "border-gray-700 bg-gray-800 text-gray-400 hover:text-gray-200"
+    }`;
+  const chipStripClass =
+    "-mx-2 flex gap-1.5 overflow-x-auto px-2 pb-1 [scrollbar-width:none] md:mx-0 md:flex-wrap md:overflow-visible md:px-0 md:pb-0 [&::-webkit-scrollbar]:hidden";
 
   // `min-h-0` is load-bearing, not cosmetic. This is a grid item in an auto-sized row,
   // so its default `min-height: auto` lets the row grow to the full height of the
@@ -76,24 +87,55 @@ export default function ConversationList({
             className="border-gray-700 bg-gray-800 pr-9 text-base text-white placeholder:text-gray-500 md:text-sm"
           />
         </div>
-        {/* Twelve chips wrapped into three rows on a phone and pushed the list off
-            screen. There they are one swipeable row; desktop wraps as before. */}
-        <div className="-mx-2 flex gap-1.5 overflow-x-auto px-2 pb-1 [scrollbar-width:none] md:mx-0 md:flex-wrap md:overflow-visible md:px-0 md:pb-0 [&::-webkit-scrollbar]:hidden">
-          {filters.map((f) => (
+        <div className={chipStripClass}>
+          {primaryFilters.map((f) => (
             <button
               key={f.value}
               type="button"
               onClick={() => onContactFilterChange(f.value)}
-              className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs transition-colors md:px-2.5 md:py-1 ${
-                contactFilter === f.value
-                  ? "border-yellow-500/50 bg-yellow-500/20 text-yellow-300"
-                  : "border-gray-700 bg-gray-800 text-gray-400 hover:text-gray-200"
-              }`}
+              className={chipClass(contactFilter === f.value)}
             >
               {f.label}
+              {f.count > 0 && <span className="mr-1 font-semibold">{f.count}</span>}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={() => setShowMore((v) => !v)}
+            className={chipClass(false)}
+            aria-expanded={showMoreRow}
+          >
+            {showMoreRow ? "פחות ▴" : "עוד ▾"}
+          </button>
         </div>
+        {showMoreRow && (
+          <div className={chipStripClass}>
+            {moreFilters.map((f) => (
+              <button
+                key={f.value}
+                type="button"
+                onClick={() => onContactFilterChange(f.value)}
+                className={chipClass(contactFilter === f.value)}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* The follow-up list and its send button are one thing (owner's request,
+            2026-09-23): open the chip, see who is waiting, send to all of them from the
+            top of the list. The header counter opens this same view. */}
+        {contactFilter === "awaiting_followup" && awaitingCount > 0 && onSendFollowUp && (
+          <button
+            type="button"
+            onClick={onSendFollowUp}
+            className="flex w-full items-center justify-between gap-2 rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-3 py-2 text-sm text-yellow-200 hover:bg-yellow-500/20"
+          >
+            <span>{awaitingCount} ממתינים לפולו-אפ</span>
+            <span className="rounded-md bg-yellow-400 px-2.5 py-1 text-xs font-semibold text-gray-900">שלח פולו-אפ</span>
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto">
