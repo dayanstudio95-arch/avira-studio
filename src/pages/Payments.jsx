@@ -486,7 +486,7 @@ export default function Payments() {
                                 )}
                                 {creditOnlyNames.length > 0 && (
                                     <p className="text-xs text-gray-400 mt-1">
-                                        יתרת זכות בלי חוב פתוח בתקופה הזו:{' '}
+                                        שולם מראש, בלי חוב פתוח בתקופה הזו:{' '}
                                         {creditOnlyNames.map((n) => `${n} ₪${credits[n].toLocaleString()}`).join(' · ')}
                                     </p>
                                 )}
@@ -670,7 +670,7 @@ export default function Payments() {
                                                         ? `סגר: ${(p.covered || []).map((c) => c.coupleNames).join(', ')}`
                                                         : 'לא סגר אירוע במלואו'}
                                                     {paymentPeriodText(p) ? ` · על חשבון ${paymentPeriodText(p)}` : ' · ללא תקופה (רישום ישן)'}
-                                                    {Number(p.creditAfter) > 0 ? ` · יתרת זכות אחריו ₪${Number(p.creditAfter).toLocaleString()}` : ''}
+                                                    {Number(p.creditAfter) > 0 ? ` · ₪${Number(p.creditAfter).toLocaleString()} מהתשלום שולמו על חשבון האירוע הבא` : ''}
                                                     {p.note ? ` · ${p.note}` : ''}
                                                 </p>
                                             </div>

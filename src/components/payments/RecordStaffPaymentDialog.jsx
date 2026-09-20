@@ -52,6 +52,12 @@ export default function RecordStaffPaymentDialog({ open, onOpenChange, staffName
 
   const numericAmount = parseFloat(amount) || 0;
   const totalOwed = useMemo(() => (rows || []).reduce((s, r) => s + r.cost, 0), [rows]);
+  // What is left to pay for the period after this payment — the number the owner reads.
+  // (open events) − (money already on account + this payment), never below zero. Any
+  // amount beyond the open events is shown as paid ahead. Internally the part of a
+  // payment that does not fully close an event is "credit"; that word is not shown.
+  const remainingAfter = Math.max(0, totalOwed - (credit || 0) - numericAmount);
+  const paidAhead = Math.max(0, (credit || 0) + numericAmount - totalOwed);
   const preview = useMemo(
     () => allocatePayment({ amount: numericAmount, creditBefore: credit || 0, rows: rows || [] }),
     [numericAmount, credit, rows]
@@ -77,8 +83,7 @@ export default function RecordStaffPaymentDialog({ open, onOpenChange, staffName
       if (error) throw error;
       const closed = data?.covered?.length || 0;
       toast.success(
-        `נרשם תשלום ${money(numericAmount)} ל${staffName} — נסגרו ${closed} אירועים` +
-          (data?.creditAfter > 0 ? `, יתרת זכות ${money(data.creditAfter)}` : "")
+        `נרשם תשלום ${money(numericAmount)} ל${staffName} — נסגרו ${closed} אירועים · נשאר לשלם ${money(remainingAfter)}`
       );
       onRecorded?.();
       onOpenChange(false);
@@ -105,15 +110,17 @@ export default function RecordStaffPaymentDialog({ open, onOpenChange, staffName
         )}
 
         <div className="space-y-4 py-1">
-          <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className={`grid gap-3 text-sm ${(credit || 0) > 0 ? "grid-cols-2" : "grid-cols-1"}`}>
             <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-3">
-              <p className="text-gray-400 text-xs">פתוח לתשלום בתקופה</p>
+              <p className="text-gray-400 text-xs">חוב פתוח בתקופה</p>
               <p className="text-red-400 font-bold text-lg">{money(totalOwed)}</p>
             </div>
-            <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-3">
-              <p className="text-gray-400 text-xs">יתרת זכות מתשלומים קודמים בתקופה</p>
-              <p className="text-emerald-400 font-bold text-lg">{money(credit || 0)}</p>
-            </div>
+            {(credit || 0) > 0 && (
+              <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-3">
+                <p className="text-gray-400 text-xs">כבר שולם על החשבון בתקופה</p>
+                <p className="text-emerald-400 font-bold text-lg">{money(credit)}</p>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -182,17 +189,19 @@ export default function RecordStaffPaymentDialog({ open, onOpenChange, staffName
                 </ul>
               ) : (
                 <p className="text-gray-400">
-                  הסכום (יחד עם היתרה) לא מכסה אף אירוע במלואו — הכל יישמר כיתרת זכות.
+                  הסכום לא מכסה אף אירוע במלואו — הוא יירשם כתשלום על החשבון וינוכה מהחוב.
                 </p>
               )}
-              <div className="flex justify-between border-t border-emerald-800/40 pt-2">
-                <span className="text-gray-300">יתרת זכות אחרי התשלום</span>
-                <span className="text-emerald-300 font-semibold">{money(preview.creditAfter)}</span>
+              <div className="flex justify-between items-center border-t border-emerald-800/40 pt-2">
+                <span className="text-white font-medium">נשאר לשלם על {period?.label || "התקופה"}</span>
+                <span className="text-emerald-300 font-bold text-lg">{money(remainingAfter)}</span>
               </div>
-              {preview.firstUncovered && (
+              {paidAhead > 0 && (
+                <p className="text-xs text-emerald-300/80">שולם מעבר לחוב הפתוח: {money(paidAhead)}</p>
+              )}
+              {preview.firstUncovered && preview.creditAfter > 0 && (
                 <p className="text-xs text-gray-400">
-                  הבא בתור: {preview.firstUncovered.coupleNames} ({money(preview.firstUncovered.cost)}) — חסרים{" "}
-                  {money(preview.firstUncovered.cost - preview.creditAfter)} כדי לסגור אותו.
+                  הבא בתור: {preview.firstUncovered.coupleNames} ({money(preview.firstUncovered.cost)}) — {money(preview.creditAfter)} ממנו כבר שולמו.
                 </p>
               )}
               <p className="text-xs text-gray-500">
