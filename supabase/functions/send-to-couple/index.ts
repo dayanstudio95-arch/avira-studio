@@ -55,7 +55,10 @@ Deno.serve(async (req) => {
       .replace(/{{final_link}}/g, finalLink)
       .replace(/{{album_guide_link}}/g, albumGuideLink);
 
-    const result = await sendWhatsApp(supabase, phoneNumber, message);
+    // No link-preview card on this message, deliberately (2026-09-22): with the card,
+    // the gallery message sat undelivered on a single tick for two couples; without it,
+    // the same text was delivered within minutes. See _shared/whatsapp.ts.
+    const result = await sendWhatsApp(supabase, phoneNumber, message, undefined, { linkPreview: false });
     if (!result.success) return jsonResponse({ error: result.error }, { status: 502 });
 
     const { error: updateErr } = await supabase

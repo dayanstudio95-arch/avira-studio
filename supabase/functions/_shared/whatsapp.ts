@@ -102,11 +102,19 @@ export function toInternationalIsraeliChatId(phone: string): string | null {
   return `${intl}@c.us`;
 }
 
+export interface SendWhatsAppOptions {
+  // Whether WhatsApp builds a preview card (image + title) for a URL in the message.
+  // Default TRUE — the owner likes the card and it looks professional. Pass false only
+  // where the card itself is the problem; see the note in the send below.
+  linkPreview?: boolean;
+}
+
 export async function sendWhatsApp(
   supabase: any,
   phone: string,
   message: string,
-  tenantId?: string
+  tenantId?: string,
+  options: SendWhatsAppOptions = {}
 ): Promise<SendWhatsAppResult> {
   const settings = await loadWhatsAppSettings(supabase, tenantId);
   if (!settings) {
@@ -121,19 +129,19 @@ export async function sendWhatsApp(
   const sendUrl = buildUrl(settings, 'sendMessage');
 
   try {
-    // linkPreview: false — 2026-09-22. Two couples never received the gallery message
-    // sent from "סטטוס עבודה": on the studio's phone it sits on a single grey tick for
-    // weeks (accepted by WhatsApp's server, never delivered), while every message typed
-    // on the phone to the same couple gets two ticks. What sets that message apart is
-    // the link-preview card WhatsApp builds for the pixieset URL (image + title) when a
-    // linked device sends it. Green API builds that card unless told not to; this is the
-    // experiment that isolates it. The link itself is unchanged and still tappable — only
-    // the card is gone. If galleries deliver after this, the cause is found; if not, the
-    // problem is elsewhere and this stays as the safer default anyway.
+    // linkPreview — 2026-09-22. Two couples never received the gallery message sent from
+    // "סטטוס עבודה": on the studio's phone it sat on a single grey tick for weeks
+    // (accepted by WhatsApp's server, never delivered) while every other message to the
+    // same couple got two ticks. Proven the same night: the identical text resent
+    // without the preview card was delivered within minutes. The card WhatsApp builds
+    // for the pixieset URL when a linked device sends it is what fails to deliver.
+    //
+    // The default stays TRUE: every other send keeps its card (the owner's explicit
+    // choice — only this one message was ever the problem). send-to-couple passes false.
     const res = await fetchWithRetry(sendUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chatId, message, linkPreview: false }),
+      body: JSON.stringify({ chatId, message, linkPreview: options.linkPreview !== false }),
     });
 
     const text = await res.text();
