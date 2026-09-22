@@ -121,10 +121,19 @@ export async function sendWhatsApp(
   const sendUrl = buildUrl(settings, 'sendMessage');
 
   try {
+    // linkPreview: false — 2026-09-22. Two couples never received the gallery message
+    // sent from "סטטוס עבודה": on the studio's phone it sits on a single grey tick for
+    // weeks (accepted by WhatsApp's server, never delivered), while every message typed
+    // on the phone to the same couple gets two ticks. What sets that message apart is
+    // the link-preview card WhatsApp builds for the pixieset URL (image + title) when a
+    // linked device sends it. Green API builds that card unless told not to; this is the
+    // experiment that isolates it. The link itself is unchanged and still tappable — only
+    // the card is gone. If galleries deliver after this, the cause is found; if not, the
+    // problem is elsewhere and this stays as the safer default anyway.
     const res = await fetchWithRetry(sendUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chatId, message }),
+      body: JSON.stringify({ chatId, message, linkPreview: false }),
     });
 
     const text = await res.text();
