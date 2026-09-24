@@ -46,6 +46,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import AIAssistant from "@/components/AIAssistant";
 import NotificationBell from "@/components/notifications/NotificationBell";
+import { NotificationsProvider, useNotifications } from "@/components/notifications/NotificationsContext";
 import GlobalSearch from "@/components/layout/GlobalSearch";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/SupabaseAuthContext";
@@ -124,9 +125,38 @@ const secondaryNavItems = [
 // Combined for legacy localStorage order/hidden compatibility
 const navigationItems = [...primaryNavItems, ...secondaryNavItems];
 
+// The red count next to a menu row (2026-09-24): unread notifications whose type maps
+// to that page (src/lib/notificationCategories.js). Same red as the bell, and drawn from
+// the same list, so the two always agree.
+function NavBadge({ count }) {
+  if (!count) return null;
+  return (
+    <span className="ms-auto min-w-5 h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-bold flex items-center justify-center leading-none">
+      {count > 9 ? "9+" : count}
+    </span>
+  );
+}
+
+// The list is shared by the bell (rendered twice) and the menu, so it lives above both.
 export default function Layout({ children }) {
+  return (
+    <NotificationsProvider>
+      <LayoutShell>{children}</LayoutShell>
+    </NotificationsProvider>
+  );
+}
+
+function LayoutShell({ children }) {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const { countsByRoute, markRouteAsRead } = useNotifications();
+  // Visiting the page IS reading the news: the badge clears, and the bell drops by the
+  // same number. The owner's choice over "clears only when each row is clicked in the
+  // bell". Runs again when a new row arrives while he is already on that page.
+  const pendingOnThisPage = countsByRoute[location.pathname] || 0;
+  useEffect(() => {
+    if (pendingOnThisPage > 0) markRouteAsRead(location.pathname);
+  }, [location.pathname, pendingOnThisPage, markRouteAsRead]);
   const scopedRole = isLeadCoordinator(user) ? 'lead_coordinator' : isPhotographerRole(user) ? 'photographer' : isEditorRole(user) ? 'editor' : isAlbumManagerRole(user) ? 'album_manager' : null;
   const scopedNavItems = scopedRole ? scopedNavItemsByRole[scopedRole] : null;
   const isInSecondaryNav = secondaryNavItems.some(item =>
@@ -415,6 +445,7 @@ export default function Layout({ children }) {
                         <Link to={item.url} className="flex items-center gap-3 px-4 py-3">
                           <item.icon className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" />
                           <span className="font-medium">{item.title}</span>
+                          <NavBadge count={countsByRoute[item.url]} />
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
@@ -454,6 +485,7 @@ export default function Layout({ children }) {
                           <Link to={item.url} className="flex items-center gap-3 px-3 py-2">
                             <item.icon className="w-4 h-4 group-hover:scale-110 transition-transform duration-200" />
                             <span className="text-sm">{item.title}</span>
+                            <NavBadge count={countsByRoute[item.url]} />
                           </Link>
                         </SidebarMenuButton>
                       </SidebarMenuItem>

@@ -904,6 +904,49 @@ section('rating a reply to the price list');
   check('cold is re-rated on the next reply', shouldRateReply({ ...base, currentTemperature: 'cold' }), true);
 }
 
+// =================================================================================
+// PART 13 — menu badges: which page a notification lights up
+// (src/lib/notificationCategories.js, 2026-09-24)
+//
+// The owner asked for "1 next to לידים when a contract is signed, the same for albums".
+// The badge and the bell read the same rows; these pin the mapping and the two rules
+// that keep them honest: only UNREAD rows count, and a type nobody mapped lights nothing.
+// =================================================================================
+
+const { navRouteForNotification, unreadCountsByRoute, unreadNotificationsForRoute } =
+  await loadModule('src/lib/notificationCategories.js', 'notifcat');
+
+section('menu badges — which page each notification belongs to');
+{
+  check('contract signed → לידים', navRouteForNotification('contract_signed'), '/Leads');
+  check('hot lead → שיחות וואטסאפ', navRouteForNotification('whatsapp_hot_lead'), '/WhatsAppInbox');
+  check('album round approved → הזמנות אלבומים', navRouteForNotification('album_round_approved'), '/AlbumOrders');
+  check('album revision requested → הזמנות אלבומים', navRouteForNotification('album_revision_requested'), '/AlbumOrders');
+  check('transfer proof uploaded → הזמנות אלבומים', navRouteForNotification('album_transfer_proof_uploaded'), '/AlbumOrders');
+  check('staff answered availability → שיבוץ צוות', navRouteForNotification('staff_availability_response'), '/StaffScheduling');
+  check('a failed backup lights no page', navRouteForNotification('monthly_backup_failed'), null);
+  check('a failed alert lights no page', navRouteForNotification('contract_alert_delivery_failed'), null);
+  check('missing type → null, not a crash', navRouteForNotification(undefined), null);
+
+  const rows = [
+    { id: 1, type: 'contract_signed', isRead: false },
+    { id: 2, type: 'contract_signed', isRead: true },
+    { id: 3, type: 'album_round_approved', isRead: false },
+    { id: 4, type: 'album_transfer_proof_uploaded', isRead: false },
+    { id: 5, type: 'monthly_backup_failed', isRead: false },
+    { id: 6, type: 'whatsapp_hot_lead', isRead: false },
+  ];
+  const counts = unreadCountsByRoute(rows);
+  check('לידים counts unread only', counts['/Leads'], 1);
+  check('אלבומים counts both album types', counts['/AlbumOrders'], 2);
+  check('וואטסאפ', counts['/WhatsAppInbox'], 1);
+  check('a page with nothing is absent, not 0', '/StaffScheduling' in counts, false);
+  check('the failure is in no page count', Object.values(counts).reduce((a, b) => a + b, 0), 4);
+  check('visiting אלבומים marks exactly its two rows', unreadNotificationsForRoute(rows, '/AlbumOrders').map((r) => r.id).join(','), '3,4');
+  check('visiting a page with no mapping marks nothing', unreadNotificationsForRoute(rows, '/Payments').length, 0);
+  check('empty list → empty counts', Object.keys(unreadCountsByRoute([])).length, 0);
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

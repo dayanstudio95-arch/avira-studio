@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { base44 } from "@/api/base44Client";
+import React, { useState } from "react";
 import { usePermission } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +8,7 @@ import { format } from "date-fns";
 import { he } from "date-fns/locale";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
+import { useNotifications } from "./NotificationsContext";
 
 // In-app notifications bell — the one place in the app that reports things nobody
 // asked to see. Started as contract-signed only (migration
@@ -22,8 +22,8 @@ import { createPageUrl } from "@/utils";
 // (matches the notifications table's own admin-only RLS — a non-admin role's
 // query would just come back empty anyway, but gating in the UI too avoids a
 // pointless polling request for roles that can never see anything here).
-// Follows the same 30s-polling convention already established by
-// WhatsAppPanel.jsx — this codebase has no Supabase Realtime usage yet.
+// Polling (30s, the WhatsAppPanel.jsx convention) moved to NotificationsContext.jsx on
+// 2026-09-24, when the menu started showing a per-page count of the same rows.
 
 const TYPE_ICONS = {
   contract_signed: FileCheck,
@@ -37,60 +37,17 @@ const isFailure = (type) => typeof type === "string" && type.endsWith("_failed")
 export default function NotificationBell() {
   const { isAdmin } = usePermission();
   const navigate = useNavigate();
-  const [notifications, setNotifications] = useState([]);
+  // The list itself lives in NotificationsContext (shared with the menu badges, one poll
+  // for the whole shell). This component only renders it and forwards clicks.
+  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
 
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
-
-  const load = useCallback(async () => {
-    if (!isAdmin) return;
-    try {
-      const rows = await base44.entities.Notification.list("-createdAt", 30);
-      setNotifications(rows || []);
-    } catch (e) {
-      console.error("Error loading notifications:", e);
-    }
-  }, [isAdmin]);
-
-  useEffect(() => {
-    if (!isAdmin) return;
-    load();
-    const interval = setInterval(load, 30000);
-    return () => clearInterval(interval);
-  }, [isAdmin, load]);
-
   if (!isAdmin) return null;
 
-  const markAsRead = async (notification) => {
-    if (notification.isRead) return;
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === notification.id ? { ...n, isRead: true } : n))
-    );
-    try {
-      await base44.entities.Notification.update(notification.id, {
-        isRead: true,
-        readAt: new Date().toISOString(),
-      });
-    } catch (e) {
-      console.error("Error marking notification as read:", e);
-    }
-  };
-
-  const markAllAsRead = async () => {
-    const unread = notifications.filter((n) => !n.isRead);
-    if (unread.length === 0) return;
+  const handleMarkAll = async () => {
     setLoading(true);
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-    try {
-      await Promise.all(
-        unread.map((n) =>
-          base44.entities.Notification.update(n.id, { isRead: true, readAt: new Date().toISOString() })
-        )
-      );
-    } catch (e) {
-      console.error("Error marking all notifications as read:", e);
-    }
+    await markAllAsRead();
     setLoading(false);
   };
 
@@ -128,7 +85,7 @@ export default function NotificationBell() {
           <span className="font-semibold text-sm">התראות</span>
           {unreadCount > 0 && (
             <button
-              onClick={markAllAsRead}
+              onClick={handleMarkAll}
               disabled={loading}
               className="flex items-center gap-1 text-xs text-gray-400 hover:text-yellow-400 disabled:opacity-50"
             >
