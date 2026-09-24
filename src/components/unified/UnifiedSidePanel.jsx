@@ -59,7 +59,21 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
   const [scheduleWinterTemplate, setScheduleWinterTemplate] = useState('');
   const [isSendingSchedule, setIsSendingSchedule] = useState(null); // 'summer' | 'winter' | null
   const [isEditingNotes, setIsEditingNotes] = useState(false);
-  const [notesValue, setNotesValue] = useState(hasLinkMismatch ? (lead?.notes || '') : (event?.notes || lead?.notes || ''));
+  // The notes as they ARE on the row (event first, else the linked lead). Read from props
+  // on every render — never from state — so the panel shows the right text for whichever
+  // lead/event it was reopened for.
+  const currentNotes = hasLinkMismatch ? (lead?.notes || '') : (safeEvent?.notes || lead?.notes || '');
+  const [notesValue, setNotesValue] = useState(currentNotes);
+  // FIXED 2026-09-24. This state was seeded once, when the panel first mounted, and the
+  // panel is kept mounted and reused for every row the user opens afterwards. The
+  // read-only view rendered the STATE, so it showed the first row's notes (usually
+  // nothing) for every later row; only "ערוך" re-read the props, which is why the owner
+  // saw his notes appear the moment he pressed edit. Resync when the row changes.
+  useEffect(() => {
+    setNotesValue(currentNotes);
+    setIsEditingNotes(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [safeEvent?.id, lead?.id, currentNotes]);
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [isCancelingEvent, setIsCancelingEvent] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
@@ -756,6 +770,11 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                         <span>{lead.phoneNumber}</span>
                       </div>
                     )}
+                    {currentNotes.trim() && (
+                      <div className="mt-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-200 whitespace-pre-wrap break-words">
+                        📝 {currentNotes.trim()}
+                      </div>
+                    )}
                   </div>
                   
                   {/* צוות הצילום */}
@@ -1023,8 +1042,8 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                   </div>
                 </div>
               ) : (
-                <p className="text-sm text-gray-300 bg-gray-800/50 border border-gray-700 rounded p-3 min-h-[40px]">
-                  {notesValue || <span className="text-gray-500">אין הערות</span>}
+                <p className="text-sm text-gray-300 bg-gray-800/50 border border-gray-700 rounded p-3 min-h-[40px] whitespace-pre-wrap break-words">
+                  {currentNotes || <span className="text-gray-500">אין הערות</span>}
                 </p>
               )}
             </div>
@@ -1097,6 +1116,11 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                 <div className="flex justify-between text-gray-200">
                   <span className="text-gray-400">טלפון:</span>
                   <span>{lead.phoneNumber}</span>
+                </div>
+              )}
+              {currentNotes.trim() && (
+                <div className="mt-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-200 whitespace-pre-wrap break-words">
+                  📝 {currentNotes.trim()}
                 </div>
               )}
             </div>
