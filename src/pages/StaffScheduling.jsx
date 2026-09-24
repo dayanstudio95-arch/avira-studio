@@ -342,7 +342,17 @@ export default function StaffScheduling() {
                         <div className="font-medium text-white">{event.coupleNames}</div>
                         <div className="text-sm text-gray-400">
                           {format(new Date(event.date), "d/M/yyyy")}
+                          {/* The venue decides who gets booked (2026-09-24: "כדי שאדע
+                              איזה צוות לשים"). It was only on the selected card before. */}
+                          {event.venue && <span className="text-gray-300"> · {event.venue}</span>}
                         </div>
+                        {/* Event notes, verbatim. The owner writes things like "ביקשו את
+                            דודו" here and wants to see them while assigning, not after. */}
+                        {event.notes?.trim() && (
+                          <div className="mt-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-200 whitespace-pre-wrap break-words">
+                            📝 {event.notes.trim()}
+                          </div>
+                        )}
                       </div>
                       {!teamStatus.isFullTeam ? (
                         <Badge className="bg-red-500/20 text-red-400 border-red-500/30 border text-xs">
@@ -399,7 +409,12 @@ export default function StaffScheduling() {
                     {format(new Date(selectedEvent.date), "EEEE, d MMMM yyyy")}
                   </p>
                   {selectedEvent.venue && (
-                    <p className="text-gray-500 text-sm mt-1">{selectedEvent.venue}</p>
+                    <p className="text-gray-500 text-sm mt-1">📍 {selectedEvent.venue}</p>
+                  )}
+                  {selectedEvent.notes?.trim() && (
+                    <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200 whitespace-pre-wrap break-words">
+                      📝 {selectedEvent.notes.trim()}
+                    </div>
                   )}
                 </div>
                 <div>
@@ -627,7 +642,13 @@ export default function StaffScheduling() {
                 {selectedEvent?.coupleNames}
                 <div className="text-sm text-gray-400 font-normal mt-1">
                   {selectedEvent && format(new Date(selectedEvent.date), "d/M/yyyy")}
+                  {selectedEvent?.venue && <span> · {selectedEvent.venue}</span>}
                 </div>
+                {selectedEvent?.notes?.trim() && (
+                  <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm font-normal text-amber-200 whitespace-pre-wrap break-words">
+                    📝 {selectedEvent.notes.trim()}
+                  </div>
+                )}
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4">

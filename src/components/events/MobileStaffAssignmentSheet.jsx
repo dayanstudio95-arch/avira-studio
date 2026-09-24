@@ -15,6 +15,14 @@ export default function MobileStaffAssignmentSheet({ event, isOpen, onClose, sta
       <SheetContent className="bg-gray-900 border-gray-800 text-white w-full sm:max-w-md overflow-y-auto" dir="rtl">
         <SheetHeader>
           <SheetTitle className="text-white">שיבוץ צוות — {event.coupleNames}</SheetTitle>
+          {event.venue && <p className="text-sm text-gray-400">📍 {event.venue}</p>}
+          {/* Same as the desktop card: the venue and the owner's notes decide who gets
+              booked, so they belong next to the pickers (2026-09-24). */}
+          {event.notes?.trim() && (
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200 whitespace-pre-wrap break-words">
+              📝 {event.notes.trim()}
+            </div>
+          )}
         </SheetHeader>
         <div className="mt-4">
           <StaffAssignmentRoleList
