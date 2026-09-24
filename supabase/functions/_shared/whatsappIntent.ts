@@ -1,9 +1,13 @@
 // Content gate for the WhatsApp lead bot — "is this someone asking us to photograph
 // their own event?"
 //
-// ⚠️ Nothing in this file sends anything. It answers a yes/no question. Today the
-// answer is only recorded (dry run); Stage 2 will be the first time it gates a real
-// send, and that needs its own explicit go-ahead.
+// ⚠️ Nothing in this file sends anything. It answers a yes/no question; the webhook
+// acts on it (greeting → questions → price list, live since 2026-09-09).
+//
+// 2026-09-24: the word lists below are the BUILT-IN ones. The studio can add its own
+// words and switch built-in ones off from the bot control centre (app_settings, read by
+// whatsappBotSend.ts loadBotSettings → TermOverrides). effectiveTerms() merges the two;
+// with no overrides the gate is exactly the built-in lists.
 //
 // Why a content gate is needed at all
 // ---------------------------------------------------------------------------------
@@ -150,6 +154,62 @@ const VENDOR_TERMS = [
   'הודעה אוטומטית', 'מענה אוטומטי',
 ];
 
+// The built-in lists, exposed by name so the control centre can show the studio what the
+// gate knows without a second copy of the words living in src/ (whatsapp-bot-simulate's
+// `describe` mode returns these).
+export const BUILTIN_TERMS = {
+  service: SERVICE_TERMS,
+  inquiry: INQUIRY_TERMS,
+  selfEvent: SELF_EVENT_TERMS,
+  vendor: VENDOR_TERMS,
+} as const;
+
+export type TermListKey = keyof typeof BUILTIN_TERMS;
+
+// What the studio added or switched off. Every array may be empty or missing.
+export interface TermOverrides {
+  serviceExtra?: string[];
+  inquiryExtra?: string[];
+  selfEventExtra?: string[];
+  vendorExtra?: string[];
+  // Built-in terms the studio switched off (any list). Matched after normalize().
+  disabled?: string[];
+}
+
+export interface EffectiveTerms {
+  service: string[];
+  inquiry: string[];
+  selfEvent: string[];
+  vendor: string[];
+}
+
+const cleanTerms = (arr: unknown): string[] =>
+  Array.isArray(arr) ? arr.map((t) => String(t ?? '').trim()).filter((t) => t.length > 0) : [];
+
+// Built-in ∪ the studio's additions − the studio's switched-off words. Compared after
+// normalize() so "מגנטים" and "מגנטימ" (final-letter fold) are the same word. The rule
+// itself (two independent signals, vendor veto) is not overridable — only the words.
+export function effectiveTerms(overrides?: TermOverrides | null): EffectiveTerms {
+  const disabled = new Set(cleanTerms(overrides?.disabled).map((t) => normalize(t)));
+  const merge = (builtin: readonly string[], extra: unknown): string[] => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const t of [...builtin, ...cleanTerms(extra)]) {
+      const n = normalize(t);
+      if (!n || seen.has(n) || disabled.has(n)) continue;
+      seen.add(n);
+      out.push(t);
+    }
+    return out;
+  };
+  return {
+    service: merge(SERVICE_TERMS, overrides?.serviceExtra),
+    inquiry: merge(INQUIRY_TERMS, overrides?.inquiryExtra),
+    selfEvent: merge(SELF_EVENT_TERMS, overrides?.selfEventExtra),
+    vendor: merge(VENDOR_TERMS, overrides?.vendorExtra),
+  };
+}
+
 // Date shapes: 12/7/27, 12.7.2027, 12-7-27, and the day-month-only forms. Kept
 // deliberately narrow (both parts must be plausible day/month numbers) so a price
 // like "5,500" or a phone number can't read as a date.
@@ -218,6 +278,8 @@ export interface DetectOptions {
   // construction. The text is still read for the vendor veto — a colleague can tap an
   // ad too — but nothing else is required of it, including being in Hebrew.
   fromAd?: boolean;
+  // The studio's word additions / removals (2026-09-24). Absent = built-in lists only.
+  terms?: TermOverrides | null;
 }
 
 export function detectLeadIntent(bodyText: string | null | undefined, opts: DetectOptions = {}): IntentResult {
@@ -237,11 +299,12 @@ export function detectLeadIntent(bodyText: string | null | undefined, opts: Dete
   }
 
   const text = normalize(bodyText);
+  const lists = effectiveTerms(opts.terms);
 
-  const matchedVendor = VENDOR_TERMS.find((t) => text.includes(normalize(t))) || null;
-  const matchedService = SERVICE_TERMS.find((t) => text.includes(normalize(t))) || null;
-  const matchedInquiry = INQUIRY_TERMS.find((t) => text.includes(normalize(t))) || null;
-  const matchedSelfEvent = SELF_EVENT_TERMS.find((t) => text.includes(normalize(t))) || null;
+  const matchedVendor = lists.vendor.find((t) => text.includes(normalize(t))) || null;
+  const matchedService = lists.service.find((t) => text.includes(normalize(t))) || null;
+  const matchedInquiry = lists.inquiry.find((t) => text.includes(normalize(t))) || null;
+  const matchedSelfEvent = lists.selfEvent.find((t) => text.includes(normalize(t))) || null;
   const matchedDate = containsDate(text);
 
   return {
@@ -319,6 +382,8 @@ export interface BotDecisionInput {
   // writes "hello?" an hour later must still be recognised. The webhook stores the
   // source on the conversation for exactly that reason.
   fromAd?: boolean;
+  // The studio's word overrides, see DetectOptions.terms.
+  terms?: TermOverrides | null;
 }
 
 const TEXT_MESSAGE_TYPES = ['textMessage', 'extendedTextMessage', 'quotedMessage'];
@@ -357,7 +422,7 @@ export function decideBotReply(input: BotDecisionInput): BotDecision {
   // "we cannot tell", and pretending otherwise would inflate the measured hit rate.)
   if (!input.typeMessage || !TEXT_MESSAGE_TYPES.includes(input.typeMessage)) return stop('not_text');
 
-  const intent = detectLeadIntent(input.bodyText, { fromAd: !!input.fromAd });
+  const intent = detectLeadIntent(input.bodyText, { fromAd: !!input.fromAd, terms: input.terms });
   if (!intent.isInquiry) return { wouldReply: false, reason: 'no_intent', intent };
 
   // Same tenant-level do-not-disturb window as every other automation
@@ -443,6 +508,8 @@ export interface FollowUpInput {
   // How many messages the bot has already sent in this conversation, counted from
   // whatsapp_messages rather than a counter column. See MAX_BOT_MESSAGES below.
   botMessagesSoFar: number;
+  // The studio's ceiling (whatsapp_max_bot_messages, 2026-09-24). Absent = MAX_BOT_MESSAGES.
+  maxBotMessages?: number;
 }
 
 // The states in which the bot is mid-conversation and owes the customer a response.
@@ -480,7 +547,7 @@ export function decideBotFollowUp(input: FollowUpInput): { shouldReply: boolean;
   // A voice note answering our four questions is a real answer we cannot read. The
   // caller turns this into a hand-off, not a silent drop — the customer is waiting.
   if (!input.typeMessage || !TEXT_MESSAGE_TYPES.includes(input.typeMessage)) return stop('not_text');
-  if (input.botMessagesSoFar >= MAX_BOT_MESSAGES) return stop('too_many_questions');
+  if (input.botMessagesSoFar >= (input.maxBotMessages ?? MAX_BOT_MESSAGES)) return stop('too_many_questions');
   // Last, since 2026-09-15: 'quiet_hours' now means "everything else passed, only the
   // clock said no", and the webhook treats it as "process the answer, hold the reply"
   // rather than as a drop. Before this reorder a customer answering at 23:30 was
@@ -488,4 +555,74 @@ export function decideBotFollowUp(input: FollowUpInput): { shouldReply: boolean;
   if (input.inQuietHours) return stop('quiet_hours');
 
   return { shouldReply: true, reason: 'ok' };
+}
+
+// ---------------------------------------------------------------------------------
+// The gate, explained one step at a time (2026-09-24, for the control centre's
+// simulator). The owner asked "what affects what?" — a single reason code answers
+// "where did it stop", this answers "what did every step see". Pure: rebuilt from the
+// same inputs the decision was made from, so it can never disagree with it.
+// ---------------------------------------------------------------------------------
+
+export interface DecisionTraceStep {
+  step: string;          // stable id
+  label: string;         // Hebrew, shown as-is
+  status: 'passed' | 'stopped' | 'skipped' | 'held';
+  detail: string | null; // Hebrew, why
+}
+
+export function explainDecision(input: BotDecisionInput, decision: BotDecision): DecisionTraceStep[] {
+  const steps: DecisionTraceStep[] = [];
+  let stopped = false;
+  const push = (step: string, label: string, ok: boolean, detailStopped: string | null, detailPassed: string | null = null, held = false) => {
+    if (stopped) {
+      steps.push({ step, label, status: 'skipped', detail: null });
+      return;
+    }
+    if (ok) {
+      steps.push({ step, label, status: 'passed', detail: detailPassed });
+      return;
+    }
+    steps.push({ step, label, status: held ? 'held' : 'stopped', detail: detailStopped });
+    if (!held) stopped = true;
+  };
+
+  push('group', 'קבוצה?', !input.isGroup, 'הודעה מקבוצה — הבוט שותק בקבוצות');
+  push(
+    'contact', 'מי כותב?',
+    input.contactType === 'unknown',
+    `המספר מוכר (${input.contactType}) — הבוט מדבר רק עם מספרים לא מוכרים`,
+    'מספר לא מוכר'
+  );
+  push('muted', 'הבוט פעיל בשיחה?', !!input.botEnabled, 'הבוט מושתק בשיחה הזו (מישהו מהסטודיו כבר ענה בה)');
+  push(
+    'first', 'הודעה ראשונה?',
+    input.state === 'NEW' && !input.alreadyDecidedToReply,
+    `השיחה כבר במצב ${input.state} — פתיחה נשלחת רק פעם אחת`
+  );
+  push(
+    'text', 'הודעת טקסט?',
+    !!input.typeMessage && TEXT_MESSAGE_TYPES.includes(input.typeMessage),
+    'תמונה / הקלטה / מיקום — אי אפשר לבדוק תוכן, הבוט שותק'
+  );
+
+  const i = decision.intent;
+  const intentDetail = (() => {
+    if (i.matchedVendor) return `⛔ מילת ספק: "${i.matchedVendor}" — ספק גובר על הכל`;
+    if (i.matchedAd) return 'הגיע ממודעה — מספיק לבד';
+    if (i.matchedSelfEvent) return `"${i.matchedSelfEvent}" — מי שאומר את זה על עצמו הוא לקוח, מספיק לבד`;
+    if (i.matchedService && (i.matchedInquiry || i.matchedDate)) {
+      return `שירות "${i.matchedService}" + ${i.matchedInquiry ? `מחיר/זמינות "${i.matchedInquiry}"` : 'תאריך'}`;
+    }
+    if (i.matchedService) return `רק מילת שירות "${i.matchedService}" — חסר סימן שני (מחיר / זמינות / תאריך)`;
+    if (i.matchedInquiry || i.matchedDate) {
+      return `רק ${i.matchedInquiry ? `"${i.matchedInquiry}"` : 'תאריך'} — חסרה מילת שירות (חתונה / צילום…)`;
+    }
+    return 'אף מילה מהרשימות לא נמצאה';
+  })();
+  push('intent', 'זוהתה פנייה?', i.isInquiry, intentDetail, intentDetail);
+
+  push('quiet', 'שעות שקט?', !input.inQuietHours, 'שעות שקט עכשיו — ההודעה נשמרת ונשלחת בסיום החלון', null, true);
+
+  return steps;
 }

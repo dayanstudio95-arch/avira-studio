@@ -2,7 +2,8 @@ import React, { useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { MessageSquare, AlertTriangle, Bot, Flame, Send, Settings2, FlaskConical, X } from "lucide-react";
+import { MessageSquare, AlertTriangle, Bot, Flame, Send, Settings2, FlaskConical, X, SlidersHorizontal } from "lucide-react";
+import { Link } from "react-router-dom";
 import ConversationList from "@/components/whatsapp/ConversationList";
 import ConversationThread from "@/components/whatsapp/ConversationThread";
 import LeadFormDialog from "@/components/leads/LeadFormDialog";
@@ -16,10 +17,10 @@ import { isAwaitingFollowUp, isManuallyFlagged } from "@/lib/followUpQueue";
 // WhatsApp inbox — every conversation the studio's WhatsApp number is having, shown
 // like WhatsApp itself, with the ability to reply from here.
 //
-// STAGE 1 + DRY RUN: nothing on this screen (or in the whatsapp-webhook Edge Function
-// that fills it) sends an automatic reply to anyone. Messages appear here because Green
-// API reports them; the only outbound message this screen can produce is one a human
-// typed into the reply box and pressed send on. The automated lead bot is Stage 2.
+// The lead bot (whatsapp-webhook + _shared/whatsappIntent.ts) is live: strangers whose
+// first message passes the gate get a greeting, questions and the price list. This
+// screen shows all of it and lets a human take over; every step and its settings are
+// laid out in /BotControlCenter.
 //
 // What the dry run adds (migration 0056): every inbound message now carries the verdict
 // the Stage 2 gate would have reached — see the 🤖 markers on the bubbles and the
@@ -419,6 +420,14 @@ export default function WhatsAppInbox() {
             <FlaskConical className="h-3.5 w-3.5" />
             בדוק את הבוט
           </button>
+          <Link
+            to="/BotControlCenter"
+            className="inline-flex items-center gap-1 rounded-full border border-blue-500/40 bg-blue-500/10 shrink-0 whitespace-nowrap px-2.5 py-1 text-xs text-blue-300 transition-colors hover:bg-blue-500/20"
+            title="כל השלבים שהבוט עובר, וההגדרות של כל שלב"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+            איך הבוט עובד
+          </Link>
           {wouldReplyCount > 0 && (
             <button
               type="button"

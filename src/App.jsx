@@ -41,6 +41,7 @@ const GoogleCalendarSync = lazy(() => import('./pages/GoogleCalendarSync'));
 const AutomationLogs = lazy(() => import('./pages/AutomationLogs'));
 const PendingApprovals = lazy(() => import('./pages/PendingApprovals'));
 const SystemAdvisor = lazy(() => import('./pages/SystemAdvisor'));
+const BotControlCenter = lazy(() => import('./pages/BotControlCenter'));
 const Guide = lazy(() => import('./pages/Guide'));
 const LeadsCoordinator = lazy(() => import('./pages/LeadsCoordinator'));
 const MyEvents = lazy(() => import('./pages/MyEvents'));
@@ -229,6 +230,7 @@ const AuthenticatedApp = () => {
           <Route path="/AutomationLogs" element={<AutomationLogs />} />
           <Route path="/PendingApprovals" element={<PendingApprovals />} />
           <Route path="/WhatsAppInbox" element={<WhatsAppInbox />} />
+          <Route path="/BotControlCenter" element={<BotControlCenter />} />
           <Route path="/SystemAdvisor" element={<SystemAdvisor />} />
 
           {/* דף מדריך סטטי, admin-only — ההגנה כאן היא רק בכך שהראוט הזה נמצא בבלוק

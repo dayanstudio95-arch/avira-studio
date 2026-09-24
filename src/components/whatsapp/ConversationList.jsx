@@ -179,7 +179,7 @@ export default function ConversationList({
                     {conv.botWouldReplyAt && (
                       <Bot
                         className="h-3.5 w-3.5 shrink-0 text-emerald-400"
-                        title="הבוט היה עונה בשיחה הזו (מצב יבש — לא נשלח כלום)"
+                        title="השער של הבוט נפתח בשיחה הזו"
                       />
                     )}
                     {!conv.botEnabled && (

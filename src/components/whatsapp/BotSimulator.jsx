@@ -103,6 +103,31 @@ export default function BotSimulator() {
               : "🔇 הבוט היה שותק"}
           </p>
           <p className="text-gray-300">{botDecisionLabel(simResult.reason)}</p>
+          {/* The chain, step by step (2026-09-24): where it stopped and what each step saw. */}
+          {Array.isArray(simResult.trace) && simResult.trace.length > 0 && (
+            <ol className="space-y-1 border border-gray-700/60 rounded-lg p-2 bg-gray-900/40">
+              {simResult.trace.map((t) => {
+                const mark =
+                  t.status === "passed" ? "✅" : t.status === "stopped" ? "⛔" : t.status === "held" ? "🕐" : "⏭";
+                const color =
+                  t.status === "passed"
+                    ? "text-gray-200"
+                    : t.status === "stopped"
+                    ? "text-red-300"
+                    : t.status === "held"
+                    ? "text-amber-300"
+                    : "text-gray-600";
+                return (
+                  <li key={t.step} className={`text-xs flex gap-2 ${color}`}>
+                    <span className="shrink-0">{mark}</span>
+                    <span className="font-medium shrink-0">{t.label}</span>
+                    {t.detail && <span className="text-gray-400">— {t.detail}</span>}
+                    {t.status === "skipped" && <span className="text-gray-600">— לא נבדק</span>}
+                  </li>
+                );
+              })}
+            </ol>
+          )}
           <p className="text-gray-400 text-xs">
             זיהוי המספר: {CONTACT_TYPE_LABELS[simResult.contactType] || simResult.contactType}
             {simResult.inQuietHours ? " · שעות שקט עכשיו" : ""}

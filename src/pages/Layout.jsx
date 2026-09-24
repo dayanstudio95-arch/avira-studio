@@ -22,6 +22,7 @@ import {
   BookImage,
   BookOpen,
   MessageSquare,
+  Bot,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -119,6 +120,8 @@ const secondaryNavItems = [
   // reach it — the one screen that shows whether the automations actually ran, and
   // which messages failed.
   { title: "יומן אוטומציות",     url: "/AutomationLogs",                    icon: FileText },
+  // 2026-09-24: the bot's whole chain, step by step, with its settings in place.
+  { title: "🤖 מרכז שליטה לבוט", url: "/BotControlCenter",                  icon: Bot },
   { title: "מדריך",             url: "/Guide",                             icon: BookOpen },
 ];
 

@@ -12,6 +12,8 @@
 // means silence, not "unset, so go ahead".
 
 import { sendWhatsApp, sendWhatsAppFileByUrl, WHATSAPP_CAPTION_MAX } from './whatsapp.ts';
+import { MAX_BOT_MESSAGES, type TermOverrides } from './whatsappIntent.ts';
+import { ALL_FIELDS, type LeadFieldKey } from './whatsappLeadExtract.ts';
 
 // Every knob the bot has, all of them per-tenant rows in app_settings.
 export interface BotSettings {
@@ -35,6 +37,19 @@ export interface BotSettings {
   flowNudgeText: string;
   // Jerusalem hour (0-23) at which the daily digest goes to the studio's alert number.
   digestHour: number;
+  // ---- The control centre's knobs (2026-09-24). Each one was a constant until the
+  // owner asked to run the bot "no-code". Every default reproduces the old constant.
+  // The studio's word additions / switched-off built-ins for the intent gate.
+  terms: TermOverrides;
+  // Which of the four details must be known before the price list goes out.
+  requiredFields: LeadFieldKey[];
+  // The follow-up question, one missing detail / several. {{missing}} / {{missing_list}}.
+  questionTextOne: string;
+  questionTextMany: string;
+  // Greeting + questions, per conversation, before the bot hands off (was MAX_BOT_MESSAGES).
+  maxBotMessages: number;
+  // Hours of silence mid-flow before the one-time nudge (was 24).
+  nudgeAfterHours: number;
 }
 
 export const BOT_SETTING_KEYS = [
@@ -47,7 +62,24 @@ export const BOT_SETTING_KEYS = [
   'whatsapp_greeting_text_ad',
   'whatsapp_flow_nudge_text',
   'whatsapp_digest_hour',
+  'whatsapp_terms_service_extra',
+  'whatsapp_terms_inquiry_extra',
+  'whatsapp_terms_self_event_extra',
+  'whatsapp_terms_vendor_extra',
+  'whatsapp_terms_disabled',
+  'whatsapp_required_fields',
+  'whatsapp_question_text_one',
+  'whatsapp_question_text_many',
+  'whatsapp_max_bot_messages',
+  'whatsapp_nudge_after_hours',
 ] as const;
+
+// The question texts the webhook used to hard-code. Still the defaults; an empty or
+// placeholder-less template falls back to these so a question is never sent without
+// the question in it.
+export const DEFAULT_QUESTION_TEXT_ONE = 'תודה! רק עוד פרט אחד ונוכל לחזור אליכם עם הצעת מחיר — {{missing}}?';
+export const DEFAULT_QUESTION_TEXT_MANY = 'תודה! רק עוד כמה פרטים ונוכל לחזור אליכם עם הצעת מחיר:\n{{missing_list}}';
+export const DEFAULT_NUDGE_AFTER_HOURS = 24;
 
 export const DEFAULT_FLOW_NUDGE_TEXT =
   'היי, עדיין כאן 🙂 אם תשלחו לנו את הפרטים החסרים נחזור אליכם עם הצעת מחיר';
@@ -58,7 +90,53 @@ const DEFAULTS = {
   replyDelaySeconds: 45,
   maxBotMessagesPerHour: 10,
   digestHour: 8,
+  maxBotMessages: MAX_BOT_MESSAGES,
+  nudgeAfterHours: DEFAULT_NUDGE_AFTER_HOURS,
 };
+
+// app_settings holds JSON arrays as text. Lenient on purpose — a broken value must
+// degrade to "no additions", never to a crash that silences the webhook.
+export function parseJsonStringArray(value: unknown): string[] {
+  if (value === null || value === undefined) return [];
+  let parsed: unknown = value;
+  if (typeof value === 'string') {
+    const t = value.trim();
+    if (!t) return [];
+    try {
+      parsed = JSON.parse(t);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(parsed)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of parsed) {
+    const s = String(item ?? '').trim();
+    if (!s || seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  return out;
+}
+
+// Unknown names are ignored; an empty result means the default (all four). The safe
+// misreading of "which details are required" is "all of them", never "none".
+export function parseRequiredFields(value: unknown): LeadFieldKey[] {
+  const wanted = parseJsonStringArray(value).filter((k): k is LeadFieldKey => (ALL_FIELDS as readonly string[]).includes(k));
+  return wanted.length > 0 ? ALL_FIELDS.filter((k) => wanted.includes(k)) : [...ALL_FIELDS];
+}
+
+// The follow-up question from the studio's template. A template without its
+// placeholder would send "תודה!" with no question, so it falls back to the default.
+export function renderQuestion(missingLabels: string[], settings: Pick<BotSettings, 'questionTextOne' | 'questionTextMany'>): string {
+  if (missingLabels.length === 1) {
+    const tpl = settings.questionTextOne.includes('{{missing}}') ? settings.questionTextOne : DEFAULT_QUESTION_TEXT_ONE;
+    return tpl.replace(/\{\{missing\}\}/g, missingLabels[0]);
+  }
+  const tpl = settings.questionTextMany.includes('{{missing_list}}') ? settings.questionTextMany : DEFAULT_QUESTION_TEXT_MANY;
+  return tpl.replace(/\{\{missing_list\}\}/g, missingLabels.map((f) => `• ${f}`).join('\n'));
+}
 
 // app_settings stores everything as text, so "false", "0" and "" all have to mean off.
 // Anything not explicitly affirmative is off — an unrecognised value is a
@@ -106,6 +184,20 @@ export async function loadBotSettings(supabase: any, tenantId: string): Promise<
     greetingTextAd: String(get('whatsapp_greeting_text_ad') ?? '').trim(),
     flowNudgeText: String(get('whatsapp_flow_nudge_text') ?? '').trim() || DEFAULT_FLOW_NUDGE_TEXT,
     digestHour: parseIntInRange(get('whatsapp_digest_hour'), DEFAULTS.digestHour, 0, 23),
+    terms: {
+      serviceExtra: parseJsonStringArray(get('whatsapp_terms_service_extra')),
+      inquiryExtra: parseJsonStringArray(get('whatsapp_terms_inquiry_extra')),
+      selfEventExtra: parseJsonStringArray(get('whatsapp_terms_self_event_extra')),
+      vendorExtra: parseJsonStringArray(get('whatsapp_terms_vendor_extra')),
+      disabled: parseJsonStringArray(get('whatsapp_terms_disabled')),
+    },
+    requiredFields: parseRequiredFields(get('whatsapp_required_fields')),
+    questionTextOne: String(get('whatsapp_question_text_one') ?? '').trim() || DEFAULT_QUESTION_TEXT_ONE,
+    questionTextMany: String(get('whatsapp_question_text_many') ?? '').trim() || DEFAULT_QUESTION_TEXT_MANY,
+    // 2..6: at least the greeting + one question; past six the bot is nagging.
+    maxBotMessages: parseIntInRange(get('whatsapp_max_bot_messages'), DEFAULTS.maxBotMessages, 2, 6),
+    // 1 hour .. a week.
+    nudgeAfterHours: parseIntInRange(get('whatsapp_nudge_after_hours'), DEFAULTS.nudgeAfterHours, 1, 168),
   };
 }
 

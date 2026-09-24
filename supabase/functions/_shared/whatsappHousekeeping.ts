@@ -26,6 +26,7 @@ import { sendStudioAlert } from './whatsappStudioAlerts.ts';
 
 const DRAIN_BATCH = 20;     // per tenant per tick — the engine has a ~400s wall clock
 const NUDGE_BATCH = 20;
+// Default only; the tick uses settings.nudgeAfterHours (whatsapp_nudge_after_hours).
 const NUDGE_AFTER_MS = 24 * 3600 * 1000;
 const DIGEST_LAST_SENT_KEY = 'whatsapp_digest_last_sent_on';
 
@@ -149,18 +150,19 @@ async function drainDeferredSends(supabase: any, tenantId: string, settings: Bot
 // ---------------------------------------------------------------------------------
 export function isStalledInFlow(c: {
   state?: string | null; last_bot_message_at?: string | null; last_inbound_at?: string | null;
-}, now = Date.now()): boolean {
+}, now = Date.now(), afterMs = NUDGE_AFTER_MS): boolean {
   if (!c.state || !IN_FLOW_STATES.includes(c.state)) return false;
   if (!c.last_bot_message_at) return false;
   const bot = new Date(c.last_bot_message_at).getTime();
-  if (!Number.isFinite(bot) || now - bot < NUDGE_AFTER_MS) return false;
+  if (!Number.isFinite(bot) || now - bot < afterMs) return false;
   if (!c.last_inbound_at) return true;
   const inbound = new Date(c.last_inbound_at).getTime();
   return !Number.isFinite(inbound) || inbound < bot;
 }
 
 async function sendFlowNudges(supabase: any, tenantId: string, settings: BotSettings, r: HousekeepingResult) {
-  const cutoff = new Date(Date.now() - NUDGE_AFTER_MS).toISOString();
+  const afterMs = settings.nudgeAfterHours * 3600 * 1000;
+  const cutoff = new Date(Date.now() - afterMs).toISOString();
   const { data: convs, error } = await supabase
     .from('whatsapp_conversations')
     .select('id, state, bot_enabled, phone, contact_type, last_bot_message_at, last_inbound_at')
@@ -173,7 +175,7 @@ async function sendFlowNudges(supabase: any, tenantId: string, settings: BotSett
     .order('last_bot_message_at', { ascending: true })
     .limit(NUDGE_BATCH);
   if (error) throw new Error(`nudge select: ${error.message}`);
-  const candidates = (convs || []).filter((c: any) => c.phone && isStalledInFlow(c));
+  const candidates = (convs || []).filter((c: any) => c.phone && isStalledInFlow(c, Date.now(), afterMs));
   if (candidates.length === 0) return;
 
   // A conversation with a message already waiting for quiet hours to end is not
@@ -292,7 +294,7 @@ async function gatherDigestStats(supabase: any, tenantId: string, settings: BotS
     .in('state', IN_FLOW_STATES)
     .eq('bot_enabled', true)
     .limit(500);
-  const stalledFlow = (inFlow || []).filter((c: any) => isStalledInFlow(c)).length;
+  const stalledFlow = (inFlow || []).filter((c: any) => isStalledInFlow(c, Date.now(), settings.nudgeAfterHours * 3600 * 1000)).length;
 
   const { count: deferredPending } = await supabase
     .from('whatsapp_deferred_sends')

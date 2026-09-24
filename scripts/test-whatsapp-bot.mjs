@@ -947,6 +947,129 @@ section('menu badges — which page each notification belongs to');
   check('empty list → empty counts', Object.keys(unreadCountsByRoute([])).length, 0);
 }
 
+// =================================================================================
+// PART 14 — the control centre: the studio's own words, required details, question
+// wording, message ceiling, nudge hours (2026-09-24)
+//
+// Every knob here used to be a constant. The one thing that must never change is the
+// rule: without overrides the gate is exactly what it was, and a broken setting degrades
+// to the old constant — never to "send to everyone".
+// =================================================================================
+
+const { detectLeadIntent: detectWithTerms, effectiveTerms, BUILTIN_TERMS, decideBotFollowUp: followUpMax, explainDecision } =
+  await loadModule('supabase/functions/_shared/whatsappIntent.ts', 'intent2');
+const { renderQuestion, parseJsonStringArray, parseRequiredFields, loadBotSettings: loadBotSettings2 } =
+  await loadModule('supabase/functions/_shared/whatsappBotSend.ts', 'botsend2');
+const { missingFields: missingWithRequired } = await loadModule('supabase/functions/_shared/whatsappLeadExtract.ts', 'extract2');
+const { isStalledInFlow: stalledWith } = await loadModule('supabase/functions/_shared/whatsappHousekeeping.ts', 'housekeeping2');
+const botTerms = await loadModule('src/lib/botTerms.js', 'botterms');
+
+section("the studio's words — additions, switched-off built-ins, vendor veto");
+{
+  check('no overrides = the built-in lists, untouched', effectiveTerms().service.length, BUILTIN_TERMS.service.length);
+  check('no overrides = same verdict as before', detectWithTerms('היי, כמה עולה צילום חתונה?').isInquiry, true);
+  const noBuiltin = detectWithTerms('היי, כמה עולה אירוע קונספט?');
+  check('a word nobody listed does not open the gate', noBuiltin.isInquiry, false);
+  const withExtra = detectWithTerms('היי, כמה עולה אירוע קונספט?', { terms: { serviceExtra: ['אירוע קונספט'] } });
+  check("the studio's own service word opens it", withExtra.isInquiry, true);
+  check('…and is reported as the word that fired', withExtra.matchedService, 'אירוע קונספט');
+  const off = detectWithTerms('כמה עולה צילום?', { terms: { disabled: ['צילום'] } });
+  check('a switched-off built-in no longer matches', off.matchedService, null);
+  check('…so the gate stays shut', off.isInquiry, false);
+  const offFinal = detectWithTerms('כמה עולים מגנטים?', { terms: { disabled: ['מגנטימ'] } });
+  check('switching off is compared after normalisation (final letters)', offFinal.matchedService, null);
+  const veto = detectWithTerms('כמה עולה צילום חתונה? אני מנהל אולם', { terms: { vendorExtra: ['מנהל אולם'] } });
+  check("the studio's own vendor word vetoes", veto.isInquiry, false);
+  check('…and is reported', veto.matchedVendor, 'מנהל אולם');
+  const self = detectWithTerms('אנחנו חוגגים בר מצווה לבן', { terms: { selfEventExtra: ['חוגגים'] } });
+  check('an own self-event word stands alone', self.isInquiry, true);
+  check('extras are deduped against built-ins', effectiveTerms({ serviceExtra: ['חתונה', 'חתונה'] }).service.length, BUILTIN_TERMS.service.length);
+  check('blank / junk entries are ignored', effectiveTerms({ serviceExtra: ['', '   ', null] }).service.length, BUILTIN_TERMS.service.length);
+}
+
+section('settings parsing — broken values degrade to the old constants');
+{
+  check('JSON array parses', parseJsonStringArray('["a","b"]').join(','), 'a,b');
+  check('broken JSON → nothing', parseJsonStringArray('[a,b').length, 0);
+  check('a non-array → nothing', parseJsonStringArray('"x"').length, 0);
+  check('empty string → nothing', parseJsonStringArray('').length, 0);
+  check('dedupe + trim', parseJsonStringArray('[" a ","a",""]').join(','), 'a');
+  check('required fields: a subset', parseRequiredFields('["venue","coupleNames"]').join(','), 'coupleNames,venue');
+  check('required fields: unknown names ignored', parseRequiredFields('["venue","x"]').join(','), 'venue');
+  check('required fields: only unknown → all four', parseRequiredFields('["x"]').length, 4);
+  check('required fields: empty → all four', parseRequiredFields('').length, 4);
+  const s = await loadBotSettings2(fakeDb({ settingsRows: settingRows({
+    whatsapp_max_bot_messages: '9', whatsapp_nudge_after_hours: '0',
+    whatsapp_terms_service_extra: '["בוק"]', whatsapp_terms_disabled: 'not json',
+    whatsapp_required_fields: '["eventDate"]', whatsapp_question_text_one: '',
+  }) }), 't1');
+  check('maxBotMessages clamped to 6', s.maxBotMessages, 6);
+  check('nudgeAfterHours clamped to 1', s.nudgeAfterHours, 1);
+  check('service extra read', s.terms.serviceExtra.join(','), 'בוק');
+  check('broken disabled list → empty', s.terms.disabled.length, 0);
+  check('required fields read', s.requiredFields.join(','), 'eventDate');
+  check('empty question template → default', s.questionTextOne.includes('{{missing}}'), true);
+  const d = await loadBotSettings2(fakeDb({ settingsRows: [] }), 't1');
+  check('no rows: maxBotMessages = 3 (the old constant)', d.maxBotMessages, 3);
+  check('no rows: nudge after 24h (the old constant)', d.nudgeAfterHours, 24);
+  check('no rows: all four details required', d.requiredFields.length, 4);
+}
+
+section('required details and the question wording');
+{
+  const details = { coupleNames: 'נועה ואיתי', eventDate: null, venue: null, guestCount: null };
+  check('all four required → three missing', missingWithRequired(details).length, 3);
+  check('only names required → nothing missing → price list', missingWithRequired(details, ['coupleNames']).length, 0);
+  check('names + date required → date missing', missingWithRequired(details, ['coupleNames', 'eventDate']).join(','), 'תאריך האירוע');
+  const tpl = { questionTextOne: 'חסר לנו רק {{missing}} 🙏', questionTextMany: 'חסרים:\n{{missing_list}}' };
+  check('one missing → studio template', renderQuestion(['תאריך האירוע'], tpl), 'חסר לנו רק תאריך האירוע 🙏');
+  check('several missing → bullet list', renderQuestion(['א', 'ב'], tpl), 'חסרים:\n• א\n• ב');
+  check('template without its placeholder → default (never a question without the question)',
+    renderQuestion(['תאריך האירוע'], { questionTextOne: 'תודה!', questionTextMany: 'x' }).includes('תאריך האירוע'), true);
+  check('the screen preview renders the same', botTerms.renderQuestionPreview(['א', 'ב'], tpl), renderQuestion(['א', 'ב'], tpl));
+  check('screen parseRequiredFields mirrors the server', botTerms.parseRequiredFields('["x"]').length, 4);
+}
+
+section('message ceiling and nudge hours');
+{
+  const base = { contactType: 'unknown', botEnabled: true, state: 'AWAITING_DETAILS', isGroup: false, typeMessage: 'textMessage', inQuietHours: false };
+  check('default ceiling 3: third message hands off', followUpMax({ ...base, botMessagesSoFar: 3 }).reason, 'too_many_questions');
+  check('ceiling 2: second already hands off', followUpMax({ ...base, botMessagesSoFar: 2, maxBotMessages: 2 }).reason, 'too_many_questions');
+  check('ceiling 6: fifth still replies', followUpMax({ ...base, botMessagesSoFar: 5, maxBotMessages: 6 }).reason, 'ok');
+  const now = Date.parse('2026-09-24T12:00:00Z');
+  const c = { state: 'AWAITING_DETAILS', last_bot_message_at: '2026-09-24T04:00:00Z', last_inbound_at: null };
+  check('8h of silence: not stalled at the default 24h', stalledWith(c, now), false);
+  check('8h of silence: stalled when the studio set 6h', stalledWith(c, now, 6 * 3600 * 1000), true);
+  check('8h of silence: not stalled at 72h', stalledWith(c, now, 72 * 3600 * 1000), false);
+}
+
+section('the trace — each step says what it saw');
+{
+  const input = { contactType: 'unknown', botEnabled: true, state: 'NEW', isGroup: false, typeMessage: 'textMessage', bodyText: 'היי, אני צלם, כמה אתם לוקחים על חתונה?', inQuietHours: false, alreadyDecidedToReply: false };
+  const trace = explainDecision(input, decideBotReply(input));
+  check('seven steps', trace.length, 7);
+  check('stops at the intent step', trace.find((t) => t.status === 'stopped')?.step, 'intent');
+  check('…naming the vendor word', trace.find((t) => t.step === 'intent').detail.includes('אני צלם'), true);
+  check('later steps are skipped, not judged', trace.find((t) => t.step === 'quiet').status, 'skipped');
+  const okInput = { ...input, bodyText: 'כמה עולה צילום חתונה?' };
+  const okTrace = explainDecision(okInput, decideBotReply(okInput));
+  check('a passing message passes every step', okTrace.every((t) => t.status === 'passed'), true);
+  const nightInput = { ...okInput, inQuietHours: true };
+  check('quiet hours is "held", not "stopped"', explainDecision(nightInput, decideBotReply(nightInput)).find((t) => t.step === 'quiet').status, 'held');
+  const known = { ...okInput, contactType: 'client' };
+  check('a known contact stops at step 2', explainDecision(known, decideBotReply(known)).find((t) => t.status === 'stopped')?.step, 'contact');
+}
+
+section('term warnings on the screen');
+{
+  const lists = { service: ['צלם'], inquiry: ['כמה'], selfEvent: [], vendor: ['אני צלם'] };
+  check('short word warns', botTerms.termWarnings('כל', 'service', lists).length > 0, true);
+  check('a service word as vendor warns', botTerms.termWarnings('צלם', 'vendor', lists).some((w) => w.includes('ספק')), true);
+  check('a vendor word as service warns', botTerms.termWarnings('אני צלם', 'service', lists).some((w) => w.includes('ספק')), true);
+  check('a plain new word: quiet', botTerms.termWarnings('מגנטים', 'service', lists).length, 0);
+  check('serialize/parse round-trip', botTerms.parseTermList(botTerms.serializeTermList(['א', 'ב', 'א'])).join(','), 'א,ב');
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

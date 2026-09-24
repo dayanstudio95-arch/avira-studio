@@ -7,9 +7,10 @@
 // 2026-09-08, replacing a paid third-party bot they had switched off for replying to
 // couples with things that didn't apply to them.
 //
-// The bot sends exactly one kind of message today: a greeting to a stranger whose first
-// message the gate recognised as a photography inquiry. Parsing their answer and sending
-// the price list is Stage 3 and is not wired up here yet.
+// The bot sends a greeting to a stranger whose first message the gate recognised as a
+// photography inquiry, then asks for the details the studio marked as required, then
+// sends the price list (live since 2026-09-09). Every knob is in app_settings, edited
+// from the control centre (src/pages/BotControlCenter.jsx).
 //
 // How the decision is made, and why it is trusted enough to act on:
 //   - WHO gets a reply is decided entirely by _shared/whatsappIntent.ts, unchanged by
@@ -63,7 +64,7 @@ import {
 import { decideBotReply, decideBotFollowUp, shouldRateReply, BOT_BUDGET_EXCLUDED_KINDS } from '../_shared/whatsappIntent.ts';
 import {
   loadBotSettings, isUnderHourlyQuota, sendBotMessage, sendPricelist, sleep,
-  composeSends, enqueueDeferredSend, type DeferredSendItem,
+  composeSends, enqueueDeferredSend, renderQuestion, type DeferredSendItem, type BotSettings,
 } from '../_shared/whatsappBotSend.ts';
 import { extractLeadDetails, mergeDetails, missingFields } from '../_shared/whatsappLeadExtract.ts';
 import { classifyReply } from '../_shared/whatsappLeadTemperature.ts';
@@ -401,9 +402,7 @@ Deno.serve(async (req: Request) => {
 
     // ---- Dry-run verdict ----------------------------------------------------
     //
-    // ⚠️ Computes what Stage 2 WOULD do. Sends nothing — there is no branch below that
-    // sends, deliberately. When Stage 2 is authorised the send goes here, guarded by
-    // `decision.wouldReply`, and the gate chain itself needs no change.
+    // The gate verdict for this message (Stage 2 acts on it further down).
     //
     // Only inbound messages get a verdict. Outbound rows are left null so that "the bot
     // chose silence" is never confused with "nothing was ever asked of the bot".
@@ -416,6 +415,9 @@ Deno.serve(async (req: Request) => {
     let deferredSendAfter: Date | null = null;
 
     let decision: ReturnType<typeof decideBotReply> | null = null;
+    // Loaded before the gate when the cheap checks pass (2026-09-24): the studio's own
+    // words for the intent gate live in the settings. Reused by Stage 2 below.
+    let earlyBotSettings: BotSettings | null | undefined;
     if (isInbound) {
       // Quiet hours costs a DB read, so it's only fetched when the cheap gates have
       // already passed — otherwise the chain would have stopped before reaching it and
@@ -430,6 +432,7 @@ Deno.serve(async (req: Request) => {
 
       let inQuietHours = false;
       if (cheapGatesPass) {
+        earlyBotSettings = await loadBotSettings(supabase, tenantId);
         try {
           quietSettings = await loadQuietHoursSettings(supabase, tenantId);
           inQuietHours = isInQuietHoursNow(quietSettings);
@@ -453,6 +456,7 @@ Deno.serve(async (req: Request) => {
         inQuietHours,
         alreadyDecidedToReply: !!conversation.bot_would_reply_at,
         fromAd,
+        terms: earlyBotSettings?.terms ?? null,
       });
     }
 
@@ -560,7 +564,7 @@ Deno.serve(async (req: Request) => {
     let hotAlert: { reason: string | null; replyText: string | null } | null = null;
 
     if (decision?.wouldReply || decision?.reason === 'quiet_hours_deferred') {
-      const botSettings = await loadBotSettings(supabase, tenantId);
+      const botSettings = earlyBotSettings !== undefined ? earlyBotSettings : await loadBotSettings(supabase, tenantId);
       // Someone who tapped the studio's ad gets the ad-specific opener when one is
       // configured, so the message can acknowledge the promotion they came for.
       const greetingText = botSettings
@@ -691,6 +695,7 @@ Deno.serve(async (req: Request) => {
           typeMessage,
           inQuietHours: flowQuiet,
           botMessagesSoFar: botMessagesSoFar ?? 0,
+          maxBotMessages: flowSettings.maxBotMessages,
         });
 
         if (followUp.reason === 'not_text') {
@@ -726,7 +731,8 @@ Deno.serve(async (req: Request) => {
             updates.venue = merged.venue;
             updates.guest_count = merged.guestCount;
 
-            const stillMissing = missingFields(merged);
+            // Only the details the studio marked as required (control centre).
+            const stillMissing = missingFields(merged, flowSettings.requiredFields);
             const quietEnd = holdForQuiet(followUp) && flowQuietSettings ? nextQuietHoursEnd(flowQuietSettings) : null;
             const hold = holdForQuiet(followUp) && !!quietEnd;
             if (holdForQuiet(followUp) && !quietEnd) {
@@ -760,11 +766,8 @@ Deno.serve(async (req: Request) => {
               }
             } else {
               // Ask only about what is actually missing — never re-ask the whole list.
-              const question =
-                stillMissing.length === 1
-                  ? `תודה! רק עוד פרט אחד ונוכל לחזור אליכם עם הצעת מחיר — ${stillMissing[0]}?`
-                  : `תודה! רק עוד כמה פרטים ונוכל לחזור אליכם עם הצעת מחיר:\n` +
-                    stillMissing.map((f) => `• ${f}`).join('\n');
+              // Wording from the studio's template (whatsapp_question_text_one/_many).
+              const question = renderQuestion(stillMissing, flowSettings);
               updates.state = 'PARTIAL_DETAILS';
               if (hold) {
                 deferredEnqueue = {

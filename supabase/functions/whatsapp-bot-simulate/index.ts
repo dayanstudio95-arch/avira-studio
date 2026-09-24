@@ -10,6 +10,11 @@
 // Assumes a fresh conversation: "first message from this number". If a conversation
 // with the number already exists, that is reported as a note rather than simulated,
 // because the interesting question is almost always about the first message.
+//
+// 2026-09-24: also returns a step-by-step `trace` (explainDecision) for the control
+// centre, and answers `{ mode: 'describe' }` with the built-in word lists, the studio's
+// effective lists and the parsed settings — the one source of truth the control centre
+// draws its "this is what the bot knows" view from (no copy of the words in src/).
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createUserClient, createServiceRoleClient, getRequestUser } from '../_shared/supabaseClients.ts';
 import { getCallerProfile, isAdmin } from '../_shared/permissions.ts';
@@ -17,7 +22,8 @@ import { normalizeIsraeliPhone } from '../_shared/phone.ts';
 import { classifyContact } from '../_shared/whatsappContact.ts';
 import { loadBotSettings } from '../_shared/whatsappBotSend.ts';
 import { loadQuietHoursSettings, isInQuietHoursNow } from '../_shared/automationGuards.ts';
-import { decideBotReply } from '../_shared/whatsappIntent.ts';
+import { decideBotReply, explainDecision, effectiveTerms, BUILTIN_TERMS, MAX_BOT_MESSAGES } from '../_shared/whatsappIntent.ts';
+import { ALL_FIELDS, FIELD_LABELS } from '../_shared/whatsappLeadExtract.ts';
 
 Deno.serve(async (req) => {
   const preflight = handleOptions(req);
@@ -35,6 +41,41 @@ Deno.serve(async (req) => {
     const tenantId = profile.tenant_id;
 
     const body = await req.json().catch(() => ({}));
+
+    if (body.mode === 'describe') {
+      const supabase = createServiceRoleClient();
+      const settings = await loadBotSettings(supabase, tenantId);
+      let quiet: { enabled: boolean; start: string | null; end: string | null } | null = null;
+      try {
+        const q = await loadQuietHoursSettings(supabase, tenantId);
+        quiet = { enabled: !!q?.quiet_hours_enabled, start: q?.quiet_hours_start ?? null, end: q?.quiet_hours_end ?? null };
+      } catch {
+        quiet = null;
+      }
+      return jsonResponse({
+        builtinTerms: BUILTIN_TERMS,
+        effectiveTerms: effectiveTerms(settings?.terms),
+        fieldLabels: FIELD_LABELS,
+        allFields: ALL_FIELDS,
+        defaults: { maxBotMessages: MAX_BOT_MESSAGES },
+        settings: settings
+          ? {
+              enabled: settings.enabled,
+              terms: settings.terms,
+              requiredFields: settings.requiredFields,
+              questionTextOne: settings.questionTextOne,
+              questionTextMany: settings.questionTextMany,
+              maxBotMessages: settings.maxBotMessages,
+              nudgeAfterHours: settings.nudgeAfterHours,
+              replyDelaySeconds: settings.replyDelaySeconds,
+              maxBotMessagesPerHour: settings.maxBotMessagesPerHour,
+              digestHour: settings.digestHour,
+            }
+          : null,
+        quietHours: quiet,
+      });
+    }
+
     const text: string = typeof body.text === 'string' ? body.text : '';
     const rawPhone: string = typeof body.phone === 'string' ? body.phone.trim() : '';
     const fromAd = !!body.fromAd;
@@ -78,7 +119,7 @@ Deno.serve(async (req) => {
       notes.push('לא הצלחנו לקרוא את שעות השקט — הבוט היה מניח שעות שקט');
     }
 
-    const decision = decideBotReply({
+    const decisionInput = {
       contactType,
       botEnabled: true,
       state: 'NEW',
@@ -88,7 +129,10 @@ Deno.serve(async (req) => {
       inQuietHours,
       alreadyDecidedToReply: false,
       fromAd,
-    });
+      terms: settings?.terms ?? null,
+    };
+    const decision = decideBotReply(decisionInput);
+    const trace = explainDecision(decisionInput, decision);
 
     const greeting = settings
       ? (fromAd && settings.greetingTextAd ? settings.greetingTextAd : settings.greetingText)
@@ -113,6 +157,7 @@ Deno.serve(async (req) => {
       greeting: greeting || null,
       wouldSend,
       notes,
+      trace,
     });
   } catch (error) {
     return jsonResponse({ error: error.message }, { status: 500 });

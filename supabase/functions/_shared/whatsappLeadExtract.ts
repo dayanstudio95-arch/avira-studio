@@ -262,11 +262,20 @@ export function mergeDetails(existing: Partial<LeadDetails>, incoming: LeadDetai
   };
 }
 
-export function missingFields(details: LeadDetails): string[] {
-  const missing: string[] = [];
-  if (!details.coupleNames) missing.push('השמות שלכם');
-  if (!details.eventDate) missing.push('תאריך האירוע');
-  if (!details.venue) missing.push('איפה האירוע מתקיים');
-  if (details.guestCount === null) missing.push('כמה מוזמנים');
-  return missing;
+export type LeadFieldKey = 'coupleNames' | 'eventDate' | 'venue' | 'guestCount';
+export const ALL_FIELDS: readonly LeadFieldKey[] = ['coupleNames', 'eventDate', 'venue', 'guestCount'];
+// How each detail is named when the bot asks for it.
+export const FIELD_LABELS: Record<LeadFieldKey, string> = {
+  coupleNames: 'השמות שלכם',
+  eventDate: 'תאריך האירוע',
+  venue: 'איפה האירוע מתקיים',
+  guestCount: 'כמה מוזמנים',
+};
+
+// The labels of the REQUIRED details still unknown, in the fixed order above.
+// `required` is the studio's choice (whatsapp_required_fields, 2026-09-24); the
+// extractor still records every detail it finds, required or not.
+export function missingFields(details: LeadDetails, required: readonly LeadFieldKey[] = ALL_FIELDS): string[] {
+  const has = (k: LeadFieldKey) => (k === 'guestCount' ? details.guestCount !== null : !!details[k]);
+  return ALL_FIELDS.filter((k) => required.includes(k) && !has(k)).map((k) => FIELD_LABELS[k]);
 }
