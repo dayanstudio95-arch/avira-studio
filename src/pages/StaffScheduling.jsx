@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Calendar, List, Users, AlertTriangle, UserCheck, ChevronLeft, ChevronRight, X, GripVertical, Pencil, Check } from "lucide-react";
+import { Calendar, List, Users, AlertTriangle, UserCheck, ChevronLeft, ChevronRight, X, GripVertical, Pencil, Check, Send } from "lucide-react";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths } from "date-fns";
 // Hebrew month names in the calendar header -- the title used to render in
 // English ("September 2026") above Hebrew weekday headers. Already the
@@ -48,6 +48,12 @@ export default function StaffScheduling() {
   const [replacementTarget, setReplacementTarget] = useState(null);
   const openReplacement = (jobRole, excludeName, forEvent) =>
     setReplacementTarget({ event: forEvent, jobRole, excludeName });
+  // "זמינות צלם" — the plain availability check (pick a role, tick names, send), the same
+  // one the lead panel has. Owner's request on 2026-09-24, for the mobile sheet. Reuses the
+  // same modal with `replacement: null`.
+  const openAvailability = (forEvent) => setReplacementTarget({ event: forEvent, plain: true });
+  // Bumped after a send so the sheet re-reads who has been asked / answered.
+  const [availabilityVersion, setAvailabilityVersion] = useState(0);
   const [sortMode, setSortMode] = useState('date');
   const [filterMissing, setFilterMissing] = useState(true);
   const [isEditingOrder, setIsEditingOrder] = useState(false);
@@ -417,7 +423,15 @@ export default function StaffScheduling() {
                     </div>
                   )}
                 </div>
-                <div>
+                <div className="flex flex-col items-end gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => openAvailability(selectedEvent)}
+                    className="bg-pink-600 hover:bg-pink-700 text-white text-xs"
+                  >
+                    <Send className="w-3.5 h-3.5 ml-1" />
+                    זמינות צלם
+                  </Button>
                   {(() => {
                     const teamStatus = getTeamStatus(selectedEvent);
                     return teamStatus.isFullTeam ? (
@@ -673,12 +687,14 @@ export default function StaffScheduling() {
           onRefresh={loadData}
           sendCalendarInviteByName={sendCalendarInviteByName}
           onFindReplacement={openReplacement}
+          onCheckAvailability={openAvailability}
+          availabilityVersion={availabilityVersion}
         />
 
         <StaffAvailabilityModal
           open={!!replacementTarget}
           onClose={() => setReplacementTarget(null)}
-          onSent={() => setReplacementTarget(null)}
+          onSent={() => { setReplacementTarget(null); setAvailabilityVersion((v) => v + 1); }}
           staffMembers={staffMembers}
           eventDate={replacementTarget?.event?.date}
           venue={replacementTarget?.event?.venue}
@@ -687,7 +703,7 @@ export default function StaffScheduling() {
           eventId={replacementTarget?.event?.id}
           eventTeam={replacementTarget?.event?.team || []}
           eventsOnDate={events}
-          replacement={replacementTarget ? { jobRole: replacementTarget.jobRole, excludeName: replacementTarget.excludeName } : null}
+          replacement={replacementTarget && !replacementTarget.plain ? { jobRole: replacementTarget.jobRole, excludeName: replacementTarget.excludeName } : null}
           existingRequests={[]}
           onStaffMembersChanged={loadData}
         />
