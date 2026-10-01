@@ -1222,8 +1222,11 @@ export default function AutomationsDashboard() {
           toast.info(`אין הודעות לשליחה עבור '${automation.name}'`);
         } else {
           // Initialize all recipients as selected by default (using staffId, not index)
-          // Use staffId as the unique key; filter out any undefined to avoid Set pollution
-          setSelectedRecipients(new Set(previews.map(p => p.staffId).filter(Boolean)));
+          // Use staffId as the unique key; filter out any undefined to avoid Set pollution.
+          // Except anyone who already got a message from this automation today
+          // (sentTodayAt, 2026-10-01): the server would skip them anyway, so ticking them
+          // by default only produced "18 to send" → "7 sent" with no explanation.
+          setSelectedRecipients(new Set(previews.filter(p => !p.sentTodayAt).map(p => p.staffId).filter(Boolean)));
           setPreviewModal({ automation, previews });
         }
       } else {
@@ -1260,13 +1263,31 @@ export default function AutomationsDashboard() {
       const isAlbumReminder = previewModal.automation.type === 'album_reminder';
       const selectedIds = Array.from(selectedRecipients);
       
+      // Ticking someone the preview marked "קיבל היום" is the owner choosing to send
+      // again — tell the server so the same-day dedup does not silently undo that choice.
+      const resendIds = new Set(previewModal.previews.filter(p => p.sentTodayAt).map(p => p.staffId));
+      const allowResend = !isAlbumReminder && selectedIds.some(id => resendIds.has(id));
       const res = await base44.functions.invoke("automationEngine", {
         automation_id: previewModal.automation.id,
         triggered_by: "manual",
         [isAlbumReminder ? "selectedEventIds" : "selectedStaffIds"]: selectedIds,
+        ...(allowResend ? { allow_resend_today: true } : {}),
       });
-      const sentCount = res.data?.results?.[0]?.sent || 0;
-      toast.success(`נשלחו ${sentCount} הודעות בהצלחה!`);
+      const r0 = res.data?.results?.[0] || {};
+      const sentCount = r0.sent || 0;
+      const failedCount = r0.failed || 0;
+      const skippedLogs = (r0.logs || []).filter(l => l.status === 'skipped' && selectedIds.includes(l.staffId));
+      // Say what did NOT go out, and why — "נשלחו 0" with nothing else is what made
+      // this look broken.
+      const parts = [`נשלחו ${sentCount}`];
+      if (skippedLogs.length > 0) {
+        const reasons = [...new Set(skippedLogs.map(l => l.reason).filter(Boolean))].join(', ');
+        parts.push(`דולגו ${skippedLogs.length}${reasons ? ` (${reasons})` : ''}`);
+      }
+      if (failedCount > 0) parts.push(`נכשלו ${failedCount}`);
+      const summary = parts.join(' · ');
+      if (failedCount > 0 || skippedLogs.length > 0) toast.warning(summary, { description: 'הפירוט המלא ביומן האוטומציות', duration: 10000 });
+      else toast.success(`${summary} הודעות בהצלחה!`);
       await Automation.update(previewModal.automation.id, { last_run_at: new Date().toISOString() });
       setPreviewModal(null);
       setSelectedRecipients(new Set());
@@ -1426,6 +1447,11 @@ export default function AutomationsDashboard() {
                         </td>
                         <td className="py-4 px-4">
                           <span className="text-white font-semibold text-sm">{p.name || p.staffName}</span>
+                          {p.sentTodayAt && (
+                            <span className="block mt-1 text-[11px] font-semibold text-amber-400">
+                              ⚠️ כבר קיבל היום ב-{new Date(p.sentTodayAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' })}
+                            </span>
+                          )}
                         </td>
                         <td className="py-4 px-4">
                           <span className="text-gray-400 text-xs font-mono" dir="ltr">{p.staffPhone || '—'}</span>
@@ -1466,6 +1492,13 @@ export default function AutomationsDashboard() {
             <div className="bg-gray-900/95 border-t border-gray-700 px-6 py-4 flex gap-3 rounded-b-2xl justify-between items-center">
               <span className="text-xs text-gray-400">
                 {selectedRecipients.size === 0 ? '⚠️ לא נבחר אף אחד' : `✓ ${selectedRecipients.size} מ-${previewModal.previews.length} נבחרו`}
+                {(() => {
+                  const again = previewModal.previews.filter(p => p.sentTodayAt && selectedRecipients.has(p.staffId)).length;
+                  const already = previewModal.previews.filter(p => p.sentTodayAt).length;
+                  if (again > 0) return <span className="block text-amber-400 mt-0.5">{again} מהנבחרים כבר קיבלו הודעה היום ויקבלו אותה שוב</span>;
+                  if (already > 0) return <span className="block text-gray-500 mt-0.5">{already} כבר קיבלו היום ולא סומנו. סמן אותם כדי לשלוח שוב.</span>;
+                  return null;
+                })()}
               </span>
               <div className="flex gap-3">
                 <Button variant="outline" onClick={() => setPreviewModal(null)} className="border-gray-600 bg-gray-800 text-gray-300 hover:bg-gray-700">ביטול</Button>

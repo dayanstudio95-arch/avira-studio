@@ -38,7 +38,7 @@ import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createServiceRoleClient, getRequestUser } from '../_shared/supabaseClients.ts';
 import { sendWhatsApp as sendWhatsAppGreenApi } from '../_shared/whatsapp.ts';
 import { EVENT_TEAM_ROLE_LABELS as ROLE_LABELS } from '../_shared/staffRoles.ts';
-import { loadQuietHoursSettings, isInQuietHoursNow, wasAlreadySentToday, type QuietHoursSettings } from '../_shared/automationGuards.ts';
+import { loadQuietHoursSettings, isInQuietHoursNow, wasAlreadySentToday, sentTodayAt, type QuietHoursSettings } from '../_shared/automationGuards.ts';
 import { runWhatsAppHousekeeping } from '../_shared/whatsappHousekeeping.ts';
 
 function getTargetMonth(mode: string) {
@@ -172,10 +172,14 @@ async function sendWhatsApp(supabase: any, tenantId: string, phone: string, mess
 // clear to send. Order matters: test mode always wins (nothing real ever goes out
 // while it's on), then quiet hours, then same-day dedup -- cheapest/most-certain
 // checks first, the one DB round-trip (wasAlreadySentToday) last.
-async function checkSendGuards(supabase: any, automation: any, quietHours: QuietHoursSettings, phone: string): Promise<string | null> {
+//
+// `allowResendToday` (2026-10-01) lifts ONLY the same-day dedup, and only on a manual run
+// where the owner ticked, in the preview, people the preview showed as already having
+// received a message today. Test mode and quiet hours still apply.
+async function checkSendGuards(supabase: any, automation: any, quietHours: QuietHoursSettings, phone: string, opts: { allowResendToday?: boolean } = {}): Promise<string | null> {
   if (automation.test_mode) return 'מצב בדיקה — לא נשלחה הודעה אמיתית';
   if (isInQuietHoursNow(quietHours)) return 'שעות שקטות';
-  if (await wasAlreadySentToday(supabase, automation.id, phone)) return 'כבר נשלח היום';
+  if (!opts.allowResendToday && await wasAlreadySentToday(supabase, automation.id, phone)) return 'כבר נשלח היום';
   return null;
 }
 
@@ -184,7 +188,7 @@ async function checkSendGuards(supabase: any, automation: any, quietHours: Quiet
 // ─────────────────────────────────────────────────────────────────────────
 
 async function runMonthlyStaffSummary(supabase: any, tenantId: string, automation: any, runId: string, opts: any = {}) {
-  const { testPhone, dryRun, selectedStaffIds, quietHours } = opts;
+  const { testPhone, dryRun, selectedStaffIds, quietHours, allowResendToday } = opts;
 
   const targetMonth = getTargetMonth(automation.target_month_mode || 'next_month');
   const formattedMonth = formatMonthHebrew(targetMonth);
@@ -269,7 +273,10 @@ async function runMonthlyStaffSummary(supabase: any, tenantId: string, automatio
       // staffId must be set here — the frontend keys its checkbox selection Set by this
       // field (see AutomationsDashboard.jsx handleManualRun / selectedRecipients). Without
       // it every preview row collapses onto the same undefined key and checkboxes break.
-      logs.push({ staffId: member.id, name: member.name, phone, finalMessage, eventsCount: memberEvents.length, status: 'preview' });
+      // sentTodayAt: so the preview can show who already got a message from this
+      // automation today, and leave them unticked (see checkSendGuards).
+      const alreadyAt = phone ? await sentTodayAt(supabase, automation.id, phone.trim()) : null;
+      logs.push({ staffId: member.id, name: member.name, phone, finalMessage, eventsCount: memberEvents.length, status: 'preview', sentTodayAt: alreadyAt });
       continue;
     }
 
@@ -281,7 +288,7 @@ async function runMonthlyStaffSummary(supabase: any, tenantId: string, automatio
       continue;
     }
 
-    const guardSkipReason = await checkSendGuards(supabase, automation, quietHours, phone.trim());
+    const guardSkipReason = await checkSendGuards(supabase, automation, quietHours, phone.trim(), { allowResendToday: !!allowResendToday });
     if (guardSkipReason) {
       await supabase.from('automation_message_logs').insert({ ...logEntry, status: 'skipped', error: guardSkipReason });
       skipped++;
@@ -1151,7 +1158,7 @@ async function runCustomAudienceMessage(supabase: any, tenantId: string, automat
 // ─────────────────────────────────────────────────────────────────────────
 
 async function executeAutomation(supabase: any, tenantId: string, automation: any, opts: any = {}) {
-  const { triggeredBy, testPhone, dryRun, selectedStaffIds, targetYYYYMM, selectedEventIds, messageTemplateOverride, targetRoleOverride } = opts;
+  const { triggeredBy, testPhone, dryRun, selectedStaffIds, targetYYYYMM, selectedEventIds, messageTemplateOverride, targetRoleOverride, allowResendToday } = opts;
 
   let runId = 'dryrun';
   if (!dryRun) {
@@ -1179,7 +1186,7 @@ async function executeAutomation(supabase: any, tenantId: string, automation: an
     // approve-pending-automation/index.ts, which loads its own copy at that later send point.
     const quietHours = await loadQuietHoursSettings(supabase, tenantId);
 
-    if (automation.type === 'monthly_staff_summary') result = await runMonthlyStaffSummary(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds, quietHours });
+    if (automation.type === 'monthly_staff_summary') result = await runMonthlyStaffSummary(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds, quietHours, allowResendToday });
     if (automation.type === 'daily_event_brief') result = await runDailyEventBrief(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds, quietHours });
     if (automation.type === 'questionnaire_reminder') result = await runQuestionnaireReminder(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds });
     if (automation.type === 'payment_reminder') result = await runPaymentReminder(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds });
@@ -1215,6 +1222,7 @@ async function executeAutomation(supabase: any, tenantId: string, automation: an
       } else {
         previews = (result.logs || []).map((l: any) => ({
           staffId: l.staffId, name: l.name, staffName: l.name, staffPhone: l.phone, message: l.finalMessage, eventCount: l.eventsCount ?? 0,
+          sentTodayAt: l.sentTodayAt ?? null,
         }));
       }
       return { automation_id: automation.id, name: automation.name, status: 'preview', previews };
@@ -1285,6 +1293,10 @@ async function handleForTenant(supabase: any, tenantId: string, body: any) {
       selectedEventIds: body.selectedEventIds || null,
       messageTemplateOverride: body.message_template_override || null,
       targetRoleOverride: body.target_role_override || null,
+      // Only on an explicit manual run of ONE automation, with an explicit recipient
+      // selection. The scheduler path (no automation_id) can never lift the dedup.
+      allowResendToday: !!body.allow_resend_today && !!automation_id
+        && Array.isArray(body.selectedStaffIds) && body.selectedStaffIds.length > 0,
     });
     results.push(result);
   }

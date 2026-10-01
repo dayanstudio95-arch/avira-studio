@@ -153,3 +153,24 @@ export async function wasAlreadySentToday(supabase: any, automationId: string | 
     .limit(1);
   return !!(data && data.length > 0);
 }
+
+// Same question as wasAlreadySentToday, answered with WHEN (ISO) or null. For the manual
+// run's preview (2026-10-01): the owner saw "18 to send", confirmed, and 11 were
+// silently skipped as already-sent — by that morning's scheduled run, which had gone
+// out for the wrong month. The preview now says who already got a message today and at
+// what time, so the choice to send again is his and is made with the facts on screen.
+export async function sentTodayAt(supabase: any, automationId: string | null | undefined, recipientContact: string | null | undefined): Promise<string | null> {
+  if (!automationId || !recipientContact) return null;
+  const todayStr = getJerusalemTodayDateStr();
+  const dayStartUTC = israelDateTimeToUTC(todayStr, 0, 0);
+  const { data } = await supabase
+    .from('automation_message_logs')
+    .select('created_at')
+    .eq('automation_id', automationId)
+    .eq('recipient_contact', recipientContact)
+    .eq('status', 'sent')
+    .gte('created_at', dayStartUTC.toISOString())
+    .order('created_at', { ascending: false })
+    .limit(1);
+  return data && data.length > 0 ? data[0].created_at : null;
+}
