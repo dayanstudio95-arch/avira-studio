@@ -183,6 +183,7 @@ export default function ChatList({
               </button>
             ))}
             <button type="button" onClick={() => bulk("archive", true)} className="min-h-[40px] rounded-lg border border-gray-700 bg-gray-800 px-3 text-sm text-gray-200">ארכיון</button>
+            <button type="button" onClick={() => bulk("handled", true)} className="min-h-[40px] rounded-lg border border-emerald-800 bg-emerald-950/50 px-3 text-sm text-emerald-200">✓ טופל</button>
             <button type="button" onClick={() => bulk("pin", true)} className="min-h-[40px] rounded-lg border border-gray-700 bg-gray-800 px-3 text-sm text-gray-200">נעץ</button>
             <button
               type="button"

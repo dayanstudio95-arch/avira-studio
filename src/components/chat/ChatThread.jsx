@@ -25,7 +25,7 @@ function NoteBubble({ note, onDelete }) {
 
 // The conversation column: header, timeline (messages + internal notes), composer.
 export default function ChatThread({
-  conversation, lead, labels, thread, onBack, onTogglePanel, onPin, onArchive,
+  conversation, lead, labels, thread, onBack, onTogglePanel, onPin, onArchive, onHandled, needsReplyNow,
   templates, onSaveTemplate, onDeleteTemplate, userContext,
 }) {
   const [text, setText] = useState("");
@@ -124,6 +124,11 @@ export default function ChatThread({
             </span>
           </span>
         </button>
+        {needsReplyNow && (
+          <button type="button" onClick={onHandled} title="לא צריך מענה — יוצא מ'דורש מענה' עד שיכתבו שוב" className="flex h-10 shrink-0 items-center gap-1 rounded-full border border-emerald-800 bg-emerald-950/50 px-3 text-sm text-emerald-200 hover:bg-emerald-900/60">
+            ✓ טופל
+          </button>
+        )}
         <button type="button" onClick={onPin} aria-label={conversation.pinnedAt ? "בטל נעיצה" : "נעץ למעלה"} title={conversation.pinnedAt ? "בטל נעיצה" : "נעץ למעלה"} className="hidden h-10 w-10 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white md:flex">
           {conversation.pinnedAt ? <PinOff className="h-5 w-5" /> : <Pin className="h-5 w-5" />}
         </button>

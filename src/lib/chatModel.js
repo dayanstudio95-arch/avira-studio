@@ -61,11 +61,15 @@ const t = (iso) => {
 // Not people you answer from a sales inbox.
 const NO_REPLY_TYPES = ["group", "staff", "vendor", "irrelevant"];
 
-// They wrote last and nobody (you or the bot) has answered since.
+// They wrote last and nobody (you or the bot) has answered since — unless the owner
+// marked it "טופל" after their last message (handledAt, 0070). Writing again brings it
+// back by itself.
 export function needsReply(c) {
   if (!c || c.archivedAt || NO_REPLY_TYPES.includes(c.contactType)) return false;
   const inbound = t(c.lastInboundAt);
   if (inbound === null) return false;
+  const handled = t(c.handledAt);
+  if (handled !== null && handled >= inbound) return false;
   const last = t(c.lastMessageAt);
   const bot = t(c.lastBotMessageAt);
   if (last !== null && last > inbound) return false;
@@ -195,6 +199,8 @@ export function reverseOf(row) {
       return { kind: "conversation", id: row.conversationId, values: { archivedAt: b.archivedAt ?? null } };
     case "pin":
       return { kind: "conversation", id: row.conversationId, values: { pinnedAt: b.pinnedAt ?? null } };
+    case "handled":
+      return { kind: "conversation", id: row.conversationId, values: { handledAt: b.handledAt ?? null } };
     case "opt_out":
       return { kind: "conversation", id: row.conversationId, values: { optedOutAt: b.optedOutAt ?? null, optedOutReason: b.optedOutReason ?? null } };
     case "label_add":

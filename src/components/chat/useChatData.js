@@ -241,6 +241,16 @@ export function useChatData() {
       return { batchId, count: targets.length };
     },
 
+    // "טופל": out of "דורש מענה" until they write again.
+    async setHandled(convs, handled) {
+      const batchId = uuid();
+      const value = handled ? new Date().toISOString() : null;
+      await updateConversations(convs.map((c) => c.id), { handledAt: value });
+      await logActivity(convs.map((c) => ({ conversationId: c.id, action: "handled", batchId, before: { handledAt: c.handledAt || null }, after: { handledAt: value } })));
+      refresh();
+      return { batchId, count: convs.length };
+    },
+
     async setPinned(convs, pinned) {
       const batchId = uuid();
       const value = pinned ? new Date().toISOString() : null;

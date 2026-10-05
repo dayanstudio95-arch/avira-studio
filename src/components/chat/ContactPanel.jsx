@@ -20,6 +20,7 @@ const ACTION_TEXT = {
   label_remove: () => "הוסרה תווית",
   archive: (r) => (r.after?.archivedAt ? "הועבר לארכיון" : "הוחזר מהארכיון"),
   pin: (r) => (r.after?.pinnedAt ? "ננעץ למעלה" : "בוטלה נעיצה"),
+  handled: (r) => (r.after?.handledAt ? 'סומן "טופל"' : 'בוטל "טופל"'),
   opt_out: (r) => (r.after?.optedOutAt ? "סומן: לא לשלוח הודעות" : "בוטל סימון ההסרה"),
   opted_out: () => 'הלקוח ביקש לא לקבל הודעות ("הסר")',
   lead_created: () => "נוצר ליד בדף הלידים",

@@ -1318,6 +1318,15 @@ section('notification switches');
   check('the screen shows a switch for every category', screenPush.PREF_ROWS.map((r) => r[0]).sort().join(','), ['lead', 'hot', 'client', 'staff', 'group', 'other', 'delivery'].sort().join(','));
 }
 
+section('"טופל" — out of "דורש מענה" until they write again');
+{
+  const c = { contactType: 'client', lastInboundAt: '2026-10-05T10:00:00Z', lastMessageAt: '2026-10-05T10:00:00Z' };
+  check('"תודה" from a client → needs reply by the rule', cm.needsReply(c), true);
+  check('marked handled after it → not', cm.needsReply({ ...c, handledAt: '2026-10-05T10:05:00Z' }), false);
+  check('they write again after the mark → back in', cm.needsReply({ ...c, handledAt: '2026-10-05T10:05:00Z', lastInboundAt: '2026-10-05T11:00:00Z', lastMessageAt: '2026-10-05T11:00:00Z' }), true);
+  check('undo restores the previous mark', JSON.stringify(cm.reverseOf({ action: 'handled', conversationId: 'c1', before: { handledAt: null } }).values), JSON.stringify({ handledAt: null }));
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

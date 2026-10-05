@@ -7,7 +7,7 @@ import { supabase } from "@/api/supabaseClient";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/SupabaseAuthContext";
 import LeadFormDialog from "@/components/leads/LeadFormDialog";
-import { BOXES, boxCounts, matchesBox, matchesSearch, sortConversations } from "@/lib/chatModel";
+import { BOXES, boxCounts, matchesBox, matchesSearch, sortConversations, needsReply } from "@/lib/chatModel";
 import { useChatData } from "@/components/chat/useChatData";
 import { useThread } from "@/components/chat/useThread";
 import ChatSidebar from "@/components/chat/ChatSidebar";
@@ -175,6 +175,8 @@ export default function ChatApp() {
       await run(data.actions.addLabel(convs, value), (r) => `התווית "${labelsById[value]?.name}" נוספה ל-${n(r)} שיחות`);
     } else if (kind === "archive") {
       await run(data.actions.setArchived(convs, true), (r) => `${n(r)} שיחות הועברו לארכיון`);
+    } else if (kind === "handled") {
+      await run(data.actions.setHandled(convs, true), (r) => `${n(r)} שיחות סומנו "טופל" · יחזרו לבד כשיכתבו שוב`);
     } else if (kind === "pin") {
       await run(data.actions.setPinned(convs, true), (r) => `${n(r)} שיחות ננעצו למעלה`);
     }
@@ -254,6 +256,9 @@ export default function ChatApp() {
       } else if (e.key === "k" || e.key === "ArrowUp") {
         const prev = visible[Math.max(0, idx - 1)];
         if (prev) { e.preventDefault(); setActiveId(prev.id); }
+      } else if (e.key === "d" && active && needsReply(active)) {
+        e.preventDefault();
+        run(data.actions.setHandled([active], true), () => 'סומן "טופל"');
       } else if (e.key === "e" && active) {
         e.preventDefault();
         panelProps.onArchive();
@@ -362,6 +367,8 @@ export default function ChatApp() {
             onTogglePanel={() => setPanelOpen((v) => !v)}
             onPin={panelProps.onPin}
             onArchive={panelProps.onArchive}
+            needsReplyNow={needsReply(active)}
+            onHandled={() => run(data.actions.setHandled([active], true), () => 'סומן "טופל" · יחזור ל"דורש מענה" כשיכתבו שוב')}
             templates={data.templates}
             onSaveTemplate={saveTemplate}
             onDeleteTemplate={deleteTemplate}
@@ -372,7 +379,7 @@ export default function ChatApp() {
         <div className="hidden flex-1 flex-col items-center justify-center gap-3 text-gray-500 md:flex">
           <MessageSquare className="h-12 w-12 text-gray-700" />
           <p>בחר שיחה מהרשימה</p>
-          <p className="text-xs text-gray-600">קיצורים: J / K מעבר בין שיחות · E ארכיון · Esc סגירה</p>
+          <p className="text-xs text-gray-600">קיצורים: J / K מעבר בין שיחות · D טופל · E ארכיון · Esc סגירה</p>
         </div>
       )}
 
