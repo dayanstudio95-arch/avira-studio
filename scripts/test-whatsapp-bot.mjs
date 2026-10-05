@@ -1183,6 +1183,16 @@ section('recordDeliveryStatus — one alert per failure, no downgrade');
   check('no idMessage → ignored', await ws.recordDeliveryStatus(fake, 't1', { status: 'sent' }), 'ignored');
 }
 
+section('media retention — 18 months (owner, 2026-10-05)');
+{
+  const now = Date.parse('2028-04-05T00:00:00Z');
+  const cutoff = Date.parse(ws.mediaRetentionCutoff(now));
+  const days = Math.round((now - cutoff) / 86400000);
+  check('cutoff is 540 days back', days, 540);
+  check('a file from 2026-10-05 is due by 2028-04-05', Date.parse('2026-10-05T00:00:00Z') < cutoff, true);
+  check('a file from a year ago is kept', Date.parse('2027-04-05T00:00:00Z') < cutoff, false);
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

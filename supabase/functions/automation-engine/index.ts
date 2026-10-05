@@ -40,7 +40,7 @@ import { sendWhatsApp as sendWhatsAppGreenApi } from '../_shared/whatsapp.ts';
 import { EVENT_TEAM_ROLE_LABELS as ROLE_LABELS } from '../_shared/staffRoles.ts';
 import { loadQuietHoursSettings, isInQuietHoursNow, wasAlreadySentToday, sentTodayAt, type QuietHoursSettings } from '../_shared/automationGuards.ts';
 import { runWhatsAppHousekeeping } from '../_shared/whatsappHousekeeping.ts';
-import { alertStuckMessages } from '../_shared/whatsappStatus.ts';
+import { alertStuckMessages, purgeOldMedia } from '../_shared/whatsappStatus.ts';
 
 function getTargetMonth(mode: string) {
   const now = new Date();
@@ -1355,7 +1355,14 @@ Deno.serve(async (req) => {
       } catch (e: any) {
         console.error('[automationEngine] stuck-message check failed for tenant', t.id, e?.message || e);
       }
-      perTenantResults.push({ tenant_id: t.id, ...result, whatsapp, stuckAlerts });
+      // Our copy of customer media is deleted after 18 months (owner's decision).
+      let mediaPurged = 0;
+      try {
+        mediaPurged = await purgeOldMedia(supabase, t.id);
+      } catch (e: any) {
+        console.error('[automationEngine] media purge failed for tenant', t.id, e?.message || e);
+      }
+      perTenantResults.push({ tenant_id: t.id, ...result, whatsapp, stuckAlerts, mediaPurged });
     }
 
     return jsonResponse({ success: true, tenants: perTenantResults.length, results: perTenantResults });

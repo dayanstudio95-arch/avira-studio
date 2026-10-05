@@ -92,6 +92,14 @@ export function mediaPath(tenantId: string, conversationId: string, idMessage: s
 }
 
 export const MEDIA_MAX_BYTES = 25 * 1024 * 1024;
+// The owner's decision (2026-10-05): our copy of customer photos / voice notes is kept
+// for 18 months from the message, then deleted. The message text stays; the phone keeps
+// WhatsApp's own copy. 18 × 30 days — a day either side does not matter here.
+export const MEDIA_RETENTION_DAYS = 18 * 30;
+
+export function mediaRetentionCutoff(now = Date.now()): string {
+  return new Date(now - MEDIA_RETENTION_DAYS * 24 * 3600 * 1000).toISOString();
+}
 export const STUCK_AFTER_MS = 24 * 3600 * 1000;
 
 // ---------------------------------------------------------------------------------
@@ -250,5 +258,32 @@ export async function copyMediaToStorage(
   } catch (e: any) {
     console.error('[whatsappStatus] media copy failed:', e?.message || e);
     return 'error';
+  }
+}
+
+// Hourly: delete our copy of media older than the retention period. The storage file is
+// removed first, then media_path is cleared (media_mime / media_size stay, so the thread
+// can say "the file is no longer kept" instead of showing nothing). At most 50 per tenant
+// per run. Never throws.
+export async function purgeOldMedia(supabase: any, tenantId: string, now = Date.now()): Promise<number> {
+  try {
+    const { data: rows, error } = await supabase
+      .from('whatsapp_messages')
+      .select('id, media_path')
+      .eq('tenant_id', tenantId)
+      .not('media_path', 'is', null)
+      .lt('created_at', mediaRetentionCutoff(now))
+      .limit(50);
+    if (error) throw new Error(error.message);
+    if (!rows?.length) return 0;
+    const { error: rmErr } = await supabase.storage.from('whatsapp-media').remove(rows.map((r: any) => r.media_path));
+    if (rmErr) throw new Error(rmErr.message);
+    await supabase.from('whatsapp_messages')
+      .update({ media_path: null })
+      .in('id', rows.map((r: any) => r.id));
+    return rows.length;
+  } catch (e: any) {
+    console.error('[whatsappStatus] media purge failed:', e?.message || e);
+    return 0;
   }
 }

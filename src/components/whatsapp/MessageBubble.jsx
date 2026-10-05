@@ -103,7 +103,11 @@ export default function MessageBubble({ message }) {
           <div className="text-sm italic text-gray-400">[{message.typeMessage || "הודעה"}]</div>
         )}
 
-        {message.mediaUrl && !message.mediaPath && (
+        {!message.mediaPath && message.mediaSize != null && (
+          <div className="mt-1.5 text-xs italic text-gray-400">הקובץ כבר לא שמור במערכת (נמחק אחרי 18 חודשים). הוא עדיין בוואטסאפ בטלפון.</div>
+        )}
+
+        {message.mediaUrl && !message.mediaPath && message.mediaSize == null && (
           <a
             href={message.mediaUrl}
             target="_blank"

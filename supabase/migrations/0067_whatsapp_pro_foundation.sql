@@ -23,7 +23,8 @@
 --    personal data; they are read through short-lived signed URLs only. Path:
 --    <tenant_id>/<conversation_id>/<id_message>.<ext>. The webhook writes with the service
 --    role; the read policy below is the same role set that can read the inbox (0054).
---    No retention deletion yet — the owner decides the period before that is built.
+--    Retention: 18 months (owner's decision, 2026-10-05) — purgeOldMedia in
+--    _shared/whatsappStatus.ts, run by the hourly automation-engine cron.
 
 -- ---------------------------------------------------------------------------------
 -- 1. Delivery status
