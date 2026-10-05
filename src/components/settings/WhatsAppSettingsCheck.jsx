@@ -45,7 +45,7 @@ export default function WhatsAppSettingsCheck() {
           </div>
           <p className="text-gray-500 text-xs mt-1">קריאה בלבד. לא משנה שום הגדרה ולא מנתק את המספר.</p>
         </div>
-        <Button onClick={run} disabled={loading} variant="outline" className="border-gray-600 text-gray-200">
+        <Button onClick={run} disabled={loading} variant="outline" className="bg-gray-800 border-gray-600 text-gray-100 hover:bg-gray-700 hover:text-white">
           {loading ? <Loader2 className="w-4 h-4 animate-spin ml-2" /> : null}
           {loading ? "בודק..." : "בדוק"}
         </Button>
