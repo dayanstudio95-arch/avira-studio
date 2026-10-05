@@ -7,8 +7,11 @@
 //   .pushTextMessage(text, { ttl, urgency, topic }); a PushMessageError with isGone()
 //   means the device unsubscribed and the row is deleted.
 //
-// Keys: the VAPID_KEYS_B64 Edge Function secret (base64 of {publicKey, privateKey} JWKs),
-// set once by the owner from .secrets/vapid.json. Without it nothing is sent and nothing
+// Keys: the VAPID_KEYS_B64 Edge Function secret (base64 of {publicKey, privateKey} JWKs).
+// The server is the only place the private key lives — no copy is kept on any computer.
+// If it is ever lost or exposed: `node scripts/rotate-push-keys.mjs` makes a new pair,
+// stores it as the secret and updates the public key in src/lib/push.js (each device
+// then re-enables notifications once). Without the secret nothing is sent and nothing
 // breaks — notifications are an addition, never a dependency.
 //
 // Never throws. Every caller runs this after the webhook has already answered.
