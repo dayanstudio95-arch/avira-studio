@@ -294,7 +294,7 @@ export default function ChatApp() {
   const title = q ? `חיפוש: ${q}` : box.startsWith("label:") ? `תווית: ${labelsById[box.slice(6)]?.name || ""}` : BOXES.find((b) => b.key === box)?.label;
 
   const mobileChips = (
-    <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5 md:hidden">
+    <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none] md:hidden [&::-webkit-scrollbar]:hidden">
       {MOBILE_CHIPS.map((k) => {
         const b = BOXES.find((x) => x.key === k);
         const on = box === k && !q;
@@ -332,7 +332,7 @@ export default function ChatApp() {
       />
 
       {/* List: full screen on a phone when no conversation is open */}
-      <div className={`min-h-0 flex-col border-l border-gray-800 md:flex md:w-[360px] md:flex-none md:shrink-0 ${active ? "hidden" : "flex flex-1"} pt-[env(safe-area-inset-top)] md:pt-0`}>
+      <div className={`min-h-0 min-w-0 flex-col border-l border-gray-800 md:flex md:w-[360px] md:flex-none md:shrink-0 ${active ? "hidden" : "flex flex-1"} pt-[env(safe-area-inset-top)] md:pt-0`}>
         <ChatList
           title={title}
           conversations={visible}

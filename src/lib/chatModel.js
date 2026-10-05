@@ -81,6 +81,7 @@ export function needsReply(c) {
 export function waitingLabel(c, now = Date.now()) {
   if (!needsReply(c)) return null;
   const mins = Math.max(0, Math.floor((now - t(c.lastInboundAt)) / 60000));
+  if (mins < 1) return "מחכה עכשיו";
   if (mins < 60) return `מחכה ${mins} דק׳`;
   const hours = Math.floor(mins / 60);
   if (hours < 24) return `מחכה ${hours} ש׳`;
@@ -210,4 +211,80 @@ export function reverseOf(row) {
     default:
       return null;
   }
+}
+
+// ---------------------------------------------------------------------------------
+// "Is that date free?" (2026-10-05, the owner's request): the event date of a
+// conversation, and where it came from — the linked CRM lead, what the bot collected,
+// or (failing both) the newest date the customer wrote in a message.
+// ---------------------------------------------------------------------------------
+
+const HEB_MONTHS = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
+
+const pad = (n) => String(n).padStart(2, "0");
+
+function makeDate(y, m, d) {
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
+  return `${y}-${pad(m)}-${pad(d)}`;
+}
+
+function expandYear(s) {
+  if (!s) return null;
+  const n = Number(s);
+  if (s.length === 2) return 2000 + n;
+  if (s.length === 4) return n;
+  return null;
+}
+
+// Every plausible FUTURE date written in `text` (within 3 years), in order of
+// appearance. "30/6/27", "30.6.2027", "30-6", "30 ביוני", "30 ליוני 2027".
+// A day.month without a year takes the next time that day comes round. Prices ("5.500"),
+// times ("14.30") and phone numbers are rejected by the day/month bounds and the digit
+// boundaries.
+export function findDatesInText(text, today = new Date()) {
+  const s = String(text || "");
+  const todayIso = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+  const maxIso = `${today.getFullYear() + 3}-12-31`;
+  const found = [];
+  const push = (iso, index) => {
+    if (iso && iso >= todayIso && iso <= maxIso) found.push({ iso, index });
+  };
+  const withoutYear = (d, m, index) => {
+    for (let y = today.getFullYear(); y <= today.getFullYear() + 1; y++) {
+      const iso = makeDate(y, m, d);
+      if (iso && iso >= todayIso) return push(iso, index);
+    }
+  };
+  const num = /(^|[^\d])(\d{1,2})[./-](\d{1,2})(?:[./-](\d{4}|\d{2}))?(?![\d])/g;
+  let mt;
+  while ((mt = num.exec(s))) {
+    const d = Number(mt[2]), m = Number(mt[3]);
+    if (d < 1 || d > 31 || m < 1 || m > 12) continue;
+    const idx = mt.index + mt[1].length;
+    if (mt[4]) push(makeDate(expandYear(mt[4]), m, d), idx);
+    else withoutYear(d, m, idx);
+  }
+  const heb = new RegExp(`(^|[^\\d])(\\d{1,2})\\s*[-–]?\\s*[בל]?\\s*(${HEB_MONTHS.join("|")})(?:\\s+(\\d{4}|\\d{2}))?`, "g");
+  while ((mt = heb.exec(s))) {
+    const d = Number(mt[2]), m = HEB_MONTHS.indexOf(mt[3]) + 1;
+    const idx = mt.index + mt[1].length;
+    if (mt[4]) push(makeDate(expandYear(mt[4]), m, d), idx);
+    else withoutYear(d, m, idx);
+  }
+  return found.sort((a, b) => a.index - b.index).map((f) => f.iso);
+}
+
+// The date to check, and its source. `messages` = the thread's messages (oldest first).
+export function eventDateFor(c, lead, messages = [], today = new Date()) {
+  const iso = (v) => (v ? String(v).slice(0, 10) : null);
+  if (lead?.eventDate) return { date: iso(lead.eventDate), source: "lead" };
+  if (c?.eventDate) return { date: iso(c.eventDate), source: "bot" };
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.kind === "note" || m.direction !== "inbound" || !m.bodyText) continue;
+    const dates = findDatesInText(m.bodyText, today);
+    if (dates.length) return { date: dates[0], source: "message" };
+  }
+  return null;
 }

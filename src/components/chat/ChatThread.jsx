@@ -3,7 +3,8 @@ import { ChevronRight, Pin, PinOff, Archive, ArchiveRestore, Tag, Send, Loader2,
 import { toast } from "sonner";
 import MessageBubble from "@/components/whatsapp/MessageBubble";
 import { groupMessagesByDay, formatMessageTime } from "@/components/whatsapp/whatsappInboxShared";
-import { contactTypeLabel, effectiveStage, renderTemplate } from "@/lib/chatModel";
+import { contactTypeLabel, effectiveStage, renderTemplate, eventDateFor, hasStage } from "@/lib/chatModel";
+import DateAvailability from "./DateAvailability";
 import { Avatar, conversationTitle } from "./ChatList";
 
 function NoteBubble({ note, onDelete }) {
@@ -139,6 +140,10 @@ export default function ChatThread({
           <Tag className="h-5 w-5" />
         </button>
       </header>
+
+      {hasStage(conversation) && (
+        <DateAvailability info={eventDateFor(conversation, lead, thread.timeline)} excludeLeadId={conversation.matchedLeadId} />
+      )}
 
       {conversation.optedOutAt && (
         <div className="flex items-center gap-2 border-b border-red-900/50 bg-red-950/40 px-4 py-2 text-xs text-red-200">

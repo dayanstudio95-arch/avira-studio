@@ -1327,6 +1327,31 @@ section('"טופל" — out of "דורש מענה" until they write again');
   check('undo restores the previous mark', JSON.stringify(cm.reverseOf({ action: 'handled', conversationId: 'c1', before: { handledAt: null } }).values), JSON.stringify({ handledAt: null }));
 }
 
+section('"is that date free?" — finding the event date');
+{
+  const today = new Date(2026, 9, 5); // 5 Oct 2026
+  check('30/6/27', cm.findDatesInText('אנחנו מתחתנים ב-30/6/27 באולם', today).join(), '2027-06-30');
+  check('30.6.2027', cm.findDatesInText('תאריך 30.6.2027', today).join(), '2027-06-30');
+  check('"30 ביוני" without a year → next June', cm.findDatesInText('מתחתנים 30 ביוני', today).join(), '2027-06-30');
+  check('"16 ליוני 2027"', cm.findDatesInText('בעזרת השם 16 ליוני 2027', today).join(), '2027-06-16');
+  check('"12.12" without a year → this December', cm.findDatesInText('האירוע ב-12.12', today).join(), '2026-12-12');
+  check('a price is not a date', cm.findDatesInText('החבילה עולה 5.500 ש"ח', today).length, 0);
+  check('a time is not a date', cm.findDatesInText('נדבר ב-14.30', today).length, 0);
+  check('a phone number is not a date', cm.findDatesInText('0544251272', today).length, 0);
+  check('a past date is ignored', cm.findDatesInText('התחתנו ב-1/1/25', today).length, 0);
+  check('31/2 does not exist', cm.findDatesInText('31/2/27', today).length, 0);
+  const msgs = [
+    { kind: 'message', direction: 'inbound', bodyText: 'היי, מתחתנים ב-1/7/27' },
+    { kind: 'message', direction: 'outbound_human', bodyText: 'יש לנו 30/6/27 פנוי' },
+    { kind: 'message', direction: 'inbound', bodyText: 'סליחה, התכוונו ל-30/6/27' },
+  ];
+  check('the newest date the CUSTOMER wrote (not ours)', JSON.stringify(cm.eventDateFor({}, null, msgs, today)), JSON.stringify({ date: '2027-06-30', source: 'message' }));
+  check('the CRM lead wins', cm.eventDateFor({ eventDate: '2027-05-01' }, { eventDate: '2027-08-08' }, msgs, today).source, 'lead');
+  check('then what the bot collected', cm.eventDateFor({ eventDate: '2027-05-01' }, null, msgs, today).date, '2027-05-01');
+  check('no date anywhere → null', cm.eventDateFor({}, null, [], today), null);
+  check('"מחכה עכשיו" instead of "0 דק׳"', cm.waitingLabel({ contactType: 'lead', lastInboundAt: '2026-10-05T10:00:00Z', lastMessageAt: '2026-10-05T10:00:00Z' }, Date.parse('2026-10-05T10:00:20Z')), 'מחכה עכשיו');
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

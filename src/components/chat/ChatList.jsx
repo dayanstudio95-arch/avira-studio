@@ -75,7 +75,7 @@ export default function ChatList({
   };
 
   return (
-    <section aria-label="רשימת שיחות" className="relative flex min-h-0 flex-1 flex-col bg-gray-900/40">
+    <section aria-label="רשימת שיחות" className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-gray-900/40">
       <div className="space-y-2.5 border-b border-gray-800 px-3.5 pb-2.5 pt-3">
         <div className="flex items-center justify-between gap-2">
           <h1 className={`font-bold text-white ${compact ? "text-2xl" : "text-lg"}`}>{title}</h1>
