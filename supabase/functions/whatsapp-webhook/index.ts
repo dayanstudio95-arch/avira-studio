@@ -73,6 +73,7 @@ import { sendHotLeadAlert } from '../_shared/whatsappStudioAlerts.ts';
 import {
   recordDeliveryStatus, copyMediaToStorage, pickDisplayName, groupSender, extractQuotedId,
 } from '../_shared/whatsappStatus.ts';
+import { detectOptOut } from '../_shared/whatsappOptOut.ts';
 
 const PG_UNIQUE_VIOLATION = '23505';
 
@@ -349,7 +350,7 @@ Deno.serve(async (req: Request) => {
     // ---- Conversation (create or fetch) -------------------------------------
     const { data: existingRows, error: convSelectError } = await supabase
       .from('whatsapp_conversations')
-      .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature, source, hot_alert_sent_at, matched_lead_id, contact_type_manual_at')
+      .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature, source, hot_alert_sent_at, matched_lead_id, contact_type_manual_at, archived_at, opted_out_at')
       .eq('tenant_id', tenantId)
       .eq('chat_id', chatId)
       .limit(1);
@@ -373,7 +374,7 @@ Deno.serve(async (req: Request) => {
           matched_event_id: match.eventId,
           display_name: displayName,
         })
-        .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature, source, hot_alert_sent_at, matched_lead_id, contact_type_manual_at')
+        .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature, source, hot_alert_sent_at, matched_lead_id, contact_type_manual_at, archived_at, opted_out_at')
         .single();
 
       if (insertConvError) {
@@ -382,7 +383,7 @@ Deno.serve(async (req: Request) => {
           // the other one created.
           const { data: raced } = await supabase
             .from('whatsapp_conversations')
-            .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature, source, hot_alert_sent_at, matched_lead_id, contact_type_manual_at')
+            .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature, source, hot_alert_sent_at, matched_lead_id, contact_type_manual_at, archived_at, opted_out_at')
             .eq('tenant_id', tenantId)
             .eq('chat_id', chatId)
             .limit(1);
@@ -521,6 +522,7 @@ Deno.serve(async (req: Request) => {
 
     // ---- Conversation aggregates --------------------------------------------
     const nowIso = new Date().toISOString();
+    let optedOutNow = false;
     const updates: Record<string, unknown> = {
       last_message_at: nowIso,
       last_message_preview: bodyText ? bodyText.slice(0, 200) : typeMessage,
@@ -541,6 +543,18 @@ Deno.serve(async (req: Request) => {
       // time that contact writes in, with no backfill migration needed.
       if (displayName && displayName !== conversation.display_name) {
         updates.display_name = displayName;
+      }
+      // Archived conversations come back when the person writes again (2026-10-05) —
+      // the archive is for "done for now", never for "stop seeing this person".
+      if (conversation.archived_at) {
+        updates.archived_at = null;
+      }
+      // "הסר" / "תסירו אותי" → never again in a bulk send, and the bot stops here too.
+      if (!isGroup && !conversation.opted_out_at && detectOptOut(bodyText)) {
+        updates.opted_out_at = nowIso;
+        updates.opted_out_reason = (bodyText || '').slice(0, 200);
+        updates.bot_enabled = false;
+        optedOutNow = true;
       }
     }
 
@@ -836,6 +850,28 @@ Deno.serve(async (req: Request) => {
       followUpQuestion = null;
       deferredEnqueue = null;
       hotAlert = null;
+    }
+
+    // Recorded after the conversation update, so a failed update never logs an opt-out
+    // that did not happen. Best-effort: the flag on the conversation is what matters.
+    if (optedOutNow && !updateError) {
+      EdgeRuntime.waitUntil((async () => {
+        try {
+          await supabase.from('whatsapp_activity').insert({
+            tenant_id: tenantId, conversation_id: conversation.id, action: 'opted_out',
+            before: { opted_out_at: null }, after: { opted_out_at: nowIso, by: 'customer' },
+          });
+          await supabase.from('notifications').insert({
+            tenant_id: tenantId,
+            type: 'whatsapp_opt_out',
+            title: `ביקש/ה לא לקבל הודעות: ${conversation.couple_names || displayName || phone || ''}`.trim(),
+            body: `"${(bodyText || '').slice(0, 80)}" — לא יקבל/תקבל יותר הודעות מרוכזות. אפשר לבטל בכרטיס השיחה.`,
+            related_lead_id: conversation.matched_lead_id ?? null,
+          });
+        } catch (e: any) {
+          console.error('[whatsapp-webhook] opt-out record failed:', e?.message || e);
+        }
+      })());
     }
 
     // A held message is only queued once the state that justifies it is on the row.

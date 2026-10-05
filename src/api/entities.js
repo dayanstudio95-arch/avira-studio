@@ -193,4 +193,10 @@ export const entities = {
   StaffPayment: createEntity('staff_payments'),
   WhatsAppConversation: createEntity('whatsapp_conversations'),
   WhatsAppMessage: createEntity('whatsapp_messages'),
+  // "אווירה צ'אט" (migration 0068): labels, internal notes, the undo-able activity log
+  // and quick replies. Same four roles as the inbox, in RLS.
+  WhatsAppLabel: createEntity('whatsapp_labels'),
+  WhatsAppNote: createEntity('whatsapp_notes'),
+  WhatsAppActivity: createEntity('whatsapp_activity'),
+  WhatsAppTemplate: createEntity('whatsapp_templates'),
 };

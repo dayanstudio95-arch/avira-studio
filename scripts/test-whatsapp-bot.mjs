@@ -1193,6 +1193,103 @@ section('media retention — 18 months (owner, 2026-10-05)');
   check('a file from a year ago is kept', Date.parse('2027-04-05T00:00:00Z') < cutoff, false);
 }
 
+// =================================================================================
+// PART 16 — "אווירה צ'אט" rules (src/lib/chatModel.js) and "הסר" detection
+// (_shared/whatsappOptOut.ts), 2026-10-05
+// =================================================================================
+
+const cm = await loadModule('src/lib/chatModel.js', 'chatmodel');
+const { detectOptOut } = await loadModule('supabase/functions/_shared/whatsappOptOut.ts', 'optout');
+
+section('who is waiting for a reply');
+{
+  const base = { contactType: 'unknown', lastInboundAt: '2026-10-05T10:00:00Z', lastMessageAt: '2026-10-05T10:00:00Z' };
+  check('they wrote last → needs reply', cm.needsReply(base), true);
+  check('you answered after → no', cm.needsReply({ ...base, lastMessageAt: '2026-10-05T10:05:00Z' }), false);
+  check('the bot answered after (its echo does not move lastMessageAt) → no', cm.needsReply({ ...base, lastBotMessageAt: '2026-10-05T10:01:00Z' }), false);
+  check('the bot spoke before they wrote → still needs reply', cm.needsReply({ ...base, lastBotMessageAt: '2026-10-05T09:00:00Z' }), true);
+  check('a group never "needs reply"', cm.needsReply({ ...base, contactType: 'group' }), false);
+  check('staff / vendor / irrelevant → no', ['staff', 'vendor', 'irrelevant'].every((t) => !cm.needsReply({ ...base, contactType: t })), true);
+  check('archived → no', cm.needsReply({ ...base, archivedAt: '2026-10-05T11:00:00Z' }), false);
+  const now = Date.parse('2026-10-05T10:18:00Z');
+  check('waiting label in minutes', cm.waitingLabel(base, now), 'מחכה 18 דק׳');
+  check('over two hours → long wait', cm.isLongWait(base, Date.parse('2026-10-05T12:30:00Z')), true);
+  check('3 days', cm.waitingLabel(base, Date.parse('2026-10-08T11:00:00Z')), 'מחכה 3 ימים');
+}
+
+section('stage — the CRM vocabulary; the CRM wins when there is a lead');
+{
+  check('the vocabulary is exactly leads.status', cm.STAGES.join('|'), 'חדש|נשלחה הצעה|פולו-אפ|נסגר/חתימה|חוזה|לא רלוונטי');
+  check('linked lead → the lead\'s status', cm.effectiveStage({ contactType: 'lead', matchedLeadId: 'L1', leadStage: 'חדש' }, { status: 'חוזה' }), 'חוזה');
+  check('no lead → the conversation\'s own stage', cm.effectiveStage({ contactType: 'unknown', leadStage: 'פולו-אפ' }, null), 'פולו-אפ');
+  check('bot sent the price list → shown as "נשלחה הצעה" (nothing written)', cm.effectiveStage({ contactType: 'unknown', state: 'PRICELIST_SENT' }, null), 'נשלחה הצעה');
+  check('a stranger with nothing else → "חדש"', cm.effectiveStage({ contactType: 'unknown' }, null), 'חדש');
+  check('staff has no stage', cm.effectiveStage({ contactType: 'staff' }, null), null);
+  check('a change goes to the CRM only when linked', cm.stageTarget({ matchedLeadId: 'L1' }) + '/' + cm.stageTarget({}), 'lead/conversation');
+}
+
+section('boxes');
+{
+  const list = [
+    { id: 'a', contactType: 'unknown', lastInboundAt: '2026-10-05T10:00:00Z', lastMessageAt: '2026-10-05T10:00:00Z' },
+    { id: 'b', contactType: 'group' },
+    { id: 'c', contactType: 'staff' },
+    { id: 'd', contactType: 'client', archivedAt: '2026-10-01T00:00:00Z' },
+    { id: 'e', contactType: 'past_client', optedOutAt: '2026-10-02T00:00:00Z' },
+    { id: 'f', contactType: 'lead', state: 'PRICELIST_SENT' },
+  ];
+  const ctx = { unread: { a: 2 }, labelsByConv: { f: ['L9'] }, followUpAfterDays: 0 };
+  const counts = cm.boxCounts(list, ctx, ['L9']);
+  check('"all" hides groups and staff (owner\'s rule) and the archive', counts.all, 3);
+  check('archive box', counts.archive, 1);
+  check('archived chats are in no other box', cm.matchesBox(list[3], 'client', ctx), false);
+  check('clients include past clients', counts.client, 1);
+  check('needs reply', counts.needs, 1);
+  check('unread', counts.unread, 1);
+  check('label box', counts['label:L9'], 1);
+  check('opted out box', counts.optedout, 1);
+  check('follow-up: price list sent, no reply', cm.matchesBox(list[5], 'followup', ctx), true);
+  check('…but never someone who asked to be removed', cm.matchesBox({ ...list[5], optedOutAt: 'x' }, 'followup', ctx), false);
+}
+
+section('sort, search, templates');
+{
+  const s = cm.sortConversations([
+    { id: 'old', lastMessageAt: '2026-10-01T00:00:00Z' },
+    { id: 'new', lastMessageAt: '2026-10-05T00:00:00Z' },
+    { id: 'pinned', lastMessageAt: '2026-09-01T00:00:00Z', pinnedAt: '2026-10-02T00:00:00Z' },
+  ]).map((c) => c.id).join(',');
+  check('pinned first, then newest', s, 'pinned,new,old');
+  const c = { phone: '0544251272', chatId: '972544251272@c.us', displayName: 'נועה', coupleNames: 'נועה ואיתי' };
+  check('number as WhatsApp shows it', cm.matchesSearch(c, '+972 54-425-1272'), true);
+  check('local number', cm.matchesSearch(c, '054-425'), true);
+  check('name', cm.matchesSearch(c, 'איתי'), true);
+  check('no match', cm.matchesSearch(c, 'דנה'), false);
+  check('template fills from the lead', cm.renderTemplate('היי {{names}}, {{venue}}', c, { coupleNames: 'נועה ואיתי', venueName: 'אולם הגפן' }), 'היי נועה ואיתי, אולם הגפן');
+  check('unknown values stay visible, never a hole', cm.renderTemplate('{{event_date}}', {}, null), '[תאריך]');
+}
+
+section('undo reverses exactly what was changed');
+{
+  check('type', JSON.stringify(cm.reverseOf({ action: 'set_type', conversationId: 'c1', before: { contactType: 'unknown', contactTypeManualAt: null } })), JSON.stringify({ kind: 'conversation', id: 'c1', values: { contactType: 'unknown', contactTypeManualAt: null } }));
+  check('stage on a linked lead goes back to the CRM', cm.reverseOf({ action: 'set_stage', conversationId: 'c1', before: { leadId: 'L1', leadStatus: 'חדש' } }).kind, 'lead');
+  check('stage on the conversation only', JSON.stringify(cm.reverseOf({ action: 'set_stage', conversationId: 'c1', before: { leadStage: null } }).values), JSON.stringify({ leadStage: null }));
+  check('label added → removed', cm.reverseOf({ action: 'label_add', conversationId: 'c1', after: { labelId: 'L' } }).kind, 'label_remove');
+  check('label removed → added back', cm.reverseOf({ action: 'label_remove', conversationId: 'c1', before: { labelId: 'L' } }).kind, 'label_add');
+  check('archive restored', JSON.stringify(cm.reverseOf({ action: 'archive', conversationId: 'c1', before: { archivedAt: null } }).values), JSON.stringify({ archivedAt: null }));
+  check('unknown action → nothing', cm.reverseOf({ action: 'note' }), null);
+}
+
+section('"הסר" — only unambiguous requests');
+{
+  for (const t of ['הסר', 'הסר.', 'הסירו', ' STOP ', 'תסירו אותי בבקשה', 'תפסיקו לשלוח לי הודעות', 'אפשר להוריד אותי מהרשימה? תורידו אותי מהרשימה']) {
+    check(`opt-out: "${t}"`, detectOptOut(t), true);
+  }
+  for (const t of ['לא מעוניינים, תודה', 'איך מסירים את הכתם מהשמלה?', 'אפשר להסיר את התמונה הזו מהאלבום?', 'נשמח לשמוע מחירים', '', null]) {
+    check(`not an opt-out: "${t}"`, detectOptOut(t), false);
+  }
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

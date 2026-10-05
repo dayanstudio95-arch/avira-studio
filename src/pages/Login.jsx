@@ -23,6 +23,14 @@ export default function Login() {
       toast.error("התחברות נכשלה", { description: error.message });
       return;
     }
+    // Back to the page that sent you here. Only a path on this site — never another
+    // host (a `next` like "//evil.com" or "https://…" is ignored). A full load, not a
+    // client-side navigation, so /chat comes up as its own app (chat.html).
+    const next = new URLSearchParams(window.location.search).get("next");
+    if (next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\")) {
+      window.location.href = next;
+      return;
+    }
     navigate("/", { replace: true });
   };
 

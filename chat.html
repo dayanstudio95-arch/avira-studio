@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- "אווירה צ'אט" (2026-10-05): the same app as index.html, opened at /chat with its own
+         manifest, so "Add to Home Screen" on the iPhone installs the WhatsApp inbox as a
+         separate app that opens straight on the conversations. Vercel serves this file for
+         /chat (vercel.json); everything else stays on index.html. -->
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/logo-192.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <link rel="manifest" href="/manifest-chat.json" />
+    <meta name="theme-color" content="#030712" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="אווירה צ'אט" />
+    <meta name="robots" content="noindex" />
+    <title>אווירה צ'אט</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

@@ -470,6 +470,14 @@ export default function WhatsAppInbox() {
             <FlaskConical className="h-3.5 w-3.5" />
             בדוק את הבוט
           </button>
+          <a
+            href="/chat"
+            className="inline-flex items-center gap-1 rounded-full border border-yellow-500/50 bg-yellow-500/10 shrink-0 whitespace-nowrap px-2.5 py-1 text-xs font-semibold text-yellow-300 transition-colors hover:bg-yellow-500/20"
+            title="הגרסה החדשה של דף השיחות — אפשר גם להתקין באייפון"
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
+            אווירה צ'אט החדש
+          </a>
           <Link
             to="/BotControlCenter"
             className="inline-flex items-center gap-1 rounded-full border border-blue-500/40 bg-blue-500/10 shrink-0 whitespace-nowrap px-2.5 py-1 text-xs text-blue-300 transition-colors hover:bg-blue-500/20"

@@ -1,0 +1,17 @@
+{
+  "id": "/chat",
+  "name": "אווירה צ'אט",
+  "short_name": "אווירה צ'אט",
+  "description": "שיחות הוואטסאפ של אווירה סטודיו",
+  "lang": "he",
+  "dir": "rtl",
+  "start_url": "/chat",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#030712",
+  "theme_color": "#030712",
+  "icons": [
+    { "src": "/logo-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/logo-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

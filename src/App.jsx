@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/sonner';
 import { queryClientInstance } from '@/lib/query-client';
@@ -42,6 +42,9 @@ const AutomationLogs = lazy(() => import('./pages/AutomationLogs'));
 const PendingApprovals = lazy(() => import('./pages/PendingApprovals'));
 const SystemAdvisor = lazy(() => import('./pages/SystemAdvisor'));
 const BotControlCenter = lazy(() => import('./pages/BotControlCenter'));
+// "אווירה צ'אט" (2026-10-05): the WhatsApp inbox as its own app — no system sidebar,
+// installable on the iPhone home screen (chat.html + public/manifest-chat.json).
+const ChatApp = lazy(() => import('./pages/chat/ChatApp'));
 const Guide = lazy(() => import('./pages/Guide'));
 const LeadsCoordinator = lazy(() => import('./pages/LeadsCoordinator'));
 const MyEvents = lazy(() => import('./pages/MyEvents'));
@@ -88,6 +91,7 @@ const PageLoadingFallback = () => (
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, user, isAuthenticated, logout } = useAuth();
+  const location = useLocation();
 
   if (isLoadingPublicSettings || isLoadingAuth) {
     return (
@@ -110,6 +114,19 @@ const AuthenticatedApp = () => {
   if (!isLoadingAuth && !isAuthenticated) {
     navigateToLogin();
     return null;
+  }
+
+  // "אווירה צ'אט" — full screen, outside Layout. Same roles as the WhatsApp inbox
+  // (admin roles + lead_coordinator), matching 0054/0068's RLS, which is the real boundary.
+  if (location.pathname === '/chat' || location.pathname.startsWith('/chat/')) {
+    if (isAdmin(user) || isLeadCoordinator(user)) {
+      return (
+        <Suspense fallback={<PageLoadingFallback />}>
+          <ChatApp />
+        </Suspense>
+      );
+    }
+    return <PageNotFound />;
   }
 
   // Scoped role: lead_coordinator gets the full Leads page (same one owner/admin use --

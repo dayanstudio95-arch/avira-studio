@@ -107,8 +107,13 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Remembers where you were going (2026-10-05): "אווירה צ'אט" opens at /chat from the
+  // iPhone home screen, and after logging in it must come back there, not to the
+  // dashboard.
   const navigateToLogin = () => {
-    window.location.href = '/login';
+    const here = window.location.pathname + window.location.search;
+    const next = here && here !== '/' && !here.startsWith('/login') ? `?next=${encodeURIComponent(here)}` : '';
+    window.location.href = `/login${next}`;
   };
 
   return (
