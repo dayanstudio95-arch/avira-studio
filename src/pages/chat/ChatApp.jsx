@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { MessageSquare, Clock, Send, MoreHorizontal, X, LayoutGrid, SlidersHorizontal, LogOut } from "lucide-react";
+import { MessageSquare, Clock, Send, MoreHorizontal, X, LayoutGrid, SlidersHorizontal, LogOut, Bell } from "lucide-react";
 import { supabase } from "@/api/supabaseClient";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/SupabaseAuthContext";
@@ -14,6 +14,8 @@ import ChatSidebar from "@/components/chat/ChatSidebar";
 import ChatList, { conversationTitle } from "@/components/chat/ChatList";
 import ChatThread from "@/components/chat/ChatThread";
 import ContactPanel from "@/components/chat/ContactPanel";
+import NotificationSettings from "@/components/chat/NotificationSettings";
+import { registerChatServiceWorker, setBadge } from "@/lib/push";
 
 // "אווירה צ'אט" — the WhatsApp inbox as its own app (WhatsApp Pro stage 1א, 2026-10-05).
 //
@@ -60,10 +62,20 @@ export default function ChatApp() {
   const [panelOpen, setPanelOpen] = useState(() => window.matchMedia?.("(min-width: 1280px)").matches ?? false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [leadDialog, setLeadDialog] = useState(null); // { conversationId, values }
+  const [notifOpen, setNotifOpen] = useState(false);
 
   useEffect(() => {
     document.title = "אווירה צ'אט";
+    // Notifications only (it caches nothing). Registered on every open so a tap on a
+    // notification always finds it.
+    registerChatServiceWorker();
   }, []);
+
+  // The number on the home-screen icon: conversations with unread messages.
+  const unreadConversations = Object.values(data.unread).filter((n) => n > 0).length;
+  useEffect(() => {
+    setBadge(unreadConversations);
+  }, [unreadConversations]);
 
   const labelsById = useMemo(() => Object.fromEntries(data.labels.map((l) => [l.id, l])), [data.labels]);
   const ctx = { unread: data.unread, labelsByConv: data.labelsByConv, followUpAfterDays: data.followUpAfterDays };
@@ -286,6 +298,7 @@ export default function ChatApp() {
         onCreateLabel={async (name, color) => {
           try { await data.actions.createLabel(name, color); toast.success("התווית נוצרה"); } catch (e) { toast.error("יצירת התווית נכשלה", { description: e?.message }); }
         }}
+        onOpenNotifications={() => setNotifOpen(true)}
         onDeleteLabel={async (id) => {
           try { await data.actions.deleteLabel(id); if (box === "label:" + id) setBox("all"); toast.success("התווית נמחקה"); } catch (e) { toast.error("המחיקה נכשלה", { description: e?.message }); }
         }}
@@ -412,7 +425,19 @@ export default function ChatApp() {
               <Link to="/" className="flex min-h-[44px] items-center gap-3 rounded-xl px-3 text-gray-300"><LayoutGrid className="h-5 w-5" /> למערכת המלאה</Link>
               <button type="button" onClick={() => logout()} className="flex min-h-[44px] w-full items-center gap-3 rounded-xl px-3 text-gray-400"><LogOut className="h-5 w-5" /> התנתקות</button>
             </div>
-            <p className="mt-3 text-xs text-gray-600">התראות לאייפון — בשלב הבא.</p>
+            <button type="button" onClick={() => { setMoreOpen(false); setNotifOpen(true); }} className="mt-1 flex min-h-[44px] w-full items-center gap-3 rounded-xl px-3 text-gray-300"><Bell className="h-5 w-5" /> התראות במכשיר הזה</button>
+          </div>
+        </div>
+      )}
+
+      {notifOpen && (
+        <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/60 md:items-center md:justify-center" onClick={() => setNotifOpen(false)}>
+          <div role="dialog" aria-label="התראות" onClick={(e) => e.stopPropagation()} className="max-h-[90dvh] w-full overflow-y-auto rounded-t-3xl border-t border-gray-800 bg-gray-950 p-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] md:w-[460px] md:rounded-3xl md:border">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-lg font-bold">התראות</span>
+              <button type="button" onClick={() => setNotifOpen(false)} aria-label="סגור" className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-800"><X className="h-4 w-4" /></button>
+            </div>
+            <NotificationSettings tenantId={data.user?.tenant_id} userId={data.user?.id} />
           </div>
         </div>
       )}

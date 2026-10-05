@@ -137,8 +137,12 @@ async function messagePreview(supabase: any, tenantId: string, idMessage: string
   return text.length > 80 ? text.slice(0, 80) + '…' : text;
 }
 
+// Called with every alert this module raises, so the caller can also push it to the
+// studio's phones (kept as a callback so this file stays free of the push library).
+export type AlertHook = (alert: { title: string; body: string; conversationId: string | null }) => Promise<unknown>;
+
 // One outgoingMessageStatus webhook. Never throws.
-export async function recordDeliveryStatus(supabase: any, tenantId: string, payload: any): Promise<string> {
+export async function recordDeliveryStatus(supabase: any, tenantId: string, payload: any, onAlert?: AlertHook): Promise<string> {
   try {
     const idMessage = payload?.idMessage ? String(payload.idMessage) : null;
     const status = typeof payload?.status === 'string' ? payload.status : '';
@@ -175,13 +179,16 @@ export async function recordDeliveryStatus(supabase: any, tenantId: string, payl
       const why = status === 'noAccount' ? 'למספר הזה אין וואטסאפ'
         : status === 'suspended' || status === 'yellowCard' ? 'וואטסאפ הגביל זמנית את השליחה מהמספר של הסטודיו'
         : 'השליחה נכשלה';
+      const title = `הודעה לא נמסרה: ${who}`;
+      const body = [why, preview && `"${preview}"`].filter(Boolean).join(' · ');
       await insertNotification(supabase, {
         tenant_id: tenantId,
         type: 'whatsapp_delivery_failed',
-        title: `הודעה לא נמסרה: ${who}`,
-        body: [why, preview && `"${preview}"`].filter(Boolean).join(' · '),
+        title,
+        body,
         related_lead_id: conv?.matched_lead_id ?? null,
       });
+      if (onAlert) await onAlert({ title, body, conversationId: conv?.id ?? null }).catch(() => {});
     }
     return 'recorded';
   } catch (e: any) {
@@ -192,7 +199,7 @@ export async function recordDeliveryStatus(supabase: any, tenantId: string, payl
 
 // Hourly: messages that have sat on one grey tick for 24h (the gallery case). Groups are
 // skipped — "delivered" means something else there. At most 20 alerts per tenant per run.
-export async function alertStuckMessages(supabase: any, tenantId: string): Promise<number> {
+export async function alertStuckMessages(supabase: any, tenantId: string, onAlert?: AlertHook): Promise<number> {
   const cutoff = new Date(Date.now() - STUCK_AFTER_MS).toISOString();
   const { data: rows, error } = await supabase
     .from('whatsapp_message_status')
@@ -217,13 +224,16 @@ export async function alertStuckMessages(supabase: any, tenantId: string): Promi
     const conv = await conversationFor(supabase, tenantId, r.chat_id);
     const who = conv?.couple_names || conv?.display_name || conv?.phone || r.chat_id || '';
     const preview = await messagePreview(supabase, tenantId, r.id_message);
+    const title = `הודעה לא נמסרה 24 שעות: ${who}`;
+    const body = ['נשארה על ✓ אחד — ייתכן שהמספר לא פעיל או שהוואטסאפ שלהם כבוי', preview && `"${preview}"`].filter(Boolean).join(' · ');
     await insertNotification(supabase, {
       tenant_id: tenantId,
       type: 'whatsapp_delivery_failed',
-      title: `הודעה לא נמסרה 24 שעות: ${who}`,
-      body: ['נשארה על ✓ אחד — ייתכן שהמספר לא פעיל או שהוואטסאפ שלהם כבוי', preview && `"${preview}"`].filter(Boolean).join(' · '),
+      title,
+      body,
       related_lead_id: conv?.matched_lead_id ?? null,
     });
+    if (onAlert) await onAlert({ title, body, conversationId: conv?.id ?? null }).catch(() => {});
     alerted++;
   }
   return alerted;

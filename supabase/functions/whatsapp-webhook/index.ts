@@ -74,6 +74,7 @@ import {
   recordDeliveryStatus, copyMediaToStorage, pickDisplayName, groupSender, extractQuotedId,
 } from '../_shared/whatsappStatus.ts';
 import { detectOptOut } from '../_shared/whatsappOptOut.ts';
+import { sendPush, categoryForContactType } from '../_shared/webPush.ts';
 
 const PG_UNIQUE_VIOLATION = '23505';
 
@@ -302,7 +303,9 @@ Deno.serve(async (req: Request) => {
   // once; nothing else in this function applies to a receipt. Arrives only after the
   // studio turns on `outgoingWebhook` in the Green API console.
   if (typeWebhook === 'outgoingMessageStatus') {
-    const result = await recordDeliveryStatus(supabase, tenantId, payload);
+    const result = await recordDeliveryStatus(supabase, tenantId, payload, (a) =>
+      sendPush(supabase, tenantId, 'delivery', a)
+    );
     return jsonResponse({ ok: true, status: result });
   }
 
@@ -874,6 +877,24 @@ Deno.serve(async (req: Request) => {
       })());
     }
 
+    // A notification on the studio's phones for every message someone sends us
+    // (stage 1ב). Each device decides by its own switches — category, mute, night.
+    if (isInbound) {
+      const who = conversation.couple_names || displayName || conversation.display_name || phone || 'וואטסאפ';
+      const what = bodyText || (typeMessage === 'audioMessage' ? '🎤 הודעה קולית'
+        : typeMessage === 'imageMessage' ? '📷 תמונה'
+        : typeMessage === 'videoMessage' ? '🎬 סרטון'
+        : typeMessage === 'documentMessage' ? '📎 קובץ' : 'הודעה חדשה');
+      EdgeRuntime.waitUntil(sendPush(
+        supabase, tenantId, categoryForContactType(isGroup ? 'group' : effectiveContactType),
+        {
+          title: isGroup ? (conversation.display_name || displayName || 'קבוצה') : who,
+          body: isGroup && sender.senderName ? `${sender.senderName}: ${what}` : what,
+          conversationId: conversation.id,
+        },
+      ));
+    }
+
     // A held message is only queued once the state that justifies it is on the row.
     if (deferredEnqueue && deferredSendAfter) {
       await enqueueDeferredSend(supabase, {
@@ -891,6 +912,11 @@ Deno.serve(async (req: Request) => {
     // has one. Never throws — sendHotLeadAlert swallows everything.
     if (hotAlert) {
       const alert = hotAlert;
+      EdgeRuntime.waitUntil(sendPush(supabase, tenantId, 'hot', {
+        title: `🔥 ליד חם: ${conversation.couple_names || conversation.display_name || phone || ''}`.trim(),
+        body: alert.reason || alert.replyText || 'מבקשים להתקדם',
+        conversationId: conversation.id,
+      }));
       EdgeRuntime.waitUntil(
         sendHotLeadAlert(supabase, {
           tenantId,

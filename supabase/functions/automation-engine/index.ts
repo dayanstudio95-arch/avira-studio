@@ -41,6 +41,7 @@ import { EVENT_TEAM_ROLE_LABELS as ROLE_LABELS } from '../_shared/staffRoles.ts'
 import { loadQuietHoursSettings, isInQuietHoursNow, wasAlreadySentToday, sentTodayAt, type QuietHoursSettings } from '../_shared/automationGuards.ts';
 import { runWhatsAppHousekeeping } from '../_shared/whatsappHousekeeping.ts';
 import { alertStuckMessages, purgeOldMedia } from '../_shared/whatsappStatus.ts';
+import { sendPush } from '../_shared/webPush.ts';
 
 function getTargetMonth(mode: string) {
   const now = new Date();
@@ -1351,7 +1352,7 @@ Deno.serve(async (req) => {
       // whether or not the bot is on: it is about every message the studio sends.
       let stuckAlerts = 0;
       try {
-        stuckAlerts = await alertStuckMessages(supabase, t.id);
+        stuckAlerts = await alertStuckMessages(supabase, t.id, (a) => sendPush(supabase, t.id, 'delivery', a));
       } catch (e: any) {
         console.error('[automationEngine] stuck-message check failed for tenant', t.id, e?.message || e);
       }

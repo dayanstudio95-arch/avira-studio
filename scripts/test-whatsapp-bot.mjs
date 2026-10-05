@@ -1290,6 +1290,34 @@ section('"הסר" — only unambiguous requests');
   }
 }
 
+// =================================================================================
+// PART 17 — which device gets which notification (_shared/pushPrefs.ts, 2026-10-05)
+// =================================================================================
+
+const pp = await loadModule('supabase/functions/_shared/pushPrefs.ts', 'pushprefs');
+const screenPush = await loadModule('src/lib/pushPrefs.js', 'screenpush');
+
+section('notification switches');
+{
+  const t0 = Date.parse('2026-10-05T10:00:00Z');
+  check('defaults: a lead at noon → notify', pp.shouldNotify({}, 'lead', '12:00', t0), true);
+  check('defaults: groups are off', pp.shouldNotify({}, 'group', '12:00', t0), false);
+  check('defaults: vendors / irrelevant off', pp.shouldNotify({}, 'other', '12:00', t0), false);
+  check('switched off by the owner', pp.shouldNotify({ client: false }, 'client', '12:00', t0), false);
+  check('night 22:00–07:00 → quiet at 23:30', pp.shouldNotify({}, 'lead', '23:30', t0), false);
+  check('…and at 06:59', pp.shouldNotify({}, 'lead', '06:59', t0), false);
+  check('…but not at 07:00', pp.shouldNotify({}, 'lead', '07:00', t0), true);
+  check('night switched off → notify at 23:30', pp.shouldNotify({ night: { enabled: false } }, 'lead', '23:30', t0), true);
+  check('muted until later → quiet', pp.shouldNotify({ muteUntil: '2026-10-05T11:00:00Z' }, 'hot', '12:00', t0), false);
+  check('mute expired → notify', pp.shouldNotify({ muteUntil: '2026-10-05T09:00:00Z' }, 'hot', '12:00', t0), true);
+  check('a broken prefs value falls back to defaults', pp.shouldNotify('garbage', 'lead', '12:00', t0), true);
+  check('a broken night time falls back', pp.mergePrefs({ night: { start: '25' } }).night.start, '22:00');
+  check('daytime window (13:00–14:00)', pp.inWindow('13:30', '13:00', '14:00') && !pp.inWindow('14:00', '13:00', '14:00'), true);
+  check('categories by contact type', ['unknown', 'lead', 'client', 'past_client', 'staff', 'group', 'vendor', 'irrelevant'].map(pp.categoryForContactType).join(','), 'lead,lead,client,client,staff,group,other,other');
+  check('the screen\'s defaults match the server\'s', JSON.stringify(screenPush.DEFAULT_PREFS), JSON.stringify(pp.DEFAULT_PREFS));
+  check('the screen shows a switch for every category', screenPush.PREF_ROWS.map((r) => r[0]).sort().join(','), ['lead', 'hot', 'client', 'staff', 'group', 'other', 'delivery'].sort().join(','));
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
