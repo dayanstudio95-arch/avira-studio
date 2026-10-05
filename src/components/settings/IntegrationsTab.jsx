@@ -212,6 +212,10 @@ export default function IntegrationsTab() {
                 <span dir="ltr"> incomingWebhook</span>, <span dir="ltr">outgoingMessageWebhook</span> ו-
                 <span dir="ltr">outgoingAPIMessageWebhook</span>.
               </p>
+              <p>
+                לסימני מסירה (✓ / ✓✓ / נקרא, והתראה על הודעה שלא נמסרה) הפעילו גם את
+                <span dir="ltr"> outgoingWebhook</span>. שמירת הגדרות בקונסולה מאתחלת את החיבור לכמה דקות — עדיף בלילה.
+              </p>
               <p className="text-blue-400/80">
                 כל עוד השדה הזה ריק — לא נקלטת אף הודעה. זו הגנה מכוונת: בלי טוקן אי אפשר לדעת שההודעה
                 באמת הגיעה מ-Green API.

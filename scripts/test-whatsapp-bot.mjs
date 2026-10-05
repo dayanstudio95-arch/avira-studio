@@ -1070,6 +1070,119 @@ section('term warnings on the screen');
   check('serialize/parse round-trip', botTerms.parseTermList(botTerms.serializeTermList(['א', 'ב', 'א'])).join(','), 'א,ב');
 }
 
+// =================================================================================
+// PART 15 — WhatsApp Pro stage 0: receipts, group names, quotes, chat ids, no double
+// sends (_shared/whatsappStatus.ts, _shared/whatsapp.ts, _shared/retry.ts, 2026-10-05)
+// =================================================================================
+
+const ws = await loadModule('supabase/functions/_shared/whatsappStatus.ts', 'wstatus');
+const { resolveChatIdForSend } = await loadModule('supabase/functions/_shared/whatsapp.ts', 'wsend');
+const { fetchWithRetry } = await loadModule('supabase/functions/_shared/retry.ts', 'wretry');
+
+section('delivery receipts only move forward');
+{
+  check('sent < delivered < read', [ws.statusRank('sent'), ws.statusRank('delivered'), ws.statusRank('read')].join(','), '1,2,3');
+  check('failures are terminal (9)', ['failed', 'noAccount', 'suspended', 'notInGroup', 'yellowCard'].every((x) => ws.statusRank(x) === 9), true);
+  check('unknown status → 0, ignored', ws.statusRank('weird'), 0);
+  check('first receipt is recorded', ws.shouldAdvance(null, 1), true);
+  check('delivered after sent → advance', ws.shouldAdvance(1, 2), true);
+  check('late "delivered" after "read" → kept as read', ws.shouldAdvance(3, 2), false);
+  check('the same receipt twice → no change', ws.shouldAdvance(2, 2), false);
+  check('failed after sent → advance', ws.shouldAdvance(1, 9), true);
+  check('unknown never advances', ws.shouldAdvance(null, 0), false);
+}
+
+section('group title stays the group; the member is kept on the message');
+{
+  const sd = { chatName: 'צוות אווירה', sender: '972501234567@c.us', senderName: 'נטע', senderContactName: 'נטע צלמת' };
+  check('group, inbound → group name', ws.pickDisplayName({ isInbound: true, isGroup: true, senderData: sd }), 'צוות אווירה');
+  check('group, outbound → group name', ws.pickDisplayName({ isInbound: false, isGroup: true, senderData: sd }), 'צוות אווירה');
+  check('private, inbound → phonebook name first', ws.pickDisplayName({ isInbound: true, isGroup: false, senderData: sd }), 'נטע צלמת');
+  check('private, outbound → chatName only (never the studio)', ws.pickDisplayName({ isInbound: false, isGroup: false, senderData: { senderName: 'AVIRA', chatName: 'מיכל' } }), 'מיכל');
+  const g = ws.groupSender({ isInbound: true, isGroup: true, senderData: sd });
+  check('group member name', g.senderName, 'נטע צלמת');
+  check('group member id', g.senderChatId, '972501234567@c.us');
+  check('private chat → no sender stored', ws.groupSender({ isInbound: true, isGroup: false, senderData: sd }).senderName, null);
+  check('our own message in a group → no sender', ws.groupSender({ isInbound: false, isGroup: true, senderData: sd }).senderName, null);
+}
+
+section('quotes and media');
+{
+  check('quoted reply id (documented shape)', ws.extractQuotedId({ typeMessage: 'quotedMessage', extendedTextMessageData: { text: 'x', stanzaId: '46618B98' } }), '46618B98');
+  check('plain text → no quote', ws.extractQuotedId({ textMessageData: { textMessage: 'x' } }), null);
+  check('jpeg → jpg', ws.mediaExtension('image/jpeg', 'IMG.JPG'), 'jpg');
+  check('voice note ogg with codec → ogg', ws.mediaExtension('audio/ogg; codecs=opus', null), 'ogg');
+  check('unknown mime → from file name', ws.mediaExtension('application/x-foo', 'contract.docx'), 'docx');
+  check('nothing known → bin', ws.mediaExtension(null, null), 'bin');
+  check('path starts with the tenant (the read policy keys on it)', ws.mediaPath('t1', 'c1', 'ABC/../x', 'jpg'), 't1/c1/ABC____x.jpg');
+}
+
+section('reply goes to the real chat id');
+{
+  check('Israeli local number → 972…@c.us (unchanged)', resolveChatIdForSend('050-123-4567'), '972501234567@c.us');
+  check('a private chat id passes through', resolveChatIdForSend('447700900123@c.us'), '447700900123@c.us');
+  check('a number from abroad is NOT re-prefixed with 972', resolveChatIdForSend('447700900123@c.us').startsWith('972'), false);
+  check('a group id passes through', resolveChatIdForSend('120363041234567890@g.us'), '120363041234567890@g.us');
+  check('old-style group id passes through', resolveChatIdForSend('972501234567-1600000000@g.us'), '972501234567-1600000000@g.us');
+  check('an @lid id passes through', resolveChatIdForSend('123456789012345@lid'), '123456789012345@lid');
+  check('garbage → null', resolveChatIdForSend('hello'), null);
+}
+
+section('a send is never repeated on an ambiguous failure');
+{
+  const realFetch = globalThis.fetch;
+  const run = async (responses, opts) => {
+    let calls = 0;
+    globalThis.fetch = async () => {
+      const r = responses[Math.min(calls, responses.length - 1)];
+      calls++;
+      if (r === 'throw') throw new Error('network');
+      return new Response('{}', { status: r });
+    };
+    let threw = false, status = null;
+    try { status = (await fetchWithRetry('https://x', { method: 'POST' }, opts)).status; } catch { threw = true; }
+    return { calls, threw, status };
+  };
+  try {
+    check('send: 500 → one attempt only', (await run([500, 200], { retryUnsafe: false })).calls, 1);
+    check('send: network error → one attempt, error surfaces', JSON.stringify(await run(['throw', 200], { retryUnsafe: false })), JSON.stringify({ calls: 1, threw: true, status: null }));
+    check('send: 429 (not accepted) → retried', (await run([429, 200], { retryUnsafe: false })).status, 200);
+    check('calendar (default): 500 → still retried', (await run([500, 200])).calls, 2);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+
+section('recordDeliveryStatus — one alert per failure, no downgrade');
+{
+  const db = { status: {}, notifications: [] };
+  const fake = {
+    from(table) {
+      const q = { _t: table, _f: {} };
+      q.select = () => q;
+      q.eq = (k, v) => { q._f[k] = v; return q; };
+      q.limit = () => Promise.resolve({ data: table === 'whatsapp_conversations' ? [{ display_name: 'שני וגל', matched_lead_id: 'L1' }] : [{ body_text: 'הגלריה מוכנה' }] });
+      q.maybeSingle = () => Promise.resolve({ data: db.status[q._f.id_message] || null });
+      q.upsert = (row) => { db.status[row.id_message] = row; return Promise.resolve({ error: null }); };
+      q.insert = (row) => { db.notifications.push(row); return Promise.resolve({ error: null }); };
+      return q;
+    },
+  };
+  const p = (status) => ({ typeWebhook: 'outgoingMessageStatus', chatId: '972531234567@c.us', idMessage: 'M1', status, timestamp: 1727691478 });
+  check('sent recorded', await ws.recordDeliveryStatus(fake, 't1', p('sent')), 'recorded');
+  check('read recorded', await ws.recordDeliveryStatus(fake, 't1', p('read')), 'recorded');
+  check('late delivered → stale, stays read', (await ws.recordDeliveryStatus(fake, 't1', p('delivered'))) + '/' + db.status.M1.status, 'stale/read');
+  check('no alert for a normal delivery', db.notifications.length, 0);
+  const f = (status) => ({ ...p(status), idMessage: 'M2' });
+  await ws.recordDeliveryStatus(fake, 't1', f('sent'));
+  await ws.recordDeliveryStatus(fake, 't1', f('noAccount'));
+  await ws.recordDeliveryStatus(fake, 't1', f('failed'));
+  check('a failure → exactly one bell notification', db.notifications.length, 1);
+  check('…of a type the bell shows in red', db.notifications[0].type.endsWith('_failed'), true);
+  check('…naming the couple and linking the lead', db.notifications[0].title.includes('שני וגל') && db.notifications[0].related_lead_id === 'L1', true);
+  check('no idMessage → ignored', await ws.recordDeliveryStatus(fake, 't1', { status: 'sent' }), 'ignored');
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

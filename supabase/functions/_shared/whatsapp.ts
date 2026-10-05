@@ -102,6 +102,19 @@ export function toInternationalIsraeliChatId(phone: string): string | null {
   return `${intl}@c.us`;
 }
 
+// A send target that is already a WhatsApp chat id — a private chat (972...@c.us), a
+// group (...@g.us) or a privacy id (...@lid) — is used exactly as given. Everything else
+// is a phone number and goes through the Israeli normalisation above, as before.
+// (2026-10-05: the inbox replied by turning chat ids into phone numbers and prefixing 972,
+// so a reply to a number from abroad, to a group or to an @lid chat went to the wrong
+// place or failed.)
+const CHAT_ID_RE = /^[0-9]{5,20}(-[0-9]+)?@(c\.us|g\.us|lid)$/;
+export function resolveChatIdForSend(target: string): string | null {
+  const t = String(target || '').trim();
+  if (CHAT_ID_RE.test(t)) return t;
+  return toInternationalIsraeliChatId(t);
+}
+
 export interface SendWhatsAppOptions {
   // Whether WhatsApp builds a preview card (image + title) for a URL in the message.
   // Default TRUE — the owner likes the card and it looks professional. Pass false only
@@ -121,7 +134,7 @@ export async function sendWhatsApp(
     return { success: false, error: 'WhatsApp gateway URL, instance ID and API token are required (set them in Settings)' };
   }
 
-  const chatId = toInternationalIsraeliChatId(phone);
+  const chatId = resolveChatIdForSend(phone);
   if (!chatId) {
     return { success: false, error: 'Invalid phone number' };
   }
@@ -142,7 +155,7 @@ export async function sendWhatsApp(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chatId, message, linkPreview: options.linkPreview !== false }),
-    });
+    }, { retryUnsafe: false });
 
     const text = await res.text();
     let data: any = {};
@@ -191,7 +204,7 @@ export async function sendWhatsAppFileByUrl(
     return { success: false, error: 'WhatsApp gateway URL, instance ID and API token are required (set them in Settings)' };
   }
 
-  const chatId = toInternationalIsraeliChatId(phone);
+  const chatId = resolveChatIdForSend(phone);
   if (!chatId) {
     return { success: false, error: 'Invalid phone number' };
   }
@@ -215,7 +228,7 @@ export async function sendWhatsAppFileByUrl(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-    });
+    }, { retryUnsafe: false });
 
     const text = await res.text();
     let data: any = {};

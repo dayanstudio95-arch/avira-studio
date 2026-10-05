@@ -8,6 +8,13 @@
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createUserClient, getRequestUser } from '../_shared/supabaseClients.ts';
 import { sendWhatsApp } from '../_shared/whatsapp.ts';
+import { getCallerProfile, hasRole, ADMIN_ROLES, LEAD_COORDINATOR_ROLE, ALBUM_MANAGER_ROLE } from '../_shared/permissions.ts';
+
+// Who may send from the studio's WhatsApp number (2026-10-05). Before this, any logged-in
+// user of the tenant — a photographer included — could send any text to any number.
+// The roles are exactly the ones whose screens call this function: the admin panel,
+// lead_coordinator (leads + inbox) and album_manager (album order page).
+const SENDER_ROLES = [...ADMIN_ROLES, LEAD_COORDINATOR_ROLE, ALBUM_MANAGER_ROLE];
 
 Deno.serve(async (req) => {
   const preflight = handleOptions(req);
@@ -18,8 +25,17 @@ Deno.serve(async (req) => {
     if (!user) return jsonResponse({ error: 'Unauthorized' }, { status: 401 });
 
     const supabase = createUserClient(req);
+    const profile = await getCallerProfile(supabase, user.id, 'role');
+    if (!profile || !hasRole(profile.role, SENDER_ROLES)) {
+      return jsonResponse({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const body = await req.json();
-    const { to, message, action_type, recipients } = body;
+    // `chatId` (2026-10-05): the inbox sends the conversation's own WhatsApp id, so a
+    // reply reaches a number from abroad, a group or an @lid chat. Phone numbers still
+    // work exactly as before; sendWhatsApp tells the two apart.
+    const { message, action_type, recipients } = body;
+    const to = body.chatId || body.to;
 
     if (action_type === 'monthly_summary_bulk') {
       if (!Array.isArray(recipients) || recipients.length === 0) {

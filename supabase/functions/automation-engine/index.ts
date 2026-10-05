@@ -40,6 +40,7 @@ import { sendWhatsApp as sendWhatsAppGreenApi } from '../_shared/whatsapp.ts';
 import { EVENT_TEAM_ROLE_LABELS as ROLE_LABELS } from '../_shared/staffRoles.ts';
 import { loadQuietHoursSettings, isInQuietHoursNow, wasAlreadySentToday, sentTodayAt, type QuietHoursSettings } from '../_shared/automationGuards.ts';
 import { runWhatsAppHousekeeping } from '../_shared/whatsappHousekeeping.ts';
+import { alertStuckMessages } from '../_shared/whatsappStatus.ts';
 
 function getTargetMonth(mode: string) {
   const now = new Date();
@@ -1346,7 +1347,15 @@ Deno.serve(async (req) => {
       } catch (e: any) {
         console.error('[automationEngine] whatsapp housekeeping failed for tenant', t.id, e?.message || e);
       }
-      perTenantResults.push({ tenant_id: t.id, ...result, whatsapp });
+      // Messages stuck on one grey tick for 24h → a bell notification (2026-10-05). Runs
+      // whether or not the bot is on: it is about every message the studio sends.
+      let stuckAlerts = 0;
+      try {
+        stuckAlerts = await alertStuckMessages(supabase, t.id);
+      } catch (e: any) {
+        console.error('[automationEngine] stuck-message check failed for tenant', t.id, e?.message || e);
+      }
+      perTenantResults.push({ tenant_id: t.id, ...result, whatsapp, stuckAlerts });
     }
 
     return jsonResponse({ success: true, tenants: perTenantResults.length, results: perTenantResults });

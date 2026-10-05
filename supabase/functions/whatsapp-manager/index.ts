@@ -63,6 +63,52 @@ Deno.serve(async (req) => {
     const buildUrl = (method: string) => `${apiUrl}/waInstance${instanceId}/${method}/${apiToken}`;
     const headers = { 'Content-Type': 'application/json' };
 
+    // READ-ONLY look at the instance's own settings (2026-10-05). Answers "is anything
+    // else wired to this number, and which notifications are switched on?" without
+    // touching them: GetSettings is documented as read-only and does not reboot the
+    // instance (https://green-api.com/en/docs/api/account/GetSettings/, verified
+    // 2026-10-05). Never returns the token; the webhook URL is reduced to its host
+    // and path so the screen can say whose it is.
+    if (action === 'get_settings') {
+      try {
+        const res = await fetch(buildUrl('getSettings'), { headers });
+        const text = await res.text();
+        let data: any = {};
+        try { data = JSON.parse(text); } catch { /* non-JSON */ }
+        if (!res.ok) {
+          return jsonResponse({ error: `GetSettings failed (HTTP ${res.status})` }, { status: 502 });
+        }
+        let webhookHost: string | null = null;
+        let webhookPath: string | null = null;
+        try {
+          if (data.webhookUrl) {
+            const u = new URL(data.webhookUrl);
+            webhookHost = u.host;
+            webhookPath = u.pathname;
+          }
+        } catch { webhookHost = 'כתובת לא תקינה'; }
+        const on = (v: unknown) => v === 'yes' || v === true;
+        return jsonResponse({
+          success: true,
+          webhookHost,
+          webhookPath,
+          isOurWebhook: !!webhookPath && webhookPath.includes('/functions/v1/whatsapp-webhook'),
+          hasWebhookToken: !!data.webhookUrlToken,
+          webhooks: {
+            incoming: on(data.incomingWebhook),
+            outgoingFromPhone: on(data.outgoingMessageWebhook),
+            outgoingFromApi: on(data.outgoingAPIMessageWebhook),
+            deliveryStatus: on(data.outgoingWebhook),
+            state: on(data.stateWebhook),
+          },
+          delaySendMessagesMilliseconds: data.delaySendMessagesMilliseconds ?? null,
+          markIncomingMessagesReaded: data.markIncomingMessagesReaded ?? null,
+        });
+      } catch (e) {
+        return jsonResponse({ error: `Network error: ${e.message}` }, { status: 502 });
+      }
+    }
+
     if (action === 'get_qr') {
       const qrUrl = buildUrl('qr');
       try {

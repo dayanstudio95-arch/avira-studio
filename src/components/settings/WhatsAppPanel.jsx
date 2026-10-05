@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { QrCode, RefreshCw, Wifi, WifiOff, Send, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import WhatsAppSettingsCheck from "./WhatsAppSettingsCheck";
 
 export default function WhatsAppPanel({ gatewayUrl, instanceId, apiKey }) {
   const [status, setStatus] = useState(null); // null | { connected, phone }
@@ -144,6 +145,8 @@ export default function WhatsAppPanel({ gatewayUrl, instanceId, apiKey }) {
           )}
         </div>
       )}
+
+      {isConfigured && <WhatsAppSettingsCheck />}
 
       {/* QR Section */}
       <div className="border border-gray-700 rounded-xl p-4 space-y-3">

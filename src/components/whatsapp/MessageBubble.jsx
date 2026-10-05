@@ -1,5 +1,7 @@
 import React from "react";
-import { Download, Bot, BotOff } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Download, Bot, BotOff, Check, CheckCheck, AlertCircle } from "lucide-react";
+import { supabase } from "@/api/supabaseClient";
 import { formatMessageTime, botDecisionLabel } from "./whatsappInboxShared";
 
 // One message in the thread.
@@ -11,9 +13,58 @@ import { formatMessageTime, botDecisionLabel } from "./whatsappInboxShared";
 //                    this in Stage 1; it exists so bot messages are never visually
 //                    confusable with something a human actually said.
 //
-// Media is rendered as a plain download link, never an inline player/preview: these
-// files sit behind Green API's own URLs, and embedding them would silently pull
-// customer media through the browser on every render.
+// Media: since 2026-10-05 the webhook copies each file into our private bucket and the
+// thread shows it inline (StoredMedia). Messages from before that keep the old plain
+// download link to Green API's own, temporary URL — never embedded.
+
+// Media we copied into the private `whatsapp-media` bucket (2026-10-05) is shown in the
+// thread through a short-lived signed URL — the bucket is private and the read policy
+// limits it to the roles that can open the inbox. Older messages (no media_path) keep the
+// old download link to Green API's temporary URL.
+function useSignedMediaUrl(path) {
+  const { data } = useQuery({
+    queryKey: ["whatsappMediaUrl", path],
+    queryFn: async () => {
+      const { data: signed, error } = await supabase.storage.from("whatsapp-media").createSignedUrl(path, 3600);
+      if (error) throw error;
+      return signed?.signedUrl || null;
+    },
+    enabled: !!path,
+    staleTime: 50 * 60 * 1000,
+  });
+  return data || null;
+}
+
+function StoredMedia({ path, mime, label }) {
+  const url = useSignedMediaUrl(path);
+  if (!url) return <div className="mt-1.5 h-10 w-40 animate-pulse rounded-lg bg-black/20" aria-label="טוען מדיה" />;
+  const kind = String(mime || "").split("/")[0];
+  if (kind === "image") {
+    return (
+      <a href={url} target="_blank" rel="noopener noreferrer" className="mt-1.5 block">
+        <img src={url} alt={label || "תמונה"} className="max-h-72 max-w-full rounded-lg object-cover" loading="lazy" />
+      </a>
+    );
+  }
+  if (kind === "audio") return <audio controls src={url} className="mt-1.5 w-60 max-w-full" />;
+  if (kind === "video") return <video controls src={url} className="mt-1.5 max-h-72 max-w-full rounded-lg" />;
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" className="mt-1.5 inline-flex items-center gap-1 text-xs text-yellow-300 underline hover:text-yellow-200">
+      <Download className="h-3 w-3" />
+      {label || "פתיחת הקובץ"}
+    </a>
+  );
+}
+
+// ✓ sent · ✓✓ delivered · blue ✓✓ read · red ! failed. Nothing when unknown (older
+// messages, or receipts not switched on in Green API yet).
+function DeliveryTick({ status }) {
+  if (!status) return null;
+  if (status === "read") return <CheckCheck className="h-3.5 w-3.5 text-sky-400" aria-label="נקרא" />;
+  if (status === "delivered") return <CheckCheck className="h-3.5 w-3.5 text-gray-400" aria-label="נמסר" />;
+  if (status === "sent") return <Check className="h-3.5 w-3.5 text-gray-400" aria-label="נשלח, עוד לא נמסר" />;
+  return <AlertCircle className="h-3.5 w-3.5 text-red-400" aria-label="לא נמסר" />;
+}
 
 const DIRECTION_STYLES = {
   inbound: "bg-gray-800 text-gray-100 border-gray-700",
@@ -32,13 +83,27 @@ export default function MessageBubble({ message }) {
           <div className="mb-1 text-[10px] font-medium text-blue-300">🤖 הודעה אוטומטית</div>
         )}
 
+        {message.senderName && (
+          <div className="mb-0.5 text-[11px] font-semibold text-amber-300">{message.senderName}</div>
+        )}
+
+        {message.quotedText && (
+          <div className="mb-1.5 rounded-md border-r-2 border-yellow-400 bg-black/20 px-2 py-1 text-xs text-gray-300 line-clamp-2">
+            {message.quotedText}
+          </div>
+        )}
+
+        {message.mediaPath && (
+          <StoredMedia path={message.mediaPath} mime={message.mediaMime} label={message.bodyText} />
+        )}
+
         {message.bodyText ? (
           <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">{message.bodyText}</div>
         ) : (
           <div className="text-sm italic text-gray-400">[{message.typeMessage || "הודעה"}]</div>
         )}
 
-        {message.mediaUrl && (
+        {message.mediaUrl && !message.mediaPath && (
           <a
             href={message.mediaUrl}
             target="_blank"
@@ -50,7 +115,10 @@ export default function MessageBubble({ message }) {
           </a>
         )}
 
-        <div className="mt-1 text-left text-[10px] text-gray-400">{formatMessageTime(message.createdDate)}</div>
+        <div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-gray-400" dir="ltr">
+          <span>{formatMessageTime(message.createdDate)}</span>
+          {isOutbound && <DeliveryTick status={message.deliveryStatus} />}
+        </div>
 
         {/* Dry-run verdict. `botWouldReply` is null on outbound messages and on any
             inbound row recorded before the dry run shipped, which is why this tests for

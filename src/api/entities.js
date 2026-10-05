@@ -76,8 +76,10 @@ export function createEntity(table) {
       if (limit) query = query.limit(limit);
       return runList(query);
     },
-    async filter(filters, sort, limit) {
-      let query = applyFilters(supabase.from(table).select('*'), filters);
+    // `columns` (2026-10-05): optional explicit column list, for tables with a heavy
+    // column a screen never shows (whatsapp_messages.raw). Default unchanged: '*'.
+    async filter(filters, sort, limit, columns = '*') {
+      let query = applyFilters(supabase.from(table).select(columns), filters);
       const parsedSort = parseSort(sort);
       if (parsedSort) query = query.order(parsedSort.column, { ascending: parsedSort.ascending });
       if (limit) query = query.limit(limit);

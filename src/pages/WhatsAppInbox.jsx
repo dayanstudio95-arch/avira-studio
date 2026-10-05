@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { supabase } from "@/api/supabaseClient";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { MessageSquare, AlertTriangle, Bot, Flame, Send, Settings2, FlaskConical, X, SlidersHorizontal } from "lucide-react";
@@ -42,6 +43,12 @@ import { isAwaitingFollowUp, isManuallyFlagged } from "@/lib/followUpQueue";
 // thread live without introducing a new connection model.
 const CONVERSATIONS_REFETCH_MS = 15000;
 const MESSAGES_REFETCH_MS = 10000;
+// Every whatsapp_messages column except `raw`. The new ones (sender_*, quoted_*,
+// media_*) come from migration 0067 — run it before deploying this screen.
+const MESSAGE_COLUMNS =
+  "id, tenant_id, conversation_id, id_message, direction, type_webhook, type_message, body_text, " +
+  "media_url, created_at, bot_would_reply, bot_skip_reason, sender_chat_id, sender_name, " +
+  "quoted_id_message, media_path, media_mime, media_size";
 
 export default function WhatsAppInbox() {
   const { canUseWhatsAppInbox } = usePermission();
@@ -97,12 +104,51 @@ export default function WhatsAppInbox() {
     [conversations, selectedId]
   );
 
-  const { data: messages = [], isLoading: isLoadingMessages } = useQuery({
+  // The NEWEST 500, shown oldest-first (2026-10-05). It used to ask for the oldest 500,
+  // so a thread past 500 messages silently stopped showing anything new. `raw` (the
+  // full Green API payload) is left out — the screen never reads it, and it was most
+  // of every 10-second refresh.
+  const { data: rawMessages = [], isLoading: isLoadingMessages } = useQuery({
     queryKey: ["whatsappMessages", selectedId],
-    queryFn: () => base44.entities.WhatsAppMessage.filter({ conversationId: selectedId }, "createdDate", 500),
+    queryFn: async () => {
+      const rows = await base44.entities.WhatsAppMessage.filter(
+        { conversationId: selectedId }, "-createdDate", 500, MESSAGE_COLUMNS
+      );
+      return rows.reverse();
+    },
     enabled: !!selectedId && canUseWhatsAppInbox,
     refetchInterval: MESSAGES_REFETCH_MS,
   });
+
+  // Delivery receipts for our own messages in this thread (✓ / ✓✓ / read / failed).
+  // Empty until `outgoingWebhook` is switched on in Green API; then each bubble gets
+  // its tick. Older messages simply have none.
+  const outboundIds = useMemo(
+    () => rawMessages.filter((m) => m.direction !== "inbound" && m.idMessage).map((m) => m.idMessage),
+    [rawMessages]
+  );
+  const { data: statusById = {} } = useQuery({
+    queryKey: ["whatsappMessageStatus", selectedId, outboundIds.length, outboundIds[outboundIds.length - 1]],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("whatsapp_message_status")
+        .select("id_message, status")
+        .in("id_message", outboundIds.slice(-200));
+      if (error) throw error;
+      return Object.fromEntries((data || []).map((r) => [r.id_message, r.status]));
+    },
+    enabled: outboundIds.length > 0 && canUseWhatsAppInbox,
+    refetchInterval: MESSAGES_REFETCH_MS,
+  });
+
+  const messages = useMemo(() => {
+    const textById = Object.fromEntries(rawMessages.map((m) => [m.idMessage, m.bodyText || m.typeMessage || ""]));
+    return rawMessages.map((m) => ({
+      ...m,
+      deliveryStatus: statusById[m.idMessage] || null,
+      quotedText: m.quotedIdMessage ? textById[m.quotedIdMessage] || "הודעה קודמת" : null,
+    }));
+  }, [rawMessages, statusById]);
 
   const filteredConversations = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
@@ -238,9 +284,13 @@ export default function WhatsAppInbox() {
   // refetch interval above and the "תוך כמה שניות" hint in the reply box.
   const sendMutation = useMutation({
     mutationFn: async ({ conversation, text }) => {
-      const phone = conversation.phone || String(conversation.chatId || "").split("@")[0];
-      if (!phone) throw new Error("אין מספר טלפון תקין לשיחה זו");
-      const result = await base44.functions.invoke("sendWhatsAppMessage", { to: phone, message: text });
+      // The conversation's own WhatsApp id (2026-10-05). Turning it into a phone number
+      // and prefixing 972 sent replies to numbers from abroad, groups and @lid chats to
+      // the wrong place.
+      const chatId = conversation.chatId || null;
+      const phone = conversation.phone || null;
+      if (!chatId && !phone) throw new Error("אין מספר טלפון תקין לשיחה זו");
+      const result = await base44.functions.invoke("sendWhatsAppMessage", { chatId, to: phone, message: text });
       if (result.data?.error) throw new Error(result.data.error);
       // A human is now in this conversation — silence the bot in it immediately rather
       // than waiting for the outgoing webhook to come back and do it.

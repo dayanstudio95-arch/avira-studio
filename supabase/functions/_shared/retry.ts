@@ -12,24 +12,30 @@
 // unmodified on the very first attempt -- callers that inspect specific
 // status codes (e.g. googleCalendarSync.ts's 404/410-clears-id self-heal
 // logic) keep working with zero changes.
+//
+// `retryUnsafe: false` (2026-10-05) is for requests that must not run twice — a WhatsApp
+// send. A 5xx or a dropped connection there is ambiguous: Green API may already have
+// queued the message, and a retry delivers it to the customer twice. Only 429 ("not
+// accepted, slow down") is retried; anything else is returned / thrown on the spot.
 export async function fetchWithRetry(
   url: string,
   init: RequestInit,
-  opts?: { maxAttempts?: number },
+  opts?: { maxAttempts?: number; retryUnsafe?: boolean },
 ): Promise<Response> {
   const maxAttempts = opts?.maxAttempts ?? 3;
+  const retryUnsafe = opts?.retryUnsafe !== false;
   const delaysMs = [300, 900]; // between attempt 1→2 and 2→3 respectively
   let lastErr: unknown;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const res = await fetch(url, init);
-      const retryable = res.status === 429 || res.status >= 500;
+      const retryable = res.status === 429 || (retryUnsafe && res.status >= 500);
       if (!retryable || attempt === maxAttempts) return res;
       await new Promise((r) => setTimeout(r, delaysMs[attempt - 1]));
     } catch (err) {
-      lastErr = err; // network-level throw -- always retryable
-      if (attempt === maxAttempts) throw err;
+      lastErr = err; // network-level throw -- retryable unless the request is unsafe to repeat
+      if (attempt === maxAttempts || !retryUnsafe) throw err;
       await new Promise((r) => setTimeout(r, delaysMs[attempt - 1]));
     }
   }

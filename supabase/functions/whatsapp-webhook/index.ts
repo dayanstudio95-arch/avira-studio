@@ -70,13 +70,17 @@ import { extractLeadDetails, mergeDetails, missingFields } from '../_shared/what
 import { classifyReply } from '../_shared/whatsappLeadTemperature.ts';
 import { classifyContact, type ContactMatch } from '../_shared/whatsappContact.ts';
 import { sendHotLeadAlert } from '../_shared/whatsappStudioAlerts.ts';
+import {
+  recordDeliveryStatus, copyMediaToStorage, pickDisplayName, groupSender, extractQuotedId,
+} from '../_shared/whatsappStatus.ts';
 
 const PG_UNIQUE_VIOLATION = '23505';
 
 
 // Green API webhook types that carry an actual chat message we want to record.
-// Everything else (outgoingMessageStatus / stateInstanceChanged / deviceInfo /
-// incomingCall / quotaExceeded / ...) is acknowledged with 200 and ignored.
+// `outgoingMessageStatus` (delivery receipts) is handled separately, before these, since
+// 2026-10-05. Everything else (stateInstanceChanged / incomingCall / quotaExceeded / ...)
+// is acknowledged with 200 and ignored.
 const INBOUND_TYPES = ['incomingMessageReceived'];
 const OUTBOUND_TYPES = ['outgoingMessageReceived', 'outgoingAPIMessageReceived'];
 
@@ -96,6 +100,9 @@ interface ExtractedMessage {
   typeMessage: string | null;
   bodyText: string | null;
   mediaUrl: string | null;
+  mediaMime: string | null;
+  mediaFileName: string | null;
+  quotedId: string | null;
   adContext: AdContext | null;
 }
 
@@ -120,7 +127,7 @@ function extractAdContext(messageData: any): AdContext | null {
 // name — the complete payload is stored in `raw` either way, so nothing is ever lost.
 function extractMessage(messageData: any): ExtractedMessage {
   if (!messageData || typeof messageData !== 'object') {
-    return { typeMessage: null, bodyText: null, mediaUrl: null, adContext: null };
+    return { typeMessage: null, bodyText: null, mediaUrl: null, mediaMime: null, mediaFileName: null, quotedId: null, adContext: null };
   }
   const typeMessage: string | null = messageData.typeMessage ?? null;
 
@@ -147,7 +154,13 @@ function extractMessage(messageData: any): ExtractedMessage {
     }
   }
 
-  return { typeMessage, bodyText, mediaUrl, adContext: extractAdContext(messageData) };
+  return {
+    typeMessage, bodyText, mediaUrl,
+    mediaMime: messageData.fileMessageData?.mimeType ?? null,
+    mediaFileName: messageData.fileMessageData?.fileName ?? null,
+    quotedId: extractQuotedId(messageData),
+    adContext: extractAdContext(messageData),
+  };
 }
 
 // Resolves which tenant this instance belongs to. There is no tenant_id anywhere in a
@@ -284,6 +297,14 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  // Delivery receipt (✓ / ✓✓ / read / failed) — 2026-10-05. Recorded and answered at
+  // once; nothing else in this function applies to a receipt. Arrives only after the
+  // studio turns on `outgoingWebhook` in the Green API console.
+  if (typeWebhook === 'outgoingMessageStatus') {
+    const result = await recordDeliveryStatus(supabase, tenantId, payload);
+    return jsonResponse({ ok: true, status: result });
+  }
+
   const isInbound = INBOUND_TYPES.includes(typeWebhook);
   const isOutbound = OUTBOUND_TYPES.includes(typeWebhook);
   if (!isInbound && !isOutbound) {
@@ -317,10 +338,13 @@ Deno.serve(async (req: Request) => {
     // different phone numbers — "AVIRA אווירה צלמים אווירה" on the first morning:
     // every conversation whose first-ever webhook happened to be one of ours going out
     // (a contract, a reminder, or Daniel replying from his phone) was named after us.
+    //
+    // Groups (2026-10-05): the title is always the group's own name (chatName). The
+    // member who wrote is kept on the message instead (sender_name) — before this, every
+    // message renamed the group after whoever wrote last.
     const senderData = payload?.senderData || {};
-    const displayName = isInbound
-      ? senderData.senderContactName || senderData.senderName || senderData.chatName || null
-      : senderData.chatName || null;
+    const displayName = pickDisplayName({ isInbound, isGroup, senderData });
+    const sender = groupSender({ isInbound, isGroup, senderData });
 
     // ---- Conversation (create or fetch) -------------------------------------
     const { data: existingRows, error: convSelectError } = await supabase
@@ -370,7 +394,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const { typeMessage, bodyText, mediaUrl, adContext } = extractMessage(payload?.messageData);
+    const { typeMessage, bodyText, mediaUrl, mediaMime, mediaFileName, quotedId, adContext } = extractMessage(payload?.messageData);
     // Only inbound messages can come from an ad; on an outbound webhook the same fields
     // would describe a link preview the studio itself sent.
     const inboundAd = isInbound ? adContext : null;
@@ -470,6 +494,9 @@ Deno.serve(async (req: Request) => {
       type_message: typeMessage,
       body_text: bodyText,
       media_url: mediaUrl,
+      sender_chat_id: sender.senderChatId,
+      sender_name: sender.senderName,
+      quoted_id_message: quotedId,
       raw: payload,
       bot_would_reply: decision ? decision.wouldReply : null,
       bot_skip_reason: decision ? decision.reason : null,
@@ -482,6 +509,14 @@ Deno.serve(async (req: Request) => {
         return jsonResponse({ ok: true, duplicate: true });
       }
       throw new Error(`message insert: ${msgError.message}`);
+    }
+
+    // Our own copy of the media, after the response (Green API's link is temporary).
+    if (mediaUrl) {
+      EdgeRuntime.waitUntil(copyMediaToStorage(supabase, {
+        tenantId, conversationId: conversation.id, idMessage, downloadUrl: mediaUrl,
+        mimeType: mediaMime, fileName: mediaFileName,
+      }));
     }
 
     // ---- Conversation aggregates --------------------------------------------
