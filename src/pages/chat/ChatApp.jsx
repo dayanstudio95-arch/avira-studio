@@ -11,7 +11,7 @@ import { BOXES, boxCounts, matchesBox, matchesSearch, sortConversations, needsRe
 import { useChatData } from "@/components/chat/useChatData";
 import { useThread } from "@/components/chat/useThread";
 import ChatSidebar from "@/components/chat/ChatSidebar";
-import ChatList, { conversationTitle } from "@/components/chat/ChatList";
+import ChatList, { conversationTitle, AvatarUrlContext } from "@/components/chat/ChatList";
 import ChatThread from "@/components/chat/ChatThread";
 import ContactPanel from "@/components/chat/ContactPanel";
 import NotificationSettings from "@/components/chat/NotificationSettings";
@@ -107,6 +107,27 @@ export default function ChatApp() {
     return sortConversations(list);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.conversations, box, q, searchHits, data.unread, data.labelsByConv, data.followUpAfterDays]);
+
+  // Profile pictures: one signed-URL request for every picture on screen (private bucket).
+  const avatarPaths = useMemo(
+    () => Array.from(new Set(data.conversations.map((c) => c.avatarPath).filter(Boolean))).sort(),
+    [data.conversations]
+  );
+  const avatarQ = useQuery({
+    queryKey: ["chatAvatarUrls", avatarPaths.join("|")],
+    queryFn: async () => {
+      const out = {};
+      for (let i = 0; i < avatarPaths.length; i += 200) {
+        const { data: signed, error } = await supabase.storage.from("whatsapp-media").createSignedUrls(avatarPaths.slice(i, i + 200), 6 * 3600);
+        if (error) throw error;
+        for (const s of signed || []) if (s.signedUrl) out[s.path] = s.signedUrl;
+      }
+      return out;
+    },
+    enabled: avatarPaths.length > 0,
+    staleTime: 5 * 3600 * 1000,
+  });
+  const avatarUrls = avatarQ.data || {};
 
   const active = data.conversations.find((c) => c.id === activeId) || null;
   const activeLead = active?.matchedLeadId ? data.leadsById[active.matchedLeadId] : null;
@@ -293,6 +314,7 @@ export default function ChatApp() {
   );
 
   return (
+    <AvatarUrlContext.Provider value={avatarUrls}>
     <div dir="rtl" className="flex h-[100dvh] w-full overflow-hidden bg-gray-950 text-gray-100">
       <ChatSidebar
         className="hidden w-60 shrink-0 md:flex"
@@ -469,5 +491,6 @@ export default function ChatApp() {
         }}
       />
     </div>
+    </AvatarUrlContext.Provider>
   );
 }

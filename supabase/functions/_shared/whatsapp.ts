@@ -73,6 +73,24 @@ function buildUrl(settings: WhatsAppSettings, method: string): string {
   return `${settings.apiUrl}/waInstance${settings.instanceId}/${method}/${settings.apiToken}`;
 }
 
+// A READ call to Green API (getAvatar and the like) — safe to retry, unlike a send.
+// Returns the parsed JSON, or null on any failure. Never throws.
+export async function greenApiRead(supabase: any, method: string, body: unknown, tenantId?: string): Promise<any | null> {
+  try {
+    const settings = await loadWhatsAppSettings(supabase, tenantId);
+    if (!settings) return null;
+    const res = await fetchWithRetry(buildUrl(settings, method), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 export interface SendWhatsAppResult {
   success: boolean;
   error?: string;

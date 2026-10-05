@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { createContext, useContext, useState } from "react";
 import { Search, Pin, Check, BellOff, X } from "lucide-react";
 import { contactTypeLabel, effectiveStage, waitingLabel, isLongWait, CONTACT_TYPES, STAGES } from "@/lib/chatModel";
 
@@ -14,8 +14,25 @@ export function initials(name) {
   const parts = s.split(/\s+ו?|\s+/).filter(Boolean);
   return (parts[0]?.[0] || "") + (parts[1]?.[0] || "");
 }
+// Signed URLs of profile pictures, fetched once for the whole list (ChatApp.jsx).
+export const AvatarUrlContext = createContext({});
+
 export function Avatar({ conversation, size = 44 }) {
   const name = conversation?.coupleNames || conversation?.displayName || conversation?.phone;
+  const urls = useContext(AvatarUrlContext);
+  const url = conversation?.avatarPath ? urls[conversation.avatarPath] : null;
+  if (url) {
+    return (
+      <img
+        src={url}
+        alt=""
+        aria-hidden="true"
+        loading="lazy"
+        className="shrink-0 rounded-full bg-gray-800 object-cover"
+        style={{ width: size, height: size }}
+      />
+    );
+  }
   return (
     <span
       className="flex shrink-0 items-center justify-center rounded-full font-bold text-white"
@@ -118,7 +135,7 @@ export default function ChatList({
               )}
               <button
                 type="button"
-                onClick={() => (selectMode ? toggle(c.id) : onOpen(c))}
+                onClick={() => onOpen(c)}
                 className="flex min-w-0 flex-1 gap-3 text-start"
               >
                 <Avatar conversation={c} size={compact ? 50 : 44} />

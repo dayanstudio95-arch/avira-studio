@@ -42,6 +42,7 @@ import { loadQuietHoursSettings, isInQuietHoursNow, wasAlreadySentToday, sentTod
 import { runWhatsAppHousekeeping } from '../_shared/whatsappHousekeeping.ts';
 import { alertStuckMessages, purgeOldMedia } from '../_shared/whatsappStatus.ts';
 import { sendPush } from '../_shared/webPush.ts';
+import { refreshAvatars } from '../_shared/whatsappAvatars.ts';
 
 function getTargetMonth(mode: string) {
   const now = new Date();
@@ -1363,7 +1364,14 @@ Deno.serve(async (req) => {
       } catch (e: any) {
         console.error('[automationEngine] media purge failed for tenant', t.id, e?.message || e);
       }
-      perTenantResults.push({ tenant_id: t.id, ...result, whatsapp, stuckAlerts, mediaPurged });
+      // Profile pictures for אווירה צ'אט — the most recently active chats first.
+      let avatars = null;
+      try {
+        avatars = await refreshAvatars(supabase, t.id);
+      } catch (e: any) {
+        console.error('[automationEngine] avatar refresh failed for tenant', t.id, e?.message || e);
+      }
+      perTenantResults.push({ tenant_id: t.id, ...result, whatsapp, stuckAlerts, mediaPurged, avatars });
     }
 
     return jsonResponse({ success: true, tenants: perTenantResults.length, results: perTenantResults });
