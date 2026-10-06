@@ -1447,6 +1447,22 @@ section('safeImageSrc: only image data URLs and https');
   check('empty HTML stays empty', sanit.sanitizeContractHtml(null), '');
 }
 
+// =================================================================================
+// PART 21 — who an automation goes to: "בחירת אנשי צוות" (AUTO-03, 2026-10-06)
+// =================================================================================
+
+const guards = await loadModule('supabase/functions/_shared/automationGuards.ts', 'guards21');
+
+section('selected staff = the ONLY recipients; none selected = everyone');
+{
+  const sel = { selected_staff_ids: ['s1', 's2'] };
+  check('nobody ticked → s1 gets it', guards.isStaffSelectedForAutomation({ selected_staff_ids: [] }, 's1'), true);
+  check('field missing → s1 gets it', guards.isStaffSelectedForAutomation({}, 's1'), true);
+  check('ticked s1 → s1 gets it', guards.isStaffSelectedForAutomation(sel, 's1'), true);
+  check('ticked s1,s2 → s3 does NOT get it', guards.isStaffSelectedForAutomation(sel, 's3'), false);
+  check('no automation → everyone', guards.isStaffSelectedForAutomation(null, 's1'), true);
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

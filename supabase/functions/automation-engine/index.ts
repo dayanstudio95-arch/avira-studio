@@ -38,7 +38,7 @@ import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createServiceRoleClient, getRequestUser } from '../_shared/supabaseClients.ts';
 import { sendWhatsApp as sendWhatsAppGreenApi } from '../_shared/whatsapp.ts';
 import { EVENT_TEAM_ROLE_LABELS as ROLE_LABELS } from '../_shared/staffRoles.ts';
-import { loadQuietHoursSettings, isInQuietHoursNow, wasAlreadySentToday, sentTodayAt, type QuietHoursSettings } from '../_shared/automationGuards.ts';
+import { loadQuietHoursSettings, isInQuietHoursNow, wasAlreadySentToday, sentTodayAt, isStaffSelectedForAutomation, type QuietHoursSettings } from '../_shared/automationGuards.ts';
 import { runWhatsAppHousekeeping } from '../_shared/whatsappHousekeeping.ts';
 import { alertStuckMessages, purgeOldMedia } from '../_shared/whatsappStatus.ts';
 import { sendPush } from '../_shared/webPush.ts';
@@ -211,7 +211,7 @@ async function runMonthlyStaffSummary(supabase: any, tenantId: string, automatio
   const sentPhones = new Set<string>();
 
   for (const member of allStaff || []) {
-    if (Array.isArray(automation.selected_staff_ids) && automation.selected_staff_ids.length > 0 && !automation.selected_staff_ids.includes(member.id)) {
+    if (!isStaffSelectedForAutomation(automation, member.id)) {
       skipped++;
       continue;
     }
@@ -345,7 +345,7 @@ async function runDailyEventBrief(supabase: any, tenantId: string, automation: a
       skipped++;
       continue;
     }
-    if (Array.isArray(automation.selected_staff_ids) && automation.selected_staff_ids.length > 0 && automation.selected_staff_ids.includes(member.id)) {
+    if (!isStaffSelectedForAutomation(automation, member.id)) {
       skipped++;
       continue;
     }

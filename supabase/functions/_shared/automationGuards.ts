@@ -37,6 +37,16 @@ function getJerusalemOffsetMinutes(utcDate: Date): number {
   return Math.round((ilMs - utcMs) / 60000);
 }
 
+// The automation's saved "בחירת אנשי צוות" (automations.selected_staff_ids): empty = all
+// staff, otherwise ONLY the ticked people receive it — that is what the settings screen
+// shows (AutomationsDashboard: "כל הצוות" / "N נבחרו"). AUTO-03 (audit 2026-10-05): the
+// daily brief had this inverted and sent to everyone EXCEPT the ticked people.
+export function isStaffSelectedForAutomation(automation: { selected_staff_ids?: unknown } | null | undefined, staffId: string): boolean {
+  const ids = automation?.selected_staff_ids;
+  if (!Array.isArray(ids) || ids.length === 0) return true;
+  return ids.includes(staffId);
+}
+
 export function israelDateTimeToUTC(targetDateStr: string, h: number, min: number): Date {
   const [year, month, day] = targetDateStr.split('-').map(Number);
   const roughUTC = new Date(Date.UTC(year, month - 1, day, h, min, 0));
