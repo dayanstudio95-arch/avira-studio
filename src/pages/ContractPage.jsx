@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { applyContractTermsPrice } from "@/lib/defaultContractTerms";
+import { sanitizeContractHtml, safeImageSrc } from "@/lib/sanitizeHtml";
 import { toast } from "sonner";
 
 function PackageDetailsRenderer({ html }) {
@@ -20,7 +21,7 @@ function PackageDetailsRenderer({ html }) {
     return (
       <div
         className="package-details text-gray-700 text-sm mb-4"
-        dangerouslySetInnerHTML={{ __html: html }}
+        dangerouslySetInnerHTML={{ __html: sanitizeContractHtml(html) }}
       />
     );
   }
@@ -118,12 +119,12 @@ export default function ContractPage() {
   const generateSignedPdf = async (leadData, formData, signedAt, signatureDataUrl, studioSignatureDataUrl) => {
     const eventDateFormatted = leadData.eventDate ? format(new Date(leadData.eventDate), 'd/M/yyyy') : 'טרם נקבע';
     const packageDetailsHtml = leadData.packageDetails
-      ? `<div style="white-space:pre-wrap;">${leadData.packageDetails}</div>`
+      ? `<div style="white-space:pre-wrap;">${sanitizeContractHtml(leadData.packageDetails)}</div>`
       : '';
     // applyContractTermsPrice resolves the {{FINAL_PRICE}} merge-field (or self-heals a
     // legacy hardcoded number) in the "total consideration" sentence to this lead's real,
     // current finalPrice -- see src/lib/defaultContractTerms.js for why this is needed.
-    const contractTermsHtml = applyContractTermsPrice(leadData.contractTerms, leadData.finalPrice);
+    const contractTermsHtml = sanitizeContractHtml(applyContractTermsPrice(leadData.contractTerms, leadData.finalPrice));
 
     // Build the printable document off-screen (not display:none -- html2canvas needs
     // real layout -- just shifted far outside the viewport) so it never flashes on
@@ -140,7 +141,7 @@ export default function ContractPage() {
 
     container.innerHTML = `
       <div style="background:#1e1e1e; padding:24px; text-align:center;">
-        ${leadData.studioLogoUrl ? `<img src="${leadData.studioLogoUrl}" style="max-height:60px; max-width:200px; margin-bottom:8px;" />` : ''}
+        ${safeImageSrc(leadData.studioLogoUrl) ? `<img src="${safeImageSrc(leadData.studioLogoUrl)}" style="max-height:60px; max-width:200px; margin-bottom:8px;" />` : ''}
         <div style="color:#ffd700; font-size:26px; font-weight:bold; letter-spacing:2px;">${escapeHtml((leadData.studioDisplayName || 'Avira Studio').toUpperCase())}</div>
         <div style="color:#c8c8c8; font-size:12px; margin-top:4px;">Wedding Photography &amp; Videography Studio</div>
       </div>
@@ -189,7 +190,7 @@ export default function ContractPage() {
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; text-align:center;">
           <div>
             <div style="height:70px; display:flex; align-items:flex-end; justify-content:center;">
-              ${signatureDataUrl ? `<img src="${signatureDataUrl}" style="max-height:65px; max-width:220px;" />` : ''}
+              ${safeImageSrc(signatureDataUrl) ? `<img src="${safeImageSrc(signatureDataUrl)}" style="max-height:65px; max-width:220px;" />` : ''}
             </div>
             <div style="border-top:2px solid #9ca3af; margin-top:4px; padding-top:6px; font-size:11px;">
               <div>${escapeHtml(leadData.coupleNames || 'לקוח/ה')}</div>
@@ -198,7 +199,7 @@ export default function ContractPage() {
           </div>
           <div>
             <div style="height:70px; display:flex; align-items:flex-end; justify-content:center;">
-              ${studioSignatureDataUrl ? `<img src="${studioSignatureDataUrl}" style="max-height:65px; max-width:220px;" />` : ''}
+              ${safeImageSrc(studioSignatureDataUrl) ? `<img src="${safeImageSrc(studioSignatureDataUrl)}" style="max-height:65px; max-width:220px;" />` : ''}
             </div>
             <div style="border-top:2px solid #9ca3af; margin-top:4px; padding-top:6px; font-size:11px;">
               <div>${escapeHtml(leadData.studioDisplayName || 'Avira Studio')}</div>
@@ -460,7 +461,7 @@ export default function ContractPage() {
             <div className="bg-gray-900 text-white px-4 py-2 font-semibold text-sm">📄 תנאי ההתקשרות</div>
             <div className="p-4">
               <div className="prose prose-sm max-w-none text-gray-700 leading-relaxed" dir="rtl"
-                dangerouslySetInnerHTML={{ __html: contractTerms }} />
+                dangerouslySetInnerHTML={{ __html: sanitizeContractHtml(contractTerms) }} />
             </div>
           </div>
 

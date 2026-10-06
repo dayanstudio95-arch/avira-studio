@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { format } from "date-fns";
 import { Printer, CheckCircle, Camera, Heart } from "lucide-react";
 import { applyContractTermsPrice } from "@/lib/defaultContractTerms";
+import { sanitizeContractHtml } from "@/lib/sanitizeHtml";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/SupabaseAuthContext";
 import { toast } from "sonner";
@@ -18,7 +19,7 @@ function PackageDetailsRenderer({ html }) {
     return (
       <div
         className="package-details text-gray-700 text-sm mb-4"
-        dangerouslySetInnerHTML={{ __html: html }}
+        dangerouslySetInnerHTML={{ __html: sanitizeContractHtml(html) }}
       />
     );
   }
@@ -219,7 +220,7 @@ export default function LeadContractDialog({ isOpen, onClose, lead, onSigned }) 
               <div
                 className="prose prose-sm max-w-none text-gray-700 leading-relaxed"
                 dir="rtl"
-                dangerouslySetInnerHTML={{ __html: contractTerms }}
+                dangerouslySetInnerHTML={{ __html: sanitizeContractHtml(contractTerms) }}
               />
             </div>
           </div>

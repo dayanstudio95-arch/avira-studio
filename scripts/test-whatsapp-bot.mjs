@@ -1428,6 +1428,25 @@ section('signedContractUrl: what the couple gets');
   check('no link → null', await scServer.signedContractUrl(fake({}), null), null);
 }
 
+// =================================================================================
+// PART 20 — contract HTML: images in the signed-PDF template (PII-03, 2026-10-06)
+// (the HTML cleaning itself needs a browser DOM — verified in the browser against staging)
+// =================================================================================
+
+const sanit = await loadModule('src/lib/sanitizeHtml.js', 'sanitizehtml');
+
+section('safeImageSrc: only image data URLs and https');
+{
+  check('studio signature (data:image/png)', sanit.safeImageSrc('data:image/png;base64,iVBOR'), 'data:image/png;base64,iVBOR');
+  check('https logo', sanit.safeImageSrc('https://x.supabase.co/logo.png'), 'https://x.supabase.co/logo.png');
+  check('javascript: refused', sanit.safeImageSrc('javascript:alert(1)'), '');
+  check('attribute break-out refused', sanit.safeImageSrc('x" onerror="alert(1)'), '');
+  check('http refused', sanit.safeImageSrc('http://x/y.png'), '');
+  check('data:text/html refused', sanit.safeImageSrc('data:text/html;base64,PHNjcmlwdD4='), '');
+  check('empty / not a string', [sanit.safeImageSrc(''), sanit.safeImageSrc(null)], ['', '']);
+  check('empty HTML stays empty', sanit.sanitizeContractHtml(null), '');
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
