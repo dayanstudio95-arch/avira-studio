@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
 import { supabase } from '@/api/supabaseClient';
 
 // Replaces src/lib/AuthContext.jsx once the app is cut over to Supabase.
@@ -17,6 +17,8 @@ export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [authError, setAuthError] = useState(null);
+  // Who is signed in right now — lets the auth listener ignore events about the same user.
+  const currentUserIdRef = useRef(null);
   // Tenant-level financial defaults (VAT %/deposit amount) -- loaded alongside
   // the profile so every consuming component reads them the same way user/profile
   // are already read elsewhere, instead of each form doing its own Tenant.get().
@@ -35,6 +37,7 @@ export const AuthProvider = ({ children }) => {
     const loadSession = async (session) => {
       if (!session) {
         if (!mounted) return;
+        currentUserIdRef.current = null;
         setUser(null);
         setIsAuthenticated(false);
         setAuthError(null);
@@ -60,6 +63,7 @@ export const AuthProvider = ({ children }) => {
         return;
       }
 
+      currentUserIdRef.current = session.user.id;
       setUser({ id: session.user.id, email: session.user.email, ...profile });
       setIsAuthenticated(true);
       setAuthError(null);
@@ -87,8 +91,15 @@ export const AuthProvider = ({ children }) => {
 
     supabase.auth.getSession().then(({ data: { session } }) => loadSession(session));
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsLoadingAuth(true);
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      // UX-01 (audit 2026-10-05): Supabase fires SIGNED_IN when the tab comes back to the
+      // foreground and TOKEN_REFRESHED about every hour — for the SAME user. Each one used to
+      // set isLoadingAuth, App.jsx swapped the whole app for a spinner, and every open screen
+      // remounted: a half-filled form was simply gone. Same user → nothing to do. A real
+      // change (sign-in as someone else, sign-out) still goes through the full reload.
+      const sameUser = !!session?.user?.id && session.user.id === currentUserIdRef.current;
+      if (sameUser && event !== 'USER_UPDATED') return;
+      if (!sameUser) setIsLoadingAuth(true);
       loadSession(session);
     });
 

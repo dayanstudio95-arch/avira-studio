@@ -1604,6 +1604,21 @@ section('calendar and lead→event sync answers');
   check('allSettled counts', ao.settledCounts(settled), { ok: 1, failed: 2 });
 }
 
+// =================================================================================
+// PART 28 — after a deploy: recognise "old version" load errors (UX-02, 2026-10-06)
+// =================================================================================
+
+const sb = await loadModule('src/lib/staleBundle.js', 'stalebundle');
+
+section('stale-version errors (reload once) vs. real bugs (show the message)');
+{
+  check('Chrome', sb.isChunkLoadError(new TypeError('Failed to fetch dynamically imported module: https://x/assets/Leads-abc.js')), true);
+  check('Safari', sb.isChunkLoadError(new TypeError('Importing a module script failed.')), true);
+  check('Firefox', sb.isChunkLoadError(new TypeError('error loading dynamically imported module')), true);
+  check('a real bug is not a stale version', sb.isChunkLoadError(new TypeError("Cannot read properties of undefined (reading 'map')")), false);
+  check('nothing', sb.isChunkLoadError(null), false);
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
