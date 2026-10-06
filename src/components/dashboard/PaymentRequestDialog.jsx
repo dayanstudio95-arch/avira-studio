@@ -34,7 +34,7 @@ export default function PaymentRequestDialog({ event, open, onOpenChange }) {
     const buildFallback = (resolvedLead) => {
       const balance = (resolvedLead?.finalPrice || 0) - (resolvedLead?.totalPaid || 0);
       const names = resolvedLead?.coupleNames || event?.coupleNames || '';
-      return `היי ${names}, מזל טוב! 🎉\nנשארה יתרה לתשלום על סך ${balance.toLocaleString('he-IL')} ש"ח.\nניתן לשלם כאן: [לינק לתשלום]`;
+      return `היי ${names}, מזל טוב! 🎉\nנשארה יתרה לתשלום על סך ${balance.toLocaleString('he-IL')} ש"ח.`; // B10: no "[לינק לתשלום]" placeholder
     };
 
     const loadMessage = async () => {
@@ -64,7 +64,7 @@ export default function PaymentRequestDialog({ event, open, onOpenChange }) {
           const msg = tpl
             .replace(/\{\{names\}\}/g, names)
             .replace(/\{\{balance\}\}/g, balance.toLocaleString('he-IL'))
-            .replace(/\{\{payment_link\}\}/g, '[לינק לתשלום]');
+            .replace(/\{\{payment_link\}\}/g, ''); // B10: no payment link exists
           setMessageText(msg);
         } else {
           setMessageText(buildFallback(resolvedLead));

@@ -216,7 +216,9 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
 
   const buildPaymentMessage = () => {
     const balance = (lead?.finalPrice || 0) - (lead?.totalPaid || 0);
-    return `היי ${lead?.coupleNames || ''}, מזל טוב! 🎉\nנשארה יתרה לתשלום על סך ${balance.toLocaleString('he-IL')} ש"ח.\nניתן לשלם כאן: [לינק לתשלום]`;
+    // B10 (2026-10-06): the fallback no longer contains a "[לינק לתשלום]" placeholder that
+    // nothing fills in — there is no payment link in the system.
+    return `היי ${lead?.coupleNames || ''}, מזל טוב! 🎉\nנשארה יתרה לתשלום על סך ${balance.toLocaleString('he-IL')} ש"ח.`;
   };
 
   const handleOpenPaymentSection = async () => {
@@ -228,7 +230,7 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
         const msg = tpl
           .replace(/\{\{names\}\}/g, lead?.coupleNames || '')
           .replace(/\{\{balance\}\}/g, balance.toLocaleString('he-IL'))
-          .replace(/\{\{payment_link\}\}/g, '[לינק לתשלום]');
+          .replace(/\{\{payment_link\}\}/g, ''); // B10: no payment link exists — never send a placeholder
         setPaymentMessageText(msg);
       } else {
         setPaymentMessageText(buildPaymentMessage());
@@ -623,7 +625,7 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                   ) : (
                     <>
                       <MessageCircle className="w-4 h-4 mr-2" />
-                      אשר ושלח למייק
+                      אשר ושלח לזוג
                     </>
                   )}
                 </Button>

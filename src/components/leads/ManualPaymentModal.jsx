@@ -61,17 +61,20 @@ export default function ManualPaymentModal({ isOpen, onClose, lead, onSaved }) {
       remainingBalance: newBalance,
     };
 
-    // סנכרון עבור מקדמה
-    if (paymentType === "deposit") {
-      updateData.depositAmount = (lead.depositAmount || 0) + num;
+    // B1 (Daniel, 2026-10-06): a "מקדמה" used to also write `depositAmount` — a column that
+    // does not exist (no migration ever added it), so the whole save failed and, with no
+    // try/catch, the button stayed on "שומר..." and nothing was saved. A deposit is saved
+    // exactly like every other manual payment; the type is kept in the note.
+    try {
+      await base44.entities.Lead.update(lead.id, updateData);
+      toast.success(`תשלום ידני של ₪${num.toLocaleString()} נשמר`);
+      onClose();
+      if (onSaved) onSaved();
+    } catch (e) {
+      toast.error("שמירת התשלום נכשלה", { description: e?.message });
+    } finally {
+      setIsLoading(false);
     }
-
-    await base44.entities.Lead.update(lead.id, updateData);
-
-    toast.success(`תשלום ידני של ₪${num.toLocaleString()} נשמר`);
-    setIsLoading(false);
-    onClose();
-    if (onSaved) onSaved();
   };
 
   const handleClose = () => {

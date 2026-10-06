@@ -73,6 +73,11 @@ export default function CustomStaffMessageModal({ automation, onClose, onSent })
       toast.error("בחר לפחות איש צוות אחד לשליחה");
       return;
     }
+    // R1ב: never send the placeholder text (the server refuses it too).
+    if (!messageText.trim() || messageText.trim().startsWith("כתבו כאן")) {
+      toast.error("כתבו את נוסח ההודעה לפני השליחה");
+      return;
+    }
     setSending(true);
     try {
       const res = await base44.functions.invoke("automationEngine", {

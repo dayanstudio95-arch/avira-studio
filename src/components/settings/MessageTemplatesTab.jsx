@@ -195,8 +195,7 @@ export default function MessageTemplatesTab() {
             <span className="font-mono text-yellow-300 mx-1">{"{{event_date}}"}</span> תאריך האירוע,
             <span className="font-mono text-yellow-300 mx-1">{"{{contract_link}}"}</span> לינק לחוזה,
             <span className="font-mono text-yellow-300 mx-1">{"{{questionnaire_link}}"}</span> לינק לשאלון,
-            <span className="font-mono text-yellow-300 mx-1">{"{{balance}}"}</span> יתרה לתשלום,
-            <span className="font-mono text-yellow-300 mx-1">{"{{payment_link}}"}</span> לינק לתשלום.
+            <span className="font-mono text-yellow-300 mx-1">{"{{balance}}"}</span> יתרה לתשלום.
           </p>
         </CardContent>
       </Card>

@@ -231,3 +231,11 @@ export async function staleReasonForQueuedMessage(
   }
   return null;
 }
+
+// R1ב (Daniel, 2026-10-06): a staff broadcast with no real text is never sent. The
+// "הודעה מותאמת אישית לצוות" automation is created with a placeholder ("כתבו כאן הודעה
+// חופשית…") as its saved template; a run that falls back to it must send nothing.
+export function isPlaceholderTemplate(text: string | null | undefined): boolean {
+  const t = String(text ?? '').trim();
+  return !t || t.startsWith('כתבו כאן');
+}

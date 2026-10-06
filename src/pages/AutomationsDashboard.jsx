@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 const { Automation, AutomationRun, StaffMember, Event, Lead } = base44.entities;
 import QuestionnaireSendPreviewModal from "@/components/automations/QuestionnaireSendPreviewModal";
@@ -766,6 +767,7 @@ function SettingsModal({ automation, onClose, onSaved }) {
                         toast.error("לא נבחרו נמענים לשליחה");
                         return;
                       }
+                      if (!window.confirm(`בטוח? יישלח ל-${previewSelected.size} נמענים.`)) return;
                       setSending(true);
                       try {
                         const mm = String(previewMonth).padStart(2, '0');
@@ -786,9 +788,18 @@ function SettingsModal({ automation, onClose, onSaved }) {
                       setSending(false);
                       return;
                     }
-                    // Other automation types — unchanged behavior
+                    // Other automation types. Daniel's decision R2 (2026-10-06): ask first, with
+                    // the real number of recipients (a dry run counts them — nothing is sent).
                     setSending(true);
                     try {
+                      const dry = await base44.functions.invoke("automationEngine", {
+                        automation_id: automation.id,
+                        triggered_by: "manual",
+                        dry_run: true,
+                      });
+                      const n = (dry.data?.results?.[0]?.previews || []).length;
+                      if (n === 0) { toast.info("אין נמענים לשליחה"); setSending(false); return; }
+                      if (!window.confirm(`בטוח? יישלח ל-${n} נמענים.`)) { setSending(false); return; }
                       const res = await base44.functions.invoke("automationEngine", {
                         automation_id: automation.id,
                         triggered_by: "manual",
@@ -1132,6 +1143,21 @@ export default function AutomationsDashboard() {
   };
 
   useEffect(() => { loadAutomations(); }, []);
+
+  // R1: "הרצה ידנית" from the automation log arrives as ?run=<id> and opens the same
+  // preview the button on this page opens. Once only, then the param is removed.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const runParamHandled = useRef(false);
+  useEffect(() => {
+    const runId = searchParams.get("run");
+    if (!runId || runParamHandled.current || automations.length === 0) return;
+    runParamHandled.current = true;
+    const target = automations.find(a => a.id === runId);
+    setSearchParams({}, { replace: true });
+    if (target) handleManualRun(target);
+    else toast.error("האוטומציה לא נמצאה");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [automations, searchParams]);
 
   const handleToggle = async (automation) => {
     try {

@@ -137,7 +137,10 @@ export default function IntegrationsTab() {
   const toggleShow = (key) =>
     setShowSecrets((prev) => ({ ...prev, [key]: !prev[key] }));
 
-  const SecretInput = ({ fieldKey, placeholder }) => (
+  // B5 (2026-10-06): this was a component declared INSIDE IntegrationsTab, so every
+  // keystroke created a new component type, React remounted the <input>, and the cursor
+  // left the field after each character. Called as a plain function it is the same input.
+  const renderSecretInput = (fieldKey, placeholder) => (
     <div className="relative">
       <Input
         type={showSecrets[fieldKey] ? "text" : "password"}
@@ -197,7 +200,7 @@ export default function IntegrationsTab() {
           </div>
           <div>
             <Label className="text-gray-300">API Token (apiTokenInstance)</Label>
-            <SecretInput fieldKey="whatsapp_api_key" placeholder="apiTokenInstance" />
+            {renderSecretInput("whatsapp_api_key", "apiTokenInstance")}
           </div>
           {/* Inbound direction (migration 0054_whatsapp_bot.sql). Separated visually
               from the three sending fields above because it enables something quite
@@ -233,7 +236,7 @@ export default function IntegrationsTab() {
             </div>
             <div>
               <Label className="text-gray-300">Webhook Token (webhookUrlToken)</Label>
-              <SecretInput fieldKey="whatsapp_webhook_token" placeholder="טוקן שתבחרו — אותו ערך בדיוק כמו בקונסולה" />
+              {renderSecretInput("whatsapp_webhook_token", "טוקן שתבחרו — אותו ערך בדיוק כמו בקונסולה")}
             </div>
           </div>
 
@@ -291,11 +294,11 @@ export default function IntegrationsTab() {
             <p className="text-emerald-300 text-sm font-semibold">עוסק מורשה (חשבונית ירוקה)</p>
             <div>
               <Label className="text-gray-300">API Key</Label>
-              <SecretInput fieldKey="morning_api_key_sole_prop" placeholder="morning-api-key" />
+              {renderSecretInput("morning_api_key_sole_prop", "morning-api-key")}
             </div>
             <div>
               <Label className="text-gray-300">API Secret</Label>
-              <SecretInput fieldKey="morning_api_secret_sole_prop" placeholder="morning-api-secret" />
+              {renderSecretInput("morning_api_secret_sole_prop", "morning-api-secret")}
             </div>
           </div>
 
@@ -303,11 +306,11 @@ export default function IntegrationsTab() {
             <p className="text-purple-300 text-sm font-semibold">חברה בע״מ (חשבונית מס קבלה)</p>
             <div>
               <Label className="text-gray-300">API Key</Label>
-              <SecretInput fieldKey="morning_api_key_company" placeholder="morning-api-key" />
+              {renderSecretInput("morning_api_key_company", "morning-api-key")}
             </div>
             <div>
               <Label className="text-gray-300">API Secret</Label>
-              <SecretInput fieldKey="morning_api_secret_company" placeholder="morning-api-secret" />
+              {renderSecretInput("morning_api_secret_company", "morning-api-secret")}
             </div>
           </div>
 
@@ -335,7 +338,7 @@ export default function IntegrationsTab() {
         <CardContent className="p-6 space-y-4">
           <div>
             <Label className="text-gray-300">Anthropic API Key</Label>
-            <SecretInput fieldKey="anthropic_api_key" placeholder="sk-ant-api03-..." />
+            {renderSecretInput("anthropic_api_key", "sk-ant-api03-...")}
           </div>
           <div className="bg-indigo-900/20 border border-indigo-700/40 rounded-lg p-3 text-xs text-indigo-300">
             ניתן ליצור מפתח בכתובת console.anthropic.com (Settings → API Keys). אם השדה

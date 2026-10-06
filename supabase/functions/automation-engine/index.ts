@@ -38,7 +38,7 @@ import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createServiceRoleClient, getRequestUser } from '../_shared/supabaseClients.ts';
 import { sendWhatsApp as sendWhatsAppGreenApi } from '../_shared/whatsapp.ts';
 import { EVENT_TEAM_ROLE_LABELS as ROLE_LABELS } from '../_shared/staffRoles.ts';
-import { loadQuietHoursSettings, isInQuietHoursNow, wasAlreadySentToday, sentTodayAt, isStaffSelectedForAutomation, type QuietHoursSettings } from '../_shared/automationGuards.ts';
+import { loadQuietHoursSettings, isInQuietHoursNow, wasAlreadySentToday, sentTodayAt, isStaffSelectedForAutomation, isPlaceholderTemplate, type QuietHoursSettings } from '../_shared/automationGuards.ts';
 import { runWhatsAppHousekeeping } from '../_shared/whatsappHousekeeping.ts';
 import { loadOptOutList, isOptedOut, OPTED_OUT_REASON, type OptOutList } from '../_shared/whatsappOptOut.ts';
 import { alertStuckMessages, purgeOldMedia } from '../_shared/whatsappStatus.ts';
@@ -920,8 +920,9 @@ async function runCustomStaffMessage(supabase: any, tenantId: string, automation
   const template = (messageTemplateOverride ?? automation.message_template ?? '').trim();
   const targetRole = targetRoleOverride || automation.filter_logic || 'all';
 
-  if (!template) {
-    return { sent: 0, failed: 0, skipped: 0, logs: [], previews: [] };
+  // R1ב: empty or still the "כתבו כאן…" placeholder → nothing is sent, to anyone.
+  if (isPlaceholderTemplate(template)) {
+    return { sent: 0, failed: 0, skipped: 0, logs: [], previews: [], error: 'נוסח ההודעה עדיין לא נכתב — לא נשלח כלום' };
   }
 
   const { data: allStaff } = await supabase.from('staff_members').select('*').eq('tenant_id', tenantId);

@@ -1619,6 +1619,20 @@ section('stale-version errors (reload once) vs. real bugs (show the message)');
   check('nothing', sb.isChunkLoadError(null), false);
 }
 
+// =================================================================================
+// PART 29 — a staff broadcast with no real text is never sent (R1ב, 2026-10-06)
+// =================================================================================
+
+const g29 = await loadModule('supabase/functions/_shared/automationGuards.ts', 'guards29');
+
+section('placeholder / empty staff message → nothing is sent');
+{
+  check('the saved placeholder', g29.isPlaceholderTemplate('כתבו כאן הודעה חופשית שתישלח לצוות שתבחרו (למשל לכל צלמי הווידאו).'), true);
+  check('empty', g29.isPlaceholderTemplate('   '), true);
+  check('null', g29.isPlaceholderTemplate(null), true);
+  check('a real message', g29.isPlaceholderTemplate('היי {staff_name}, מחר יש ישיבת צוות ב-10'), false);
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

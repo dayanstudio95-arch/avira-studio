@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +21,7 @@ export default function AutomationLogs() {
   const [loading, setLoading] = useState(true);
   const [expandedRun, setExpandedRun] = useState(null);
   const [selectedAutomation, setSelectedAutomation] = useState("all");
-  const [runningNow, setRunningNow] = useState(null);
+  const navigate = useNavigate();
 
   // `automation_runs` has no `created_at` column — 0001_init.sql defines `started_at`,
   // and no migration ever added one. `src/api/entities.js` maps "created_date" onto
@@ -50,22 +51,11 @@ export default function AutomationLogs() {
 
   useEffect(() => { load(); }, []);
 
-  const handleRunNow = async (automationId, automationName) => {
-    setRunningNow(automationId);
-    const toastId = toast.loading(`מריץ: ${automationName}...`);
-    try {
-      const res = await base44.functions.invoke("automationEngine", { automation_id: automationId, triggered_by: "manual" });
-      if (res.data?.success) {
-        const r = res.data.results?.[0];
-        toast.success(`הושלם — נשלחו: ${r?.sent || 0}, נכשלו: ${r?.failed || 0}`, { id: toastId });
-        load();
-      } else {
-        toast.error(res.data?.error || "שגיאה", { id: toastId });
-      }
-    } catch (err) {
-      toast.error(err.message, { id: toastId });
-    }
-    setRunningNow(null);
+  // Daniel's decision R1 (2026-10-06): no more one-click sends from this page. A button
+  // opens the automations dashboard on the same preview the dashboard's "הרצה ידנית" shows —
+  // see who gets what, untick people, and only then "אשר ושלח" (paced server-side).
+  const handleRunNow = (automationId) => {
+    navigate(`/AutomationsDashboard?run=${encodeURIComponent(automationId)}`);
   };
 
   const filteredRuns = selectedAutomation === "all" ? runs : runs.filter(r => r.automationId === selectedAutomation);
@@ -88,18 +78,17 @@ export default function AutomationLogs() {
         {/* Automation quick-run buttons */}
         {automations.length > 0 && (
           <div className="bg-gray-900 border border-gray-700 rounded-lg p-4 mb-6">
-            <p className="text-sm text-gray-400 mb-3">הפעלה ידנית מיידית:</p>
+            <p className="text-sm text-gray-400 mb-3">הרצה ידנית (נפתחת תצוגה מקדימה, שום דבר לא נשלח בלי אישור):</p>
             <div className="flex flex-wrap gap-2">
               {automations.filter(a => a.isActive).map(a => (
                 <Button
                   key={a.id}
                   size="sm"
-                  disabled={runningNow === a.id}
-                  onClick={() => handleRunNow(a.id, a.name)}
+                  onClick={() => handleRunNow(a.id)}
                   className="bg-blue-700 hover:bg-blue-600 text-white gap-1"
                 >
                   <Play className="w-3 h-3" />
-                  {runningNow === a.id ? "מריץ..." : a.name}
+                  {a.name}
                 </Button>
               ))}
             </div>
