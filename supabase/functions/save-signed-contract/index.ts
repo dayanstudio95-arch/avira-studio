@@ -12,11 +12,26 @@
 // do the upload itself: it now receives the PDF as a base64 string, decodes it, and
 // uploads directly to the `signed-contracts` Storage bucket using the service-role
 // client (bypasses RLS — the couple's anon browser session is never trusted to write to
-// Storage directly). Still accepts the legacy `{ leadId, fileUrl }` shape as a fallback
-// for forward-compat, in case anything else ever calls this with an already-hosted URL.
+// Storage directly).
+//
+// PII-01 (audit 2026-10-05): a signed contract is final. Before, anyone holding the
+// contract link could call this again and silently replace the signed PDF (upsert), or use
+// the legacy `{ leadId, fileUrl }` shape to point the studio's "view signed contract" link
+// at any URL. Now: PDF bytes only (the fileUrl shape is gone — nothing calls it), the lead
+// must exist, and once signed_at is set the PDF can no longer be replaced. The page uploads
+// BEFORE sign-lead-public marks the lead signed (see ContractPage.jsx handleSign), so an
+// unsigned lead may still re-upload (a retry after a failed signing).
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createServiceRoleClient } from '../_shared/supabaseClients.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
+
+// ~15MB of PDF. A real signed contract (html2canvas raster, A4 pages) is well under this.
+const MAX_PDF_BASE64_CHARS = 20_000_000;
+
+function isPdf(bytes: Uint8Array): boolean {
+  // "%PDF-"
+  return bytes.length > 5 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46 && bytes[4] === 0x2d;
+}
 
 function base64ToBytes(base64: string): Uint8Array {
   const binary = atob(base64);
@@ -38,15 +53,31 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { leadId, fileUrl, pdfBase64, fileName } = await req.json();
-    if (!leadId) return jsonResponse({ error: 'Missing leadId' }, { status: 400 });
-    if (!fileUrl && !pdfBase64) return jsonResponse({ error: 'Missing fileUrl or pdfBase64' }, { status: 400 });
+    const { leadId, pdfBase64 } = await req.json();
+    if (!leadId || typeof leadId !== 'string') return jsonResponse({ error: 'Missing leadId' }, { status: 400 });
+    if (!pdfBase64 || typeof pdfBase64 !== 'string') return jsonResponse({ error: 'Missing pdfBase64' }, { status: 400 });
+    if (pdfBase64.length > MAX_PDF_BASE64_CHARS) return jsonResponse({ error: 'הקובץ גדול מדי' }, { status: 413 });
 
     const supabase = createServiceRoleClient();
 
-    let resolvedUrl = fileUrl;
-    if (pdfBase64) {
-      const bytes = base64ToBytes(pdfBase64);
+    const { data: lead, error: leadError } = await supabase
+      .from('leads')
+      .select('id, signed_at')
+      .eq('id', leadId)
+      .maybeSingle();
+    if (leadError) return jsonResponse({ error: leadError.message }, { status: 500 });
+    if (!lead) return jsonResponse({ error: 'החוזה לא נמצא' }, { status: 404 });
+    if (lead.signed_at) return jsonResponse({ error: 'החוזה כבר נחתם — לא ניתן להחליף את הקובץ החתום' }, { status: 409 });
+
+    let resolvedUrl: string;
+    {
+      let bytes: Uint8Array;
+      try {
+        bytes = base64ToBytes(pdfBase64);
+      } catch {
+        return jsonResponse({ error: 'קובץ לא תקין' }, { status: 400 });
+      }
+      if (!isPdf(bytes)) return jsonResponse({ error: 'קובץ לא תקין' }, { status: 400 });
       // FIXED (2026-08-13): the storage object key used to be `${leadId}/${fileName}`
       // with fileName built client-side as a raw Hebrew string (e.g. "חוזה_חתום_דני.pdf",
       // see ContractPage.jsx generateSignedPdf). Supabase Storage rejects non-ASCII bytes
@@ -69,7 +100,8 @@ Deno.serve(async (req) => {
     const { error } = await supabase
       .from('leads')
       .update({ signed_contract_pdf_url: resolvedUrl })
-      .eq('id', leadId);
+      .eq('id', leadId)
+      .is('signed_at', null);
 
     if (error) return jsonResponse({ error: error.message }, { status: 500 });
 

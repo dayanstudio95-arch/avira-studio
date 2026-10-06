@@ -5,6 +5,12 @@
 // ("נסגר/חתימה"); that transition happens separately once the studio confirms.
 // Saves whatever the client entered into the dedicated "signed_*" fields only,
 // never overwriting the studio's own working fields.
+//
+// PII-01 (audit 2026-10-05): signing happens once. Before, a second call re-signed an
+// already-signed lead — overwriting signed_at and the signer's details, resetting the
+// status back to "חוזה", and (via the 0026 trigger on signed_at) firing the
+// "contract signed" notification + WhatsApp alert again. The update is now conditional on
+// signed_at IS NULL, so it is atomic even if two requests race.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createServiceRoleClient } from '../_shared/supabaseClients.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
@@ -43,10 +49,21 @@ Deno.serve(async (req) => {
     if (phoneNumber) updateData.signed_phone_number = phoneNumber;
     if (coupleNames) updateData.signed_couple_names = coupleNames;
 
-    const { error } = await supabase.from('leads').update(updateData).eq('id', leadId);
+    const { data: updated, error } = await supabase
+      .from('leads')
+      .update(updateData)
+      .eq('id', leadId)
+      .is('signed_at', null)
+      .select('id');
     if (error) {
       console.error('[signLeadPublic] Error:', error.message);
       return jsonResponse({ error: error.message }, { status: 500 });
+    }
+    if (!updated || updated.length === 0) {
+      const { data: existing } = await supabase.from('leads').select('id').eq('id', leadId).maybeSingle();
+      return existing
+        ? jsonResponse({ error: 'החוזה כבר נחתם' }, { status: 409 })
+        : jsonResponse({ error: 'החוזה לא נמצא' }, { status: 404 });
     }
 
     console.log('[signLeadPublic] Update done, returning success');
