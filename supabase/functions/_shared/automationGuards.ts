@@ -184,3 +184,50 @@ export async function sentTodayAt(supabase: any, automationId: string | null | u
     .limit(1);
   return data && data.length > 0 ? data[0].created_at : null;
 }
+
+// AUTO-19 (audit 2026-10-05): a queued reminder (pending_automations) can wait days for
+// approval. Re-check, at send time, the same conditions that put it in the queue —
+// mirrors runQuestionnaireReminder / runPaymentReminder in automation-engine. Returns the
+// Hebrew skip reason, or null when the message is still due.
+export function staleReasonFromRows(
+  automationType: string,
+  row: Record<string, any> | null,
+  now: Date = new Date(),
+): string | null {
+  if (automationType === 'questionnaire_reminder') {
+    if (!row) return 'הליד כבר לא קיים';
+    if (row.production_form_filled_at) return 'השאלון כבר מולא';
+    if (row.questionnaire_reminder_sent_at &&
+        now.getTime() - new Date(row.questionnaire_reminder_sent_at).getTime() < 3 * 24 * 60 * 60 * 1000) {
+      return 'כבר נשלחה תזכורת בימים האחרונים';
+    }
+    if (row.event_date && row.event_date < now.toISOString().split('T')[0]) return 'האירוע כבר עבר';
+    return null;
+  }
+  if (automationType === 'payment_reminder') {
+    if (!row) return 'האירוע כבר לא קיים';
+    if (row.client_payment_status === 'Paid') return 'כבר שולם';
+    return null;
+  }
+  return null;
+}
+
+export async function staleReasonForQueuedMessage(
+  supabase: any,
+  automationType: string,
+  msg: { leadId?: string; eventId?: string },
+): Promise<string | null> {
+  if (automationType === 'questionnaire_reminder' && msg.leadId) {
+    const { data } = await supabase.from('leads')
+      .select('id, production_form_filled_at, questionnaire_reminder_sent_at, event_date')
+      .eq('id', msg.leadId).maybeSingle();
+    return staleReasonFromRows(automationType, data);
+  }
+  if (automationType === 'payment_reminder' && msg.eventId) {
+    const { data } = await supabase.from('events')
+      .select('id, client_payment_status')
+      .eq('id', msg.eventId).maybeSingle();
+    return staleReasonFromRows(automationType, data);
+  }
+  return null;
+}

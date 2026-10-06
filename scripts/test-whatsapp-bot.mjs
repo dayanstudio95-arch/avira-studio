@@ -1498,6 +1498,29 @@ section('follow-up queue never offers someone who wrote "הסר"');
   check('opted out beats a manual flag', fq22.isAwaitingFollowUp({ ...base, followupFlaggedAt: '2026-10-02T10:00:00Z', optedOutAt: '2026-10-01T10:00:00Z' }, 0), false);
 }
 
+// =================================================================================
+// PART 23 — a queued reminder is re-checked when it is approved (AUTO-19, 2026-10-06)
+// =================================================================================
+
+const g23 = await loadModule('supabase/functions/_shared/automationGuards.ts', 'guards23');
+
+section('queued reminder still due at approval time?');
+{
+  const now = new Date('2026-10-06T10:00:00Z');
+  const q = (row) => g23.staleReasonFromRows('questionnaire_reminder', row, now);
+  const p = (row) => g23.staleReasonFromRows('payment_reminder', row, now);
+  check('questionnaire: still due', q({ event_date: '2026-10-20' }), null);
+  check('questionnaire: filled in meanwhile', q({ event_date: '2026-10-20', production_form_filled_at: '2026-10-05T09:00:00Z' }), 'השאלון כבר מולא');
+  check('questionnaire: reminded 1 day ago', q({ event_date: '2026-10-20', questionnaire_reminder_sent_at: '2026-10-05T10:00:00Z' }), 'כבר נשלחה תזכורת בימים האחרונים');
+  check('questionnaire: reminded 4 days ago → due', q({ event_date: '2026-10-20', questionnaire_reminder_sent_at: '2026-10-02T09:00:00Z' }), null);
+  check('questionnaire: event passed', q({ event_date: '2026-10-05' }), 'האירוע כבר עבר');
+  check('questionnaire: lead deleted', q(null), 'הליד כבר לא קיים');
+  check('payment: not paid → due', p({ client_payment_status: 'Pending' }), null);
+  check('payment: paid meanwhile', p({ client_payment_status: 'Paid' }), 'כבר שולם');
+  check('payment: event deleted', p(null), 'האירוע כבר לא קיים');
+  check('other types are not re-checked', g23.staleReasonFromRows('album_reminder', null, now), null);
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

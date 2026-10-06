@@ -38,7 +38,11 @@ export default function PendingApprovals() {
       });
       
       if (res.data?.success) {
-        toast.success(`אושרו ${res.data.sent} הודעות בהצלחה`);
+        // AUTO-06/19: report what really happened — messages can be skipped at send time
+        // (questionnaire already filled, already paid, asked to be removed, quiet hours…);
+        // the reason for each is in the automation log.
+        const { sent = 0, skipped = 0, failed = 0 } = res.data;
+        toast.success(`נשלחו ${sent} הודעות` + (skipped ? ` · דולגו ${skipped} (הסיבה ביומן האוטומציות)` : '') + (failed ? ` · נכשלו ${failed}` : ''));
         setRecords(r => r.filter(rec => rec.id !== recordId));
       } else {
         toast.error('שגיאה בעיבוד האישור');
