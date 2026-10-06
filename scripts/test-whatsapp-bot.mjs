@@ -1352,6 +1352,25 @@ section('"is that date free?" — finding the event date');
   check('"מחכה עכשיו" instead of "0 דק׳"', cm.waitingLabel({ contactType: 'lead', lastInboundAt: '2026-10-05T10:00:00Z', lastMessageAt: '2026-10-05T10:00:00Z' }, Date.parse('2026-10-05T10:00:20Z')), 'מחכה עכשיו');
 }
 
+// =================================================================================
+// PART 18 — who may create a new studio (_shared/permissions.ts, SEC-02, 2026-10-06)
+// =================================================================================
+
+const perms = await loadModule('supabase/functions/_shared/permissions.ts', 'permissions');
+
+section('create-tenant: only the platform studio owner');
+{
+  const P = perms.PLATFORM_TENANT_ID;
+  const other = '43bf2f6b-0000-0000-0000-000000000000';
+  check('platform owner may', perms.canCreateTenant({ role: 'owner', tenant_id: P }, P), true);
+  check('owner of another studio may not', perms.canCreateTenant({ role: 'owner', tenant_id: other }, P), false);
+  check('platform admin may not', perms.canCreateTenant({ role: 'admin', tenant_id: P }, P), false);
+  check('platform studio_manager may not', perms.canCreateTenant({ role: 'studio_manager', tenant_id: P }, P), false);
+  check('no profile may not', perms.canCreateTenant(null, P), false);
+  check('empty platform id → nobody', perms.canCreateTenant({ role: 'owner', tenant_id: '' }, ''), false);
+  check('platform id is the real studio', P, '708d9428-f1df-4b8f-86c5-4ef84a161f2b');
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

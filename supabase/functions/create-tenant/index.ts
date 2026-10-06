@@ -13,6 +13,13 @@
 // Gated to role === 'owner' only (stricter than invite-user's owner-or-admin bar), since
 // creating a whole new tenant is a bigger, rarer action than inviting a teammate.
 //
+// SEC-02 (audit 2026-10-05): ...and only the owner of the PLATFORM studio (Avira itself).
+// Before, the owner of ANY studio could call this with the email of another studio's sole
+// owner and receive a password-recovery link for that account (the "existing-user
+// recovery" path below returns actionLink to the caller and sends it to a phone the caller
+// typed) — a full account takeover. Studios created here are friends of the platform owner;
+// they must not be able to create studios or recover other accounts. See canCreateTenant().
+//
 // DELIVERY IS WHATSAPP, NOT EMAIL (2026-09-13, per the owner: "במקום שהוא יקבל דרך המייל
 // שזה ישלח בוואטסאפ שלו"). The email path failed three times in a row — first because of
 // Supabase Auth's URL Configuration (see DEPLOYMENT.md §2.1), and underneath that because
@@ -29,7 +36,7 @@
 // live studio, not a dead invite.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createUserClient, createServiceRoleClient, getRequestUser } from '../_shared/supabaseClients.ts';
-import { getCallerProfile, isOwner } from '../_shared/permissions.ts';
+import { getCallerProfile, canCreateTenant, PLATFORM_TENANT_ID } from '../_shared/permissions.ts';
 import { sendWhatsApp } from '../_shared/whatsapp.ts';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -45,8 +52,8 @@ Deno.serve(async (req) => {
     const supabase = createUserClient(req);
     const callerProfile = await getCallerProfile(supabase, user.id, 'role, tenant_id');
 
-    if (!callerProfile || !isOwner(callerProfile.role)) {
-      return jsonResponse({ error: 'Forbidden — רק בעלים יכול ליצור סטודיו חדש' }, { status: 403 });
+    if (!callerProfile || !canCreateTenant(callerProfile, Deno.env.get('PLATFORM_TENANT_ID') || PLATFORM_TENANT_ID)) {
+      return jsonResponse({ error: 'Forbidden — יצירת סטודיו חדש זמינה רק לבעלים של הסטודיו הראשי' }, { status: 403 });
     }
 
     const { studioName, email, fullName, phone } = await req.json();

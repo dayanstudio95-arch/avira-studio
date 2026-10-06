@@ -27,6 +27,19 @@
 // If you change these role sets, mirror the change in src/lib/permissions.js too.
 
 export const OWNER_ONLY_ROLES = ['owner'];
+
+// The platform studio (Avira itself). Only its owner may create new studios (create-tenant),
+// SEC-02. Overridable with the PLATFORM_TENANT_ID env var (used on staging).
+export const PLATFORM_TENANT_ID = '708d9428-f1df-4b8f-86c5-4ef84a161f2b';
+
+export function canCreateTenant(
+  profile: { role?: string | null; tenant_id?: string | null } | null | undefined,
+  platformTenantId: string,
+): boolean {
+  return !!profile && !!platformTenantId &&
+    OWNER_ONLY_ROLES.includes(profile.role ?? '') &&
+    profile.tenant_id === platformTenantId;
+}
 export const ADMIN_ROLES = ['owner', 'admin', 'studio_manager'];
 export const LEAD_COORDINATOR_ROLE = 'lead_coordinator';
 export const PHOTOGRAPHER_ROLE = 'photographer';
