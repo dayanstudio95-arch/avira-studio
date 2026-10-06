@@ -252,7 +252,7 @@ export default function ProgressStatus() {
 
   const openAlbumSettings = async () => {
     try {
-      const allS = await base44.entities.AppSetting.list({});
+      const allS = await base44.entities.AppSetting.list() /* BUG-01: list({}) threw */;
       const msgRec = allS.find(s => s.key === 'album_reminder_message');
       const imgRec = allS.find(s => s.key === 'album_reminder_image_url');
       setAlbumMsg(msgRec?.value || '');
@@ -264,7 +264,7 @@ export default function ProgressStatus() {
   const saveAlbumSettings = async () => {
     setAlbumSaving(true);
     try {
-      const allS = await base44.entities.AppSetting.list({});
+      const allS = await base44.entities.AppSetting.list() /* BUG-01: list({}) threw */;
       const exMsg = allS.find(s => s.key === 'album_reminder_message');
       const exImg = allS.find(s => s.key === 'album_reminder_image_url');
       if (exMsg?.id) await base44.entities.AppSetting.update(exMsg.id, { value: albumMsg });

@@ -740,9 +740,8 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
                             onClick={async () => {
                               const newStatus = event.albumStatus === 'sent' ? 'pending' : 'sent';
                               await base44.entities.Event.update(event.id, { albumStatus: newStatus });
-                              if (event.leadId) {
-                                try { await base44.functions.invoke('syncEventToLead', { eventId: event.id }); } catch {}
-                              }
+                              // (BUG-02: a call to 'syncEventToLead' stood here — that function was never
+                              // implemented, the call did nothing. Removed.)
                               if (onRefresh) onRefresh();
                             }}
                             className="p-0 h-auto hover:bg-transparent"

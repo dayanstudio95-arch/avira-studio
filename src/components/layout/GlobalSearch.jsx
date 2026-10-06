@@ -73,18 +73,22 @@ export default function GlobalSearch() {
     setIsLoading(true);
     debounceRef.current = setTimeout(async () => {
       const term = `%${q}%`;
+      // BUG-15 (audit 2026-10-05): inside .or(...) a comma or a parenthesis in what the user
+      // typed ("כהן, דנה", "אולם (גן)") broke the filter syntax and the search failed. A
+      // double-quoted value is taken literally by PostgREST; " and \ are escaped inside it.
+      const quoted = `"${term.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
       try {
         const [leadsRes, eventsRes, staffRes] = await Promise.all([
           supabase
             .from("leads")
             .select("id, couple_names, phone_number")
-            .or(`couple_names.ilike.${term},phone_number.ilike.${term}`)
+            .or(`couple_names.ilike.${quoted},phone_number.ilike.${quoted}`)
             .order("created_at", { ascending: false })
             .limit(RESULT_LIMIT),
           supabase
             .from("events")
             .select("id, couple_names, venue, date")
-            .or(`couple_names.ilike.${term},venue.ilike.${term}`)
+            .or(`couple_names.ilike.${quoted},venue.ilike.${quoted}`)
             .order("date", { ascending: false })
             .limit(RESULT_LIMIT),
           supabase

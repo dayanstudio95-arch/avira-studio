@@ -10,7 +10,6 @@ import LeadFormDialog from "../components/leads/LeadFormDialog";
 import ManualPaymentModal from "../components/leads/ManualPaymentModal";
 import LeadCSVImportDialog from "../components/leads/LeadCSVImportDialog";
 import MobileMoreMenu from "../components/leads/MobileMoreMenu";
-import LeadImageImportReviewDialog from "../components/leads/LeadImageImportReviewDialog";
 import LeadContractDialog from "../components/leads/LeadContractDialog";
 import QuestionnaireAnswersDialog from "../components/leads/QuestionnaireAnswersDialog";
 import FollowUpReminderDialog from "../components/leads/FollowUpReminderDialog";
@@ -66,7 +65,6 @@ export default function Leads() {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [manualPaymentLead, setManualPaymentLead] = useState(null);
   const [isCSVImportOpen, setIsCSVImportOpen] = useState(false);
-  const [isImageImportOpen, setIsImageImportOpen] = useState(false);
   const [sortOrder, setSortOrder] = useState(() => localStorage.getItem('leads_sort') || 'event_asc');
   const [quickFilter, setQuickFilter] = useState('all');
   const [duplicates, setDuplicates] = useState([]);
@@ -890,11 +888,6 @@ export default function Leads() {
         onClose={() => setManualPaymentLead(null)}
         lead={manualPaymentLead}
         onSaved={() => { setManualPaymentLead(null); loadLeads(); }}
-      />
-      <LeadImageImportReviewDialog
-        isOpen={isImageImportOpen}
-        onClose={() => setIsImageImportOpen(false)}
-        onSuccess={loadLeads}
       />
       <LeadCSVImportDialog
         isOpen={isCSVImportOpen}
