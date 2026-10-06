@@ -26,8 +26,11 @@ import { createServiceRoleClient } from '../_shared/supabaseClients.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { SIGNED_CONTRACTS_BUCKET, signedContractUrl } from '../_shared/signedContract.ts';
 
-// ~15MB of PDF. A real signed contract (html2canvas raster, A4 pages) is well under this.
-const MAX_PDF_BASE64_CHARS = 20_000_000;
+// ~60MB of PDF. Real signed contracts are LARGE — html2canvas rasters every A4 page at
+// full resolution: in production they average ~19MB and reach ~21MB (checked 2026-10-06).
+// The first cap (20M base64 chars ≈ 15MB) would have rejected almost all of them — keep
+// this generous; it only exists to stop absurd uploads.
+const MAX_PDF_BASE64_CHARS = 80_000_000;
 
 function isPdf(bytes: Uint8Array): boolean {
   // "%PDF-"
