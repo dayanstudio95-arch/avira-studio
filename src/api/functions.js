@@ -58,6 +58,7 @@ const FUNCTION_MAP = {
   sendToEditor: 'send-to-editor',
   sendToCouple: 'send-to-couple',
   sendWhatsAppMessage: 'send-whatsapp-message',
+  sendSignedContract: 'send-signed-contract',
   sendAlbumSketch: 'send-album-sketch',
   sendStaffScheduleMessage: 'send-staff-schedule-message',
   shareEventInfoWithTeam: 'share-event-info-with-team',

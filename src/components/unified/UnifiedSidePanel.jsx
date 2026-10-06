@@ -15,6 +15,8 @@ import { openSignedContract } from "@/lib/signedContract";
 import InvoiceDialog from "@/components/invoice/InvoiceDialog";
 import StaffAvailabilityModal from "@/components/leads/StaffAvailabilityModal";
 import AvailabilityPills from "@/components/events/AvailabilityPills";
+import LeadFormDialog from "@/components/leads/LeadFormDialog";
+import { packagePrices } from "@/lib/packagePrices";
 import { calendarSyncOutcome } from "@/lib/actionOutcome";
 import {
   PRODUCTION_QUESTIONNAIRE_FIELDS,
@@ -60,7 +62,10 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
   const [questionnaireTemplateEdit, setQuestionnaireTemplateEdit] = useState('');
   const [scheduleSummerTemplate, setScheduleSummerTemplate] = useState('');
   const [scheduleWinterTemplate, setScheduleWinterTemplate] = useState('');
-  const [isSendingSchedule, setIsSendingSchedule] = useState(null); // 'summer' | 'winter' | null
+  const [scheduleFridayTemplate, setScheduleFridayTemplate] = useState('');
+  const [isSendingSchedule, setIsSendingSchedule] = useState(null); // 'summer' | 'winter' | 'friday' | null
+  const [isEditLeadOpen, setIsEditLeadOpen] = useState(false);
+  const [isSendingSignedContract, setIsSendingSignedContract] = useState(false);
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   // The notes as they ARE on the row (event first, else the linked lead). Read from props
   // on every render — never from state — so the panel shows the right text for whichever
@@ -161,6 +166,8 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
       if (summerTpl?.value) setScheduleSummerTemplate(summerTpl.value);
       const winterTpl = all.find(s => s.key === 'template_schedule_winter');
       if (winterTpl?.value) setScheduleWinterTemplate(winterTpl.value);
+      const fridayTpl = all.find(s => s.key === 'template_schedule_friday');
+      if (fridayTpl?.value) setScheduleFridayTemplate(fridayTpl.value);
     }).catch(() => {});
   }, []);
 
@@ -376,8 +383,8 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
     }
   };
 
-  // Sends the "לוז קיץ" / "לוז חורף" schedule message — templates are edited
-  // in Settings → תבניות הודעה (template_schedule_summer / _winter), same
+  // Sends the "לוז קיץ" / "לוז חורף" / "לוז שישי" schedule message — templates are edited
+  // in Settings → תבניות הודעה (template_schedule_summer / _winter / _friday), same
   // convention as every other message template in this panel. No hardcoded
   // fallback text on purpose: the whole point is the studio fills in its own
   // schedule wording, so an empty template should surface as an explicit
@@ -387,8 +394,8 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
       toast.error('אין מספר טלפון');
       return;
     }
-    const seasonLabel = season === 'summer' ? 'לוז קיץ' : 'לוז חורף';
-    const rawTemplate = season === 'summer' ? scheduleSummerTemplate : scheduleWinterTemplate;
+    const seasonLabel = { summer: 'לוז קיץ', winter: 'לוז חורף', friday: 'לוז שישי' }[season];
+    const rawTemplate = { summer: scheduleSummerTemplate, winter: scheduleWinterTemplate, friday: scheduleFridayTemplate }[season];
     if (!rawTemplate?.trim()) {
       toast.error(`יש להגדיר קודם את תבנית "${seasonLabel}" בהגדרות → תבניות הודעה`);
       return;
@@ -396,12 +403,33 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
     setIsSendingSchedule(season);
     try {
       const message_text = applyVariables(rawTemplate, lead);
-      await sendViaWebhook(season === 'summer' ? 'schedule_summer' : 'schedule_winter', lead.phoneNumber, message_text);
+      await sendViaWebhook(`schedule_${season}`, lead.phoneNumber, message_text);
       toast.success(`${seasonLabel} נשלח בהצלחה`);
     } catch (error) {
       toast.error('שגיאה בשליחה');
     } finally {
       setIsSendingSchedule(null);
+    }
+  };
+
+  // "שלח לזוג" next to the signed-PDF button: the couple gets their signed contract as a
+  // PDF attachment. The file link is signed server-side (send-signed-contract) — the
+  // bucket is private and the PDF holds their ID number. Caption: template_signed_contract.
+  const handleSendSignedContract = async () => {
+    if (!lead?.id) return;
+    if (!lead.phoneNumber) {
+      toast.error('אין מספר טלפון');
+      return;
+    }
+    if (!window.confirm(`לשלוח את החוזה החתום ל-${lead.coupleNames || 'הזוג'} ב-${lead.phoneNumber}?`)) return;
+    setIsSendingSignedContract(true);
+    try {
+      await base44.functions.invoke('sendSignedContract', { leadId: lead.id });
+      toast.success('החוזה החתום נשלח לזוג');
+    } catch (error) {
+      toast.error('שליחת החוזה נכשלה', { description: error?.message });
+    } finally {
+      setIsSendingSignedContract(false);
     }
   };
 
@@ -543,17 +571,32 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
 
             {/* כפתורים בולטים */}
             <div className="space-y-2">
-              {/* כפתור ביטול אירוע (אם יש אירוע) */}
-              {safeEvent && (
-                <Button
-                  onClick={() => setShowCancelConfirm(true)}
-                  disabled={isCancelingEvent}
-                  className="w-full bg-red-600/80 hover:bg-red-700 text-white font-semibold py-3 rounded-xl gap-2"
-                  title="בטל את האירוע הנוכחי"
-                >
-                  <Trash2 className="w-5 h-5" />
-                  {isCancelingEvent ? 'מבטל...' : 'בטל אירוע'}
-                </Button>
+              {/* בטל אירוע (אם יש אירוע) + ערוך ליד (אם יש ליד) — באותה שורה; כשיש רק אחד
+                  מהם הוא תופס את כל הרוחב */}
+              {(safeEvent || lead) && (
+                <div className="flex gap-2">
+                  {safeEvent && (
+                    <Button
+                      onClick={() => setShowCancelConfirm(true)}
+                      disabled={isCancelingEvent}
+                      className="flex-1 bg-red-600/80 hover:bg-red-700 text-white font-semibold py-3 rounded-xl gap-2"
+                      title="בטל את האירוע הנוכחי"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                      {isCancelingEvent ? 'מבטל...' : 'בטל אירוע'}
+                    </Button>
+                  )}
+                  {lead && (
+                    <Button
+                      onClick={() => setIsEditLeadOpen(true)}
+                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl gap-2"
+                      title="פתח את טופס עריכת הליד"
+                    >
+                      <Edit2 className="w-5 h-5" />
+                      ערוך ליד
+                    </Button>
+                  )}
+                </div>
               )}
               {/* 4 כפתורים בחלק העליון */}
               <Button
@@ -580,18 +623,34 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                 </Button>
               )}
               {lead?.signedContractPdfUrl && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    openSignedContract(lead.signedContractPdfUrl).catch((e) =>
-                      toast.error("פתיחת החוזה החתום נכשלה", { description: e?.message })
-                    )
-                  }
-                  className="w-full flex items-center justify-center gap-2 bg-green-700 hover:bg-green-600 text-white font-semibold py-3 rounded-xl text-sm"
-                >
-                  <FileDown className="w-5 h-5" />
-                  צפה בחוזה החתום (PDF)
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openSignedContract(lead.signedContractPdfUrl).catch((e) =>
+                        toast.error("פתיחת החוזה החתום נכשלה", { description: e?.message })
+                      )
+                    }
+                    className="flex-1 flex items-center justify-center gap-2 bg-green-700 hover:bg-green-600 text-white font-semibold py-3 rounded-xl text-sm"
+                  >
+                    <FileDown className="w-5 h-5" />
+                    צפה בחוזה החתום (PDF)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSendSignedContract}
+                    disabled={isSendingSignedContract}
+                    className="flex-1 flex items-center justify-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:bg-teal-800 text-white font-semibold py-3 rounded-xl text-sm"
+                    title="שולח לזוג את החוזה החתום כקובץ PDF בוואטסאפ"
+                  >
+                    {isSendingSignedContract ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <Send className="w-5 h-5" />
+                    )}
+                    {isSendingSignedContract ? 'שולח...' : 'שלח לזוג'}
+                  </button>
+                </div>
               )}
             </div>
 
@@ -633,7 +692,7 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
               </div>
             )}
 
-            {/* כפתורי לוז עונתי — נשלחים דרך תבניות template_schedule_summer/_winter
+            {/* כפתורי לוז — נשלחים דרך תבניות template_schedule_summer/_winter/_friday
                 שנערכות בהגדרות → תבניות הודעה (ראו handleSendSchedule) */}
             {lead && (
               <div className="flex gap-2">
@@ -660,6 +719,18 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                     <Send className="w-4 h-4" />
                   )}
                   לוז חורף
+                </Button>
+                <Button
+                  onClick={() => handleSendSchedule('friday')}
+                  disabled={isSendingSchedule === 'friday'}
+                  className="flex-1 flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-700 disabled:bg-violet-800 text-white font-semibold py-3 rounded-xl text-sm"
+                >
+                  {isSendingSchedule === 'friday' ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                  לוז שישי
                 </Button>
               </div>
             )}
@@ -1278,6 +1349,24 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
         existingRequests={availabilityRequests}
         onStaffMembersChanged={onStaffMembersChanged}
       />
+
+      {/* "ערוך ליד" — the same form as ✏️ on the Leads page. Mounted only while open so the
+          panel doesn't load the package list on every open. After a save the panel closes:
+          every screen that hosts it holds its own copy of the lead, and reopening shows the
+          saved values instead of the stale ones. */}
+      {lead && isEditLeadOpen && (
+        <LeadFormDialog
+          isOpen
+          onClose={() => setIsEditLeadOpen(false)}
+          lead={lead}
+          packagePrices={packagePrices}
+          onSaved={() => {
+            setIsEditLeadOpen(false);
+            if (onLeadUpdated) onLeadUpdated();
+            onClose();
+          }}
+        />
+      )}
     </>
   );
 }

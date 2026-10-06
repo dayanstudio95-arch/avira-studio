@@ -20,13 +20,8 @@ import { openSignedContract } from "@/lib/signedContract";
 import { useAuth } from "@/lib/SupabaseAuthContext";
 import { isAdmin } from "@/lib/permissions";
 import { leadSyncOutcome, settledCounts } from "@/lib/actionOutcome";
+import { packagePrices } from "@/lib/packagePrices";
 
-const packagePrices = {
-  "חבילה 1": 9500,
-  "חבילה 2": 13500,
-  "חבילה 3": 15500,
-  "חבילה 4": 11000,
-};
 
 const statusConfig = {
   "חדש":          { badge: "bg-blue-900/60 text-blue-300 border-blue-700",    card: "bg-blue-950/80 border-blue-800",   num: "text-blue-300" },

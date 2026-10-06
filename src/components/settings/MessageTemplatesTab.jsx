@@ -116,6 +116,20 @@ const TEMPLATES = [
     variables: ["{{names}}", "{{event_date}}", "{{venue}}"],
   },
   {
+    key: "template_schedule_friday",
+    label: "לוז שישי",
+    description: "ההודעה שתישלח כשלוחצים על כפתור 'לוז שישי' בכרטיס הליד/אירוע",
+    defaultValue: `שלום {{names}} 😊\n\nהנה הלוז המשוער ליום האירוע ({{event_date}}):\n\n[הכניסו כאן את פרטי הלוז]`,
+    variables: ["{{names}}", "{{event_date}}", "{{venue}}"],
+  },
+  {
+    key: "template_signed_contract",
+    label: "שליחת חוזה חתום",
+    description: "הכיתוב שמצורף לקובץ ה-PDF של החוזה החתום כשלוחצים על 'שלח לזוג' בכרטיס הליד/אירוע. אם התבנית ריקה נשלח נוסח ברירת המחדל.",
+    defaultValue: `שלום {{names}} 😊\nמצורף החוזה החתום שלכם.\nתודה שבחרתם בנו!`,
+    variables: ["{{names}}", "{{event_date}}"],
+  },
+  {
     key: "template_questionnaire_reminder",
     label: "תזכורת למילוי שאלון הפקה",
     description: "ההודעה שנשלחת ע\"י supabase/functions/send-questionnaire-reminders לזוגות עם אירוע מתקרב שעדיין לא מילאו שאלון — היתה קודם ניתנת לעריכה רק דרך מסך אוטומציות-צוות המנוטרל בהגדרות; זהו כעת המקום היחיד לעריכתה. שימו לב: תבנית זו משתמשת בתחביר $משתנה (לא {{משתנה}}) כי כך הפונקציה בשרת מחליפה את המשתנים בפועל.",
