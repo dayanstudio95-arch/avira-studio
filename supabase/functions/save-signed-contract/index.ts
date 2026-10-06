@@ -24,6 +24,7 @@
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createServiceRoleClient } from '../_shared/supabaseClients.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
+import { SIGNED_CONTRACTS_BUCKET, signedContractUrl } from '../_shared/signedContract.ts';
 
 // ~15MB of PDF. A real signed contract (html2canvas raster, A4 pages) is well under this.
 const MAX_PDF_BASE64_CHARS = 20_000_000;
@@ -89,11 +90,11 @@ Deno.serve(async (req) => {
       // on the PDF link, never as part of the storage key.
       const path = `${leadId}/signed-contract.pdf`;
       const { error: uploadError } = await supabase.storage
-        .from('signed-contracts')
+        .from(SIGNED_CONTRACTS_BUCKET)
         .upload(path, bytes, { contentType: 'application/pdf', upsert: true });
       if (uploadError) return jsonResponse({ error: uploadError.message }, { status: 500 });
 
-      const { data: publicUrlData } = supabase.storage.from('signed-contracts').getPublicUrl(path);
+      const { data: publicUrlData } = supabase.storage.from(SIGNED_CONTRACTS_BUCKET).getPublicUrl(path);
       resolvedUrl = publicUrlData.publicUrl;
     }
 
@@ -105,7 +106,8 @@ Deno.serve(async (req) => {
 
     if (error) return jsonResponse({ error: error.message }, { status: 500 });
 
-    return jsonResponse({ success: true, fileUrl: resolvedUrl });
+    // PII-02: the column keeps the object's address; the couple gets a 1-hour signed link.
+    return jsonResponse({ success: true, fileUrl: await signedContractUrl(supabase, resolvedUrl, 3600) });
   } catch (error) {
     return jsonResponse({ error: error.message }, { status: 500 });
   }

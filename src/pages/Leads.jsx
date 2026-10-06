@@ -17,6 +17,7 @@ import FollowUpReminderDialog from "../components/leads/FollowUpReminderDialog";
 import UnifiedSidePanel from "../components/unified/UnifiedSidePanel";
 import InvoiceDialog from "../components/invoice/InvoiceDialog";
 import { toast } from "sonner";
+import { openSignedContract } from "@/lib/signedContract";
 import { useAuth } from "@/lib/SupabaseAuthContext";
 import { isAdmin } from "@/lib/permissions";
 
@@ -101,7 +102,10 @@ export default function Leads() {
   // directly; only fall back to the manual-sign dialog for not-yet-signed leads.
   const handleContractButtonClick = (lead) => {
     if (lead.signedContractPdfUrl) {
-      window.open(lead.signedContractPdfUrl, '_blank', 'noopener,noreferrer');
+      // PII-02: private bucket — opens a short-lived signed link.
+      openSignedContract(lead.signedContractPdfUrl).catch((e) =>
+        toast.error("פתיחת החוזה החתום נכשלה", { description: e?.message })
+      );
       return;
     }
     setContractLead(lead);

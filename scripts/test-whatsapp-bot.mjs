@@ -1391,6 +1391,43 @@ section('user management hierarchy (SEC-03): only an owner touches owners and ad
   check('studio_manager may not assign studio_manager', a('studio_manager', 'studio_manager'), false);
 }
 
+// =================================================================================
+// PART 19 — private signed contracts: finding the file behind the stored link (PII-02)
+// =================================================================================
+
+const scServer = await loadModule('supabase/functions/_shared/signedContract.ts', 'signedcontract');
+const scScreen = await loadModule('src/lib/signedContractPath.js', 'signedcontractpath');
+
+section('signed contract link → storage path (server and screen agree)');
+{
+  const ours = 'https://yzurelfhjkgqrluifszz.supabase.co/storage/v1/object/public/signed-contracts/0f6c1b2e-1111-2222-3333-444455556666/signed-contract.pdf';
+  const cases = [
+    ['our public link', ours, '0f6c1b2e-1111-2222-3333-444455556666/signed-contract.pdf'],
+    ['already a signed link', ours.replace('/public/', '/sign/') + '?token=abc', '0f6c1b2e-1111-2222-3333-444455556666/signed-contract.pdf'],
+    ['legacy Base44 link stays foreign', 'https://base44.app/api/apps/x/files/mp/abc.pdf', null],
+    ['another bucket is not ours', 'https://x.supabase.co/storage/v1/object/public/media-uploads/a/b.pdf', null],
+    ['path traversal refused', 'https://x.supabase.co/storage/v1/object/public/signed-contracts/../album-files/x', null],
+    ['empty', '', null],
+    ['null', null, null],
+  ];
+  for (const [name, url, want] of cases) {
+    check(`server: ${name}`, scServer.contractPathFromUrl(url), want);
+    check(`screen: ${name}`, scScreen.contractPathFromUrl(url), want);
+  }
+}
+
+section('signedContractUrl: what the couple gets');
+{
+  const calls = [];
+  const fake = (result) => ({ storage: { from: (b) => ({ createSignedUrl: async (p, s) => { calls.push([b, p, s]); return result; } }) } });
+  const ours = 'https://x.supabase.co/storage/v1/object/public/signed-contracts/L1/signed-contract.pdf';
+  check('our file → signed link', await scServer.signedContractUrl(fake({ data: { signedUrl: 'SIGNED' } }), ours, 3600), 'SIGNED');
+  check('asked the right bucket/path/expiry', JSON.stringify(calls[0]), JSON.stringify(['signed-contracts', 'L1/signed-contract.pdf', 3600]));
+  check('signing failed → null (never the permanent link)', await scServer.signedContractUrl(fake({ error: { message: 'x' } }), ours), null);
+  check('foreign link → unchanged', await scServer.signedContractUrl(fake({}), 'https://base44.app/f.pdf'), 'https://base44.app/f.pdf');
+  check('no link → null', await scServer.signedContractUrl(fake({}), null), null);
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

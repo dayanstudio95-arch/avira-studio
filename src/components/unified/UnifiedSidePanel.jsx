@@ -10,6 +10,7 @@ import {
   Send, Calendar as CalendarIcon, MessageCircle, Settings, Receipt, TrendingUp, Share2, Eye, Edit2, Trash2
 } from "lucide-react";
 import { toast } from "sonner";
+import { openSignedContract } from "@/lib/signedContract";
 import InvoiceDialog from "@/components/invoice/InvoiceDialog";
 import StaffAvailabilityModal from "@/components/leads/StaffAvailabilityModal";
 import AvailabilityPills from "@/components/events/AvailabilityPills";
@@ -574,15 +575,18 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                 </Button>
               )}
               {lead?.signedContractPdfUrl && (
-                <a
-                  href={lead.signedContractPdfUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  type="button"
+                  onClick={() =>
+                    openSignedContract(lead.signedContractPdfUrl).catch((e) =>
+                      toast.error("פתיחת החוזה החתום נכשלה", { description: e?.message })
+                    )
+                  }
                   className="w-full flex items-center justify-center gap-2 bg-green-700 hover:bg-green-600 text-white font-semibold py-3 rounded-xl text-sm"
                 >
                   <FileDown className="w-5 h-5" />
                   צפה בחוזה החתום (PDF)
-                </a>
+                </button>
               )}
             </div>
 

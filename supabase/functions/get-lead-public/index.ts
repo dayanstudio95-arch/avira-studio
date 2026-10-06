@@ -7,6 +7,7 @@
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createServiceRoleClient } from '../_shared/supabaseClients.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
+import { signedContractUrl } from '../_shared/signedContract.ts';
 
 Deno.serve(async (req) => {
   const preflight = handleOptions(req);
@@ -94,7 +95,8 @@ Deno.serve(async (req) => {
       idNumber: lead.id_number,
       // Added so the couple's own contract page can show/download their signed PDF
       // after signing (see save-signed-contract + migration 0006 for the upload side).
-      signedContractPdfUrl: lead.signed_contract_pdf_url,
+      // PII-02: the bucket is private — a 1-hour signed URL, never the stored link.
+      signedContractPdfUrl: await signedContractUrl(supabase, lead.signed_contract_pdf_url, 3600),
       productionBridePhone: lead.production_bride_phone,
       productionGroomPhone: lead.production_groom_phone,
       productionBridePrepLocation: lead.production_bride_prep_location,
