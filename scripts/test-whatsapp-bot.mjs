@@ -1538,6 +1538,24 @@ section('pacing: the first message never waits, the next ones wait 1.2–2.0s');
   check('long after → no wait', wa24.msToWaitBeforeSend(t + 5000, t, 800), 0);
 }
 
+// =================================================================================
+// PART 25 — Google Calendar create-lock (AUTO-01/05, 2026-10-06)
+// =================================================================================
+
+const gcs = await loadModule('supabase/functions/_shared/googleCalendarSync.ts', 'gcs25');
+
+section('create-lock: in progress vs. left behind by a crashed run');
+{
+  const now = 1_800_000_000_000;
+  check('a real Google id is not a lock', gcs.isCreateLock('abc123'), false);
+  check('no id is not a lock', gcs.isCreateLock(null), false);
+  check('creating_<ms> is a lock', gcs.isCreateLock(`creating_${now}`), true);
+  check('lock from 1 minute ago → still in progress', gcs.isStaleCreateLock(`creating_${now - 60_000}`, now), false);
+  check('lock from 11 minutes ago → stale, take over', gcs.isStaleCreateLock(`creating_${now - 11 * 60_000}`, now), true);
+  check('garbage lock → stale', gcs.isStaleCreateLock('creating_xyz', now), true);
+  check('real id is never stale', gcs.isStaleCreateLock('abc123', now), false);
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

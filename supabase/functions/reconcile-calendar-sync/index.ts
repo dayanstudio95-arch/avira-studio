@@ -33,7 +33,7 @@ async function reconcileTenant(supabase: any, tenantId: string) {
     .from('google_calendar_accounts')
     .select('id')
     .eq('tenant_id', tenantId)
-    .eq('status', 'connected');
+    .in('status', ['connected', 'error']); // AUTO-04: 'error' = a past temporary failure, retried
 
   if (!connectedAccounts || connectedAccounts.length === 0) {
     return { tenantId, skipped: 'no connected accounts', processed: 0 };

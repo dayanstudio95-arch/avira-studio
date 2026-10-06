@@ -183,11 +183,15 @@ export async function getValidAccessToken(
 
     if (!res.ok) {
       const errText = await res.text();
+      // AUTO-04 (audit 2026-10-05): only a revoked/expired grant needs the owner to reconnect.
+      // Anything else (Google 5xx, 429, a blip) is temporary: record it but keep the account
+      // in the sync — before, one hiccup set 'error' and getConnectedAccounts then skipped
+      // the account forever, silently.
       const needsReauth = res.status === 400 && errText.includes('invalid_grant');
       await supabase
         .from('google_calendar_accounts')
         .update({
-          status: needsReauth ? 'needs_reauth' : 'error',
+          ...(needsReauth ? { status: 'needs_reauth' } : {}),
           last_error: errText.slice(0, 500),
           updated_at: new Date().toISOString(),
         })
@@ -210,21 +214,24 @@ export async function getValidAccessToken(
 
     return { accessToken: tokens.access_token, calendarId: account.calendar_id || 'primary', accountId: account.id };
   } catch (err) {
+    // Network error: temporary by definition (AUTO-04) — keep the account in the sync.
     await supabase
       .from('google_calendar_accounts')
-      .update({ status: 'error', last_error: String(err.message || err).slice(0, 500), updated_at: new Date().toISOString() })
+      .update({ last_error: String(err.message || err).slice(0, 500), updated_at: new Date().toISOString() })
       .eq('id', account.id);
     return null;
   }
 }
 
-// All accounts for a tenant that are in a state worth attempting sync
-// against ('connected' — 'needs_reauth'/'error'/'disconnected' are skipped).
+// All accounts for a tenant that are in a state worth attempting sync against.
+// 'error' is included (AUTO-04): it was set by a temporary failure in the past and must
+// heal by itself — a successful token refresh sets 'connected' again.
+// 'needs_reauth' / 'disconnected' are skipped: only the owner can fix those.
 export async function getConnectedAccounts(supabase: any, tenantId: string) {
   const { data } = await supabase
     .from('google_calendar_accounts')
     .select('*')
     .eq('tenant_id', tenantId)
-    .eq('status', 'connected');
+    .in('status', ['connected', 'error']);
   return data || [];
 }

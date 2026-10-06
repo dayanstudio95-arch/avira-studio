@@ -21,6 +21,31 @@ interface CalendarPayload {
   start: { date: string };
   end: { date: string };
   attendees?: Array<{ email: string }>;
+  // AUTO-05: every event we write carries our own event id, so a create that crashed
+  // half-way can be found again instead of being created twice.
+  extendedProperties?: { private: Record<string, string> };
+}
+
+// ── Create-lock (AUTO-01 / AUTO-05, audit 2026-10-05) ─────────────────────────────────
+// Before creating a Google event we put `creating_<ms>` in event_calendar_syncs.google_event_id
+// so a second sync running at the same moment does not create it again. Two bugs:
+//   * a failed create left the marker there forever → every later sync skipped the event,
+//     silently: the wedding never reached the calendar;
+//   * the lock was taken with a plain upsert, so two simultaneous syncs could both "take" it.
+// Now the lock is taken atomically, released on failure, a lock older than
+// CREATE_LOCK_STALE_MS (a crashed run) is taken over, and every create first looks in the
+// calendar for an event already tagged with our id.
+export const CREATE_LOCK_PREFIX = 'creating_';
+export const CREATE_LOCK_STALE_MS = 10 * 60 * 1000;
+
+export function isCreateLock(googleEventId: string | null | undefined): boolean {
+  return !!googleEventId && googleEventId.startsWith(CREATE_LOCK_PREFIX);
+}
+
+export function isStaleCreateLock(googleEventId: string | null | undefined, now: number = Date.now()): boolean {
+  if (!isCreateLock(googleEventId)) return false;
+  const at = Number(googleEventId!.slice(CREATE_LOCK_PREFIX.length));
+  return !Number.isFinite(at) || at <= 0 || now - at > CREATE_LOCK_STALE_MS;
 }
 
 export async function buildEventPayload(supabase: any, event: any, accountRole: AccountRole = 'primary'): Promise<CalendarPayload> {
@@ -148,6 +173,7 @@ export async function buildEventPayload(supabase: any, event: any, accountRole: 
     colorId,
     start: { date: startDate },
     end: { date: endDate },
+    extendedProperties: { private: { aviraEventId: String(event.id) } },
   };
   if (attendees.length > 0) payload.attendees = attendees;
   return payload;
@@ -178,7 +204,7 @@ export async function pushEventToAccount(
   const sendUpdates = '';
   const body = JSON.stringify(payload);
 
-  const hasRealExistingId = existingGoogleEventId && !existingGoogleEventId.startsWith('creating_');
+  const hasRealExistingId = existingGoogleEventId && !isCreateLock(existingGoogleEventId);
 
   if (hasRealExistingId) {
     const res = await fetchWithRetry(`${baseUrl}/${existingGoogleEventId}${sendUpdates}`, { method: 'PATCH', headers, body });
@@ -190,14 +216,28 @@ export async function pushEventToAccount(
     return { action: 'updated', googleEventId: existingGoogleEventId };
   }
 
-  const res = await fetchWithRetry(`${baseUrl}${sendUpdates}`, { method: 'POST', headers, body });
+  // Create is NOT retried on a 5xx/network error (AUTO-05): Google may have created it
+  // already, and a blind retry makes a duplicate. The lock is released instead, and the next
+  // sync finds the event by its tag (findTaggedEvent) before creating anything.
+  const res = await fetchWithRetry(`${baseUrl}${sendUpdates}`, { method: 'POST', headers, body }, { retryUnsafe: false });
   if (!res.ok) throw new Error(`POST failed: ${res.status} ${await res.text()}`);
   const created = await res.json();
   return { action: 'created', googleEventId: created.id };
 }
 
+// AUTO-05: the Google event we already created for this AVIRA event, if any (tagged by
+// buildEventPayload). Used when taking over a stale create-lock.
+async function findTaggedEvent(accessToken: string, calendarId: string, eventId: string): Promise<string | null> {
+  const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events` +
+    `?privateExtendedProperty=${encodeURIComponent(`aviraEventId=${eventId}`)}&maxResults=1&showDeleted=false`;
+  const res = await fetchWithRetry(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!res.ok) throw new Error(`lookup failed: ${res.status} ${await res.text()}`);
+  const data = await res.json();
+  return data?.items?.[0]?.id ?? null;
+}
+
 export async function deleteEventFromAccount(accessToken: string, calendarId: string, googleEventId: string | null): Promise<void> {
-  if (!googleEventId || googleEventId.startsWith('creating_')) return;
+  if (!googleEventId || isCreateLock(googleEventId)) return;
   const res = await fetchWithRetry(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${googleEventId}`,
     { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` } },
@@ -248,6 +288,7 @@ export async function syncEventToAllAccounts(
 
   for (const account of connectedAccounts) {
     const role = account.account_role as AccountRole;
+    let heldLock: string | null = null; // AUTO-01: released if this run fails
     try {
       // Built per-account (not once and reused) so the backup account can
       // get its own payload variant — extra financial/package details, no
@@ -267,33 +308,51 @@ export async function syncEventToAllAccounts(
         .maybeSingle();
 
       const existingGoogleEventId: string | null = existingSync?.google_event_id ?? null;
-      const isLocked = existingGoogleEventId?.startsWith('creating_');
-      if (isLocked) {
+      let idToPush: string | null = existingGoogleEventId;
+
+      if (isCreateLock(existingGoogleEventId) && !isStaleCreateLock(existingGoogleEventId)) {
         results.push({ accountRole: role, status: 'skipped', error: 'create in progress (lock marker)' });
         continue;
       }
 
-      // Acquire a create-lock before the network call, mirroring the
-      // original single-account implementation's race-avoidance strategy.
-      if (!existingGoogleEventId) {
-        const lockMarker = `creating_${Date.now()}`;
-        await supabase.from('event_calendar_syncs').upsert(
-          {
-            tenant_id: tenantId,
-            event_id: eventId,
-            account_id: token.accountId,
-            account_role: role,
-            google_event_id: lockMarker,
-            status: 'pending',
-            last_error: null,
-            last_synced_at: new Date().toISOString(),
-          },
-          { onConflict: 'event_id,account_id' },
-        );
+      // Take the create-lock atomically (see CREATE_LOCK_* above). Whoever loses the race
+      // skips; the winner creates.
+      if (!existingGoogleEventId || isCreateLock(existingGoogleEventId)) {
+        const lockMarker = `${CREATE_LOCK_PREFIX}${Date.now()}`;
+        const lockRow = {
+          google_event_id: lockMarker,
+          status: 'pending',
+          last_error: null,
+          last_synced_at: new Date().toISOString(),
+        };
+        let took = false;
+        if (!existingSync) {
+          const { error: insErr } = await supabase.from('event_calendar_syncs').insert({
+            tenant_id: tenantId, event_id: eventId, account_id: token.accountId, account_role: role, ...lockRow,
+          });
+          if (insErr && insErr.code !== '23505') throw new Error(`lock insert: ${insErr.message}`);
+          took = !insErr;
+        } else {
+          let q = supabase.from('event_calendar_syncs').update(lockRow).eq('id', existingSync.id);
+          q = existingGoogleEventId ? q.eq('google_event_id', existingGoogleEventId) : q.is('google_event_id', null);
+          const { data: upd, error: updErr } = await q.select('id');
+          if (updErr) throw new Error(`lock update: ${updErr.message}`);
+          took = !!upd && upd.length > 0;
+        }
+        if (!took) {
+          results.push({ accountRole: role, status: 'skipped', error: 'create in progress (lock taken by another sync)' });
+          continue;
+        }
+        heldLock = lockMarker;
         if (role === 'primary') await mirrorPrimaryOntoLegacyColumns(supabase, eventId, 'pending', lockMarker, null);
+        // Before creating, look in the calendar for an event already tagged with this id: an
+        // earlier run may have died mid-create, or a create may have succeeded on Google's
+        // side while we saw an error. Found → update it instead of creating a second one.
+        // (One GET per new event — creates are rare.)
+        idToPush = await findTaggedEvent(token.accessToken, token.calendarId, eventId);
       }
 
-      const pushResult = await pushEventToAccount(token.accessToken, token.calendarId, payload, existingGoogleEventId);
+      const pushResult = await pushEventToAccount(token.accessToken, token.calendarId, payload, idToPush);
 
       if (pushResult.action === 'cleared_missing_id') {
         await supabase.from('event_calendar_syncs').upsert(
@@ -343,10 +402,13 @@ export async function syncEventToAllAccounts(
           status: 'failed',
           last_error: message,
           last_synced_at: new Date().toISOString(),
+          // AUTO-01: release our create-lock so the next sync (the 20-minute reconcile)
+          // tries again, instead of skipping this event forever.
+          ...(heldLock ? { google_event_id: null } : {}),
         },
         { onConflict: 'event_id,account_id' },
       );
-      if (role === 'primary') await mirrorPrimaryOntoLegacyColumns(supabase, eventId, 'failed', undefined, message);
+      if (role === 'primary') await mirrorPrimaryOntoLegacyColumns(supabase, eventId, 'failed', heldLock ? null : undefined, message);
       results.push({ accountRole: role, status: 'failed', error: message });
     }
   }
