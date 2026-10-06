@@ -20,7 +20,7 @@
 //    themselves (email, SMS, in person).
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createUserClient, createServiceRoleClient, getRequestUser } from '../_shared/supabaseClients.ts';
-import { getCallerProfile, isAdmin } from '../_shared/permissions.ts';
+import { getCallerProfile, isAdmin, canManageUser } from '../_shared/permissions.ts';
 import { sendWhatsApp } from '../_shared/whatsapp.ts';
 
 Deno.serve(async (req) => {
@@ -51,12 +51,16 @@ Deno.serve(async (req) => {
     // Only allow resending to a teammate inside the caller's own tenant.
     const { data: targetProfile, error: targetError } = await serviceClient
       .from('profiles')
-      .select('id, tenant_id, full_name')
+      .select('id, tenant_id, full_name, role')
       .eq('id', userId)
       .single();
 
     if (targetError || !targetProfile || targetProfile.tenant_id !== callerProfile.tenant_id) {
       return jsonResponse({ error: 'משתמש לא נמצא' }, { status: 404 });
+    }
+    // A login link IS the account (SEC-03): never hand one for an owner/admin to a non-owner.
+    if (userId !== user.id && !canManageUser(callerProfile.role, targetProfile.role)) {
+      return jsonResponse({ error: 'רק בעלים יכול לערוך בעלים או מנהלים' }, { status: 403 });
     }
 
     const { data: authUser, error: authUserError } = await serviceClient.auth.admin.getUserById(userId);

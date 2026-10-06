@@ -11,7 +11,7 @@
 // atomically alongside the role change instead of as a separate, easy-to-forget step.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createUserClient, createServiceRoleClient, getRequestUser } from '../_shared/supabaseClients.ts';
-import { getCallerProfile, isAdmin } from '../_shared/permissions.ts';
+import { getCallerProfile, isAdmin, canManageUser, canAssignRole } from '../_shared/permissions.ts';
 
 const ALLOWED_ROLES = ['owner', 'admin', 'studio_manager', 'photographer', 'editor', 'album_manager', 'lead_coordinator'];
 
@@ -41,17 +41,26 @@ Deno.serve(async (req) => {
     if (userId === user.id && isActive === false) {
       return jsonResponse({ error: 'לא ניתן להשבית את המשתמש שלך' }, { status: 400 });
     }
+    if (userId === user.id && role !== undefined && role !== callerProfile.role) {
+      return jsonResponse({ error: 'לא ניתן לשנות את התפקיד שלך' }, { status: 400 });
+    }
+    if (role !== undefined && !canAssignRole(callerProfile.role, role)) {
+      return jsonResponse({ error: 'רק בעלים יכול לתת תפקיד של בעלים או מנהל' }, { status: 403 });
+    }
 
     const serviceClient = createServiceRoleClient();
 
     const { data: targetProfile } = await serviceClient
       .from('profiles')
-      .select('id, tenant_id')
+      .select('id, tenant_id, role')
       .eq('id', userId)
       .maybeSingle();
 
     if (!targetProfile || targetProfile.tenant_id !== callerProfile.tenant_id) {
       return jsonResponse({ error: 'משתמש לא נמצא' }, { status: 404 });
+    }
+    if (userId !== user.id && !canManageUser(callerProfile.role, targetProfile.role)) {
+      return jsonResponse({ error: 'רק בעלים יכול לערוך בעלים או מנהלים' }, { status: 403 });
     }
 
     const updates: Record<string, unknown> = {};

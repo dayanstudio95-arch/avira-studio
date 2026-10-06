@@ -1371,6 +1371,26 @@ section('create-tenant: only the platform studio owner');
   check('platform id is the real studio', P, '708d9428-f1df-4b8f-86c5-4ef84a161f2b');
 }
 
+section('user management hierarchy (SEC-03): only an owner touches owners and admins');
+{
+  const { canManageUser: m, canAssignRole: a } = perms;
+  check('owner manages owner', m('owner', 'owner'), true);
+  check('owner manages admin', m('owner', 'admin'), true);
+  check('admin manages photographer', m('admin', 'photographer'), true);
+  check('studio_manager manages lead_coordinator', m('studio_manager', 'lead_coordinator'), true);
+  check('admin may not touch owner', m('admin', 'owner'), false);
+  check('admin may not touch another admin', m('admin', 'admin'), false);
+  check('studio_manager may not touch admin', m('studio_manager', 'admin'), false);
+  check('photographer manages nobody', m('photographer', 'editor'), false);
+  check('lead_coordinator manages nobody', m('lead_coordinator', 'photographer'), false);
+  check('owner assigns owner', a('owner', 'owner'), true);
+  check('owner assigns studio_manager', a('owner', 'studio_manager'), true);
+  check('admin assigns editor', a('admin', 'editor'), true);
+  check('admin may not assign owner', a('admin', 'owner'), false);
+  check('admin may not assign admin', a('admin', 'admin'), false);
+  check('studio_manager may not assign studio_manager', a('studio_manager', 'studio_manager'), false);
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

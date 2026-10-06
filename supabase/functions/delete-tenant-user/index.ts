@@ -17,7 +17,7 @@
 //   to owner).
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createUserClient, createServiceRoleClient, getRequestUser } from '../_shared/supabaseClients.ts';
-import { getCallerProfile, isAdmin } from '../_shared/permissions.ts';
+import { getCallerProfile, isAdmin, canManageUser } from '../_shared/permissions.ts';
 
 Deno.serve(async (req) => {
   const preflight = handleOptions(req);
@@ -51,6 +51,9 @@ Deno.serve(async (req) => {
 
     if (!targetProfile || targetProfile.tenant_id !== callerProfile.tenant_id) {
       return jsonResponse({ error: 'משתמש לא נמצא' }, { status: 404 });
+    }
+    if (!canManageUser(callerProfile.role, targetProfile.role)) {
+      return jsonResponse({ error: 'רק בעלים יכול לערוך בעלים או מנהלים' }, { status: 403 });
     }
 
     if (targetProfile.role === 'owner') {

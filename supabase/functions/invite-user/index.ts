@@ -24,7 +24,7 @@
 //    `recoveredExistingUser: true` in this case so the frontend can show a clearer message.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createUserClient, createServiceRoleClient, getRequestUser } from '../_shared/supabaseClients.ts';
-import { getCallerProfile, isAdmin } from '../_shared/permissions.ts';
+import { getCallerProfile, isAdmin, canManageUser, canAssignRole } from '../_shared/permissions.ts';
 
 const ALLOWED_ROLES = ['owner', 'admin', 'studio_manager', 'photographer', 'editor', 'album_manager', 'lead_coordinator'];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -51,6 +51,9 @@ Deno.serve(async (req) => {
     }
     if (!role || !ALLOWED_ROLES.includes(role)) {
       return jsonResponse({ error: 'תפקיד לא תקין' }, { status: 400 });
+    }
+    if (!canAssignRole(callerProfile.role, role)) {
+      return jsonResponse({ error: 'רק בעלים יכול להזמין בעלים או מנהל' }, { status: 403 });
     }
     if (password && (typeof password !== 'string' || password.length < 6)) {
       return jsonResponse({ error: 'הסיסמה חייבת להכיל לפחות 6 תווים' }, { status: 400 });
@@ -95,11 +98,17 @@ Deno.serve(async (req) => {
         // reset the password of a teammate that actually belongs to another studio.
         const { data: existingProfile } = await serviceClient
           .from('profiles')
-          .select('id, tenant_id')
+          .select('id, tenant_id, role')
           .eq('id', existing.id)
           .maybeSingle();
         if (existingProfile && existingProfile.tenant_id !== callerProfile.tenant_id) {
           return jsonResponse({ error: 'קיים כבר משתמש עם אימייל זה בסטודיו אחר — לא ניתן לשייך אותו לכאן' }, { status: 409 });
+        }
+        // SEC-03: this path SETS THE PASSWORD of the existing account — so an admin typing
+        // the owner's email here would take the owner's account over. Owner/admin accounts
+        // can only be recovered by an owner.
+        if (existingProfile && !canManageUser(callerProfile.role, existingProfile.role)) {
+          return jsonResponse({ error: 'משתמש עם אימייל זה כבר קיים — רק בעלים יכול לאפס סיסמה של בעלים או מנהל' }, { status: 403 });
         }
 
         const { data: updateData, error: updateError } = await serviceClient.auth.admin.updateUserById(existing.id, {

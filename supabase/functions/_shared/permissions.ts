@@ -66,6 +66,30 @@ export function isAdmin(role: string | null | undefined): boolean {
   return !!role && ADMIN_ROLES.includes(role);
 }
 
+// SEC-03 (audit 2026-10-05): only an owner touches owners and admins. admin/studio_manager
+// still manage everyone else (photographer, editor, album_manager, lead_coordinator), but
+// may not change, deactivate, delete, re-invite or reset the password of an owner/admin/
+// studio_manager, and may not hand out those roles. Before, an admin could get a login link
+// for the owner (resend-invite), set the owner's password (invite-user with the owner's
+// email), demote the owner or promote themselves (update-tenant-user).
+function roleRank(role: string | null | undefined): number {
+  if (isOwner(role)) return 3;
+  if (isAdmin(role)) return 2;
+  return role ? 1 : 0;
+}
+
+export function canManageUser(callerRole: string | null | undefined, targetRole: string | null | undefined): boolean {
+  if (!isAdmin(callerRole)) return false;
+  if (isOwner(callerRole)) return true;
+  return roleRank(targetRole) === 1;
+}
+
+export function canAssignRole(callerRole: string | null | undefined, newRole: string | null | undefined): boolean {
+  if (!isAdmin(callerRole)) return false;
+  if (isOwner(callerRole)) return true;
+  return roleRank(newRole) === 1;
+}
+
 export function isLeadCoordinator(role: string | null | undefined): boolean {
   return role === LEAD_COORDINATOR_ROLE;
 }
