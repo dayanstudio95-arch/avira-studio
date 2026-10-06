@@ -2,12 +2,16 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { MessageSquare, Clock, Send, MoreHorizontal, X, LayoutGrid, SlidersHorizontal, LogOut, Bell } from "lucide-react";
+import { MessageSquare, Clock, Send, MoreHorizontal, X, LayoutGrid, SlidersHorizontal, LogOut, Bell, HelpCircle, Flame, Hourglass, Settings2, History } from "lucide-react";
 import { supabase } from "@/api/supabaseClient";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/SupabaseAuthContext";
+import { isAdmin } from "@/lib/permissions";
 import LeadFormDialog from "@/components/leads/LeadFormDialog";
-import { BOXES, boxCounts, matchesBox, matchesSearch, sortConversations, needsReply } from "@/lib/chatModel";
+import { BOXES, DEFAULT_BOX, boxCounts, matchesBox, matchesSearch, sortConversations, needsReply } from "@/lib/chatModel";
+import { isAwaitingFollowUp } from "@/lib/followUpQueue";
+import WhatsAppFollowUpDialog from "@/components/whatsapp/WhatsAppFollowUpDialog";
+import WhatsAppFollowUpSettingsDialog from "@/components/whatsapp/WhatsAppFollowUpSettingsDialog";
 import { useChatData } from "@/components/chat/useChatData";
 import { useThread } from "@/components/chat/useThread";
 import ChatSidebar from "@/components/chat/ChatSidebar";
@@ -27,11 +31,14 @@ import { registerChatServiceWorker, setBadge } from "@/lib/push";
 // rules agreed with the owner). Bulk SORTING is here, and every change can be undone.
 
 const MOBILE_TABS = [
-  { key: "all", label: "שיחות", icon: MessageSquare },
+  { key: "unknown", label: "לא מוכר", icon: HelpCircle },
   { key: "needs", label: "דורש מענה", icon: Clock },
   { key: "followup", label: "פולו-אפ", icon: Send },
 ];
-const MOBILE_CHIPS = ["all", "needs", "unread", "lead", "client", "archive"];
+// The primary row (2026-10-07, as in the old inbox): strangers, leads, follow-ups, hot,
+// needs-reply, all. Everything else is under "עוד".
+const PRIMARY_BOXES = BOXES.filter((b) => b.primary);
+const CHIP_ICONS = { followup: Hourglass, hot: Flame };
 
 function useDebounced(value, ms) {
   const [v, setV] = useState(value);
@@ -55,7 +62,7 @@ export default function ChatApp() {
     setParams(next, { replace: !id });
   };
 
-  const [box, setBox] = useState("all");
+  const [box, setBox] = useState(DEFAULT_BOX);
   const [search, setSearch] = useState("");
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState({});
@@ -63,6 +70,20 @@ export default function ChatApp() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [leadDialog, setLeadDialog] = useState(null); // { conversationId, values }
   const [notifOpen, setNotifOpen] = useState(false);
+  const [followUpOpen, setFollowUpOpen] = useState(false);
+  const [followUpSettingsOpen, setFollowUpSettingsOpen] = useState(false);
+
+  // The chat lives outside Layout, so the menu's "hot lead" badge (notification type
+  // whatsapp_hot_lead → /chat) is cleared here, as Layout does for every other page.
+  useEffect(() => {
+    if (!isAdmin(data.user)) return;
+    base44.entities.Notification.filter({ type: "whatsapp_hot_lead", isRead: false })
+      .then((rows) => {
+        const readAt = new Date().toISOString();
+        return Promise.all((rows || []).map((n) => base44.entities.Notification.update(n.id, { isRead: true, readAt })));
+      })
+      .catch(() => {});
+  }, [data.user]);
 
   useEffect(() => {
     document.title = "אווירה צ'אט";
@@ -83,6 +104,12 @@ export default function ChatApp() {
     () => boxCounts(data.conversations, ctx, data.labels.map((l) => l.id)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [data.conversations, data.unread, data.labelsByConv, data.followUpAfterDays, data.labels]
+  );
+
+  // The follow-up queue, for the bulk send (WhatsAppFollowUpDialog, from the old inbox).
+  const followUpQueue = useMemo(
+    () => data.conversations.filter((c) => !c.archivedAt && !c.optedOutAt && isAwaitingFollowUp(c, data.followUpAfterDays || 0)),
+    [data.conversations, data.followUpAfterDays]
   );
 
   // Message search on the server (the text of every message), names/numbers locally.
@@ -293,23 +320,56 @@ export default function ChatApp() {
 
   const title = q ? `חיפוש: ${q}` : box.startsWith("label:") ? `תווית: ${labelsById[box.slice(6)]?.name || ""}` : BOXES.find((b) => b.key === box)?.label;
 
-  const mobileChips = (
-    <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none] md:hidden [&::-webkit-scrollbar]:hidden">
-      {MOBILE_CHIPS.map((k) => {
-        const b = BOXES.find((x) => x.key === k);
-        const on = box === k && !q;
-        const n = counts[k] || 0;
+  const chips = (
+    <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none] md:flex-wrap md:overflow-visible [&::-webkit-scrollbar]:hidden">
+      {PRIMARY_BOXES.map((b) => {
+        const on = box === b.key && !q;
+        const n = counts[b.key] || 0;
+        const Icon = CHIP_ICONS[b.key];
+        const showN = b.key !== "all" && n > 0;
+        const alert = (b.key === "needs" || b.key === "hot") && n > 0;
         return (
           <button
-            key={k}
+            key={b.key}
             type="button"
-            onClick={() => { setBox(k); setSearch(""); }}
-            className={`min-h-[34px] shrink-0 rounded-full px-3.5 text-sm ${on ? "bg-yellow-400 font-semibold text-gray-900" : "border border-gray-800 bg-gray-800/70 text-gray-300"}`}
+            onClick={() => { setBox(b.key); setSearch(""); }}
+            className={`flex min-h-[34px] shrink-0 items-center gap-1 rounded-full px-3 text-sm md:min-h-[30px] md:px-2.5 md:text-xs ${on ? "bg-yellow-400 font-semibold text-gray-900" : "border border-gray-800 bg-gray-800/70 text-gray-300"}`}
           >
-            {b.label}{(k === "needs" || k === "unread") && n ? ` · ${n}` : ""}
+            {Icon && <Icon className={`h-3.5 w-3.5 ${b.key === "hot" && !on ? "text-orange-400" : ""}`} aria-hidden="true" />}
+            {b.label}
+            {showN && (
+              <span className={`rounded-full px-1.5 text-[11px] font-bold ${on ? "bg-gray-900/20" : alert ? "bg-red-500 text-white" : "bg-gray-700 text-gray-200"}`}>{n}</span>
+            )}
           </button>
         );
       })}
+      <button
+        type="button"
+        onClick={() => setMoreOpen(true)}
+        className={`min-h-[34px] shrink-0 rounded-full border border-gray-800 bg-gray-800/70 px-3 text-sm text-gray-400 md:hidden ${!PRIMARY_BOXES.some((b) => b.key === box) && !q ? "border-yellow-500 text-yellow-300" : ""}`}
+      >
+        עוד ▾
+      </button>
+    </div>
+  );
+
+  // In the follow-up box: the bulk send and its settings (from the old inbox).
+  const followUpBar = box === "followup" && !q && (
+    <div className="flex items-center justify-between gap-2 border-b border-gray-800 bg-orange-950/30 px-3.5 py-2 text-sm">
+      <span className="text-orange-100">{followUpQueue.length} ממתינים לפולו-אפ</span>
+      <span className="flex gap-1.5">
+        <button type="button" onClick={() => setFollowUpSettingsOpen(true)} className="flex min-h-[32px] items-center gap-1 rounded-full border border-gray-700 px-3 text-xs text-gray-300 hover:text-white">
+          <Settings2 className="h-3.5 w-3.5" /> הגדרות
+        </button>
+        <button
+          type="button"
+          disabled={followUpQueue.length === 0}
+          onClick={() => setFollowUpOpen(true)}
+          className="min-h-[32px] rounded-full bg-orange-500 px-3 text-xs font-semibold text-white disabled:opacity-40"
+        >
+          שלח פולו-אפ
+        </button>
+      </span>
     </div>
   );
 
@@ -327,7 +387,7 @@ export default function ChatApp() {
         }}
         onOpenNotifications={() => setNotifOpen(true)}
         onDeleteLabel={async (id) => {
-          try { await data.actions.deleteLabel(id); if (box === "label:" + id) setBox("all"); toast.success("התווית נמחקה"); } catch (e) { toast.error("המחיקה נכשלה", { description: e?.message }); }
+          try { await data.actions.deleteLabel(id); if (box === "label:" + id) setBox(DEFAULT_BOX); toast.success("התווית נמחקה"); } catch (e) { toast.error("המחיקה נכשלה", { description: e?.message }); }
         }}
       />
 
@@ -351,7 +411,8 @@ export default function ChatApp() {
           setSelected={setSelected}
           labels={data.labels}
           onBulk={onBulk}
-          mobileChips={mobileChips}
+          mobileChips={chips}
+          topBar={followUpBar}
           compact
         />
         {!selectMode && (
@@ -391,6 +452,7 @@ export default function ChatApp() {
             onArchive={panelProps.onArchive}
             needsReplyNow={needsReply(active)}
             onHandled={() => run(data.actions.setHandled([active], true), () => 'סומן "טופל" · יחזור ל"דורש מענה" כשיכתבו שוב')}
+            onToggleFollowUp={(on) => run(data.actions.setFollowUpFlag([active], on), () => (on ? "נוסף לתור הפולו-אפ" : "הוסר מתור הפולו-אפ"))}
             templates={data.templates}
             onSaveTemplate={saveTemplate}
             onDeleteTemplate={deleteTemplate}
@@ -452,6 +514,7 @@ export default function ChatApp() {
             <div className="mt-4 space-y-1 border-t border-gray-800 pt-3">
               <Link to="/BotControlCenter" className="flex min-h-[44px] items-center gap-3 rounded-xl px-3 text-gray-300"><SlidersHorizontal className="h-5 w-5" /> מרכז שליטה לבוט</Link>
               <Link to="/" className="flex min-h-[44px] items-center gap-3 rounded-xl px-3 text-gray-300"><LayoutGrid className="h-5 w-5" /> למערכת המלאה</Link>
+              <Link to="/WhatsAppInbox" className="flex min-h-[44px] items-center gap-3 rounded-xl px-3 text-gray-500"><History className="h-5 w-5" /> מסך השיחות הישן (גיבוי)</Link>
               <button type="button" onClick={() => logout()} className="flex min-h-[44px] w-full items-center gap-3 rounded-xl px-3 text-gray-400"><LogOut className="h-5 w-5" /> התנתקות</button>
             </div>
             <button type="button" onClick={() => { setMoreOpen(false); setNotifOpen(true); }} className="mt-1 flex min-h-[44px] w-full items-center gap-3 rounded-xl px-3 text-gray-300"><Bell className="h-5 w-5" /> התראות במכשיר הזה</button>
@@ -470,6 +533,19 @@ export default function ChatApp() {
           </div>
         </div>
       )}
+
+      <WhatsAppFollowUpSettingsDialog
+        isOpen={followUpSettingsOpen}
+        onClose={() => setFollowUpSettingsOpen(false)}
+        onSaved={() => qc.invalidateQueries({ queryKey: ["whatsappFollowUpAfterDays"] })}
+      />
+
+      <WhatsAppFollowUpDialog
+        isOpen={followUpOpen}
+        onClose={() => setFollowUpOpen(false)}
+        conversations={followUpQueue}
+        onSent={() => qc.invalidateQueries({ queryKey: ["chatConversations"] })}
+      />
 
       <LeadFormDialog
         isOpen={!!leadDialog}

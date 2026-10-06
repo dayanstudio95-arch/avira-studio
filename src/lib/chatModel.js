@@ -111,37 +111,46 @@ export function sortConversations(list) {
   });
 }
 
-// The boxes in the sidebar. `ctx` = { unread: {id: n}, labelsByConv: {id: [labelId]},
-// followUpAfterDays }.
+// The boxes. `ctx` = { unread: {id: n}, labelsByConv: {id: [labelId]}, followUpAfterDays }.
+// 2026-10-07 (the old inbox merged in, the owner's choice): the primary row is what he works
+// from — strangers first, then leads, follow-ups, hot leads; everything else sits under
+// "עוד". "הכל" = leads and strangers only (no clients, groups, staff).
 export const BOXES = [
-  { key: "all", label: "כל השיחות" },
-  { key: "needs", label: "דורש מענה" },
+  { key: "unknown", label: "לא מוכר", primary: true },
+  { key: "lead", label: "לידים", primary: true },
+  { key: "followup", label: "ממתינים לפולו-אפ", primary: true },
+  { key: "hot", label: "ליד חם", primary: true },
+  { key: "needs", label: "דורש מענה", primary: true },
+  { key: "all", label: "הכל", primary: true },
+  { key: "followup_sent", label: "נשלח פולו-אפ" },
+  { key: "pricelist_sent", label: "נשלח מחירון" },
   { key: "unread", label: "לא נקראו" },
-  { key: "lead", label: "לידים" },
   { key: "client", label: "לקוחות" },
   { key: "staff", label: "צוות" },
   { key: "vendor", label: "ספקים" },
   { key: "group", label: "קבוצות" },
-  { key: "followup", label: "ממתינים לפולו-אפ" },
   { key: "irrelevant", label: "לא רלוונטי" },
   { key: "optedout", label: "ביקשו הסרה" },
   { key: "archive", label: "ארכיון" },
 ];
+
+export const DEFAULT_BOX = "unknown";
 
 export function matchesBox(c, box, ctx = {}) {
   if (box === "archive") return !!c.archivedAt;
   if (c.archivedAt) return false;
   const type = c.contactType || "unknown";
   switch (box) {
-    // "All" keeps the owner's earlier choice: groups, staff and irrelevant chats only in
-    // their own boxes.
-    case "all": return !["group", "staff", "irrelevant"].includes(type);
+    case "all": return type === "lead" || type === "unknown";
     case "needs": return needsReply(c);
     case "unread": return (ctx.unread?.[c.id] || 0) > 0;
-    case "lead": return type === "lead" || type === "unknown";
     case "client": return type === "client" || type === "past_client";
     case "followup": return isAwaitingFollowUp(c, ctx.followUpAfterDays || 0) && !c.optedOutAt;
     case "optedout": return !!c.optedOutAt;
+    // From the old inbox (WhatsAppInbox.jsx), same rules — groups and staff never count.
+    case "hot": return c.leadTemperature === "hot" && !["group", "staff"].includes(type);
+    case "followup_sent": return !!c.followupSentAt && !["group", "staff"].includes(type);
+    case "pricelist_sent": return c.state === "PRICELIST_SENT" && !["group", "staff"].includes(type);
     default:
       if (box.startsWith("label:")) return (ctx.labelsByConv?.[c.id] || []).includes(box.slice(6));
       return type === box;
@@ -202,6 +211,8 @@ export function reverseOf(row) {
       return { kind: "conversation", id: row.conversationId, values: { pinnedAt: b.pinnedAt ?? null } };
     case "handled":
       return { kind: "conversation", id: row.conversationId, values: { handledAt: b.handledAt ?? null } };
+    case "followup_flag":
+      return { kind: "conversation", id: row.conversationId, values: { followupFlaggedAt: b.followupFlaggedAt ?? null } };
     case "opt_out":
       return { kind: "conversation", id: row.conversationId, values: { optedOutAt: b.optedOutAt ?? null, optedOutReason: b.optedOutReason ?? null } };
     case "label_add":
@@ -287,4 +298,40 @@ export function eventDateFor(c, lead, messages = [], today = new Date()) {
     if (dates.length) return { date: dates[0], source: "message" };
   }
   return null;
+}
+
+// The date shown on a list row (2026-10-07) — the same order as eventDateFor, but without
+// the thread: the linked lead, what the bot collected, else a date in the last message
+// preview. Inside the conversation eventDateFor also searches older messages.
+export function rowEventDate(c, lead, today = new Date()) {
+  const iso = (v) => (v ? String(v).slice(0, 10) : null);
+  if (lead?.eventDate) return iso(lead.eventDate);
+  if (c?.eventDate) return iso(c.eventDate);
+  if (c?.lastMessagePreview) {
+    const dates = findDatesInText(c.lastMessagePreview, today);
+    if (dates.length) return dates[0];
+  }
+  return null;
+}
+
+const HEB_WEEKDAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
+
+// "יום שישי, 14.8.2026" for "2026-08-14" (the calendar date itself, no time-zone shift).
+export function formatDateWithWeekday(isoDate) {
+  const [y, m, d] = String(isoDate || "").slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return "";
+  return `יום ${HEB_WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]}, ${d}.${m}.${y}`;
+}
+
+// One row's answer, leaving out the couple's own event / own lead (a couple whose event is
+// already in the calendar must not see "their date is taken").
+// → { events: n, closing: n }
+export function dateStatus(map, date, ownLeadId = null) {
+  const info = map?.[date];
+  if (!info) return { events: 0, closing: 0 };
+  const own = (id) => ownLeadId && id === ownLeadId;
+  return {
+    events: info.eventLeadIds.filter((id) => !own(id)).length,
+    closing: info.closingLeadIds.filter((id) => !own(id)).length,
+  };
 }

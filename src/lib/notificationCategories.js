@@ -14,7 +14,7 @@
 // A new type is one line here and it appears in the menu; nothing else to touch.
 export const NAV_ROUTE_BY_NOTIFICATION_TYPE = {
   contract_signed: "/Leads",
-  whatsapp_hot_lead: "/WhatsAppInbox",
+  whatsapp_hot_lead: "/chat", // the merged chat screen (2026-10-07); ChatApp marks these read
   album_round_approved: "/AlbumOrders",
   album_revision_requested: "/AlbumOrders",
   album_transfer_proof_uploaded: "/AlbumOrders",

@@ -1,6 +1,14 @@
-import React, { createContext, useContext, useState } from "react";
-import { Search, Pin, Check, BellOff, X } from "lucide-react";
-import { contactTypeLabel, effectiveStage, waitingLabel, isLongWait, CONTACT_TYPES, STAGES } from "@/lib/chatModel";
+import React, { createContext, useContext, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Search, Pin, Check, BellOff, X, Flame, CalendarDays, CalendarCheck, CalendarX2, Megaphone, Tag } from "lucide-react";
+import {
+  contactTypeLabel, effectiveStage, waitingLabel, isLongWait, CONTACT_TYPES, STAGES,
+  rowEventDate, formatDateWithWeekday, dateStatus, hasStage,
+} from "@/lib/chatModel";
+import { typeColor, stageColor } from "@/lib/chatColors";
+import { fetchDateAvailability } from "@/lib/dateAvailability";
+import { displayPhone } from "@/components/whatsapp/whatsappInboxShared";
+import { isManuallyFlagged } from "@/lib/followUpQueue";
 
 const AVATAR_COLORS = ["#3E63DD", "#C2410C", "#7C3AED", "#0E7490", "#B45309", "#15803D", "#BE185D", "#475569"];
 function avatarColor(id) {
@@ -60,11 +68,42 @@ function timeLabel(iso) {
   return d.toLocaleDateString("he-IL", { day: "numeric", month: "numeric", year: "2-digit" });
 }
 
+// "יום שישי, 14.8.2026 · פנוי" under a row (2026-10-07) — the in-thread date check,
+// visible without opening the conversation.
+function RowDate({ date, map, loading, ownLeadId }) {
+  if (!date) {
+    return (
+      <span className="mt-0.5 flex items-center gap-1.5 text-xs text-gray-500">
+        <CalendarDays className="h-3.5 w-3.5" /> תאריך עוד לא ידוע
+      </span>
+    );
+  }
+  const st = dateStatus(map, date, ownLeadId);
+  return (
+    <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-gray-300">
+      <CalendarDays className="h-3.5 w-3.5 text-gray-500" />
+      <span>{formatDateWithWeekday(date)}</span>
+      {loading ? (
+        <span className="text-gray-500">בודק…</span>
+      ) : st.events > 0 ? (
+        <span className="flex items-center gap-1 rounded-full bg-amber-500/20 px-2 text-amber-200">
+          <CalendarX2 className="h-3 w-3" /> כבר ביומן: {st.events} {st.events === 1 ? "אירוע" : "אירועים"}
+        </span>
+      ) : (
+        <span className="flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 text-emerald-200">
+          <CalendarCheck className="h-3 w-3" /> פנוי
+        </span>
+      )}
+      {!loading && st.closing > 0 && <span className="text-gray-500">· {st.closing} בתהליך סגירה</span>}
+    </span>
+  );
+}
+
 // The list column: search, selection mode, rows, and the bulk-action bar.
 export default function ChatList({
   title, conversations, activeId, onOpen, unread, labelsById, labelsByConv, leadsById,
   search, setSearch, searchHits, selectMode, setSelectMode, selected, setSelected,
-  labels, onBulk, mobileChips, compact,
+  labels, onBulk, mobileChips, compact, topBar,
 }) {
   const [menu, setMenu] = useState(null); // 'type' | 'stage' | 'label' | null
   const selectedIds = Object.keys(selected).filter((k) => selected[k]);
@@ -73,6 +112,24 @@ export default function ChatList({
     setMenu(null);
     await onBulk(kind, value, selectedIds);
   };
+
+  // The event date of every row (2026-10-07) and, in one request, whether each is free.
+  const rowDates = useMemo(() => {
+    const out = {};
+    for (const c of conversations) {
+      if (!hasStage(c)) continue;
+      const lead = c.matchedLeadId ? leadsById[c.matchedLeadId] : null;
+      out[c.id] = rowEventDate(c, lead);
+    }
+    return out;
+  }, [conversations, leadsById]);
+  const dateKey = useMemo(() => Array.from(new Set(Object.values(rowDates).filter(Boolean))).sort(), [rowDates]);
+  const availQ = useQuery({
+    queryKey: ["chatRowDates", dateKey.join(",")],
+    queryFn: () => fetchDateAvailability(dateKey),
+    enabled: dateKey.length > 0,
+    staleTime: 60000,
+  });
 
   return (
     <section aria-label="רשימת שיחות" className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-gray-900/40">
@@ -104,6 +161,7 @@ export default function ChatList({
         </label>
         {mobileChips}
       </div>
+      {topBar}
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {conversations.map((c) => {
@@ -143,9 +201,15 @@ export default function ChatList({
                   <span className="flex items-center gap-1.5">
                     {c.pinnedAt && <Pin className="h-3.5 w-3.5 shrink-0 text-gray-500" aria-label="נעוץ" />}
                     <span className="truncate font-semibold text-white">{conversationTitle(c)}</span>
-                    {c.leadTemperature === "hot" && <span className="text-[11px] font-semibold text-orange-400">חם</span>}
+                    {c.leadTemperature === "hot" && <Flame className="h-4 w-4 shrink-0 text-orange-400" aria-label="ליד חם" />}
                     <span className={`ms-auto shrink-0 text-xs ${n ? "font-semibold text-yellow-400" : "text-gray-500"}`}>{timeLabel(c.lastMessageAt)}</span>
                   </span>
+                  {displayPhone(c) && displayPhone(c) !== conversationTitle(c) && (
+                    <span dir="ltr" className="text-end text-xs text-gray-500">{displayPhone(c)}</span>
+                  )}
+                  {c.leadTemperature === "hot" && c.leadTemperatureReason && (
+                    <span className="truncate text-xs text-red-300">חם: {c.leadTemperatureReason}</span>
+                  )}
                   <span className="flex items-center gap-1.5">
                     {c.optedOutAt && <BellOff className="h-3.5 w-3.5 shrink-0 text-red-400" aria-label="ביקש/ה הסרה" />}
                     <span className={`min-w-0 flex-1 truncate text-sm ${hit ? "text-yellow-200" : "text-gray-400"}`}>{preview}</span>
@@ -154,8 +218,23 @@ export default function ChatList({
                     )}
                   </span>
                   <span className="mt-0.5 flex flex-wrap gap-1">
-                    <span className="rounded-md bg-gray-800 px-1.5 text-[11px] text-gray-300">{contactTypeLabel(c.contactType)}</span>
-                    {stage && <span className="rounded-md border border-gray-700 px-1.5 text-[11px] text-gray-300">{stage}</span>}
+                    <span className={`rounded-full px-2 text-[11px] ${typeColor(c.contactType)}`}>{contactTypeLabel(c.contactType)}</span>
+                    {stage && (
+                      <span className={`flex items-center gap-1 rounded-full border px-2 text-[11px] ${stageColor(stage).chip}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${stageColor(stage).dot}`} />
+                        {stage}
+                      </span>
+                    )}
+                    {c.source === "facebook_ad" && (
+                      <span title={c.sourceAdTitle || undefined} className="flex items-center gap-1 rounded-full bg-violet-500/20 px-2 text-[11px] text-violet-200">
+                        <Megaphone className="h-3 w-3" /> מודעה
+                      </span>
+                    )}
+                    {isManuallyFlagged(c) && (
+                      <span className="flex items-center gap-1 rounded-full bg-orange-500/20 px-2 text-[11px] text-orange-200">
+                        <Tag className="h-3 w-3" /> בפולו-אפ
+                      </span>
+                    )}
                     {convLabels.map((l) => (
                       <span key={l.id} className="rounded-md px-1.5 text-[11px] text-white" style={{ background: l.color }}>{l.name}</span>
                     ))}
@@ -163,6 +242,7 @@ export default function ChatList({
                       <span className={`rounded-md px-1.5 text-[11px] ${long ? "bg-red-500/20 text-red-300" : "bg-gray-800 text-gray-300"}`}>{wait}</span>
                     )}
                   </span>
+                  {hasStage(c) && <RowDate date={rowDates[c.id]} map={availQ.data} loading={availQ.isLoading} ownLeadId={c.matchedLeadId} />}
                 </span>
               </button>
             </div>

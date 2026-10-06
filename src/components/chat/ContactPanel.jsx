@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Switch } from "@/components/ui/switch";
 import { CONTACT_TYPES, STAGES, contactTypeLabel, effectiveStage, hasStage } from "@/lib/chatModel";
 import { Avatar, conversationTitle } from "./ChatList";
+import { typeColor, stageColor } from "@/lib/chatColors";
 
 const chip = (on, color) =>
   `min-h-[36px] rounded-full px-3 text-sm transition-colors ${
@@ -21,6 +22,7 @@ const ACTION_TEXT = {
   archive: (r) => (r.after?.archivedAt ? "הועבר לארכיון" : "הוחזר מהארכיון"),
   pin: (r) => (r.after?.pinnedAt ? "ננעץ למעלה" : "בוטלה נעיצה"),
   handled: (r) => (r.after?.handledAt ? 'סומן "טופל"' : 'בוטל "טופל"'),
+  followup_flag: (r) => (r.after?.followupFlaggedAt ? "סומן לפולו-אפ" : "הוסר מהפולו-אפ"),
   opt_out: (r) => (r.after?.optedOutAt ? "סומן: לא לשלוח הודעות" : "בוטל סימון ההסרה"),
   opted_out: () => 'הלקוח ביקש לא לקבל הודעות ("הסר")',
   lead_created: () => "נוצר ליד בדף הלידים",
@@ -64,7 +66,7 @@ export default function ContactPanel({
               disabled={t.fixed}
               aria-pressed={c.contactType === t.key}
               onClick={() => c.contactType !== t.key && onSetType(t.key)}
-              className={chip(c.contactType === t.key)}
+              className={c.contactType === t.key ? `min-h-[36px] rounded-full px-3 text-sm font-semibold ring-1 ring-white/30 ${typeColor(t.key)}` : chip(false)}
             >
               {t.label}
             </button>
@@ -80,7 +82,7 @@ export default function ContactPanel({
           </h3>
           <div className="flex flex-wrap gap-1.5">
             {STAGES.map((s) => (
-              <button key={s} type="button" aria-pressed={stage === s} onClick={() => stage !== s && onSetStage(s)} className={chip(stage === s)}>
+              <button key={s} type="button" aria-pressed={stage === s} onClick={() => stage !== s && onSetStage(s)} className={stage === s ? `min-h-[36px] rounded-full border-2 bg-gray-900 px-3 text-sm font-semibold ${stageColor(s).chip}` : chip(false)}>
                 {s}
               </button>
             ))}

@@ -15,12 +15,16 @@ export default function DateAvailability({ info, excludeLeadId }) {
     queryKey: ["chatDateCheck", date, excludeLeadId || ""],
     queryFn: async () => {
       const [{ data: events, error: e1 }, { data: closing, error: e2 }] = await Promise.all([
-        supabase.from("events").select("id, couple_names, venue").eq("date", date).limit(20),
+        supabase.from("events").select("id, couple_names, venue, source_lead_id").eq("date", date).limit(20),
         supabase.from("leads").select("id, couple_names, venue_name, status").eq("event_date", date).eq("status", "נסגר/חתימה").limit(20),
       ]);
       if (e1) throw e1;
       if (e2) throw e2;
-      return { events: events || [], closing: (closing || []).filter((l) => l.id !== excludeLeadId) };
+      // The couple's own event is not "taken" (2026-10-07).
+      return {
+        events: (events || []).filter((e) => !excludeLeadId || e.source_lead_id !== excludeLeadId),
+        closing: (closing || []).filter((l) => l.id !== excludeLeadId),
+      };
     },
     enabled: !!date,
     staleTime: 60000,

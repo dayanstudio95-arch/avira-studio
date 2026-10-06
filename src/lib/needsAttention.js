@@ -71,7 +71,7 @@ export function buildAttentionList(conversations, leads) {
       rows.push({
         key: `c-${c.id}`,
         reason: "hot",
-        target: "/WhatsAppInbox",
+        target: `/chat?c=${c.id}`,
         name: c.coupleNames || c.displayName || c.phone,
         detail: c.leadTemperatureReason || "",
         days: daysSince(c.leadTemperatureAt),
@@ -81,7 +81,7 @@ export function buildAttentionList(conversations, leads) {
       rows.push({
         key: `c-${c.id}`,
         reason: "media_from_stranger",
-        target: "/WhatsAppInbox",
+        target: `/chat?c=${c.id}`,
         name: c.displayName || c.phone,
         detail: "שלחו הודעה קולית או תמונה — הבוט לא יכול לקרוא",
         days: daysSince(c.lastInboundAt),
@@ -91,7 +91,7 @@ export function buildAttentionList(conversations, leads) {
       rows.push({
         key: `c-${c.id}`,
         reason: "stalled_flow",
-        target: "/WhatsAppInbox",
+        target: `/chat?c=${c.id}`,
         name: c.coupleNames || c.displayName || c.phone,
         detail: c.nudgeSentAt ? "נשלחה תזכורת, עדיין שקט" : "התחילו ולא סיימו למסור פרטים",
         days: daysSince(c.lastBotMessageAt),
@@ -103,7 +103,7 @@ export function buildAttentionList(conversations, leads) {
         rows.push({
           key: `c-${c.id}`,
           reason: "silent_pricelist",
-          target: "/WhatsAppInbox",
+          target: `/chat?c=${c.id}`,
           name: c.coupleNames || c.displayName || c.phone,
           detail: c.venue || "",
           days,

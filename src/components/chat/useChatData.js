@@ -251,6 +251,17 @@ export function useChatData() {
       return { batchId, count: convs.length };
     },
 
+    // "לפולו-אפ" (2026-10-07, from the old inbox): puts the conversation in the follow-up
+    // queue by hand (followUpQueue.isManuallyFlagged), whatever the bot did.
+    async setFollowUpFlag(convs, flagged) {
+      const batchId = uuid();
+      const value = flagged ? new Date().toISOString() : null;
+      await updateConversations(convs.map((c) => c.id), { followupFlaggedAt: value });
+      await logActivity(convs.map((c) => ({ conversationId: c.id, action: "followup_flag", batchId, before: { followupFlaggedAt: c.followupFlaggedAt || null }, after: { followupFlaggedAt: value } })));
+      refresh();
+      return { batchId, count: convs.length };
+    },
+
     async setPinned(convs, pinned) {
       const batchId = uuid();
       const value = pinned ? new Date().toISOString() : null;

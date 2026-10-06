@@ -919,7 +919,7 @@ const { navRouteForNotification, unreadCountsByRoute, unreadNotificationsForRout
 section('menu badges — which page each notification belongs to');
 {
   check('contract signed → לידים', navRouteForNotification('contract_signed'), '/Leads');
-  check('hot lead → שיחות וואטסאפ', navRouteForNotification('whatsapp_hot_lead'), '/WhatsAppInbox');
+  check('hot lead → שיחות וואטסאפ (the merged chat, 2026-10-07)', navRouteForNotification('whatsapp_hot_lead'), '/chat');
   check('album round approved → הזמנות אלבומים', navRouteForNotification('album_round_approved'), '/AlbumOrders');
   check('album revision requested → הזמנות אלבומים', navRouteForNotification('album_revision_requested'), '/AlbumOrders');
   check('transfer proof uploaded → הזמנות אלבומים', navRouteForNotification('album_transfer_proof_uploaded'), '/AlbumOrders');
@@ -939,7 +939,7 @@ section('menu badges — which page each notification belongs to');
   const counts = unreadCountsByRoute(rows);
   check('לידים counts unread only', counts['/Leads'], 1);
   check('אלבומים counts both album types', counts['/AlbumOrders'], 2);
-  check('וואטסאפ', counts['/WhatsAppInbox'], 1);
+  check('וואטסאפ', counts['/chat'], 1);
   check('a page with nothing is absent, not 0', '/StaffScheduling' in counts, false);
   check('the failure is in no page count', Object.values(counts).reduce((a, b) => a + b, 0), 4);
   check('visiting אלבומים marks exactly its two rows', unreadNotificationsForRoute(rows, '/AlbumOrders').map((r) => r.id).join(','), '3,4');
@@ -1240,7 +1240,7 @@ section('boxes');
   ];
   const ctx = { unread: { a: 2 }, labelsByConv: { f: ['L9'] }, followUpAfterDays: 0 };
   const counts = cm.boxCounts(list, ctx, ['L9']);
-  check('"all" hides groups and staff (owner\'s rule) and the archive', counts.all, 3);
+  check('"all" = leads and strangers only, no archive (2026-10-07)', counts.all, 2);
   check('archive box', counts.archive, 1);
   check('archived chats are in no other box', cm.matchesBox(list[3], 'client', ctx), false);
   check('clients include past clients', counts.client, 1);
@@ -1684,6 +1684,49 @@ section('date shown in the header');
 {
   check('Friday', ps.formatEventDateHe('2026-08-14'), 'יום שישי, 14.8.2026');
   check('empty', ps.formatEventDateHe(null), '');
+}
+
+// =================================================================================
+// PART 31 — one chat screen: the old inbox's boxes, the date on every row (2026-10-07)
+// =================================================================================
+
+const cm31 = await loadModule('src/lib/chatModel.js', 'chatmodel31');
+
+section('boxes from the old inbox');
+{
+  const list = [
+    { id: 'u', contactType: 'unknown' },
+    { id: 'l', contactType: 'lead', leadTemperature: 'hot', leadTemperatureReason: 'רוצים להיפגש' },
+    { id: 'p', contactType: 'lead', state: 'PRICELIST_SENT', followupSentAt: '2026-10-01T00:00:00Z' },
+    { id: 'c', contactType: 'client' },
+    { id: 'g', contactType: 'group', leadTemperature: 'hot' },
+    { id: 's', contactType: 'staff', followupSentAt: 'x' },
+    { id: 'a', contactType: 'unknown', archivedAt: '2026-10-01T00:00:00Z' },
+  ];
+  const n = (box) => list.filter((c) => cm31.matchesBox(c, box, {})).map((c) => c.id).join(',');
+  check('opens on "לא מוכר"', cm31.DEFAULT_BOX, 'unknown');
+  check('לא מוכר: strangers only, not archived', n('unknown'), 'u');
+  check('לידים: leads only (strangers have their own box now)', n('lead'), 'l,p');
+  check('הכל: leads + strangers, no clients/groups/staff', n('all'), 'u,l,p');
+  check('ליד חם: never a group', n('hot'), 'l');
+  check('נשלח פולו-אפ: never staff', n('followup_sent'), 'p');
+  check('נשלח מחירון', n('pricelist_sent'), 'p');
+  check('the primary row', cm31.BOXES.filter((b) => b.primary).map((b) => b.key).join(','), 'unknown,lead,followup,hot,needs,all');
+}
+
+section('the date on a row, and whether it is free');
+{
+  const today = new Date('2026-10-07T10:00:00');
+  check('the linked lead wins', cm31.rowEventDate({ eventDate: '2026-12-01' }, { eventDate: '2027-01-05' }, today), '2027-01-05');
+  check('then what the bot collected', cm31.rowEventDate({ eventDate: '2026-12-01T00:00:00' }, null, today), '2026-12-01');
+  check('then a date in the last message', cm31.rowEventDate({ lastMessagePreview: 'מתחתנים ב 14.8.27 באולם' }, null, today), '2027-08-14');
+  check('nothing → null', cm31.rowEventDate({ lastMessagePreview: 'כמה עולה?' }, null, today), null);
+  check('weekday', cm31.formatDateWithWeekday('2026-08-14'), 'יום שישי, 14.8.2026');
+  const map = { '2026-08-14': { eventLeadIds: ['L1', null], closingLeadIds: ['L2', 'L1'] } };
+  check('busy: other events count', JSON.stringify(cm31.dateStatus(map, '2026-08-14')), '{"events":2,"closing":2}');
+  check("the couple's own event is not 'taken'", JSON.stringify(cm31.dateStatus(map, '2026-08-14', 'L1')), '{"events":1,"closing":1}');
+  check('free date', JSON.stringify(cm31.dateStatus(map, '2026-09-01')), '{"events":0,"closing":0}');
+  check('undo of "לפולו-אפ"', JSON.stringify(cm31.reverseOf({ action: 'followup_flag', conversationId: 'X', before: {}, after: { followupFlaggedAt: 't' } })), '{"kind":"conversation","id":"X","values":{"followupFlaggedAt":null}}');
 }
 
 await rm(outDir, { recursive: true, force: true });

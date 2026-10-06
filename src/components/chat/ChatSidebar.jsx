@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Trash2, SlidersHorizontal, LayoutGrid, X, Bell } from "lucide-react";
+import { Plus, Trash2, SlidersHorizontal, LayoutGrid, X, Bell, History } from "lucide-react";
 import { BOXES } from "@/lib/chatModel";
 
 export const LABEL_COLORS = ["#E5484D", "#F76B15", "#C2410C", "#12A594", "#3E63DD", "#8E4EC6", "#D6409F", "#64748B"];
@@ -29,7 +29,7 @@ export default function ChatSidebar({ box, setBox, counts, labels, onCreateLabel
   const row = (key, label, extra = null) => {
     const on = box === key;
     const n = counts[key] || 0;
-    const urgent = key === "needs" && n > 0;
+    const urgent = (key === "needs" || key === "hot") && n > 0;
     return (
       <button
         key={key}
@@ -52,7 +52,10 @@ export default function ChatSidebar({ box, setBox, counts, labels, onCreateLabel
         <span className="text-[15px] font-bold text-white">אווירה צ'אט</span>
       </div>
 
-      {BOXES.map((b) => row(b.key, b.label))}
+      {BOXES.filter((b) => b.primary).map((b) => row(b.key, b.label))}
+
+      <div className="mt-4 px-3 pb-1 text-xs font-semibold text-gray-500">עוד</div>
+      {BOXES.filter((b) => !b.primary).map((b) => row(b.key, b.label))}
 
       <div className="mt-4 px-3 pb-1 text-xs font-semibold text-gray-500">התוויות שלי</div>
       {labels.map((l) =>
@@ -137,6 +140,9 @@ export default function ChatSidebar({ box, setBox, counts, labels, onCreateLabel
         </Link>
         <Link to="/" className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-400 hover:bg-gray-800/60 hover:text-white">
           <LayoutGrid className="h-4 w-4" /> למערכת המלאה
+        </Link>
+        <Link to="/WhatsAppInbox" className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-500 hover:bg-gray-800/60 hover:text-white">
+          <History className="h-4 w-4" /> מסך השיחות הישן (גיבוי)
         </Link>
       </div>
     </nav>

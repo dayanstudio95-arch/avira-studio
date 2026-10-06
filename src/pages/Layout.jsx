@@ -83,7 +83,7 @@ const scopedNavItemsByRole = {
     { title: "לידים", url: "/Leads", icon: Heart },
     // First-contact WhatsApp inquiries are lead intake. Same four roles as the RLS
     // policies in 0054_whatsapp_bot.sql -- keep the two lists in step.
-    { title: "שיחות וואטסאפ", url: "/WhatsAppInbox", icon: MessageSquare },
+    { title: "שיחות וואטסאפ", url: "/chat", icon: MessageSquare },
   ],
   photographer: [{ title: "האירועים שלי", url: "/MyEvents", icon: Camera }],
   editor: [{ title: "האירועים שלי", url: "/MyEvents", icon: Camera }],
@@ -97,7 +97,7 @@ const scopedNavItemsByRole = {
 const primaryNavItems = [
   { title: "לוח בקרה",        url: "/",                              icon: LayoutDashboard },
   { title: "לידים CRM",       url: createPageUrl("Leads"),           icon: Heart },
-  { title: "💬 שיחות וואטסאפ", url: "/WhatsAppInbox",                 icon: MessageSquare },
+  { title: "💬 שיחות וואטסאפ", url: "/chat",                          icon: MessageSquare },
   { title: "רשימת אירועים",   url: createPageUrl("Events"),          icon: Calendar },
   { title: "סטטוס עבודה",     url: createPageUrl("ProgressStatus"),  icon: CheckSquare },
   { title: "תשלומים",         url: createPageUrl("Payments"),        icon: WalletCards },

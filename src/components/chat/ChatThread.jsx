@@ -6,6 +6,9 @@ import { groupMessagesByDay, formatMessageTime } from "@/components/whatsapp/wha
 import { contactTypeLabel, effectiveStage, renderTemplate, eventDateFor, hasStage } from "@/lib/chatModel";
 import DateAvailability from "./DateAvailability";
 import { Avatar, conversationTitle } from "./ChatList";
+import { typeColor, stageColor } from "@/lib/chatColors";
+import { displayPhone } from "@/components/whatsapp/whatsappInboxShared";
+import { isManuallyFlagged } from "@/lib/followUpQueue";
 
 function NoteBubble({ note, onDelete }) {
   return (
@@ -26,7 +29,7 @@ function NoteBubble({ note, onDelete }) {
 
 // The conversation column: header, timeline (messages + internal notes), composer.
 export default function ChatThread({
-  conversation, lead, labels, thread, onBack, onTogglePanel, onPin, onArchive, onHandled, needsReplyNow,
+  conversation, lead, labels, thread, onBack, onTogglePanel, onPin, onArchive, onHandled, needsReplyNow, onToggleFollowUp,
   templates, onSaveTemplate, onDeleteTemplate, userContext,
 }) {
   const [text, setText] = useState("");
@@ -118,13 +121,28 @@ export default function ChatThread({
           <Avatar conversation={conversation} size={40} />
           <span className="flex min-w-0 flex-col">
             <span className="truncate font-bold text-white">{conversationTitle(conversation)}</span>
-            <span className="truncate text-xs text-gray-400">
-              {contactTypeLabel(conversation.contactType)}
-              {stage ? ` · ${stage}` : ""}
-              {labels.length ? ` · ${labels.map((l) => l.name).join(", ")}` : ""}
+            <span className="flex min-w-0 flex-wrap items-center gap-1 text-[11px]">
+              <span className={`rounded-full px-2 ${typeColor(conversation.contactType)}`}>{contactTypeLabel(conversation.contactType)}</span>
+              {stage && <span className={`rounded-full border px-2 ${stageColor(stage).chip}`}>{stage}</span>}
+              {labels.map((l) => (
+                <span key={l.id} className="rounded-full px-2 text-white" style={{ background: l.color }}>{l.name}</span>
+              ))}
+              {displayPhone(conversation) && <span dir="ltr" className="text-gray-500">{displayPhone(conversation)}</span>}
             </span>
           </span>
         </button>
+        {onToggleFollowUp && hasStage(conversation) && (
+          <button
+            type="button"
+            onClick={() => onToggleFollowUp(!isManuallyFlagged(conversation))}
+            title="מכניס את השיחה לתור הפולו-אפ, גם אם הבוט לא שלח מחירון"
+            className={`flex h-10 shrink-0 items-center gap-1 rounded-full border px-3 text-sm ${
+              isManuallyFlagged(conversation) ? "border-orange-700 bg-orange-950/50 text-orange-200" : "border-gray-700 bg-gray-800 text-gray-300 hover:text-white"
+            }`}
+          >
+            {isManuallyFlagged(conversation) ? "בפולו-אפ ✓" : "לפולו-אפ"}
+          </button>
+        )}
         {needsReplyNow && (
           <button type="button" onClick={onHandled} title="לא צריך מענה — יוצא מ'דורש מענה' עד שיכתבו שוב" className="flex h-10 shrink-0 items-center gap-1 rounded-full border border-emerald-800 bg-emerald-950/50 px-3 text-sm text-emerald-200 hover:bg-emerald-900/60">
             ✓ טופל
