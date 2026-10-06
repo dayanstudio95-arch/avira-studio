@@ -101,7 +101,7 @@ async function drainDeferredSends(supabase: any, tenantId: string, settings: Bot
   const convIds = [...new Set(rows.map((x: any) => x.conversation_id))];
   const { data: convs, error: convErr } = await supabase
     .from('whatsapp_conversations')
-    .select('id, state, bot_enabled, phone, contact_type')
+    .select('id, state, bot_enabled, opted_out_at, phone, contact_type')
     .in('id', convIds);
   if (convErr) throw new Error(`deferred conversations: ${convErr.message}`);
   const byId = new Map((convs || []).map((c: any) => [c.id, c]));
@@ -118,6 +118,8 @@ async function drainDeferredSends(supabase: any, tenantId: string, settings: Bot
     // the live path would also have stayed silent.
     if (conv.state !== row.expected_state) { await cancel(row.id, 'state_changed'); continue; }
     if (!conv.bot_enabled) { await cancel(row.id, 'bot_muted'); continue; }
+    // AUTO-07: asked to be removed → nothing more from the bot, even if it was switched back on.
+    if (conv.opted_out_at) { await cancel(row.id, 'opted_out'); continue; }
     if (conv.contact_type !== 'unknown') { await cancel(row.id, 'known_contact'); continue; }
     if (!conv.phone) { await cancel(row.id, 'no_phone'); continue; }
 
@@ -169,6 +171,7 @@ async function sendFlowNudges(supabase: any, tenantId: string, settings: BotSett
     .eq('tenant_id', tenantId)
     .in('state', IN_FLOW_STATES)
     .eq('bot_enabled', true)
+    .is('opted_out_at', null)
     .eq('contact_type', 'unknown')
     .is('nudge_sent_at', null)
     .lte('last_bot_message_at', cutoff)

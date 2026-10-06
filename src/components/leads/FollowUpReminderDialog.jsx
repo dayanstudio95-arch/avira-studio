@@ -80,10 +80,12 @@ export default function FollowUpReminderDialog({ isOpen, onClose, leads, onSent 
     setIsSending(true);
     const sent = [];
     const failed = [];
+    const skipped = []; // AUTO-07: wrote "הסר" — not sent
     for (const lead of targets) {
       try {
         const message = applyVariables(template, lead);
-        const res = await base44.functions.invoke("sendWhatsAppMessage", { to: lead.phoneNumber, message });
+        const res = await base44.functions.invoke("sendWhatsAppMessage", { to: lead.phoneNumber, message, respect_opt_out: true });
+        if (res?.data?.skipped) { skipped.push(lead); continue; }
         if (res?.data?.error) throw new Error(res.data.error);
         sent.push(lead);
       } catch (e) {
@@ -91,11 +93,12 @@ export default function FollowUpReminderDialog({ isOpen, onClose, leads, onSent 
       }
     }
     setIsSending(false);
-    setSendResults({ sent, failed });
+    setSendResults({ sent, failed, skipped });
     if (sent.length > 0) {
       toast.success(`נשלחה תזכורת ל-${sent.length} לידים`);
       if (onSent) onSent();
     }
+    if (skipped.length > 0) toast.info(`דולגו ${skipped.length} לידים שביקשו הסרה ("הסר")`);
     if (failed.length > 0) {
       toast.error(`שליחה נכשלה עבור ${failed.length} לידים`);
     }

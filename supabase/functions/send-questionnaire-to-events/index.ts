@@ -27,8 +27,10 @@
 // sendWhatsApp() helper for the non-debug path, per the site-wide Make.com
 // replacement decision.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
-import { createUserClient, getRequestUser } from '../_shared/supabaseClients.ts';
+import { createUserClient, createServiceRoleClient, getRequestUser } from '../_shared/supabaseClients.ts';
 import { sendWhatsApp } from '../_shared/whatsapp.ts';
+import { getCallerProfile } from '../_shared/permissions.ts';
+import { loadOptOutList, isOptedOut, OPTED_OUT_REASON } from '../_shared/whatsappOptOut.ts';
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -44,6 +46,11 @@ Deno.serve(async (req) => {
     const { eventIds, messageTemplate, debugMode = false, testPhone, limit, month, year } = await req.json();
 
     if (!month || !year) return jsonResponse({ error: 'month and year are required' }, { status: 400 });
+
+    // AUTO-07: couples who wrote "הסר" are skipped (not for a dry run or a test phone).
+    const callerProfile = await getCallerProfile(supabase, user.id, 'tenant_id');
+    if (!callerProfile?.tenant_id) return jsonResponse({ error: 'Forbidden' }, { status: 403 });
+    const optOut = debugMode === true || testPhone ? null : await loadOptOutList(createServiceRoleClient(), callerProfile.tenant_id);
 
     const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
     const lastDay = new Date(year, month, 0).getDate();
@@ -109,6 +116,13 @@ Deno.serve(async (req) => {
           phone: testPhone ? `${testPhone} (test)` : phone,
           success: false,
         };
+
+        if (isOptedOut(optOut, phone)) {
+          logEntry.reason = OPTED_OUT_REASON;
+          logEntry.skipped = true;
+          logEntries.push(logEntry);
+          continue;
+        }
 
         if (debugMode === true) {
           // Counted separately from `sent`, on purpose. Reporting a dry run as a send

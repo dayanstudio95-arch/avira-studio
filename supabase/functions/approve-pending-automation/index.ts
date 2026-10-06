@@ -11,9 +11,10 @@
 // deleted since the PendingAutomation was created), messages still send but are not
 // logged per-recipient — the pending_automations row itself remains the record.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
-import { createUserClient, getRequestUser } from '../_shared/supabaseClients.ts';
+import { createUserClient, createServiceRoleClient, getRequestUser } from '../_shared/supabaseClients.ts';
 import { sendWhatsApp } from '../_shared/whatsapp.ts';
 import { loadQuietHoursSettings, isInQuietHoursNow, wasAlreadySentToday } from '../_shared/automationGuards.ts';
+import { loadOptOutList, isOptedOut, OPTED_OUT_REASON } from '../_shared/whatsappOptOut.ts';
 
 Deno.serve(async (req) => {
   const preflight = handleOptions(req);
@@ -65,6 +66,9 @@ Deno.serve(async (req) => {
     // the guards have to live here rather than in automation-engine itself. record.tenant_id
     // is always set -- automation-engine inserts every pending_automations row with it.
     const quietHours = await loadQuietHoursSettings(supabase, record.tenant_id);
+    // AUTO-07: a couple may have written "הסר" after the message was queued. Service-role
+    // read (the list must be complete whatever the approver's role); throws → nothing sent.
+    const optOut = await loadOptOutList(createServiceRoleClient(), record.tenant_id);
 
     let sent = 0;
     let failed = 0;
@@ -74,6 +78,8 @@ Deno.serve(async (req) => {
       let guardSkipReason: string | null = null;
       if (matchingAutomation?.test_mode) {
         guardSkipReason = 'מצב בדיקה — לא נשלחה הודעה אמיתית';
+      } else if (isOptedOut(optOut, msg.phoneNumber)) {
+        guardSkipReason = OPTED_OUT_REASON;
       } else if (isInQuietHoursNow(quietHours)) {
         guardSkipReason = 'שעות שקטות';
       } else if (await wasAlreadySentToday(supabase, matchingAutomation?.id, msg.phoneNumber)) {

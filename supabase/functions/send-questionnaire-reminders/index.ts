@@ -14,7 +14,8 @@
 // _shared/permissions.ts) — studio_manager was previously excluded here, inconsistent
 // with the admin-panel gate itself (src/App.jsx), per the 2026-08-17 security audit.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
-import { createUserClient, getRequestUser } from '../_shared/supabaseClients.ts';
+import { createUserClient, createServiceRoleClient, getRequestUser } from '../_shared/supabaseClients.ts';
+import { loadOptOutList, isOptedOut, OPTED_OUT_REASON } from '../_shared/whatsappOptOut.ts';
 import { sendWhatsApp } from '../_shared/whatsapp.ts';
 import { getCallerProfile, isAdmin } from '../_shared/permissions.ts';
 
@@ -27,7 +28,7 @@ Deno.serve(async (req) => {
     if (!user) return jsonResponse({ error: 'Unauthorized' }, { status: 401 });
 
     const supabase = createUserClient(req);
-    const profile = await getCallerProfile(supabase, user.id, 'role');
+    const profile = await getCallerProfile(supabase, user.id, 'role, tenant_id');
     if (!profile || !isAdmin(profile.role)) {
       return jsonResponse({ error: 'Forbidden' }, { status: 403 });
     }
@@ -61,7 +62,14 @@ Deno.serve(async (req) => {
     const baseUrl = Deno.env.get('APP_BASE_URL') ?? '';
     const results: Array<{ leadName: string; success: boolean; error?: string }> = [];
 
+    // AUTO-07: couples who wrote "הסר" are skipped. A failed lookup throws → nothing is sent.
+    const optOut = await loadOptOutList(createServiceRoleClient(), profile.tenant_id!);
+
     for (const lead of targetLeads) {
+      if (isOptedOut(optOut, lead.phone_number)) {
+        results.push({ leadName: lead.couple_names, success: false, error: OPTED_OUT_REASON });
+        continue;
+      }
       const questionnaireLink = `${baseUrl}/questionnaire/${lead.id}`;
       const eventDateStr = lead.event_date ? new Date(lead.event_date).toLocaleDateString('he-IL') : '';
 

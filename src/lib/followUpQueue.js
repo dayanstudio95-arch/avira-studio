@@ -17,6 +17,8 @@ export function isManuallyFlagged(c) {
 
 export function isAwaitingFollowUp(c, afterDays = 0) {
   if (!c) return false;
+  // AUTO-07: someone who asked to be removed is never offered for a follow-up.
+  if (c.optedOutAt) return false;
   if (isManuallyFlagged(c)) return true;
   if (c.state !== "PRICELIST_SENT" || c.followupSentAt || c.leadTemperature) return false;
   if (afterDays === 0) return true;

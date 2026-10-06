@@ -6,7 +6,8 @@
 // iterating and sending each recipient directly via Green API since there's no more
 // Make.com scenario to do that iteration for us.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
-import { createUserClient, getRequestUser } from '../_shared/supabaseClients.ts';
+import { createUserClient, createServiceRoleClient, getRequestUser } from '../_shared/supabaseClients.ts';
+import { loadOptOutList, isOptedOut, OPTED_OUT_REASON } from '../_shared/whatsappOptOut.ts';
 import { sendWhatsApp } from '../_shared/whatsapp.ts';
 import { getCallerProfile, hasRole, ADMIN_ROLES, LEAD_COORDINATOR_ROLE, ALBUM_MANAGER_ROLE } from '../_shared/permissions.ts';
 
@@ -25,7 +26,7 @@ Deno.serve(async (req) => {
     if (!user) return jsonResponse({ error: 'Unauthorized' }, { status: 401 });
 
     const supabase = createUserClient(req);
-    const profile = await getCallerProfile(supabase, user.id, 'role');
+    const profile = await getCallerProfile(supabase, user.id, 'role, tenant_id');
     if (!profile || !hasRole(profile.role, SENDER_ROLES)) {
       return jsonResponse({ error: 'Forbidden' }, { status: 403 });
     }
@@ -57,6 +58,15 @@ Deno.serve(async (req) => {
     }
 
     if (!to || !message) return jsonResponse({ error: 'to and message are required' }, { status: 400 });
+
+    // AUTO-07: bulk screens (follow-up dialogs) pass respect_opt_out — a person who wrote
+    // "הסר" is skipped, reported as skipped (not as a failure). A message typed by hand to
+    // one person (chat reply, side panel) does not pass it and still goes out.
+    if (body.respect_opt_out === true) {
+      if (!profile.tenant_id) return jsonResponse({ error: 'Forbidden' }, { status: 403 });
+      const optOut = await loadOptOutList(createServiceRoleClient(), profile.tenant_id);
+      if (isOptedOut(optOut, to)) return jsonResponse({ success: false, skipped: true, reason: OPTED_OUT_REASON });
+    }
 
     const result = await sendWhatsApp(supabase, to, message);
     if (!result.success) return jsonResponse({ error: result.error }, { status: 502 });

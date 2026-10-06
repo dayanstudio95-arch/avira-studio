@@ -442,6 +442,16 @@ Deno.serve(async (req: Request) => {
     let quietSettings: QuietHoursSettings | null = null;
     let deferredSendAfter: Date | null = null;
 
+    // AUTO-07 (audit 2026-10-05): the bot may answer only if it is switched on AND the person
+    // never asked to be removed AND this very message is not the removal request. Before,
+    // the gates read the stored bot_enabled, so "הסר" sent mid-flow was still answered (the
+    // opt-out below switches the bot off only for the NEXT message), and a bot switched
+    // back on by hand would message an opted-out person again.
+    const botMayAnswer =
+      !!conversation.bot_enabled &&
+      !conversation.opted_out_at &&
+      !(isInbound && !isGroup && detectOptOut(bodyText));
+
     let decision: ReturnType<typeof decideBotReply> | null = null;
     // Loaded before the gate when the cheap checks pass (2026-09-24): the studio's own
     // words for the intent gate live in the settings. Reused by Stage 2 below.
@@ -454,7 +464,7 @@ Deno.serve(async (req: Request) => {
       const cheapGatesPass =
         !isGroup &&
         effectiveContactType === 'unknown' &&
-        conversation.bot_enabled &&
+        botMayAnswer &&
         conversation.state === 'NEW' &&
         !conversation.bot_would_reply_at;
 
@@ -476,7 +486,7 @@ Deno.serve(async (req: Request) => {
 
       decision = decideBotReply({
         contactType: effectiveContactType,
-        botEnabled: !!conversation.bot_enabled,
+        botEnabled: botMayAnswer,
         state: conversation.state || 'NEW',
         isGroup,
         typeMessage,
@@ -741,7 +751,7 @@ Deno.serve(async (req: Request) => {
 
         const followUp = decideBotFollowUp({
           contactType: effectiveContactType,
-          botEnabled: !!conversation.bot_enabled,
+          botEnabled: botMayAnswer,
           state: conversation.state || 'NEW',
           isGroup,
           typeMessage,

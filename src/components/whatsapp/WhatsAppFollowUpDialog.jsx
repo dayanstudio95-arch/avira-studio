@@ -101,10 +101,12 @@ export default function WhatsAppFollowUpDialog({ isOpen, onClose, conversations,
     setIsSending(true);
     const sent = [];
     const failed = [];
+    const skipped = []; // AUTO-07: wrote "הסר" — not sent
     for (const c of targets) {
       try {
         const message = applyVariables(template, c);
-        const res = await base44.functions.invoke("sendWhatsAppMessage", { to: c.phone, message });
+        const res = await base44.functions.invoke("sendWhatsAppMessage", { to: c.phone, message, respect_opt_out: true });
+        if (res?.data?.skipped) { skipped.push(c); continue; }
         if (res?.data?.error) throw new Error(res.data.error);
         // Two writes, both mattering for a different reason:
         //   followupSentAt — takes this conversation out of the queue, so tomorrow's
@@ -122,11 +124,12 @@ export default function WhatsAppFollowUpDialog({ isOpen, onClose, conversations,
       }
     }
     setIsSending(false);
-    setSendResults({ sent, failed });
+    setSendResults({ sent, failed, skipped });
     if (sent.length > 0) {
       toast.success(`נשלח פולו-אפ ל-${sent.length} שיחות`);
       if (onSent) onSent();
     }
+    if (skipped.length > 0) toast.info(`דולגו ${skipped.length} שיחות שביקשו הסרה ("הסר")`);
     if (failed.length > 0) toast.error(`שליחה נכשלה עבור ${failed.length} שיחות`);
   };
 

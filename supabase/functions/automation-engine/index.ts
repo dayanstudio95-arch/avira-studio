@@ -40,6 +40,7 @@ import { sendWhatsApp as sendWhatsAppGreenApi } from '../_shared/whatsapp.ts';
 import { EVENT_TEAM_ROLE_LABELS as ROLE_LABELS } from '../_shared/staffRoles.ts';
 import { loadQuietHoursSettings, isInQuietHoursNow, wasAlreadySentToday, sentTodayAt, isStaffSelectedForAutomation, type QuietHoursSettings } from '../_shared/automationGuards.ts';
 import { runWhatsAppHousekeeping } from '../_shared/whatsappHousekeeping.ts';
+import { loadOptOutList, isOptedOut, OPTED_OUT_REASON, type OptOutList } from '../_shared/whatsappOptOut.ts';
 import { alertStuckMessages, purgeOldMedia } from '../_shared/whatsappStatus.ts';
 import { sendPush } from '../_shared/webPush.ts';
 import { refreshAvatars } from '../_shared/whatsappAvatars.ts';
@@ -179,8 +180,12 @@ async function sendWhatsApp(supabase: any, tenantId: string, phone: string, mess
 // `allowResendToday` (2026-10-01) lifts ONLY the same-day dedup, and only on a manual run
 // where the owner ticked, in the preview, people the preview showed as already having
 // received a message today. Test mode and quiet hours still apply.
-async function checkSendGuards(supabase: any, automation: any, quietHours: QuietHoursSettings, phone: string, opts: { allowResendToday?: boolean } = {}): Promise<string | null> {
+//
+// `optOut` (AUTO-07): customer sends pass the studio's opt-out list — someone who wrote
+// "הסר" is skipped. Not passed for staff sends, nor when a test phone replaces the recipient.
+async function checkSendGuards(supabase: any, automation: any, quietHours: QuietHoursSettings, phone: string, opts: { allowResendToday?: boolean; optOut?: OptOutList | null } = {}): Promise<string | null> {
   if (automation.test_mode) return 'מצב בדיקה — לא נשלחה הודעה אמיתית';
+  if (opts.optOut && isOptedOut(opts.optOut, phone)) return OPTED_OUT_REASON;
   if (isInQuietHoursNow(quietHours)) return 'שעות שקטות';
   if (!opts.allowResendToday && await wasAlreadySentToday(supabase, automation.id, phone)) return 'כבר נשלח היום';
   return null;
@@ -496,6 +501,7 @@ async function runDailyEventBrief(supabase: any, tenantId: string, automation: a
 
 async function runQuestionnaireReminder(supabase: any, tenantId: string, automation: any, runId: string, opts: any = {}) {
   const { testPhone, dryRun, selectedStaffIds } = opts;
+  const optOut = testPhone ? null : await loadOptOutList(supabase, tenantId);
 
   const now = new Date();
   const targetStart = new Date(now);
@@ -527,6 +533,7 @@ async function runQuestionnaireReminder(supabase: any, tenantId: string, automat
 
   const pendingMessages = [];
   for (const lead of eligible) {
+    if (isOptedOut(optOut, lead.phone_number)) continue; // AUTO-07: asked to be removed
     const phone = testPhone || lead.phone_number;
     // Was a hardcoded dead domain (avira-studio.com), causing every questionnaire
     // link sent to couples to 404 — fixed 2026-08-18 to use APP_BASE_URL.
@@ -580,6 +587,7 @@ async function runQuestionnaireReminder(supabase: any, tenantId: string, automat
 
 async function runPaymentReminder(supabase: any, tenantId: string, automation: any, runId: string, opts: any = {}) {
   const { testPhone, dryRun, selectedStaffIds } = opts;
+  const optOut = testPhone ? null : await loadOptOutList(supabase, tenantId);
 
   // NOTE: the original Base44 `Automation` entity had no `triggerDays` field either
   // (confirmed against base44/entities/Automation.jsonc — only `event_automations`,
@@ -605,6 +613,7 @@ async function runPaymentReminder(supabase: any, tenantId: string, automation: a
 
   const pendingMessages = [];
   for (const event of eligible) {
+    if (isOptedOut(optOut, event.phone_number)) continue; // AUTO-07: asked to be removed
     const phone = (testPhone || event.phone_number).replace(/[^0-9]/g, '');
 
     // remaining_balance lives on Lead, not Event, in this schema — look it up via the link.
@@ -663,6 +672,7 @@ async function runPaymentReminder(supabase: any, tenantId: string, automation: a
 
 async function runAlbumReminder(supabase: any, tenantId: string, automation: any, runId: string, opts: any = {}) {
   const { testPhone, dryRun, selectedEventIds, quietHours } = opts;
+  const optOut = dryRun || testPhone ? null : await loadOptOutList(supabase, tenantId);
 
   const { data: allEvents } = await supabase.from('events').select('*').eq('tenant_id', tenantId).order('date', { ascending: false });
 
@@ -736,7 +746,7 @@ async function runAlbumReminder(supabase: any, tenantId: string, automation: any
       continue;
     }
 
-    const guardSkipReason = await checkSendGuards(supabase, automation, quietHours, item.phoneNumber.trim());
+    const guardSkipReason = await checkSendGuards(supabase, automation, quietHours, item.phoneNumber.trim(), { optOut });
     if (guardSkipReason) {
       await supabase.from('automation_message_logs').insert({ ...logEntry, status: 'skipped', error: guardSkipReason });
       skipped++;
@@ -762,6 +772,7 @@ async function runAlbumReminder(supabase: any, tenantId: string, automation: any
 
 async function runQuestionnaireSend(supabase: any, tenantId: string, automation: any, runId: string, opts: any = {}) {
   const { testPhone, dryRun, targetYYYYMM: targetYYYYMMOverride, selectedEventIds, quietHours } = opts;
+  const optOut = dryRun || testPhone ? null : await loadOptOutList(supabase, tenantId);
 
   let targetYYYYMM = targetYYYYMMOverride;
   if (!targetYYYYMM) {
@@ -873,7 +884,7 @@ async function runQuestionnaireSend(supabase: any, tenantId: string, automation:
       continue;
     }
 
-    const guardSkipReason = await checkSendGuards(supabase, automation, quietHours, item.staffPhone.trim());
+    const guardSkipReason = await checkSendGuards(supabase, automation, quietHours, item.staffPhone.trim(), { optOut });
     if (guardSkipReason) {
       await supabase.from('automation_message_logs').insert({ ...logEntry, status: 'skipped', error: guardSkipReason });
       skipped++;
@@ -1086,6 +1097,7 @@ async function runCustomAudienceMessage(supabase: any, tenantId: string, automat
 
   const audienceType = automation.audience_type;
   const audienceConfig = automation.audience_config || {};
+  const optOut = audienceType === 'leads_events' && !dryRun && !testPhone ? await loadOptOutList(supabase, tenantId) : null;
 
   let rows: any[] = [];
   if (audienceType === 'staff_role') {
@@ -1132,7 +1144,7 @@ async function runCustomAudienceMessage(supabase: any, tenantId: string, automat
       message_content: item.message,
     };
 
-    const guardSkipReason = await checkSendGuards(supabase, automation, quietHours, phone);
+    const guardSkipReason = await checkSendGuards(supabase, automation, quietHours, phone, { optOut });
     if (guardSkipReason) {
       await supabase.from('automation_message_logs').insert({ ...logEntry, status: 'skipped', error: guardSkipReason });
       skipped++;

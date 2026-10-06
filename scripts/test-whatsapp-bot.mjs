@@ -1463,6 +1463,41 @@ section('selected staff = the ONLY recipients; none selected = everyone');
   check('no automation → everyone', guards.isStaffSelectedForAutomation(null, 's1'), true);
 }
 
+// =================================================================================
+// PART 22 — "הסר" is respected by every automated / bulk send (AUTO-07, 2026-10-06)
+// =================================================================================
+
+const oo = await loadModule('supabase/functions/_shared/whatsappOptOut.ts', 'optout22');
+const fq22 = await loadModule('src/lib/followUpQueue.js', 'followup22');
+
+section('opt-out list: matching a lead/event phone to the conversation that wrote "הסר"');
+{
+  const list = oo.buildOptOutList([
+    { phone: '0501234567', chat_id: '972501234567@c.us' },
+    { phone: null, chat_id: '447700900123@c.us' },           // a number from abroad
+    { phone: null, chat_id: '972521112233@c.us' },           // phone column empty
+  ]);
+  check('same local number', oo.isOptedOut(list, '0501234567'), true);
+  check('with dashes / spaces', oo.isOptedOut(list, '050-123 4567'), true);
+  check('international form', oo.isOptedOut(list, '+972 50 123 4567'), true);
+  check('digits only 972…', oo.isOptedOut(list, '972501234567'), true);
+  check('chat id', oo.isOptedOut(list, '972501234567@c.us'), true);
+  check('abroad number by digits', oo.isOptedOut(list, '447700900123'), true);
+  check('phone column empty → matched through chat id', oo.isOptedOut(list, '0521112233'), true);
+  check('someone else', oo.isOptedOut(list, '0509999999'), false);
+  check('empty phone', oo.isOptedOut(list, ''), false);
+  check('no list (test phone / dry run) → never blocks', oo.isOptedOut(null, '0501234567'), false);
+  check('reason text', oo.OPTED_OUT_REASON.includes('הסר'), true);
+}
+
+section('follow-up queue never offers someone who wrote "הסר"');
+{
+  const base = { state: 'PRICELIST_SENT', lastBotMessageAt: '2026-09-01T10:00:00Z' };
+  check('normal → in the queue', fq22.isAwaitingFollowUp(base, 0), true);
+  check('opted out → not in the queue', fq22.isAwaitingFollowUp({ ...base, optedOutAt: '2026-10-01T10:00:00Z' }, 0), false);
+  check('opted out beats a manual flag', fq22.isAwaitingFollowUp({ ...base, followupFlaggedAt: '2026-10-02T10:00:00Z', optedOutAt: '2026-10-01T10:00:00Z' }, 0), false);
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
