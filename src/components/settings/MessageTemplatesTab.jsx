@@ -147,6 +147,12 @@ const TEMPLATES = [
   },
 ];
 
+// D5 (owner's decision, 2026-10-07): these three were saved but nothing ever sends them — the
+// event reminder and invoice-message templates have no reader, and the questionnaire reminder
+// actually uses the automation's own text. Hidden from the screen; stored values untouched.
+const HIDDEN_TEMPLATE_KEYS = new Set(["template_reminder", "template_invoice_message", "template_questionnaire_reminder"]);
+const SHOWN_TEMPLATES = TEMPLATES.filter((t) => !HIDDEN_TEMPLATE_KEYS.has(t.key));
+
 export default function MessageTemplatesTab() {
   const [templates, setTemplates] = useState({});
   const [settingIds, setSettingIds] = useState({});
@@ -200,7 +206,7 @@ export default function MessageTemplatesTab() {
         </CardContent>
       </Card>
 
-      {TEMPLATES.map(t => (
+      {SHOWN_TEMPLATES.map(t => (
         <Card key={t.key} className="bg-gray-900/50 border-gray-800">
           <CardHeader className="border-b border-gray-800 pb-4">
             <CardTitle className="text-white flex items-center gap-2">

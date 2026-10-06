@@ -52,8 +52,7 @@ export default function MobileMoreMenu({
             </>
           )}
           {item("📨 תזכורת פולו-אפ", onFollowUpReminder, "text-orange-300")}
-          {item("🔢 שייך IDs", onAssignIds, "text-purple-300")}
-          {item("🔧 תיקון חסרים", onFixMissing, "text-red-300")}
+          {/* D1 + D2 hidden by the owner's decision (2026-10-07). */}
           {item("📂 ייבוא CSV", onCSVImport, "text-gray-300")}
         </div>
       )}

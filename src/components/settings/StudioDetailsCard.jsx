@@ -41,6 +41,9 @@ const FIELDS = [
 // account details" text. Kept as a separate FIELDS group with its own heading
 // (not merged into the identity/contact FIELDS above) purely for UI grouping --
 // same `tenants` table, same save mechanism.
+// Fields the system really reads (D4): the name couples see. See FIELDS above.
+const SHOWN_FIELD_KEYS = new Set(["display_name_to_clients"]);
+
 const BANK_FIELDS = [
   { key: "bank_name", label: "שם הבנק" },
   { key: "bank_branch_number", label: "מספר סניף" },
@@ -248,7 +251,10 @@ export default function StudioDetailsCard() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {FIELDS.map((f) => (
+          {/* D4 (owner's decision, 2026-10-07): only fields something actually uses are shown. Phone,
+              WhatsApp, email, address, business numbers, website and social links were saved but read
+              by nothing; they stay loaded and saved unchanged, just not shown. */}
+          {FIELDS.filter((f) => SHOWN_FIELD_KEYS.has(f.key)).map((f) => (
             <div key={f.key} className="space-y-2">
               <Label className="text-gray-300 font-medium">{f.label}</Label>
               <Input
@@ -293,19 +299,7 @@ export default function StudioDetailsCard() {
           </div>
         </div>
 
-        <div className="space-y-2">
-          <Label className="text-gray-300 font-medium">חתימה אוטומטית להודעות</Label>
-          <Textarea
-            value={form.auto_signature_text}
-            disabled={!canManage}
-            onChange={(e) => setForm({ ...form, auto_signature_text: e.target.value })}
-            className="bg-gray-800/50 border-gray-700 text-white min-h-[80px]"
-            placeholder="לדוגמה: בברכה, צוות הסטודיו"
-          />
-          <p className="text-xs text-gray-500">
-            נשמר כרגע בלבד — עדיין לא מתווסף אוטומטית להודעות WhatsApp היוצאות.
-          </p>
-        </div>
+        {/* D4 hidden (2026-10-07): "חתימה אוטומטית להודעות" was never added to any message. */}
 
         {canManage && (
           <Button onClick={handleSave} disabled={isSaving} className="bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-semibold">

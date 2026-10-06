@@ -25,11 +25,8 @@ import { STAFF_JOB_ROLES, staffJobRoleLabel } from "@/lib/staffRoles";
 import { getStaffRateForRole } from "@/lib/staffRates";
 import CSVImportDialog from "../components/CSVImportDialog";
 import StaffImportDialog from "../components/settings/StaffImportDialog";
-import DiscountForm from "../components/settings/DiscountForm";
-import DiscountList from "../components/settings/DiscountList";
 import PricingManagement from "../components/settings/PricingManagement";
 import MessageTemplatesTab from "../components/settings/MessageTemplatesTab";
-import TeamAutomationTab from "../components/settings/TeamAutomationTab";
 import StaffRatesEditor from "../components/settings/StaffRatesEditor";
 import UsersTab from "../components/settings/UsersTab";
 import WorkspaceTab from "../components/settings/WorkspaceTab";
@@ -480,47 +477,9 @@ export default function Settings() {
               <PricingManagement />
               <FinancialDefaultsCard />
 
-              <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm">
-                <CardHeader className="border-b border-gray-800">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-white flex items-center gap-2">
-                      <DollarSign className="w-5 h-5 text-yellow-400" />
-                      ניהול הנחות
-                    </CardTitle>
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button size="sm" className="bg-yellow-400 hover:bg-yellow-500 text-gray-900">
-                          <Plus className="w-4 h-4 mr-2" />
-                          הוסף הנחה
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="bg-gray-900 border-gray-800 text-white">
-                        <DialogHeader>
-                          <DialogTitle>הוסף הנחה חדשה</DialogTitle>
-                        </DialogHeader>
-                        <DiscountForm onSuccess={() => window.location.reload()} />
-                      </DialogContent>
-                    </Dialog>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-6">
-                  {/*
-                    Honest-disclosure label, in the same style as WorkspaceTab's timezone/currency
-                    fields. `discount_presets` has no consumer: its only reader was the discount
-                    dropdown in newEvent/DetailsStep.jsx, removed on 2026-08-28 because it never
-                    persisted a value (0 of 271 events) and computed the wrong price. Discounts in
-                    real use live on the lead -- LeadFormDialog's basePrice/discount/finalPrice --
-                    and flow into the event through sync-lead-to-event. The table and this CRUD are
-                    kept rather than deleted so the capability stays available, but the screen now
-                    says plainly that nothing reads it today.
-                  */}
-                  <p className="text-xs text-gray-500 mb-4">
-                    ההנחות בפועל נקבעות בכרטיס הליד (מחיר בסיס ← הנחה ← מחיר סופי), והמחיר הסופי עובר משם לאירוע.
-                    הנחות שנשמרות כאן אינן בשימוש כרגע בשום מסך.
-                  </p>
-                  <DiscountList />
-                </CardContent>
-              </Card>
+              {/* D7 (owner's decision, 2026-10-07): "ניהול הנחות" hidden — discounts saved here were read by
+                  nothing; real discounts live on the lead (base price → discount → final price). The
+                  discount_presets table and its rows are untouched. */}
             </div>
           </TabsContent>
 
@@ -732,7 +691,8 @@ export default function Settings() {
                 </CardContent>
               </Card>
 
-              <TeamAutomationTab />
+              {/* D6 (owner's decision, 2026-10-07): the second "ניהול אנשי צוות" table (a duplicate of the
+                  card above, without rates) and the disabled "ניהול אוטומציות" cards were removed. */}
             </div>
           </TabsContent>
 

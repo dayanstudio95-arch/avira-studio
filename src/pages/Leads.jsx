@@ -544,8 +544,8 @@ export default function Leads() {
            </>
            )}
             <Button onClick={() => setFollowUpDialogOpen(true)} variant="outline" className="border-orange-500 text-orange-300 bg-transparent hover:bg-orange-600/10 px-4 py-2 rounded-lg font-medium">📨 תזכורת פולו-אפ</Button>
-            <Button onClick={handleAssignStudioIds} variant="outline" className="border-purple-500 text-purple-300 bg-transparent hover:bg-purple-600/10 px-4 py-2 rounded-lg font-medium">🔢 שייך IDs</Button>
-            <Button onClick={handleFixMissingEvents} disabled={convertingId === 'fix'} variant="outline" className="border-red-500 text-red-300 bg-transparent hover:bg-red-600/10 px-4 py-2 rounded-lg font-medium">🔧 תיקון חסרים</Button>
+            {/* D1 + D2 hidden by the owner's decision (2026-10-07): 'שייך IDs' (its number is no longer shown),
+                'תיקון חסרים' (no signed lead lacks an event — that happens automatically now). */}
             <Button onClick={() => setIsCSVImportOpen(true)} variant="outline" className="border-gray-600 text-gray-300 bg-transparent hover:bg-gray-700 px-4 py-2 rounded-lg font-medium">📂 ייבוא CSV</Button>
             <Button onClick={() => { setEditingLead(null); setIsFormOpen(true); }} className="bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-bold px-5 py-2 rounded-lg shadow-lg">
               <Plus className="w-5 h-5 ml-1" />ליד חדש +
@@ -594,22 +594,7 @@ export default function Leads() {
           })}
         </div>
 
-        {/* Dormant filter bar */}
-        <div className="flex items-center gap-3 mb-4">
-          <button
-            onClick={() => setShowDormant(!showDormant)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-all ${
-              showDormant
-                ? 'bg-red-500/20 border-red-500 text-red-300'
-                : 'bg-gray-800 border-gray-600 text-gray-400 hover:text-gray-200'
-            }`}
-          >
-            🔴 {showDormant ? `רדומים (${filteredLeads.length})` : 'הצג רדומים (+48 שעות)'}
-          </button>
-          {showDormant && (
-            <span className="text-xs text-gray-500">לידים שלא עודכנו ביותר מ-48 שעות (ללא סגורים)</span>
-          )}
-        </div>
+        {/* D3 hidden by the owner's decision (2026-10-07): 'הצג רדומים' duplicated the 'ללא קשר 48 שעות' filter below. */}
 
         {/* Quick Filters */}
         <div className="flex items-center gap-2 mb-3 flex-wrap">

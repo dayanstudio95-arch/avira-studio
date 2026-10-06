@@ -6,17 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Building2, Save } from "lucide-react";
 import { toast } from "sonner";
-
-const CURRENCIES = [
-  { value: "ILS", label: "₪ שקל חדש (ILS)" },
-  { value: "USD", label: "$ דולר אמריקאי (USD)" },
-  { value: "EUR", label: "€ יורו (EUR)" },
-];
-
-const TIMEZONES = ["Asia/Jerusalem", "Europe/London", "America/New_York", "UTC"];
 
 export default function WorkspaceTab() {
   const { user } = useAuth();
@@ -95,49 +86,8 @@ export default function WorkspaceTab() {
           />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="space-y-2">
-            <Label className="text-gray-300 font-medium">אזור זמן</Label>
-            <Select
-              value={tenant.timezone}
-              disabled={!canManage}
-              onValueChange={(val) => setTenant({ ...tenant, timezone: val })}
-            >
-              <SelectTrigger className="bg-gray-800/50 border-gray-700 text-white">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-gray-900 border-gray-700 text-white">
-                {TIMEZONES.map((tz) => (
-                  <SelectItem key={tz} value={tz}>{tz}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-gray-500">
-              נשמר כרגע בלבד — כל התאריכים והשעות במערכת מוצגים בשעון ישראל.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label className="text-gray-300 font-medium">מטבע</Label>
-            <Select
-              value={tenant.currency}
-              disabled={!canManage}
-              onValueChange={(val) => setTenant({ ...tenant, currency: val })}
-            >
-              <SelectTrigger className="bg-gray-800/50 border-gray-700 text-white">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-gray-900 border-gray-700 text-white">
-                {CURRENCIES.map((c) => (
-                  <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-gray-500">
-              נשמר כרגע בלבד — כל הסכומים במערכת מוצגים בשקלים (₪).
-            </p>
-          </div>
-        </div>
+        {/* D4 hidden by the owner's decision (2026-10-07): "אזור זמן" and "מטבע" are saved but nothing in
+            the system reads them (everything is Israel time and ₪). The stored values are unchanged. */}
 
         {canManage && (
           <Button onClick={handleSave} disabled={isSaving} className="bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-semibold">

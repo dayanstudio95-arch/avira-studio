@@ -396,12 +396,9 @@ export default function ProgressStatus() {
           >
             📍 היום
           </button>
-          <Button size="sm" variant="outline" className="bg-gray-800 border-gray-600 text-white hover:bg-gray-700 text-xs" onClick={openAlbumSettings}>
-            הגדרות תזכורת אלבומים
-          </Button>
-          <Button size="sm" className="bg-purple-900 border-purple-600 text-white hover:bg-purple-800 text-xs" onClick={openAlbumSend}>
-            תזכורת אלבומים
-          </Button>
+          {/* B6 + B7 hidden by the owner's decision (2026-10-07): "תזכורת אלבומים" called a dead Base44
+              address, and "הגדרות תזכורת אלבומים" saved a text nothing reads. The working album
+              reminder is in the automations dashboard. */}
           </div>
         </div>
 

@@ -267,7 +267,7 @@ export default function CreateCustomAutomationModal({ onClose, onCreated }) {
             </div>
             <div>
               <h2 className="text-lg font-bold text-white">אוטומציה חדשה</h2>
-              <p className="text-gray-400 text-xs">בחרו קהל יעד, כתבו הודעה וקבעו תזמון</p>
+              <p className="text-gray-400 text-xs">בחרו קהל יעד וכתבו הודעה</p>
             </div>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white p-2 rounded-lg hover:bg-gray-800 transition-colors">
@@ -563,58 +563,9 @@ export default function CreateCustomAutomationModal({ onClose, onCreated }) {
             <h3 className="text-purple-300 font-semibold text-sm flex items-center gap-2">
               <CalendarClock className="w-4 h-4" /> תזמון
             </h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-gray-400 text-xs block mb-1">תדירות</label>
-                <select
-                  value={frequency}
-                  onChange={(e) => setFrequency(e.target.value)}
-                  className="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm"
-                >
-                  <option value="manual">ידני</option>
-                  <option value="daily">יומי</option>
-                  <option value="monthly_1st">חודשי (יום קבוע)</option>
-                </select>
-              </div>
-              {frequency !== "manual" && (
-                <div>
-                  <label className="text-gray-400 text-xs block mb-1">שעת הרצה</label>
-                  <input
-                    type="time"
-                    value={runTime}
-                    onChange={(e) => setRunTime(e.target.value)}
-                    className="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm"
-                  />
-                </div>
-              )}
-              {frequency === "monthly_1st" && (
-                <>
-                  <div>
-                    <label className="text-gray-400 text-xs block mb-1">יום בחודש (1-31)</label>
-                    <input
-                      type="number" min={1} max={31}
-                      value={runDay}
-                      onChange={(e) => setRunDay(e.target.value)}
-                      className="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-gray-400 text-xs block mb-1">חודש יעד</label>
-                    <select
-                      value={targetMonthMode}
-                      onChange={(e) => setTargetMonthMode(e.target.value)}
-                      className="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm"
-                    >
-                      <option value="next_month">חודש הבא</option>
-                      <option value="current_month">חודש נוכחי</option>
-                    </select>
-                  </div>
-                </>
-              )}
-            </div>
-            <p className="text-amber-400/80 text-xs bg-amber-950/30 border border-amber-800/40 rounded-lg px-3 py-2">
-              ⚠️ בשלב זה, אוטומציות מסוג "חדשות" (מותאמות אישית) פועלות רק בהרצה ידנית — גם אם נקבע תזמון, המערכת לא תשלח אוטומטית עד שתריצו אותה ידנית לפחות פעם אחת ותוודאו שהיא עובדת כמצופה.
-            </p>
+            {/* D8 (owner's decision, 2026-10-07): custom automations are never run by the scheduler, so the
+                frequency/time/day fields did nothing and the old warning was wrong ("after one manual run"). */}
+            <p className="text-gray-300 text-sm">אוטומציה מותאמת נשלחת רק בלחיצה ("הרצה ידנית" בלוח האוטומציות). אין לה תזמון אוטומטי.</p>
           </section>
         </div>
 

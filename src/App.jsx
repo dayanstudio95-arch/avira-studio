@@ -30,7 +30,6 @@ const ProgressStatus = lazy(() => import('./pages/ProgressStatus'));
 const Reports = lazy(() => import('./pages/Reports'));
 const Payments = lazy(() => import('./pages/Payments'));
 const AllInvoicesPage = lazy(() => import('./pages/AllInvoicesPage'));
-const TeamPaymentsPage = lazy(() => import('./pages/TeamPaymentsPage'));
 const ContractPage = lazy(() => import('./pages/ContractPage'));
 const EventQuestionnaire = lazy(() => import('./pages/EventQuestionnaire'));
 const Login = lazy(() => import('./pages/Login'));
@@ -46,7 +45,6 @@ const BotControlCenter = lazy(() => import('./pages/BotControlCenter'));
 // installable on the iPhone home screen (chat.html + public/manifest-chat.json).
 const ChatApp = lazy(() => import('./pages/chat/ChatApp'));
 const Guide = lazy(() => import('./pages/Guide'));
-const LeadsCoordinator = lazy(() => import('./pages/LeadsCoordinator'));
 const MyEvents = lazy(() => import('./pages/MyEvents'));
 
 // WhatsApp inbox (migration 0054_whatsapp_bot.sql) -- every conversation the studio's
@@ -240,7 +238,6 @@ const AuthenticatedApp = () => {
           <Route path="/Reports" element={<Reports />} />
           <Route path="/Payments" element={<Payments />} />
           <Route path="/AllInvoicesPage" element={<AllInvoicesPage />} />
-          <Route path="/TeamPaymentsPage" element={<TeamPaymentsPage />} />
           <Route path="/Settings" element={<Settings />} />
           <Route path="/AutomationsDashboard" element={<AutomationsDashboard />} />
           <Route path="/GoogleCalendarSync" element={<GoogleCalendarSync />} />

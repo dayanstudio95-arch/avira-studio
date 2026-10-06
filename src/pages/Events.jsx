@@ -325,29 +325,7 @@ export default function Events() {
           </div>
           {/* Desktop buttons */}
           <div className="hidden md:flex items-center gap-3">
-            <Button
-              onClick={() => {
-                setSelectedQuestionnaireMonth(0);
-                const nextMonth = getNextMonthEvents(1);
-                setCheckedEvents(new Set(nextMonth.filter(e => e.phoneNumber).map(e => e.id)));
-                setShowQuestionnaireModal(true);
-              }}
-              disabled={questionnaireLoading}
-              variant="outline"
-              className="border-purple-500 text-purple-300 bg-transparent hover:bg-purple-600/10 px-4 py-2 rounded-lg font-medium"
-            >
-              {questionnaireLoading ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <span>📋</span>}
-              {questionnaireLoading ? 'שולח...' : 'שאלון הכנה'}
-            </Button>
-            <Button
-              onClick={handleDetectAndDeleteDuplicates}
-              disabled={isSyncing}
-              variant="outline"
-              className="border-red-500 text-red-300 bg-transparent hover:bg-red-600/10 px-4 py-2 rounded-lg font-medium"
-            >
-              <RefreshCw className={`w-4 h-4 ml-2 ${isSyncing ? 'animate-spin' : ''}`} />
-              {isSyncing ? 'בודק...' : 'בדוק כפילויות'}
-            </Button>
+            {/* Hidden by the owner's decision B3+R6 (buttons review, 2026-10-07): 'שאלון הכנה' (template placeholders mismatch — questionnaires go out from the automations screen) and 'בדוק כפילויות' (deletes the older record automatically; there are no duplicates). */}
             <Button 
               onClick={() => setIsImportDialogOpen(true)}
               variant="outline"

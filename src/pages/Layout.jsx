@@ -9,7 +9,6 @@ import {
   Settings, 
   Heart,
   Camera,
-  Bell,
   WalletCards,
   CheckSquare,
   Users,
@@ -17,12 +16,14 @@ import {
   FileText,
   Edit2,
   X,
-  Shield,
   LogOut,
   BookImage,
   BookOpen,
   MessageSquare,
   Bot,
+  Eye,
+  EyeOff,
+  GripVertical,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -104,7 +105,8 @@ const primaryNavItems = [
   { title: "🤖 לוח אוטומציות", url: "/AutomationsDashboard",         icon: Zap },
   { title: "📅 יומן Google",   url: "/GoogleCalendarSync",           icon: Calendar },
   { title: "📷 הזמנות אלבומים", url: "/AlbumOrders",                  icon: BookImage },
-  { title: "🛡️ יועץ מערכת",   url: "/SystemAdvisor",                 icon: Shield },
+  // S8 (owner's decision, 2026-10-07): "🛡️ יועץ מערכת" removed from the menu — its numbers were
+  // wrong (200-event cap, partial payments as full debt). The route /SystemAdvisor stays.
   { title: "הגדרות מערכת",    url: createPageUrl("Settings"),        icon: Settings },
 ];
 
@@ -115,7 +117,9 @@ const secondaryNavItems = [
   { title: "קטלוג אלבומים",     url: "/AlbumCatalogSettings",              icon: Settings },
   { title: "מדריך אלבום",       url: "/AlbumGuideSettings",                icon: FileText },
   { title: "ניהול חשבוניות",    url: createPageUrl("AllInvoicesPage"),     icon: FileText },
-  { title: "אישור הודעות",      url: "/PendingApprovals",                  icon: Bell },
+  // B4 (owner's decision, 2026-10-07): "אישור הודעות" removed from the menu — nothing queues there
+  // (the two approval automations are off) and the page breaks when something does. Put it
+  // back, and fix it, before turning those automations on. The route /PendingApprovals stays.
   // Routed in App.jsx since forever but never listed here, so there was no way to
   // reach it — the one screen that shows whether the automations actually ran, and
   // which messages failed.
@@ -330,7 +334,44 @@ function LayoutShell({ children }) {
     setIsEditingMenu(false);
   };
 
-  const visibleItems = menuItems.filter(item => !hiddenItems.includes(item.title));
+  // B8 (owner's decision, 2026-10-07): "עריכת תפריט" saved an order and hidden items that the
+  // menu never read — it always drew the fixed lists. Now each group follows the saved order
+  // (menuItems), hides what was hidden (except while editing), and edit mode lets you drag
+  // items and show/hide them. Saved per browser (localStorage), as before.
+  const orderedGroup = (groupItems) => {
+    const titles = new Set(groupItems.map(i => i.title));
+    return menuItems.filter(i => titles.has(i.title));
+  };
+  const groupForDisplay = (groupItems) =>
+    isEditingMenu ? orderedGroup(groupItems) : orderedGroup(groupItems).filter(i => !hiddenItems.includes(i.title));
+
+  const renderEditRow = (item) => {
+    const index = menuItems.indexOf(item);
+    const hidden = hiddenItems.includes(item.title);
+    return (
+      <SidebarMenuItem key={item.title}>
+        <div
+          draggable
+          onDragStart={(e) => handleDragStart(e, index)}
+          onDragOver={handleDragOver}
+          onDrop={(e) => handleDrop(e, index)}
+          className={`flex items-center gap-2 px-3 py-2 mb-1 rounded-lg border border-dashed border-gray-600 cursor-move ${hidden ? 'opacity-40' : 'text-gray-200'}`}
+        >
+          <GripVertical className="w-4 h-4 text-gray-500 shrink-0" />
+          <item.icon className="w-4 h-4 shrink-0" />
+          <span className="text-sm flex-1">{item.title}</span>
+          <button
+            type="button"
+            onClick={() => toggleItemVisibility(item.title)}
+            className="text-gray-400 hover:text-yellow-400"
+            title={hidden ? "הצג בתפריט" : "הסתר מהתפריט"}
+          >
+            {hidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </button>
+        </div>
+      </SidebarMenuItem>
+    );
+  };
 
   return (
     <SidebarProvider>
@@ -434,7 +475,7 @@ function LayoutShell({ children }) {
               </SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {(scopedNavItems || primaryNavItems).map((item) => (
+                  {(scopedNavItems || groupForDisplay(primaryNavItems)).map((item) => (isEditingMenu && !scopedNavItems) ? renderEditRow(item) : (
                     <SidebarMenuItem key={item.title}>
                       <SidebarMenuButton
                         asChild
@@ -472,10 +513,10 @@ function LayoutShell({ children }) {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
-              {secondaryOpen && (
+              {(secondaryOpen || isEditingMenu) && (
                 <SidebarGroupContent>
                   <SidebarMenu>
-                    {secondaryNavItems.map((item) => (
+                    {groupForDisplay(secondaryNavItems).map((item) => isEditingMenu ? renderEditRow(item) : (
                       <SidebarMenuItem key={item.title}>
                         <SidebarMenuButton
                           asChild

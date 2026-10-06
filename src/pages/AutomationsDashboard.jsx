@@ -503,6 +503,11 @@ function SettingsModal({ automation, onClose, onSaved }) {
           {/* ── Schedule ── */}
           <section className="bg-gray-800/50 border border-gray-700 rounded-xl p-4 space-y-3">
             <h3 className="text-purple-300 font-semibold text-sm flex items-center gap-2"><Calendar className="w-4 h-4" /> תזמון</h3>
+            {/* D8 (owner's decision, 2026-10-07): these types are never run by the scheduler
+                (SCHEDULER_ELIGIBLE_TYPES in automation-engine), so frequency/time/day did nothing. */}
+            {MANUAL_ONLY_TYPES.includes(automation.type) ? (
+              <p className="text-gray-300 text-sm">האוטומציה הזו נשלחת רק בלחיצה ("הרצה ידנית"). אין לה תזמון אוטומטי.</p>
+            ) : (
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-gray-400 text-xs block mb-1">תדירות</label>
@@ -550,6 +555,7 @@ function SettingsModal({ automation, onClose, onSaved }) {
                 </>
               )}
             </div>
+            )}
           </section>
 
           {/* ── Message Template ── */}
@@ -597,19 +603,7 @@ function SettingsModal({ automation, onClose, onSaved }) {
             </section>
           )}
 
-          {/* ── Months Ahead (questionnaire_send only) ── */}
-          {automation.type === 'questionnaire_send' && (
-            <section className="bg-gray-800/50 border border-gray-700 rounded-xl p-4 space-y-3">
-              <h3 className="text-purple-300 font-semibold text-sm">⏳ חודשים קדימה</h3>
-              <input
-                type="number"
-                min={1}
-                value={form.months_ahead || 1}
-                onChange={e => setForm(f => ({ ...f, months_ahead: Number(e.target.value) || 1 }))}
-                className="w-full bg-gray-700 border border-gray-600 text-white rounded-lg px-3 py-2 text-sm"
-              />
-            </section>
-          )}
+          {/* D8: "חודשים קדימה" removed — it was never saved. */}
 
           {/* ── Run Day for questionnaire_send ── */}
           {automation.type === 'questionnaire_send' && (
@@ -697,19 +691,7 @@ function SettingsModal({ automation, onClose, onSaved }) {
             </section>
           )}
 
-          {/* ── Media (album_reminder only) ── */}
-          {automation.type === "album_reminder" && (
-            <section className="bg-gray-800/50 border border-gray-700 rounded-xl p-4 space-y-2">
-              <h3 className="text-purple-300 font-semibold text-sm">🖼️ מדיה (URL לתמונה)</h3>
-              <input
-                type="url"
-                value={form.mediaFileUrl}
-                onChange={e => setForm(f => ({ ...f, mediaFileUrl: e.target.value }))}
-                placeholder="https://..."
-                className="w-full bg-gray-700 border border-gray-600 text-white placeholder-gray-500 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
-              />
-            </section>
-          )}
+          {/* D8: "מדיה (URL לתמונה)" removed — the image was never sent with the message. */}
 
           {/* ── Preview ── */}
           <section className="bg-gray-800/50 border border-gray-700 rounded-xl p-4 space-y-2">
@@ -1103,6 +1085,9 @@ function AutomationCard({ automation, onToggle, onSettings, onManualRun, onSyncS
 
 
 // ── Main Page ───────────────────────────────────────────────────────────────
+// D8: types the scheduler never runs — sent only from "הרצה ידנית".
+const MANUAL_ONLY_TYPES = ['album_reminder', 'custom_staff_message', 'custom'];
+
 export default function AutomationsDashboard() {
   const [automations, setAutomations] = useState([]);
   const [isLoading, setIsLoading] = useState(true);

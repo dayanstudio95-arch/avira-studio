@@ -44,18 +44,7 @@ export default function EventsMobileMenu({
           className="absolute left-0 top-full mt-1 w-52 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 overflow-hidden"
           dir="rtl"
         >
-          {item(
-            questionnaireLoading ? "שולח שאלון..." : "📋 שאלון הכנה",
-            onQuestionnaire,
-            questionnaireLoading,
-            "text-purple-300"
-          )}
-          {item(
-            isSyncing ? "בודק כפילויות..." : "🔄 בדוק כפילויות",
-            onDuplicates,
-            isSyncing,
-            "text-red-300"
-          )}
+          {/* B3 + R6 hidden by the owner's decision (2026-10-07): 'שאלון הכנה', 'בדוק כפילויות'. */}
           {item("📂 ייבוא CSV", onCSVImport, false, "text-gray-300")}
         </div>
       )}
