@@ -873,7 +873,12 @@ export default function Leads() {
         clientEmail={invoiceLead?.email}
         clientPhone={invoiceLead?.phoneNumber}
         leadId={invoiceLead?.id}
-        onInvoiceCreated={() => { setInvoiceLead(null); loadLeads(); }}
+        // Same balance math as the side panel: invoices when there are any, else total_paid.
+        remainingBalance={invoiceLead ? (invoiceLead.finalPrice || 0) - ((invoiceLead.invoicesList || []).reduce((sum, inv) => sum + (inv.amount || 0), 0) || invoiceLead.totalPaid || 0) : undefined}
+        eventId={invoiceLead ? (eventByLeadId.get(invoiceLead.id)?.id || invoiceLead.linkedEventId) : undefined}
+        // Runs when the success screen is closed (InvoiceDialog defers it) — the dialog is
+        // already closed by then.
+        onInvoiceCreated={() => { loadLeads(); }}
       />
       <ManualPaymentModal
         isOpen={!!manualPaymentLead}

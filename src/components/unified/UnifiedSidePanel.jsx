@@ -17,6 +17,9 @@ import StaffAvailabilityModal from "@/components/leads/StaffAvailabilityModal";
 import AvailabilityPills from "@/components/events/AvailabilityPills";
 import LeadFormDialog from "@/components/leads/LeadFormDialog";
 import { packagePrices } from "@/lib/packagePrices";
+import { applyLeadTemplateVariables } from "@/lib/leadMessages";
+import PostSignWizard from "@/components/postSign/PostSignWizard";
+import { SIGNED_STATUS } from "@/lib/postSignFlow";
 import { calendarSyncOutcome } from "@/lib/actionOutcome";
 import {
   PRODUCTION_QUESTIONNAIRE_FIELDS,
@@ -66,6 +69,7 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
   const [isSendingSchedule, setIsSendingSchedule] = useState(null); // 'summer' | 'winter' | 'friday' | null
   const [isEditLeadOpen, setIsEditLeadOpen] = useState(false);
   const [isSendingSignedContract, setIsSendingSignedContract] = useState(false);
+  const [isPostSignOpen, setIsPostSignOpen] = useState(false);
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   // The notes as they ARE on the row (event first, else the linked lead). Read from props
   // on every render — never from state — so the panel shows the right text for whichever
@@ -272,18 +276,9 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
     return true;
   };
 
-  const applyVariables = (template, lead, extraVars = {}) => {
-    const baseUrl = window.location.origin; // CHANGED: was hardcoded to a domain nothing is hosted on
-    const contractLink = `${baseUrl}/contract/${lead?.id}`;
-    const questionnaireLink = getQuestionnaireLink();
-    const eventDateFormatted = eventDate ? format(new Date(eventDate), "d/M/yyyy") : "";
-    return template
-      .replace(/\{\{names\}\}/g, lead?.coupleNames || "")
-      .replace(/\{\{event_date\}\}/g, eventDateFormatted)
-      .replace(/\{\{contract_link\}\}/g, contractLink)
-      .replace(/\{\{questionnaire_link\}\}/g, questionnaireLink)
-      .replace(/\{\{[^}]+\}\}/g, m => extraVars[m] || m);
-  };
+  // Shared with the post-sign wizard — src/lib/leadMessages.js.
+  const applyVariables = (template, lead, extraVars = {}) =>
+    applyLeadTemplateVariables(template, lead, { eventDate, extraVars });
 
   const handleSendFollowUp = async () => {
     if (!lead?.phoneNumber) { toast.error('אין מספר טלפון'); return; }
@@ -597,6 +592,18 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                     </Button>
                   )}
                 </div>
+              )}
+              {/* תהליך אחרי חתימה — לזוג שחתם (חוזה) או שהתהליך שלו לא הסתיים. נפתח גם כשנדחה. */}
+              {lead && (lead.status === SIGNED_STATUS || (lead.postSignFlow && !lead.postSignFlow.completedAt)) && (
+                <Button
+                  onClick={() => setIsPostSignOpen(true)}
+                  className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-semibold py-3 rounded-xl gap-2"
+                >
+                  ▶ תהליך אחרי חתימה
+                  {lead.postSignSnoozedUntil && new Date(lead.postSignSnoozedUntil) > new Date() && (
+                    <span className="text-xs font-normal">(נדחה עד {new Date(lead.postSignSnoozedUntil).toLocaleDateString("he-IL")})</span>
+                  )}
+                </Button>
               )}
               {/* 4 כפתורים בחלק העליון */}
               <Button
@@ -1274,6 +1281,9 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
         clientPhone={lead?.phoneNumber}
         leadId={lead?.id}
         remainingBalance={balance}
+        eventId={safeEvent?.id || lead?.linkedEventId}
+        // Called by InvoiceDialog only once the owner closes its success screen, so a host
+        // whose onLeadUpdated closes/unmounts this panel can no longer swallow that screen.
         onInvoiceCreated={() => {
           loadLeadInvoices();
           if (onLeadUpdated) onLeadUpdated();
@@ -1349,6 +1359,14 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
         existingRequests={availabilityRequests}
         onStaffMembersChanged={onStaffMembersChanged}
       />
+
+      {lead && isPostSignOpen && (
+        <PostSignWizard
+          lead={lead}
+          isOpen
+          onClose={() => setIsPostSignOpen(false)}
+        />
+      )}
 
       {/* "ערוך ליד" — the same form as ✏️ on the Leads page. Mounted only while open so the
           panel doesn't load the package list on every open. After a save the panel closes:

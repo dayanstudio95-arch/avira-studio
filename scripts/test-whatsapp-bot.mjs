@@ -1633,6 +1633,59 @@ section('placeholder / empty staff message → nothing is sent');
   check('a real message', g29.isPlaceholderTemplate('היי {staff_name}, מחר יש ישיבת צוות ב-10'), false);
 }
 
+// =================================================================================
+// PART 30 — the "after signing" wizard (src/lib/postSignFlow.js, 2026-10-07)
+// =================================================================================
+
+const ps = await loadModule('src/lib/postSignFlow.js', 'postsign');
+
+section('when the wizard pops up');
+{
+  const now = new Date('2026-10-07T10:00:00Z');
+  const base = { id: 'L1', status: 'חוזה', eventDate: '2027-01-14' };
+  check('signed, never started → pops up', ps.isPostSignPending(base, now), true);
+  check('already נסגר/חתימה, never started → no', ps.isPostSignPending({ ...base, status: 'נסגר/חתימה' }, now), false);
+  check('started, not finished (status already changed) → pops up', ps.isPostSignPending({ ...base, status: 'נסגר/חתימה', postSignFlow: { step: 'invoice', done: { status: 'done' } } }, now), true);
+  check('finished → no', ps.isPostSignPending({ ...base, postSignFlow: { completedAt: '2026-10-01T00:00:00Z' } }, now), false);
+  check('wedding already passed → no', ps.isPostSignPending({ ...base, eventDate: '2026-10-01' }, now), false);
+  check('wedding today → still yes', ps.isPostSignPending({ ...base, eventDate: '2026-10-07' }, now), true);
+  check('snoozed to later → no', ps.isPostSignPending({ ...base, postSignSnoozedUntil: '2026-10-10T05:00:00Z' }, now), false);
+  check('snooze already passed → yes', ps.isPostSignPending({ ...base, postSignSnoozedUntil: '2026-10-07T05:00:00Z' }, now), true);
+  check('לא רלוונטי → no', ps.isPostSignPending({ ...base, status: 'לא רלוונטי', postSignFlow: { step: 'schedule' } }, now), false);
+}
+
+section('"דחה" → 08:00 Israel time on the chosen day');
+{
+  const now = new Date('2026-10-07T21:30:00Z'); // 00:30 on 8.10 in Israel (UTC+3)
+  check('tomorrow = 9.10 (Israel date is already 8.10) 08:00 IDT', ps.snoozeUntil('tomorrow', now).toISOString(), '2026-10-09T05:00:00.000Z');
+  check('3 days', ps.snoozeUntil('3days', now).toISOString(), '2026-10-11T05:00:00.000Z');
+  check('a week, across the clock change (25.10) → 08:00 IST', ps.snoozeUntil('week', new Date('2026-10-20T09:00:00Z')).toISOString(), '2026-10-27T06:00:00.000Z');
+  check('picked date', ps.snoozeUntil('date', now, '2026-11-10').toISOString(), '2026-11-10T06:00:00.000Z');
+  check('picked date missing → null', ps.snoozeUntil('date', now, null), null);
+  check('"until next login" has no date', ps.snoozeUntil('session', now), null);
+}
+
+section('steps: skip, continue where you left, finish');
+{
+  check('new → first step', ps.currentStep(null), 'status');
+  const f1 = ps.advance(null, 'status', 'done', new Date('2026-10-07T10:00:00Z'));
+  check('after status → invoice', ps.currentStep(f1), 'invoice');
+  check('startedAt set', f1.startedAt, '2026-10-07T10:00:00.000Z');
+  const f2 = ps.advance(f1, 'invoice', 'skipped');
+  check('skip invoice → schedule', ps.currentStep(f2), 'schedule');
+  check('skip is remembered', f2.done.invoice, 'skipped');
+  check('done kept', f2.done.status, 'done');
+  const f3 = ps.finish(f2, new Date('2026-10-08T10:00:00Z'));
+  check('finish sets completedAt', f3.completedAt, '2026-10-08T10:00:00.000Z');
+  check('finished flow no longer pending', ps.isPostSignPending({ status: 'נסגר/חתימה', eventDate: '2027-01-01', postSignFlow: f3 }, new Date('2026-10-08T11:00:00Z')), false);
+}
+
+section('date shown in the header');
+{
+  check('Friday', ps.formatEventDateHe('2026-08-14'), 'יום שישי, 14.8.2026');
+  check('empty', ps.formatEventDateHe(null), '');
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

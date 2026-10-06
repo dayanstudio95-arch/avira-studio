@@ -47,6 +47,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import AIAssistant from "@/components/AIAssistant";
+import PostSignWizardHost from "@/components/postSign/PostSignWizardHost";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import { NotificationsProvider, useNotifications } from "@/components/notifications/NotificationsContext";
 import GlobalSearch from "@/components/layout/GlobalSearch";
@@ -641,6 +642,7 @@ function LayoutShell({ children }) {
         </main>
 
         {!scopedRole && <AIAssistant />}
+        {!scopedRole && <PostSignWizardHost />}
       </div>
     </SidebarProvider>
   );

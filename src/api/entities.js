@@ -25,7 +25,7 @@ function toField(column) {
 
 // Only top-level keys are mapped — jsonb columns (e.g. events.team) keep
 // whatever key casing the caller already used inside the nested objects.
-function rowToRecord(row) {
+export function rowToRecord(row) {
   if (!row) return row;
   const record = {};
   for (const [column, value] of Object.entries(row)) record[toField(column)] = value;

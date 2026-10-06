@@ -29,8 +29,14 @@ export default function Dashboard() {
     loadEvents();
   }, []);
 
-  const loadEvents = async () => {
-    setIsLoading(true);
+  // 2026-10-07: every refresh (window focus, a save in the side panel) used to swap the
+  // whole table for a loading skeleton, which unmounted any side panel / invoice dialog
+  // open on top of it — e.g. an invoice issued while the owner glanced at another window
+  // never showed its success screen. Only the first load shows the skeleton now; later
+  // refreshes replace the rows in place.
+  const loadEvents = async (opts) => {
+    const silent = opts?.silent === true || events.length > 0;
+    if (!silent) setIsLoading(true);
     try {
       const [data, sm] = await Promise.all([
         Event.list("-date"),
@@ -47,7 +53,7 @@ export default function Dashboard() {
   // Force refresh when component refocuses (e.g., after drawer closes)
   useEffect(() => {
     const handleFocus = () => {
-      loadEvents();
+      loadEvents({ silent: true });
     };
     window.addEventListener("focus", handleFocus);
     return () => window.removeEventListener("focus", handleFocus);

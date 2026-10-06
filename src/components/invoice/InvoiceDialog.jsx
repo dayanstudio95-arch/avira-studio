@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileText, ExternalLink, Loader2, AlertTriangle, XCircle, Wifi, CalendarCheck } from "lucide-react";
+import { FileText, ExternalLink, Loader2, AlertTriangle, XCircle, Wifi, CalendarCheck, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/SupabaseAuthContext";
 import { todayInIsrael } from "@/lib/localDate";
@@ -35,6 +35,12 @@ export default function InvoiceDialog({
   // 'company' (חברה בע״מ, סגול). Defaults to 'sole_prop' to preserve old behavior for
   // any caller that doesn't pass it. See generate-morning-invoice/index.ts.
   businessType = "sole_prop",
+  // The event whose client_payment_status the success screen may update after a
+  // "תשלום יתרה" invoice (2026-10-07). Without it the status question isn't offered.
+  eventId,
+  // Pre-selects the item (and its auto amount) on open — the post-sign wizard opens the
+  // dialog with "מקדמה".
+  initialItem,
 }) {
   const todayStr = todayInIsrael();
   const DEPOSIT_AMOUNT = 500;
@@ -62,7 +68,15 @@ export default function InvoiceDialog({
   const [documentDate, setDocumentDate] = useState(todayStr);
   const [isLoading, setIsLoading] = useState(false);
   const [isCheckingConnection, setIsCheckingConnection] = useState(false);
-  const [invoiceUrl, setInvoiceUrl] = useState(null);
+  // The invoice that was just issued — { url, amount }. Drives the success screen.
+  // FIXED 2026-10-07: the success screen sometimes never appeared. The parent's
+  // onInvoiceCreated used to be called the moment the invoice was issued, and on some
+  // screens (the dashboard table, "לידים אחרונים", the invoice button on a lead row) that
+  // callback closes or unmounts the side panel — taking this dialog with it before the
+  // owner ever saw it. The callback now runs only when he closes the success screen.
+  const [created, setCreated] = useState(null);
+  const [paymentStatusSaved, setPaymentStatusSaved] = useState(null); // 'Paid' | 'Partially Paid' | 'unchanged'
+  const [isSavingPaymentStatus, setIsSavingPaymentStatus] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
   const [apiStatus, setApiStatus] = useState(null); // { ok: bool, msg: string }
   const [latestMorningDate, setLatestMorningDate] = useState(null); // latest issued doc date globally
@@ -83,6 +97,13 @@ export default function InvoiceDialog({
   useEffect(() => {
     if (isOpen) setClientName(coupleNames || "");
   }, [isOpen, coupleNames]);
+
+  useEffect(() => {
+    if (isOpen && initialItem) {
+      setItem(initialItem);
+      setAmount(getAutoAmount(initialItem));
+    }
+  }, [isOpen, initialItem]);
 
   // Fetch latest Morning doc date when dialog opens
   useEffect(() => {
@@ -137,24 +158,18 @@ export default function InvoiceDialog({
       const data = res.data;
 
       if (data?.success || data?.warning) {
-        // החשבונית הופקה בהצלחה ב-Morning וכבר נשמרה ב-CRM
-        const url = data.invoiceUrl;
-        setInvoiceUrl(url);
-        
+        // החשבונית הופקה בהצלחה ב-Morning וכבר נשמרה ב-CRM.
+        // onInvoiceCreated נקרא רק בסגירת מסך ההצלחה (handleClose) — ראו `created`.
+        setCreated({ url: data.invoiceUrl || null, amount: amountNum });
         if (data.warning) {
           toast.error(data.warning);
         } else {
           toast.success(`החשבונית הופקה בהצלחה על סך ₪${amountNum.toLocaleString()}`);
         }
-        
-        // קרא ל-callback כדי לתרגל את ה-Drawer
-        if (onInvoiceCreated) onInvoiceCreated(url, amountNum);
       } else if (data?.invoiceUrl) {
         // Fallback: אם יש URL זה כנראה הצליח
-        const url = data.invoiceUrl;
-        setInvoiceUrl(url);
+        setCreated({ url: data.invoiceUrl, amount: amountNum });
         toast.success(`החשבונית הופקה בהצלחה על סך ₪${amountNum.toLocaleString()}`);
-        if (onInvoiceCreated) onInvoiceCreated(url, amountNum);
       } else {
         // טיפול בשגיאה - Drawer נשאר פתוח
         const errMsg = data?.error || "שגיאה לא ידועה";
@@ -188,17 +203,41 @@ export default function InvoiceDialog({
   };
 
   const handleClose = () => {
+    // Never close mid-request (Escape / click outside): the invoice may already exist in
+    // Morning and the owner would never see the result.
+    if (isLoading) return;
+    const result = created;
+    setCreated(null);
+    setPaymentStatusSaved(null);
     setClientName(coupleNames || "");
     setItem("");
     setDescription("");
     setAmount("");
     setPaymentMethod("4");
     setDocumentDate(todayStr);
-    setInvoiceUrl(null);
     setErrorMsg(null);
     setApiStatus(null);
     setLatestMorningDate(null);
     onClose();
+    if (result && onInvoiceCreated) onInvoiceCreated(result.url, result.amount);
+  };
+
+  // After a "תשלום יתרה" invoice the owner decides the event's payment status himself
+  // (2026-10-07) — nothing changes without his click. Same field PaymentStatusSelector writes.
+  const isBalanceInvoice = item === "תשלום יתרה";
+  const balanceAfter = created ? (Number(remainingBalance) || 0) - created.amount : null;
+  const suggestedStatus = balanceAfter != null && balanceAfter <= 0 ? "Paid" : "Partially Paid";
+  const handleSetPaymentStatus = async (status) => {
+    if (status === "unchanged") { setPaymentStatusSaved("unchanged"); return; }
+    setIsSavingPaymentStatus(true);
+    try {
+      await base44.entities.Event.update(eventId, { clientPaymentStatus: status });
+      setPaymentStatusSaved(status);
+      toast.success(status === "Paid" ? "הסטטוס עודכן: שולם" : "הסטטוס עודכן: שולם חלקית");
+    } catch (e) {
+      toast.error("עדכון סטטוס התשלום נכשל", { description: e?.message });
+    }
+    setIsSavingPaymentStatus(false);
   };
 
   return (
@@ -211,19 +250,65 @@ export default function InvoiceDialog({
           </DialogTitle>
         </DialogHeader>
 
-        {invoiceUrl ? (
+        {created ? (
           <div className="text-center py-6 space-y-4">
             <div className="w-16 h-16 bg-green-900/30 rounded-full flex items-center justify-center mx-auto">
               <FileText className="w-8 h-8 text-green-400" />
             </div>
-            <p className="text-green-400 font-semibold text-lg">החשבונית הופקה בהצלחה על סך ₪{amountNum.toLocaleString()}</p>
-            <a href={invoiceUrl} target="_blank" rel="noopener noreferrer">
-              <Button className={`${theme.btn} text-white gap-2 w-full`}>
-                <ExternalLink className="w-4 h-4" />
-                פתח חשבונית
-              </Button>
-            </a>
-            <p className="text-gray-400 text-xs break-all">{invoiceUrl}</p>
+            <p className="text-green-400 font-semibold text-lg">החשבונית הופקה בהצלחה על סך ₪{created.amount.toLocaleString()}</p>
+            {created.url ? (
+              <>
+                <a href={created.url} target="_blank" rel="noopener noreferrer">
+                  <Button className={`${theme.btn} text-white gap-2 w-full`}>
+                    <ExternalLink className="w-4 h-4" />
+                    פתח חשבונית
+                  </Button>
+                </a>
+                <p className="text-gray-400 text-xs break-all">{created.url}</p>
+              </>
+            ) : (
+              <p className="text-yellow-400 text-xs">Morning לא החזיר קישור למסמך — אפשר למצוא אותו במורנינג. אין צורך להפיק שוב.</p>
+            )}
+            {isBalanceInvoice && (
+              <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-3 space-y-2 text-right">
+                <p className="text-white text-sm font-semibold">לעדכן את סטטוס התשלום של הזוג?</p>
+                {!eventId ? (
+                  <p className="text-gray-400 text-xs">אין אירוע מקושר — אין סטטוס תשלום לעדכן.</p>
+                ) : paymentStatusSaved ? (
+                  <p className="text-emerald-400 text-xs flex items-center gap-1">
+                    <CheckCircle2 className="w-4 h-4" />
+                    {paymentStatusSaved === "Paid" ? "עודכן: שולם" : paymentStatusSaved === "Partially Paid" ? "עודכן: שולם חלקית" : "הסטטוס נשאר כמו שהיה"}
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-gray-400 text-xs">
+                      יתרה אחרי החשבונית: ₪{Math.max(0, balanceAfter || 0).toLocaleString()}
+                    </p>
+                    <div className="flex gap-2">
+                      {[
+                        { value: "Paid", label: "שולם" },
+                        { value: "Partially Paid", label: "שולם חלקית" },
+                        { value: "unchanged", label: "בלי שינוי" },
+                      ].map((opt) => (
+                        <Button
+                          key={opt.value}
+                          size="sm"
+                          disabled={isSavingPaymentStatus}
+                          onClick={() => handleSetPaymentStatus(opt.value)}
+                          className={`flex-1 ${
+                            opt.value === suggestedStatus
+                              ? "bg-emerald-600 hover:bg-emerald-700 text-white ring-2 ring-emerald-300"
+                              : "bg-gray-700 hover:bg-gray-600 text-gray-200"
+                          }`}
+                        >
+                          {opt.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
             <Button variant="outline" onClick={handleClose} className="w-full border-gray-600 bg-gray-800 text-gray-300">
               סגור
             </Button>
