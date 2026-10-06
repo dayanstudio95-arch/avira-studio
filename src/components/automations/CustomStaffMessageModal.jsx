@@ -3,6 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { X, Send, Loader2, Eye, PenLine, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
+import { sendSummary } from "@/lib/actionOutcome";
 
 // NOTE: these values intentionally match staff_members.role (STAFF_JOB_ROLES in
 // src/lib/staffRoles.js) — the automation-engine edge function's runCustomStaffMessage
@@ -81,8 +82,9 @@ export default function CustomStaffMessageModal({ automation, onClose, onSent })
         target_role_override: targetRole,
         selectedStaffIds: Array.from(selectedIds),
       });
-      const sent = res.data?.results?.[0]?.sent || 0;
-      toast.success(`נשלחו ${sent} הודעות בהצלחה!`);
+      // E2: the real result — sent / skipped / failed — not "N sent successfully".
+      const { text, level } = sendSummary(res.data?.results?.[0]);
+      toast[level](text);
       onSent();
       onClose();
     } catch (e) {

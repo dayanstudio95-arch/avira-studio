@@ -14,6 +14,7 @@ import { openSignedContract } from "@/lib/signedContract";
 import InvoiceDialog from "@/components/invoice/InvoiceDialog";
 import StaffAvailabilityModal from "@/components/leads/StaffAvailabilityModal";
 import AvailabilityPills from "@/components/events/AvailabilityPills";
+import { calendarSyncOutcome } from "@/lib/actionOutcome";
 import {
   PRODUCTION_QUESTIONNAIRE_FIELDS,
   PRODUCTION_QUESTIONNAIRE_LONG_TEXT_FIELDS,
@@ -179,8 +180,9 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
   const handleSyncToCalendar = async () => {
     setIsSyncingCalendar(true);
     try {
-      await base44.functions.invoke('syncEventToCalendar', { eventId: safeEvent.id });
-      toast.success('האירוע סונכרן ליומן בהצלחה');
+      const res = await base44.functions.invoke('syncEventToCalendar', { eventId: safeEvent.id });
+      const out = calendarSyncOutcome(res?.data);
+      if (out.ok) toast.success(out.text); else toast.error(out.text);
       if (onEventUpdated) onEventUpdated();
     } catch (error) {
       console.error("Failed to sync to calendar:", error);

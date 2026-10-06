@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { openSignedContract } from "@/lib/signedContract";
 import { useAuth } from "@/lib/SupabaseAuthContext";
 import { isAdmin } from "@/lib/permissions";
+import { leadSyncOutcome, settledCounts } from "@/lib/actionOutcome";
 
 const packagePrices = {
   "חבילה 1": 9500,
@@ -254,8 +255,10 @@ export default function Leads() {
       setConvertingId(lead.id);
       await base44.entities.Lead.update(lead.id, { status: newStatus, lastContactDate: new Date().toISOString() });
       if (newStatus === "נסגר/חתימה") {
-        await base44.functions.invoke('syncLeadToEvent', { leadId: lead.id });
-        toast.success("הסטטוס עודכן — סינכרון לאירוע בוצע בהצלחה 🎉");
+        const res = await base44.functions.invoke('syncLeadToEvent', { leadId: lead.id });
+        const out = leadSyncOutcome(res?.data);
+        if (out.ok) toast.success("הסטטוס עודכן — סינכרון לאירוע בוצע בהצלחה 🎉");
+        else toast.warning(`הסטטוס עודכן, אבל ${out.text}`);
       } else {
         toast.success("הסטטוס עודכן בהצלחה");
       }
@@ -287,9 +290,13 @@ export default function Leads() {
     if (selectedIds.size === 0) return;
     if (!confirm(`האם למחוק ${selectedIds.size} לידים מסומנים?`)) return;
     try {
-      await Promise.all([...selectedIds].map(id => base44.entities.Lead.delete(id)));
+      // E2: report the deletions that really happened (allSettled), not the selection size.
+      const ids = [...selectedIds];
+      const res = await Promise.allSettled(ids.map(id => base44.entities.Lead.delete(id)));
+      const { ok, failed } = settledCounts(res, () => true);
       setSelectedIds(new Set());
-      toast.success(`נמחקו ${selectedIds.size} לידים`);
+      if (failed) toast.warning(`נמחקו ${ok} מתוך ${ids.length} לידים · נכשלו ${failed}`);
+      else toast.success(`נמחקו ${ok} לידים`);
       loadLeads();
     } catch (error) {
       toast.error('שגיאה במחיקה');
@@ -363,17 +370,26 @@ export default function Leads() {
     try {
       setConvertingId('bulk');
       const leadIds = [...selectedIds];
-      await Promise.all(
-        leadIds.map(id => 
+      // E2: count what really happened (allSettled), not how many were selected.
+      const updated = await Promise.allSettled(
+        leadIds.map(id =>
           base44.entities.Lead.update(id, { status: newStatus, lastContactDate: new Date().toISOString() })
         )
       );
+      const upd = settledCounts(updated, () => true);
+      let syncFailed = 0;
       if (newStatus === "נסגר/חתימה") {
-        await Promise.all(
-          leadIds.map(id => base44.functions.invoke('syncLeadToEvent', { leadId: id }))
+        const okIds = leadIds.filter((_, i) => updated[i].status === "fulfilled");
+        const synced = await Promise.allSettled(
+          okIds.map(id => base44.functions.invoke('syncLeadToEvent', { leadId: id }))
         );
+        syncFailed = settledCounts(synced, (v) => leadSyncOutcome(v?.data).ok).failed;
       }
-      toast.success(`שונו ${selectedIds.size} לידים לסטטוס "${newStatus}"`);
+      if (upd.failed || syncFailed) {
+        toast.warning(`שונו ${upd.ok} מתוך ${leadIds.length} לידים` + (upd.failed ? ` · נכשלו ${upd.failed}` : '') + (syncFailed ? ` · ${syncFailed} לא סונכרנו לאירוע` : ''));
+      } else {
+        toast.success(`שונו ${upd.ok} לידים לסטטוס "${newStatus}"`);
+      }
       setSelectedIds(new Set());
       setBulkStatusDialogOpen(false);
       setSelectedBulkStatus(null);
@@ -394,8 +410,10 @@ export default function Leads() {
     }
     try {
       setConvertingId('sync');
-      await Promise.all(signedLeads.map(l => base44.functions.invoke('syncLeadToEvent', { leadId: l.id })));
-      toast.success(`סונכרנו ${signedLeads.length} לידים לאירועים בהצלחה`);
+      const synced = await Promise.allSettled(signedLeads.map(l => base44.functions.invoke('syncLeadToEvent', { leadId: l.id })));
+      const { ok, failed } = settledCounts(synced, (v) => leadSyncOutcome(v?.data).ok);
+      if (failed) toast.warning(`סונכרנו ${ok} מתוך ${signedLeads.length} לידים · נכשלו ${failed}`);
+      else toast.success(`סונכרנו ${ok} לידים לאירועים בהצלחה`);
       setSelectedIds(new Set());
       loadLeads();
     } catch (error) {

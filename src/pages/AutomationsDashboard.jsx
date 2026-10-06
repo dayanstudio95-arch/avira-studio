@@ -13,6 +13,7 @@ import { STAFF_JOB_ROLES, staffJobRoleLabel } from "@/lib/staffRoles";
 import CreateCustomAutomationModal from "@/components/automations/CreateCustomAutomationModal";
 import TemplateVariablesHelp from "@/components/automations/TemplateVariablesHelp";
 import { VARS_BY_TYPE, VARS_BY_AUDIENCE_TYPE } from "@/lib/automationTemplateVariables";
+import { sendSummary } from "@/lib/actionOutcome";
 
 // ── Default automations to seed if none exist ──────────────────────────────
 const DEFAULTS = [
@@ -775,8 +776,8 @@ function SettingsModal({ automation, onClose, onSaved }) {
                           targetYYYYMM,
                           selectedEventIds: Array.from(previewSelected),
                         });
-                        const sent = res.data?.results?.[0]?.sent || 0;
-                        toast.success(`נשלחו ${sent} הודעות בהצלחה!`);
+                        const { text, level } = sendSummary(res.data?.results?.[0]);
+                        toast[level](text);
                         setRealPreviews([]);
                         setPreviewSelected(new Set());
                       } catch (e) {

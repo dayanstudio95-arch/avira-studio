@@ -20,6 +20,7 @@ import { calculateNetProfit, getProfitColor } from "@/lib/profitCalculations";
 import EventMobileCards from "./EventMobileCards";
 import MobileStaffAssignmentSheet from "./MobileStaffAssignmentSheet";
 import { sendCalendarInviteByName } from "@/lib/calendarInvites";
+import { calendarSyncOutcome, settledCounts } from "@/lib/actionOutcome";
 
 const paymentStatusConfig = {
   "Paid": { color: "bg-green-500/20 text-green-400 border-green-500/30", icon: "✅" },
@@ -266,8 +267,8 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
     let success = 0, failed = 0;
     for (const eventId of selectedEvents) {
       try {
-        await base44.functions.invoke('syncEventToCalendar', { eventId });
-        success++;
+        const res = await base44.functions.invoke('syncEventToCalendar', { eventId });
+        if (calendarSyncOutcome(res?.data).ok) success++; else failed++;
       } catch {
         failed++;
       }
@@ -283,10 +284,11 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
   };
 
   const handleDeleteSelected = async () => {
-    if (!confirm(`Delete ${selectedEvents.length} selected events?`)) return;
+    if (!confirm(`למחוק ${selectedEvents.length} אירועים מסומנים?`)) return;
     setIsDeletingBulk(true);
     try {
-      await Promise.all(selectedEvents.map(async (id) => {
+      // E2: allSettled + real counts (Promise.all reported "all deleted" or "error" for all).
+      const settled = await Promise.allSettled(selectedEvents.map(async (id) => {
         // Clean up Google Calendar BEFORE deleting the row — best-effort, never
         // blocks the actual deletion (event_calendar_syncs cascades off events,
         // so cleanup must happen first or the Google event IDs would be lost).
@@ -297,11 +299,13 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
         }
         await base44.entities.Event.delete(id);
       }));
+      const { ok, failed } = settledCounts(settled, () => true);
       setSelectedEvents([]);
-      toast.success(`Deleted ${selectedEvents.length} events`);
+      if (failed) toast.warning(`נמחקו ${ok} מתוך ${ok + failed} אירועים · נכשלו ${failed}`);
+      else toast.success(`נמחקו ${ok} אירועים`);
       if (onRefresh) onRefresh();
     } catch (error) {
-      toast.error('Error deleting events');
+      toast.error('שגיאה במחיקת האירועים');
     }
     setIsDeletingBulk(false);
   };
@@ -327,8 +331,9 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
   const handleSyncToCalendar = async (event) => {
     setSyncingEventId(event.id);
     try {
-      await base44.functions.invoke('syncEventToCalendar', { eventId: event.id });
-      toast.success('סונכרן ליומן בהצלחה');
+      const res = await base44.functions.invoke('syncEventToCalendar', { eventId: event.id });
+      const out = calendarSyncOutcome(res?.data);
+      if (out.ok) toast.success(out.text); else toast.error(out.text);
       if (onRefresh) onRefresh();
     } catch (error) {
       console.error('Error syncing to calendar:', error);

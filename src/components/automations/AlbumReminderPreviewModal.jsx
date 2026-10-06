@@ -3,6 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { X, Send, Loader2, Eye, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
+import { sendSummary } from "@/lib/actionOutcome";
 
 function formatDateIL(iso) {
   if (!iso) return '—';
@@ -149,8 +150,9 @@ export default function AlbumReminderPreviewModal({ automation, previews, onClos
         triggered_by: "manual",
         selectedEventIds: Array.from(selectedIds),
       });
-      const sent = res.data?.results?.[0]?.sent || 0;
-      toast.success(`נשלחו ${sent} הודעות בהצלחה!`);
+      // E2: the real result — sent / skipped / failed — not "N sent successfully".
+      const { text, level } = sendSummary(res.data?.results?.[0]);
+      toast[level](text);
       onSent();
       onClose();
     } catch (e) {

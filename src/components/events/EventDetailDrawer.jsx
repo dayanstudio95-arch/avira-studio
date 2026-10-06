@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { FileText, Loader2, CheckCircle2, X, FileCheck, HelpCircle, Banknote, TrendingUp, Share2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import { calendarSyncOutcome } from "@/lib/actionOutcome";
 
 // This component is deprecated - use UnifiedSidePanel instead
 export default function EventDetailDrawer({ isOpen, onClose, event, staffMembers, onEventUpdated }) {
@@ -76,10 +77,11 @@ export default function EventDetailDrawer({ isOpen, onClose, event, staffMembers
   const handleSyncToCalendar = async () => {
     setIsSyncingCalendar(true);
     try {
-      await base44.functions.invoke('syncEventToCalendar', {
+      const res = await base44.functions.invoke('syncEventToCalendar', {
         eventId: event.id
       });
-      toast.success('האירוע סונכרן ליומן בהצלחה עם שמות הצוות');
+      const out = calendarSyncOutcome(res?.data);
+      if (out.ok) toast.success(out.text); else toast.error(out.text);
       if (onEventUpdated) onEventUpdated();
     } catch (error) {
       console.error("Failed to sync to calendar:", error);

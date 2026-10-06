@@ -11,6 +11,7 @@ import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 import { DEFAULT_CONTRACT_TERMS } from "@/lib/defaultContractTerms";
 import { parseWhatsAppLead } from "@/lib/whatsappLeadParser";
+import { leadSyncOutcome } from "@/lib/actionOutcome";
 
 // ששת הערכים שה-CHECK ב-0001_init.sql:106 מתיר. 'חוזה' נכתב ע"י sign-lead-public
 // בכל חתימה ציבורית — בלעדיו ה-Select נשאר ריק בעריכת ליד חתום.
@@ -221,7 +222,10 @@ export default function LeadFormDialog({ isOpen, onClose, lead, initialValues, p
         }
         
         if (data.status === "נסגר/חתימה") {
-          await base44.functions.invoke('syncLeadToEvent', { leadId: lead.id });
+          // E2: the lead is saved either way — a failed event sync is a warning, not "save failed".
+          const res = await base44.functions.invoke('syncLeadToEvent', { leadId: lead.id }).catch((e) => ({ data: { error: e.message } }));
+          const out = leadSyncOutcome(res?.data);
+          if (!out.ok) toast.warning(`הליד נשמר, אבל ${out.text}`);
         }
         toast.success("הליד עודכן בהצלחה");
       } else {
@@ -236,7 +240,9 @@ export default function LeadFormDialog({ isOpen, onClose, lead, initialValues, p
           console.error('Failed to assign studio_id:', err);
         }
         if (data.status === "נסגר/חתימה") {
-          await base44.functions.invoke('syncLeadToEvent', { leadId: newLead.id });
+          const res = await base44.functions.invoke('syncLeadToEvent', { leadId: newLead.id }).catch((e) => ({ data: { error: e.message } }));
+          const out = leadSyncOutcome(res?.data);
+          if (!out.ok) toast.warning(`הליד נשמר, אבל ${out.text}`);
         }
         toast.success("הליד נוסף בהצלחה עם מספר ID");
       }

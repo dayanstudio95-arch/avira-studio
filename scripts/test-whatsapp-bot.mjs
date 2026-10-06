@@ -1577,6 +1577,33 @@ section('VAT inside a gross amount (the invoices page)');
   check('0% → no VAT', vatInside(10000, 0), 0);
 }
 
+// =================================================================================
+// PART 27 — screens report what really happened (E2: BUG-03..07, 2026-10-06)
+// =================================================================================
+
+const ao = await loadModule('src/lib/actionOutcome.js', 'actionoutcome');
+
+section('"sent N" tells the truth');
+{
+  check('all sent', ao.sendSummary({ sent: 5 }), { text: 'נשלחו 5', level: 'success' });
+  check('some failed', ao.sendSummary({ sent: 3, failed: 2 }).level, 'warning');
+  check('all failed', ao.sendSummary({ sent: 0, failed: 2 }).level, 'error');
+  check('only skipped', ao.sendSummary({ sent: 0, skipped: 2 }).level, 'warning');
+  check('skipped mentioned', ao.sendSummary({ sent: 1, skipped: 1 }).text.includes('דולגו 1'), true);
+  check('nothing / missing → "נשלחו 0"', ao.sendSummary(undefined).text, 'נשלחו 0');
+}
+
+section('calendar and lead→event sync answers');
+{
+  check('calendar ok', ao.calendarSyncOutcome({ success: true, results: [] }).ok, true);
+  check('calendar: account failed (HTTP 200!) → not ok', ao.calendarSyncOutcome({ success: false, results: [{ status: 'failed', error: 'POST failed: 500' }] }).ok, false);
+  check('calendar: lock → "in progress"', ao.calendarSyncOutcome({ success: false, results: [{ status: 'skipped' }] }).text.includes('בתהליך'), true);
+  check('lead sync ok', ao.leadSyncOutcome({ success: true }).ok, true);
+  check('lead sync skipped → not ok', ao.leadSyncOutcome({ skipped: 'status_blocked: חדש' }).ok, false);
+  const settled = [{ status: 'fulfilled', value: { data: {} } }, { status: 'fulfilled', value: { data: { error: 'x' } } }, { status: 'rejected', reason: new Error('x') }];
+  check('allSettled counts', ao.settledCounts(settled), { ok: 1, failed: 2 });
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

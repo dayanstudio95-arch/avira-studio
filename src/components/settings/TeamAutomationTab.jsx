@@ -5,6 +5,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Trash2, Play, Edit, X, Check } from "lucide-react";
 import { STAFF_JOB_ROLES } from "@/lib/staffRoles";
+import { sendSummary } from "@/lib/actionOutcome";
 
 export default function TeamAutomationTab() {
   const [staffMembers, setStaffMembers] = useState([]);
@@ -122,7 +123,10 @@ export default function TeamAutomationTab() {
       const result = await base44.functions.invoke(fnName, {});
 
       if (result.data?.success) {
-        toast.success(`${label} הופעל בהצלחה - נשלח ל-${result.data.results?.length || 0}`, { id: toastId });
+        // E2: count the real sends, not the attempts.
+        const rs = result.data.results || [];
+        const { text, level } = sendSummary({ sent: rs.filter((r) => r.success).length, failed: rs.filter((r) => !r.success).length });
+        toast[level](`${label}: ${text}`, { id: toastId });
       } else {
         toast.error(result.data?.error || 'שגיאה בהרצת הפונקציה', { id: toastId });
       }
