@@ -406,7 +406,9 @@ function StatusBadge({ label, active, icon }) {
     }`}>
       {active ? <CheckCircle className="w-3.5 h-3.5" /> : icon}
       {label}
-      <span className="mr-auto">{active ? "מחובר" : "לא מוגדר"}</span>
+      {/* S7 (2026-10-07): this only checks that the fields are filled in, not that the connection
+          works (the "בדוק" / "רענן" buttons do that) — so it says "מוגדר", not "מחובר". */}
+      <span className="mr-auto">{active ? "מוגדר" : "לא מוגדר"}</span>
     </div>
   );
 }

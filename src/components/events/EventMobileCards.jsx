@@ -23,7 +23,7 @@ function getTeamSummary(event) {
   return members.map(m => m.staffMemberName).join(", ");
 }
 
-export default function EventMobileCards({ events, isLoading, onOpenDetail, onOpenTeamAssign, onOpenExpenses }) {
+export default function EventMobileCards({ events, isLoading, onOpenDetail, onOpenTeamAssign, onOpenExpenses, signedLeadIds }) {
   if (isLoading) {
     return (
       <div className="space-y-3 p-4">
@@ -111,7 +111,7 @@ export default function EventMobileCards({ events, isLoading, onOpenDetail, onOp
                 {event.albumStatus === "sent" && (
                   <Badge variant="outline" className="bg-pink-500/20 text-pink-400 border-pink-500/30 border text-[10px] px-2 py-0.5">🖼️ אלבום נשלח</Badge>
                 )}
-                {event.signedAt && (
+                {signedLeadIds?.has(event.sourceLeadId || event.leadId) && (
                   <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500/30 border text-[10px] px-2 py-0.5">✅ חתם</Badge>
                 )}
               </div>

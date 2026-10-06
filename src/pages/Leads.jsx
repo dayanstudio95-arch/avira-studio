@@ -441,6 +441,16 @@ export default function Leads() {
   };
 
   const STATUS_ORDER = ['חוזה', 'נסגר/חתימה', 'פולו-אפ', 'נשלחה הצעה', 'חדש', 'לא רלוונטי'];
+  // S1: lead → its event, for the "יומן" column.
+  const eventByLeadId = React.useMemo(() => {
+    const m = new Map();
+    for (const e of events) {
+      const id = e.sourceLeadId || e.leadId;
+      if (id && !m.has(id)) m.set(id, e);
+    }
+    return m;
+  }, [events]);
+
   const DORMANT_HOURS = 48;
   const filteredLeads = leads.filter((lead) => {
     if (searchTerm.trim()) {
@@ -668,7 +678,6 @@ export default function Leads() {
                   <th className="text-center px-2 py-3 w-8">
                    <input type="checkbox" checked={filteredLeads.length > 0 && selectedIds.size === filteredLeads.length} onChange={toggleSelectAll} className="cursor-pointer" />
                  </th>
-                  <th className="text-center px-2 py-3 font-semibold w-10">#</th>
                   <th className="text-center px-2 py-3 font-semibold">תאריך אירוע</th>
                   <th className="text-right px-3 py-3 font-semibold">שמות הזוג</th>
                   <th className="text-center px-2 py-3 font-semibold">טלפון</th>
@@ -679,7 +688,6 @@ export default function Leads() {
                   <th className="text-center px-2 py-3 font-semibold">חוזה</th>
                   <th className="text-center px-2 py-3 font-semibold">שולם</th>
                   <th className="text-center px-2 py-3 font-semibold">יתרה</th>
-                  <th className="text-center px-2 py-3 font-semibold">מקדמה</th>
                   <th className="text-center px-2 py-3 font-semibold">יומן</th>
                   <th className="text-center px-2 py-3 font-semibold">פנייה</th>
                   <th className="text-center px-2 py-3 font-semibold">לינק</th>
@@ -689,9 +697,9 @@ export default function Leads() {
               </thead>
               <tbody>
                 {isLoading ? (
-                  <tr><td colSpan={18} className="text-center py-12 text-gray-500">טוען...</td></tr>
+                  <tr><td colSpan={16} className="text-center py-12 text-gray-500">טוען...</td></tr>
                 ) : filteredLeads.length === 0 ? (
-                  <tr><td colSpan={18} className="text-center py-12 text-gray-500">אין לידים</td></tr>
+                  <tr><td colSpan={16} className="text-center py-12 text-gray-500">אין לידים</td></tr>
                 ) : (
                   filteredLeads.map((lead) => {
                     const balance = (lead.finalPrice || 0) - (lead.totalPaid || 0);
@@ -702,9 +710,6 @@ export default function Leads() {
                        <td className="px-2 py-2 text-center">
                          <input type="checkbox" checked={selectedIds.has(lead.id)} onChange={() => toggleSelect(lead.id)} className="cursor-pointer" />
                        </td>
-                        <td className="px-2 py-2 text-center text-gray-500 font-mono text-xs font-semibold">
-                          {lead.studio_id || '—'}
-                        </td>
                         <td className="px-2 py-2 text-gray-300 text-center whitespace-nowrap">
                           {safeFormat(lead.eventDate, "d/M/yy")}
                         </td>
@@ -750,10 +755,17 @@ export default function Leads() {
                           {balance === 0 ? <span className="text-green-400">✅</span> : <span className="text-red-400">₪{balance.toLocaleString()}</span>}
                         </td>
                         <td className="px-2 py-2 text-center">
-                          {lead.depositInvoiceIssued ? <span className="text-green-400">✅</span> : <span className="text-gray-600">—</span>}
-                        </td>
-                        <td className="px-2 py-2 text-center">
-                          {lead.googleCalendarStatus?.includes("הצליח") ? <span title={lead.googleCalendarStatus} className="text-green-400">📅</span> : <span className="text-gray-600">—</span>}
+                          {(() => {
+                            // S1 (2026-10-07): the real sync state of this lead's event (events.calendar_sync_status,
+                            // kept by the calendar sync), not the frozen Base44 text in leads.google_calendar_status.
+                            const ev = eventByLeadId.get(lead.id);
+                            if (!ev) return <span className="text-gray-600" title="אין אירוע">—</span>;
+                            if (ev.calendarSyncStatus === 'success' && ev.googleCalendarEventId && !String(ev.googleCalendarEventId).startsWith('creating_'))
+                              return <span className="text-green-400" title="מסונכרן ליומן גוגל">📅</span>;
+                            if (ev.calendarSyncStatus === 'failed')
+                              return <span className="text-red-400" title={`הסנכרון ליומן נכשל${ev.calendarSyncError ? `: ${ev.calendarSyncError}` : ''}`}>⚠️</span>;
+                            return <span className="text-yellow-400" title="ממתין לסנכרון ליומן">⏳</span>;
+                          })()}
                         </td>
                         <td className="px-2 py-2 text-center">
                           {waLink ? <a href={waLink} target="_blank" rel="noopener noreferrer" title="שלח וואטסאפ" className="text-green-400 hover:text-green-300">💬</a> : <span className="text-gray-600">—</span>}
@@ -814,7 +826,7 @@ export default function Leads() {
                     <div className="flex justify-between items-start">
                       <div>
                         <button onClick={() => setSelectedLead(lead)} className="font-bold text-blue-400 text-lg hover:text-blue-300 underline">
-                          {lead.studio_id ? <span className="text-gray-500 font-normal ml-1">[{lead.studio_id}]</span> : ''}{lead.coupleNames}
+                          {lead.coupleNames}
                          </button>
                         <div className="text-gray-400 text-sm">{lead.phoneNumber}</div>
                       </div>

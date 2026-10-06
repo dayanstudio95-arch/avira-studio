@@ -1,12 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useColumnWidths } from '@/hooks/useColumnWidths';
 import { format } from "date-fns";
-import { Link } from "react-router-dom";
-import { createPageUrl } from "@/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Eye, Heart, Users, Album, MapPin, UserCheck, AlertTriangle, MessageCircle, Trash2, DollarSign, Copy, RefreshCw } from "lucide-react";
+import { Eye, Heart, Users, Album, MapPin, UserCheck, AlertTriangle, MessageCircle, Trash2, DollarSign, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -155,6 +153,9 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
   const [staffMembers, setStaffMembers] = useState([]);
   const [packages, setPackages] = useState([]);
   const [leads, setLeads] = useState([]);
+  // S3 (2026-10-07): the signature lives on the lead (leads.signed_at); events.signed_at is
+  // never written, so the "✅ חתם" badge read from the event never showed.
+  const signedLeadIds = React.useMemo(() => new Set(leads.filter(l => l.signedAt).map(l => l.id)), [leads]);
   const [selectedEvents, setSelectedEvents] = useState([]);
   const [isDeletingBulk, setIsDeletingBulk] = useState(false);
   const [isBulkSyncing, setIsBulkSyncing] = useState(false);
@@ -356,6 +357,7 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
     <div className="md:hidden">
       <EventMobileCards
         events={events}
+        signedLeadIds={signedLeadIds}
         isLoading={isLoading}
         onOpenDetail={openUnifiedPanelForEvent}
         onOpenTeamAssign={(event) => setSelectedEventForTeamSheet(event)}
@@ -421,7 +423,6 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
                     className="border-gray-600"
                   />
                 </TableHead>
-                <ColumnHeader column="id" label="#" width={widths.id} />
                 <ColumnHeader column="date" label="תאריך" width={widths.date} />
                 <ColumnHeader column="couple" label="זוג" width={widths.couple} />
                 <ColumnHeader column="venue" label="אולם" width={widths.venue} />
@@ -442,7 +443,7 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
             <TableBody>
               {events.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={17} className="text-center py-12">
+                  <TableCell colSpan={16} className="text-center py-12">
                     <div className="text-gray-500">
                       <Heart className="w-12 h-12 mx-auto mb-4 text-gray-600" />
                       <p className="text-lg font-medium">אין אירועים עדיין</p>
@@ -473,7 +474,7 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
                     <React.Fragment key={`event-${event.id}`}>
                       {monthChanged && (
                         <TableRow className="bg-gray-800/20 border-t border-b border-gray-700/40 hover:bg-gray-800/20">
-                          <TableCell colSpan={17} className="text-center py-2 px-1">
+                          <TableCell colSpan={16} className="text-center py-2 px-1">
                             <span className="text-gray-500 text-xs font-medium">
                               {format(currentMonth, "MMMM yyyy")}
                             </span>
@@ -488,20 +489,6 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
                             onCheckedChange={() => handleToggleSelectEvent(event.id)}
                             className="border-gray-600"
                           />
-                        </TableCell>
-
-                        {/* Studio ID */}
-                        <TableCell className="text-gray-500 font-mono text-[10px] font-semibold text-center px-1 py-1" style={{ width: `${widths.id}px`, minWidth: `${widths.id}px` }}>
-                          <div className="flex flex-col items-center gap-0.5">
-                            <span>{event.studio_id || '—'}</span>
-                            <button
-                              onClick={() => { navigator.clipboard.writeText(event.id); toast.success('ID הועתק'); }}
-                              title={`העתק ID: ${event.id}`}
-                              className="text-gray-600 hover:text-yellow-400 transition-colors"
-                            >
-                              <Copy className="w-2.5 h-2.5" />
-                            </button>
-                          </div>
                         </TableCell>
 
                         {/* Date */}
@@ -529,7 +516,7 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
                                 </a>
                               )}
                             </button>
-                            {event.signedAt && (
+                            {signedLeadIds.has(event.sourceLeadId || event.leadId) && (
                               <Badge className="bg-green-500/20 text-green-400 border-green-500/30 border w-fit text-[9px] font-medium px-1 py-0">✅ חתם</Badge>
                             )}
                           </div>
@@ -775,11 +762,12 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
                             >
                               <DollarSign className="w-3 h-3" />
                             </Button>
-                            <Link to={createPageUrl(`TeamPayments?id=${event.id}`)}>
-                              <Button variant="ghost" size="sm" className="text-gray-400 hover:text-blue-400 hover:bg-blue-500/10 h-7 w-7 p-0">
-                                <Users className="w-3 h-3" />
-                              </Button>
-                            </Link>
+                            {/* B9 (2026-10-07): linked to /TeamPayments, which does not exist → "page not found".
+                                Opens the event panel (crew and payments) instead. */}
+                            <Button variant="ghost" size="sm" onClick={() => openUnifiedPanelForEvent(event)}
+                              className="text-gray-400 hover:text-blue-400 hover:bg-blue-500/10 h-7 w-7 p-0" title="צוות ותשלומים">
+                              <Users className="w-3 h-3" />
+                            </Button>
                             <Button
                               variant="ghost"
                               size="sm"

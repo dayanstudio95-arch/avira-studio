@@ -357,7 +357,9 @@ export default function TeamMembers() {
                           </div>
                         </div>
                       </div>
-                      <Link to={createPageUrl(`EventDetails?id=${event.id}`)}>
+                      {/* B9 (2026-10-07): /EventDetails is not a route ("page not found"). Opens the event
+                          panel on the events page — the same jump the global search uses. */}
+                      <Link to={createPageUrl(`Events?openEventId=${event.id}`)} title="פרטי האירוע">
                         <Button
                           size="sm"
                           variant="ghost"

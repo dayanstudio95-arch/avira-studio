@@ -10,6 +10,7 @@ import {
   Send, Calendar as CalendarIcon, MessageCircle, Settings, Receipt, TrendingUp, Share2, Eye, Edit2, Trash2
 } from "lucide-react";
 import { toast } from "sonner";
+import { getEventVatAmount } from "@/lib/financialCalculations";
 import { openSignedContract } from "@/lib/signedContract";
 import InvoiceDialog from "@/components/invoice/InvoiceDialog";
 import StaffAvailabilityModal from "@/components/leads/StaffAvailabilityModal";
@@ -972,7 +973,9 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-400">מע"מ ({safeEvent.vatPercent ?? 18}%):</span>
-                        <span className="text-white font-semibold">₪{(safeEvent.vatAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        {/* S4 (2026-10-07): computed like the reports (getEventVatAmount) — most events
+                            created from a lead have no stored vat_amount, so this used to show ₪0. */}
+                        <span className="text-white font-semibold">₪{getEventVatAmount(safeEvent).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                       </div>
                     </>
                   )}
