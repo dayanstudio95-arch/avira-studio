@@ -967,7 +967,7 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                         <span className="text-white font-semibold">₪{(safeEvent.totalAmountGross || 0).toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-gray-400">מע"מ ({safeEvent.vatPercent || 18}%):</span>
+                        <span className="text-gray-400">מע"מ ({safeEvent.vatPercent ?? 18}%):</span>
                         <span className="text-white font-semibold">₪{(safeEvent.vatAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                       </div>
                     </>

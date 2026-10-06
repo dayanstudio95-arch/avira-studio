@@ -63,7 +63,7 @@ export default function AddEventModal({ selectedDate, isOpen, onClose, onSuccess
       const vatableAmount = (formData.vatableAmount > 0 && formData.vatableAmount <= totalAmountGross)
         ? formData.vatableAmount
         : totalAmountGross;
-      const vatRate = (formData.vatPercent || defaultVatPercent) / 100;
+      const vatRate = (formData.vatPercent ?? defaultVatPercent) / 100; // BUG-11: 0% stays 0%
       const vatOnVatablePart = vatableAmount - (vatableAmount / (1 + vatRate));
       const vatAmount = vatOnVatablePart;
       const amountBeforeVat = totalAmountGross - vatAmount;

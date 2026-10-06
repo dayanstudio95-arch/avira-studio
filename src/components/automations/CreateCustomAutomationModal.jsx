@@ -7,6 +7,7 @@ import { X, Loader2, Users, CalendarClock, Plus, Trash2, Sparkles, Eye } from "l
 import { STAFF_JOB_ROLES } from "@/lib/staffRoles";
 import TemplateVariablesHelp from "@/components/automations/TemplateVariablesHelp";
 import { VARS_BY_AUDIENCE_TYPE } from "@/lib/automationTemplateVariables";
+import { todayInIsrael } from "@/lib/localDate";
 
 const CONDITION_FIELD_OPTIONS = [
   { value: "client_payment_status", label: "סטטוס תשלום" },
@@ -167,7 +168,7 @@ export default function CreateCustomAutomationModal({ onClose, onCreated }) {
       } else {
         const events = await Event.list();
         const cond = buildLeadsConditions();
-        const todayStr = new Date().toISOString().slice(0, 10);
+        const todayStr = todayInIsrael();
         let studioName = "הסטודיו";
         try {
           if (user?.tenant_id) {

@@ -226,7 +226,7 @@ export default function EventDetails() {
                           ₪{event.totalAmountGross?.toLocaleString()}
                         </p>
                         <p className="text-xs text-gray-500">
-                          מע״מ: {event.vatPercent || 18}% (₪{event.vatAmount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                          מע״מ: {event.vatPercent ?? 18}% (₪{event.vatAmount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
                         </p>
                         {event.vatableAmount > 0 && event.vatableAmount < event.totalAmountGross && (
                             <p className="text-xs text-gray-500">

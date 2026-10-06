@@ -335,7 +335,7 @@ export default function EventDetailDrawer({ isOpen, onClose, event, staffMembers
                 <span className="text-white font-semibold">₪{(event.totalAmountGross || 0).toLocaleString()}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-400">מע"מ ({event.vatPercent || 18}%):</span>
+                <span className="text-gray-400">מע"מ ({event.vatPercent ?? 18}%):</span>
                 <span className="text-white font-semibold">₪{(event.vatAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
               <div className="flex justify-between pt-2 border-t border-gray-700">

@@ -2,10 +2,11 @@ import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { DollarSign } from "lucide-react";
+import { todayInIsrael } from "@/lib/localDate";
 
 // כלל עסקי: אירועי עבר בלבד (date < today) שה-clientPaymentStatus שלהם אינו 'Paid'
 export default function OpenDebtsCard({ events }) {
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayInIsrael();
 
   const unpaid = events
     .filter(e => e.date && e.date < today && e.clientPaymentStatus !== "Paid")

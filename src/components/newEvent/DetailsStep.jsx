@@ -204,8 +204,8 @@ export default function DetailsStep({ eventData, updateEventData, packages = [] 
             max="100"
             step="0.1"
             placeholder={String(defaultVatPercent)}
-            value={eventData.vatPercent || ''}
-            onChange={(e) => updateEventData({ vatPercent: parseFloat(e.target.value) || defaultVatPercent })}
+            value={eventData.vatPercent ?? ''}
+            onChange={(e) => { const v = parseFloat(e.target.value); updateEventData({ vatPercent: Number.isFinite(v) ? v : defaultVatPercent }); }} // BUG-11: 0 stays 0
             className="bg-gray-800/50 border-gray-700 text-white placeholder-gray-500 focus:border-yellow-400 focus:ring-yellow-400/20"
           />
           <p className="text-xs text-gray-500">

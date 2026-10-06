@@ -10,6 +10,7 @@ import { Banknote, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { allocatePayment } from "@/lib/staffPaymentAllocation";
+import { todayInIsrael } from "@/lib/localDate";
 
 // "רשום תשלום" — a real payment in a round sum (2026-09-20). The owner pays some staff
 // in cash and "זה לא תמיד יוצא בול לפי אירוע": 6,000 against events of 1,800.
@@ -37,7 +38,7 @@ const money = (n) => `₪${(Math.round((n || 0) * 100) / 100).toLocaleString("he
 export default function RecordStaffPaymentDialog({ open, onOpenChange, staffName, rows, credit, period, onRecorded }) {
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState("cash");
-  const [paidOn, setPaidOn] = useState(() => new Date().toISOString().slice(0, 10));
+  const [paidOn, setPaidOn] = useState(() => todayInIsrael());
   const [note, setNote] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
@@ -45,7 +46,7 @@ export default function RecordStaffPaymentDialog({ open, onOpenChange, staffName
     if (open) {
       setAmount("");
       setMethod("cash");
-      setPaidOn(new Date().toISOString().slice(0, 10));
+      setPaidOn(todayInIsrael());
       setNote("");
     }
   }, [open]);

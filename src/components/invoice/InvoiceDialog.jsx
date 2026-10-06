@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { FileText, ExternalLink, Loader2, AlertTriangle, XCircle, Wifi, CalendarCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/SupabaseAuthContext";
+import { todayInIsrael } from "@/lib/localDate";
 
 const INVOICE_ITEMS = ["מקדמה", "תשלום יתרה", "תוספת צילום", "אלבומים"];
 
@@ -35,7 +36,7 @@ export default function InvoiceDialog({
   // any caller that doesn't pass it. See generate-morning-invoice/index.ts.
   businessType = "sole_prop",
 }) {
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = todayInIsrael();
   const DEPOSIT_AMOUNT = 500;
   const { tenantDefaults } = useAuth();
   const vatPercent = tenantDefaults?.defaultVatPercent ?? 18;

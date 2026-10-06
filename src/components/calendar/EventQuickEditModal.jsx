@@ -179,8 +179,12 @@ export default function EventQuickEditModal({ event, isOpen, onClose, onUpdate }
               <Label className="text-gray-400">אחוז מע״מ</Label>
               <Input
                 type="number"
-                value={formData.vatPercent || defaultVatPercent}
-                onChange={(e) => setFormData({...formData, vatPercent: parseFloat(e.target.value) || defaultVatPercent})}
+                value={formData.vatPercent ?? defaultVatPercent}
+                onChange={(e) => {
+                  // BUG-11: typing 0 means 0% (VAT-exempt), not "use the default"
+                  const v = parseFloat(e.target.value);
+                  setFormData({...formData, vatPercent: Number.isFinite(v) ? v : defaultVatPercent});
+                }}
                 className="bg-gray-800 border-gray-700 text-white"
               />
             </div>

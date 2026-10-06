@@ -44,6 +44,7 @@ import "react-quill/dist/quill.snow.css";
 import { DEFAULT_CONTRACT_TERMS } from "@/lib/defaultContractTerms";
 import { downloadEventsBackupPdf } from "@/lib/eventsBackupPdf";
 import { toast } from "sonner";
+import { todayInIsrael } from "@/lib/localDate";
 
 const VALID_SETTINGS_TABS = ["workspace", "users", "contract", "pricing", "team", "templates", "integrations", "notifications", "data", "audit"];
 
@@ -166,7 +167,7 @@ export default function Settings() {
       await base44.entities.StaffMember.update(id, updates);
 
       const allEvents = await base44.entities.Event.list();
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = todayInIsrael();
 
       const eventsToUpdate = allEvents
         .filter(e => e.date && e.date >= todayStr)
@@ -291,7 +292,7 @@ export default function Settings() {
           e.phoneNumber || '',
           e.venue || '',
           e.totalAmountGross || 0,
-          e.vatPercent || 18,
+          e.vatPercent ?? 18,
           e.clientPaymentStatus || 'Unpaid',
           (e.notes || '').replace(/,/g, ';')
         ].join(','))

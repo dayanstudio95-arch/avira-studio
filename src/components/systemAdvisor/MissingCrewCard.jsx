@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Users } from "lucide-react";
 import { EVENT_TEAM_ROLE_LABELS as ROLE_LABELS } from "@/lib/staffRoles";
+import { todayInIsrael } from "@/lib/localDate";
 
 // Intentionally a fixed subset, not "every role in EVENT_TEAM_ROLES" — this card only
 // flags an event as understaffed if it's missing a primary photographer or a
@@ -11,7 +12,7 @@ import { EVENT_TEAM_ROLE_LABELS as ROLE_LABELS } from "@/lib/staffRoles";
 const REQUIRED_ROLES = ["photographer1", "videographer"];
 
 export default function MissingCrewCard({ events }) {
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayInIsrael();
 
   const upcoming = events.filter(e => e.date && e.date >= today);
 

@@ -60,7 +60,11 @@ export default function AllInvoicesPage() {
   // vatPercent is available at this layer — it falls back to the tenant's own default
   // rate, which is 0 for a VAT-exempt studio (עוסק פטור).
   const vatRatePercent = vatPercent;
-  const totalVat = totalAmount * (vatPercent / 100);
+  // BUG-13 (audit 2026-10-05): invoice amounts are the totals the couple paid, VAT included
+  // (generate-morning-invoice issues them as "price includes VAT"). The VAT inside a gross
+  // amount is gross − gross/(1+rate); `total × rate` overstated it by the whole rate
+  // (₪10,000 showed ₪1,800 instead of ₪1,525).
+  const totalVat = vatPercent > 0 ? totalAmount - totalAmount / (1 + vatPercent / 100) : 0;
 
   const exportToCSV = () => {
     const headers = ["שם הלקוח", "תאריך אירוע", "מס' חשבונית", "תאריך", "תיאור", "סכום", "קישור"];

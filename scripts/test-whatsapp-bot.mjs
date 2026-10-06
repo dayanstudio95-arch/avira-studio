@@ -1556,6 +1556,27 @@ section('create-lock: in progress vs. left behind by a crashed run');
   check('real id is never stale', gcs.isStaleCreateLock('abc123', now), false);
 }
 
+// =================================================================================
+// PART 26 — money and dates (BUG-10 / BUG-13, 2026-10-06)
+// =================================================================================
+
+const ld = await loadModule('src/lib/localDate.js', 'localdate');
+
+section('"today" is Israel time, not UTC');
+{
+  check('00:30 Israel on 7 Oct (= 21:30 UTC on 6 Oct) → 7 Oct', ld.todayInIsrael(new Date('2026-10-06T21:30:00Z')), '2026-10-07');
+  check('02:59 Israel → still that day', ld.todayInIsrael(new Date('2026-10-06T23:59:00Z')), '2026-10-07');
+  check('noon → same day', ld.todayInIsrael(new Date('2026-10-07T09:00:00Z')), '2026-10-07');
+  check('winter time (UTC+2): 01:00 on 1 Jan', ld.todayInIsrael(new Date('2026-12-31T23:00:00Z')), '2027-01-01');
+}
+
+section('VAT inside a gross amount (the invoices page)');
+{
+  const vatInside = (gross, pct) => (pct > 0 ? gross - gross / (1 + pct / 100) : 0);
+  check('₪10,000 at 18% → ₪1,525.42 (not ₪1,800)', Math.round(vatInside(10000, 18) * 100) / 100, 1525.42);
+  check('0% → no VAT', vatInside(10000, 0), 0);
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
