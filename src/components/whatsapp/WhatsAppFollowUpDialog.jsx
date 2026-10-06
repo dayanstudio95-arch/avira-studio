@@ -3,6 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { format } from "date-fns";
 import { X, Send, Loader2, CheckSquare, Square, Clock } from "lucide-react";
 import { toast } from "sonner";
+import { pauseBetweenSends } from "@/lib/pace";
 import { conversationTitle, daysSince } from "./whatsappInboxShared";
 import { followUpReferenceDate } from "@/lib/followUpQueue";
 
@@ -102,7 +103,8 @@ export default function WhatsAppFollowUpDialog({ isOpen, onClose, conversations,
     const sent = [];
     const failed = [];
     const skipped = []; // AUTO-07: wrote "הסר" — not sent
-    for (const c of targets) {
+    for (const [i, c] of targets.entries()) {
+      if (i > 0) await pauseBetweenSends();
       try {
         const message = applyVariables(template, c);
         const res = await base44.functions.invoke("sendWhatsAppMessage", { to: c.phone, message, respect_opt_out: true });

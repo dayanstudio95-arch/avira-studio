@@ -133,6 +133,31 @@ export function resolveChatIdForSend(target: string): string | null {
   return toInternationalIsraeliChatId(t);
 }
 
+// ── Pacing (AUTO-12, audit 2026-10-05) ────────────────────────────────────────────────
+// A loop that fires messages back-to-back (monthly summary to the whole crew, reminders,
+// a queue approval) looks like a spam burst to WhatsApp and risks the studio's ONE number
+// — the bot, contracts and the crew all depend on it. Every send through this module now
+// waits until at least SEND_GAP_MIN_MS (+ up to SEND_GAP_JITTER_MS random) has passed
+// since the previous send IN THIS FUNCTION INVOCATION. A single message never waits; only
+// the 2nd, 3rd… of a loop do. Kept short on purpose: an Edge Function request must answer
+// within ~150s: the largest loop here (a message to the whole crew, ~45 people) takes
+// ~45 × (1.2–2.0s + the send itself) ≈ 90s.
+export const SEND_GAP_MIN_MS = 1200;
+export const SEND_GAP_JITTER_MS = 800;
+let lastSendAt = 0;
+
+export function msToWaitBeforeSend(now: number, last: number, jitter: number): number {
+  if (!last) return 0;
+  const gap = SEND_GAP_MIN_MS + Math.max(0, Math.min(jitter, SEND_GAP_JITTER_MS));
+  return Math.max(0, last + gap - now);
+}
+
+async function paceSend(): Promise<void> {
+  const wait = msToWaitBeforeSend(Date.now(), lastSendAt, Math.random() * SEND_GAP_JITTER_MS);
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  lastSendAt = Date.now();
+}
+
 export interface SendWhatsAppOptions {
   // Whether WhatsApp builds a preview card (image + title) for a URL in the message.
   // Default TRUE — the owner likes the card and it looks professional. Pass false only
@@ -158,6 +183,7 @@ export async function sendWhatsApp(
   }
 
   const sendUrl = buildUrl(settings, 'sendMessage');
+  await paceSend();
 
   try {
     // linkPreview — 2026-09-22. Two couples never received the gallery message sent from
@@ -242,6 +268,7 @@ export async function sendWhatsAppFileByUrl(
   if (caption) body.caption = caption.slice(0, WHATSAPP_CAPTION_MAX);
 
   try {
+    await paceSend();
     const res = await fetchWithRetry(buildUrl(settings, 'sendFileByUrl'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

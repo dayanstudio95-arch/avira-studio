@@ -3,6 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { format } from "date-fns";
 import { X, Send, Loader2, CheckSquare, Square } from "lucide-react";
 import { toast } from "sonner";
+import { pauseBetweenSends } from "@/lib/pace";
 
 // New (2026-08-13): bulk "send a reminder to every lead currently stuck in פולו-אפ"
 // button, per explicit request — opens a preview of the exact message each lead will
@@ -81,7 +82,8 @@ export default function FollowUpReminderDialog({ isOpen, onClose, leads, onSent 
     const sent = [];
     const failed = [];
     const skipped = []; // AUTO-07: wrote "הסר" — not sent
-    for (const lead of targets) {
+    for (const [i, lead] of targets.entries()) {
+      if (i > 0) await pauseBetweenSends();
       try {
         const message = applyVariables(template, lead);
         const res = await base44.functions.invoke("sendWhatsAppMessage", { to: lead.phoneNumber, message, respect_opt_out: true });

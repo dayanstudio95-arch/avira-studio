@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button";
 import { Loader2, Send, Camera, Video, ArrowRight, Star, ListChecks } from "lucide-react";
 import { toast } from "sonner";
+import { pauseBetweenSends } from "@/lib/pace";
 import { format } from "date-fns";
 import { STAFF_JOB_ROLES } from "@/lib/staffRoles";
 import { generateRawToken, hashToken } from "@/lib/albumTokens";
@@ -252,7 +253,16 @@ export default function StaffAvailabilityModal({
     }
     setIsSending(true);
     try {
-      const results = await Promise.allSettled(targets.map((s) => sendToTarget(s)));
+      // One after another with a short pause (AUTO-12) — not all at once.
+      const results = [];
+      for (const [i, s] of targets.entries()) {
+        if (i > 0) await pauseBetweenSends();
+        try {
+          results.push({ status: "fulfilled", value: await sendToTarget(s) });
+        } catch (reason) {
+          results.push({ status: "rejected", reason });
+        }
+      }
       const failed = results.filter((r) => r.status === "rejected" || r.value?.data?.error);
       if (failed.length === 0) {
         toast.success(`נשלחה בדיקת זמינות ל-${targets.length} אנשי צוות`);

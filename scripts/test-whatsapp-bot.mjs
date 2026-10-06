@@ -1521,6 +1521,23 @@ section('queued reminder still due at approval time?');
   check('other types are not re-checked', g23.staleReasonFromRows('album_reminder', null, now), null);
 }
 
+// =================================================================================
+// PART 24 — a pause between messages sent in a row (AUTO-12, 2026-10-06)
+// =================================================================================
+
+const wa24 = await loadModule('supabase/functions/_shared/whatsapp.ts', 'wa24');
+
+section('pacing: the first message never waits, the next ones wait 1.2–2.0s');
+{
+  const t = 1_000_000;
+  check('first send of the invocation → no wait', wa24.msToWaitBeforeSend(t, 0, 500), 0);
+  check('right after a send, no jitter → 1200ms', wa24.msToWaitBeforeSend(t, t, 0), 1200);
+  check('right after a send, max jitter → 2000ms', wa24.msToWaitBeforeSend(t, t, 800), 2000);
+  check('jitter is capped', wa24.msToWaitBeforeSend(t, t, 99999), 2000);
+  check('half a second later → the rest', wa24.msToWaitBeforeSend(t + 500, t, 0), 700);
+  check('long after → no wait', wa24.msToWaitBeforeSend(t + 5000, t, 800), 0);
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
