@@ -149,7 +149,8 @@ export const BOXES = [
   { key: "archive", label: "ארכיון" },
 ];
 
-export const DEFAULT_BOX = "unknown";
+// Opens on "לידים" (the owner, 2026-10-07 — after the bot-recognised strangers moved there).
+export const DEFAULT_BOX = "lead";
 
 export function matchesBox(c, box, ctx = {}) {
   if (box === "archive") return !!c.archivedAt;

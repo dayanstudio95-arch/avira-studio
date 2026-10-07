@@ -1704,7 +1704,7 @@ section('boxes from the old inbox');
     { id: 'a', contactType: 'unknown', archivedAt: '2026-10-01T00:00:00Z' },
   ];
   const n = (box) => list.filter((c) => cm31.matchesBox(c, box, {})).map((c) => c.id).join(',');
-  check('opens on "לא מוכר"', cm31.DEFAULT_BOX, 'unknown');
+  check('opens on "לידים" (owner, 2026-10-07)', cm31.DEFAULT_BOX, 'lead');
   check('לא מוכר: strangers only, not archived', n('unknown'), 'u');
   check('לידים: leads only (strangers have their own box now)', n('lead'), 'l,p');
   check('הכל: leads + strangers, no clients/groups/staff', n('all'), 'u,l,p');
