@@ -62,6 +62,15 @@ export function teamRoleSlotsForJobRole(jobRole) {
   return JOB_ROLE_TO_TEAM_ROLES[jobRole] || [];
 }
 
+// How a slot is named in the availability message to a crew member (2026-10-07, the
+// owner's wording) — "{{role}}" in template_staff_availability_check.
+export const AVAILABILITY_SLOT_LABELS = {
+  photographer1: "צלם ראשי (צלם 1)",
+  photographer2: "צלם ערב (צלם 2)",
+  videographer: "צלם וידאו",
+  videographer2: "צלם וידאו 2",
+};
+
 // ─── 2. Staff member's own general job category (staff_members.role) ──────────────
 // Must exactly match the CHECK constraint in supabase/migrations/0001_init.sql:74.
 export const STAFF_JOB_ROLES = [

@@ -6,7 +6,7 @@ import { Loader2, Send, Camera, Video, ArrowRight, Star, ListChecks } from "luci
 import { toast } from "sonner";
 import { pauseBetweenSends } from "@/lib/pace";
 import { format } from "date-fns";
-import { STAFF_JOB_ROLES } from "@/lib/staffRoles";
+import { STAFF_JOB_ROLES, AVAILABILITY_SLOT_LABELS, teamRoleSlotsForJobRole } from "@/lib/staffRoles";
 import { generateRawToken, hashToken } from "@/lib/albumTokens";
 import { pickReplacementCandidates } from "@/lib/staffReplacement";
 
@@ -16,6 +16,13 @@ import { pickReplacementCandidates } from "@/lib/staffReplacement";
 // of the full STAFF_JOB_ROLES list, not a separate constant).
 const AVAILABILITY_ROLES = STAFF_JOB_ROLES.filter((r) => r.value === "photographer" || r.value === "videographer");
 const ROLE_ICON = { photographer: Camera, videographer: Video };
+// The slot chips beside a ticked name (2026-10-07: "סלבה ערב (צלם 2), ג׳וני צלם ראשי").
+const SLOT_CHIP = { photographer1: "ראשי (1)", photographer2: "ערב (2)", videographer: "וידאו 1", videographer2: "וידאו 2" };
+// "{{role}}" for one person: the slot picked for them, else their general role.
+function roleLabelFor(staffMember, slot) {
+  if (slot && AVAILABILITY_SLOT_LABELS[slot]) return AVAILABILITY_SLOT_LABELS[slot];
+  return STAFF_JOB_ROLES.find((r) => r.value === staffMember?.role)?.label || "צלם";
+}
 
 function buildDefaultMessage({ roleLabel, eventDate, venue, coupleNames }) {
   const dateStr = eventDate ? format(new Date(eventDate), "d/M/yyyy") : "";
@@ -99,6 +106,8 @@ export default function StaffAvailabilityModal({
   // 'manage-favorites' (checklist to mark who's a favorite) | null (role picker)
   const [selectedRole, setSelectedRole] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
+  // staffId → team slot ("photographer1"…) picked for that person; none = general role.
+  const [slotById, setSlotById] = useState({});
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
   // Local optimistic overrides for isFavorite so the manage-favorites checklist and the
@@ -131,6 +140,7 @@ export default function StaffAvailabilityModal({
       // Reset on close so re-opening always starts fresh from the role picker.
       setSelectedRole(null);
       setSelectedIds(new Set());
+      setSlotById({});
       setMessage("");
       setIsSending(false);
       setFavoriteOverrides(new Map());
@@ -178,14 +188,12 @@ export default function StaffAvailabilityModal({
   }, [candidates]);
 
   const handlePickRole = async (roleValue) => {
-    const roleLabel =
-      roleValue === "favorites"
-        ? "צלם/צלמת וידאו"
-        : AVAILABILITY_ROLES.find((r) => r.value === roleValue)?.label || roleValue;
     setSelectedRole(roleValue);
     setSelectedIds(new Set());
-    setMessage(buildDefaultMessage({ roleLabel, eventDate, venue, coupleNames })); // instant fallback while the saved template loads
-    const msg = await buildMessage({ roleLabel, eventDate, venue, coupleNames, replacement: isReplacement });
+    // {{role}} stays in the text and is filled per person when sending (roleLabelFor).
+    setSlotById({});
+    setMessage(buildDefaultMessage({ roleLabel: "{{role}}", eventDate, venue, coupleNames })); // instant fallback while the saved template loads
+    const msg = await buildMessage({ roleLabel: "{{role}}", eventDate, venue, coupleNames, replacement: isReplacement });
     setMessage(msg);
   };
 
@@ -232,13 +240,15 @@ export default function StaffAvailabilityModal({
       staffMemberId: staffMember.id,
       staffNameSnapshot: staffMember.name,
       role: selectedRole === "favorites" ? staffMember.role : selectedRole,
+      teamRole: slotById[staffMember.id] || null,
       eventDateSnapshot: eventDate || null,
       venueSnapshot: venue || null,
       coupleNamesSnapshot: coupleNames || null,
       tokenHash,
     });
     const link = `${window.location.origin}/staff-availability/${rawToken}`;
-    return base44.functions.invoke("sendWhatsAppMessage", { to: staffMember.phoneNumber, message: `${message}\n\n${link}` });
+    const text = message.replace(/\{\{role\}\}/g, roleLabelFor(staffMember, slotById[staffMember.id]));
+    return base44.functions.invoke("sendWhatsAppMessage", { to: staffMember.phoneNumber, message: `${text}\n\n${link}` });
   };
 
   const handleSend = async () => {
@@ -389,8 +399,8 @@ export default function StaffAvailabilityModal({
                 </div>
                 <div className="max-h-52 overflow-y-auto space-y-1.5 border border-gray-700/50 rounded-xl p-2">
                   {roleStaff.map((s) => (
+                    <div key={s.id}>
                     <label
-                      key={s.id}
                       className={`flex items-center justify-between gap-2 p-2 rounded-lg ${
                         s.phoneNumber ? "hover:bg-gray-800 cursor-pointer" : "opacity-50 cursor-not-allowed"
                       }`}
@@ -418,6 +428,27 @@ export default function StaffAvailabilityModal({
                         )
                       )}
                     </label>
+                    {selectedIds.has(s.id) && teamRoleSlotsForJobRole(s.role).length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5 pb-1.5 ps-8">
+                        <span className="text-[11px] text-gray-400">תפקיד:</span>
+                        {teamRoleSlotsForJobRole(s.role).map((slot) => {
+                          const on = slotById[s.id] === slot;
+                          return (
+                            <button
+                              key={slot}
+                              type="button"
+                              onClick={() => setSlotById((m) => ({ ...m, [s.id]: on ? undefined : slot }))}
+                              className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
+                                on ? "border-pink-400 bg-pink-500/20 text-pink-200" : "border-gray-600 text-gray-300 hover:border-pink-400/60"
+                              }`}
+                            >
+                              {SLOT_CHIP[slot] || slot}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    </div>
                   ))}
                 </div>
                 <div>
@@ -428,6 +459,15 @@ export default function StaffAvailabilityModal({
                     rows={4}
                     className="w-full bg-gray-800 border border-gray-700 rounded-lg p-2 text-sm text-white resize-none"
                   />
+                  <p className="mt-1 text-[11px] text-gray-400">
+                    {"{{role}}"} יוחלף אצל כל אחד בתפקיד שסימנת לו (בלי תפקיד: צלם / צלם וידאו).
+                  </p>
+                  {(() => {
+                    const first = roleStaff.find((s) => selectedIds.has(s.id));
+                    if (!first || !message.includes("{{role}}")) return null;
+                    const line = message.replace(/\{\{role\}\}/g, roleLabelFor(first, slotById[first.id])).split("\n")[0];
+                    return <p className="mt-1 rounded-md bg-gray-800/70 px-2 py-1 text-[11px] text-gray-300">לדוגמה ל{first.name}: {line}</p>;
+                  })()}
                 </div>
               </>
             )}

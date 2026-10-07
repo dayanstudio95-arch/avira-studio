@@ -40,8 +40,9 @@ export default function AvailabilityPills({ requests, staffMembers, event, team,
       toast.error("לא נמצא תפקיד מתאים בצוות האירוע עבור איש הצוות הזה");
       return;
     }
+    // The slot he was asked about (team_role, 0077) wins; otherwise the first free one.
     const firstEmpty = candidateSlots.find((slot) => !currentTeam.some((m) => m.role === slot));
-    setRoleSlot(firstEmpty || candidateSlots[0]);
+    setRoleSlot((request.teamRole && candidateSlots.includes(request.teamRole) ? request.teamRole : null) || firstEmpty || candidateSlots[0]);
     setCandidate(request);
   };
 
