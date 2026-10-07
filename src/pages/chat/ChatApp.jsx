@@ -42,6 +42,32 @@ const PRIMARY_BOXES = BOXES.filter((b) => b.primary);
 const CHIP_ROWS = [["unknown", "lead", "followup"], ["hot", "unread", "all"]];
 const CHIP_ICONS = { followup: Hourglass, hot: Flame };
 
+// iPhone home-screen app (navigator.standalone) with the translucent status bar: WebKit
+// reports a viewport shorter than the screen by the status bar's height, so a full-height
+// layout stopped ~50pt above the bottom edge (the owner's screenshot, 2026-10-07). There the
+// app takes the real screen height; everywhere else (Safari, Android, desktop) it stays
+// inset-0. Recomputed on rotation.
+function useIosStandaloneHeight() {
+  const calc = () => {
+    if (typeof window === "undefined" || window.navigator.standalone !== true) return null;
+    const long = Math.max(window.screen.width, window.screen.height);
+    const short = Math.min(window.screen.width, window.screen.height);
+    return window.innerWidth > window.innerHeight ? short : long;
+  };
+  const [h, setH] = useState(calc);
+  useEffect(() => {
+    if (window.navigator.standalone !== true) return undefined;
+    const on = () => setH(calc());
+    window.addEventListener("resize", on);
+    window.addEventListener("orientationchange", on);
+    return () => {
+      window.removeEventListener("resize", on);
+      window.removeEventListener("orientationchange", on);
+    };
+  }, []);
+  return h;
+}
+
 function useDebounced(value, ms) {
   const [v, setV] = useState(value);
   useEffect(() => {
@@ -53,6 +79,7 @@ function useDebounced(value, ms) {
 
 export default function ChatApp() {
   const data = useChatData();
+  const iosHeight = useIosStandaloneHeight();
   const { logout } = useAuth();
   const qc = useQueryClient();
   const [params, setParams] = useSearchParams();
@@ -403,7 +430,11 @@ export default function ChatApp() {
 
   return (
     <AvatarUrlContext.Provider value={avatarUrls}>
-    <div dir="rtl" className="fixed inset-0 flex w-full overflow-hidden bg-gray-950 text-gray-100">
+    <div
+      dir="rtl"
+      className={`fixed inset-x-0 top-0 flex w-full overflow-hidden bg-gray-950 text-gray-100 ${iosHeight ? "" : "bottom-0"}`}
+      style={iosHeight ? { height: iosHeight } : undefined}
+    >
       <ChatSidebar
         className="hidden w-60 shrink-0 md:flex"
         box={q ? "" : box}
@@ -420,7 +451,7 @@ export default function ChatApp() {
       />
 
       {/* List: full screen on a phone when no conversation is open */}
-      <div className={`min-h-0 min-w-0 flex-col border-l border-gray-800 md:flex md:w-[360px] md:flex-none md:shrink-0 ${active ? "hidden" : "flex flex-1"} pt-[env(safe-area-inset-top)] md:pt-0`}>
+      <div className={`min-h-0 min-w-0 flex-col border-gray-800 md:flex md:border-l md:w-[360px] md:flex-none md:shrink-0 ${active ? "hidden" : "flex flex-1"} pt-[env(safe-area-inset-top)] md:pt-0`}>
         <ChatList
           title={title}
           conversations={visible}
