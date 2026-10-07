@@ -203,6 +203,7 @@
    gray-on-black throughout; inside .avira-chat those grays become the navy family of the
    rest of the system, and on a computer each column floats as its own glowing card. */
 .avira-chat .bg-gray-950 { background-color: #08111F; }
+.avira-chat .bg-gray-950\/95 { background-color: rgba(8, 17, 31, 0.95); }
 .avira-chat .bg-gray-900 { background-color: #0E1A30; }
 .avira-chat .bg-gray-800 { background-color: #15233D; }
 .avira-chat .bg-gray-800\/40 { background-color: rgba(21, 35, 61, 0.4); }
