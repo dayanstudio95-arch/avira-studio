@@ -2064,5 +2064,60 @@ console.log('\n— PART 39: album editor —');
   check('price under 30', ad.priceSummary(24, 45).extraCost, 0);
 }
 
+// PART 40 — album auto-sketch (2026-10-08)
+console.log('\n— PART 40: album auto-sketch —');
+{
+  const al = await loadModule('src/lib/albumAutoLayout.js', 'al40');
+  const at = await loadModule('src/lib/albumTemplates.js', 'at40');
+  const c = al.distributeCounts(148, 29);
+  check('every photo placed (148 → 29 spreads)', c.reduce((a, b) => a + b, 0), 148);
+  check('29 spreads', c.length, 29);
+  check('hero every 5th (index 2) is small', c[2] <= 3 && c[7] <= 3, true);
+  check('no spread over 10', Math.max(...c) <= 10, true);
+  check('few photos → 1 each', al.distributeCounts(3, 10).join(','), '1,1,1');
+  const capped = al.distributeCounts(400, 29);
+  check('400 photos capped at 10 a spread', Math.max(...capped), 10);
+  const P = { w: 4000, h: 6000 }; const L = { w: 6000, h: 4000 };
+  const pick = al.pickTemplate([{ id: 'a', ...L }, { id: 'b', ...P }], null);
+  const rects = at.cellRects(at.getTemplate(pick.templateId), pick.flip);
+  const landscapeCell = rects.findIndex((r) => at.cellAspect(r) > 1);
+  check('landscape photo lands in the landscape cell', landscapeCell >= 0 ? pick.assign[landscapeCell] : 0, 0);
+  const four = [P, P, P, P].map((x, i) => ({ id: 'p' + i, ...x }));
+  const first = al.pickTemplate(four, null);
+  check('4 portraits → his most used 4-up (p4-a)', first.templateId, 'p4-a');
+  // He repeats his 4-up when nothing else fits (e.g. spreads _03 and _04) — repeat is penalised, not forbidden.
+  check('4 portraits again → still 4-up (nothing else fits)', al.pickTemplate(four, 'p4-a').templateId, 'p4-a');
+  const mixed = [L, P, P].map((x, i) => ({ id: 'm' + i, ...x }));
+  const m1 = al.pickTemplate(mixed, null);
+  const m2 = al.pickTemplate(mixed, m1.templateId);
+  check('with alternatives, the next spread varies', m2.templateId !== m1.templateId || m2.flip !== m1.flip, true);
+  const assets = Array.from({ length: 150 }, (_, i) => ({ id: 'x' + i, ...(i % 3 ? L : P) }));
+  const { pages, unused } = al.autoLayout(assets, { spreads: 30, title: { names: 'A & B' } });
+  check('30 spreads', pages.length, 30);
+  check('title spread first, names kept', pages[0].templateId + '|' + pages[0].title.names, 't-a|A & B');
+  const used = pages.flatMap((p) => p.slots.map((s) => s.assetId)).filter(Boolean);
+  check('all 150 used once', new Set(used).size + '/' + used.length + '/' + unused, '150/150/0');
+  const firstIds = pages.slice(1, 4).map((p) => p.slots.map((s) => +s.assetId.slice(1)));
+  check('order kept across spreads', Math.max(...firstIds[0]) < Math.min(...firstIds[1]) && Math.max(...firstIds[1]) < Math.min(...firstIds[2]), true);
+  check('suggested spreads for 150', al.suggestedSpreads(150), 30);
+}
+
+// PART 41 — album export helpers (2026-10-08)
+console.log('\n— PART 41: album export —');
+{
+  const ar = await loadModule('src/lib/albumRender.js', 'ar41');
+  const at = await loadModule('src/lib/albumTemplates.js', 'at41');
+  const jfif = [0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00];
+  const out = ar.setJpegDpi(jfif, 300);
+  check('dpi unit = inch', out[13], 1);
+  check('x density 300', (out[14] << 8) | out[15], 300);
+  check('y density 300', (out[16] << 8) | out[17], 300);
+  check('non-JFIF untouched', Array.from(ar.setJpegDpi([1, 2, 3, 4])).join(','), '1,2,3,4');
+  const rs = at.cellRects(at.getTemplate('p4-a')).map((r) => ar.pixelRect(r, 9449, 3543));
+  check('cells end at the right edge', rs[3].x + rs[3].w, 9449);
+  check('pixel gutter 38px', rs[1].x - (rs[0].x + rs[0].w), 38);
+  check('full height', rs[0].h, 3543);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

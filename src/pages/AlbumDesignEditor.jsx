@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowRight, Loader2, Undo2, Redo2, History, Check, AlertTriangle, CloudOff, FolderOpen, Monitor } from "lucide-react";
+import { ArrowRight, Loader2, Undo2, Redo2, History, Check, AlertTriangle, CloudOff, FolderOpen, Monitor, Sparkles, Send, Download } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { supabase } from "@/api/supabaseClient";
 import {
@@ -16,6 +16,9 @@ import PhotoBank from "@/components/albumEditor/PhotoBank";
 import SpreadStrip from "@/components/albumEditor/SpreadStrip";
 import PagePanel from "@/components/albumEditor/PagePanel";
 import RevisionsDialog from "@/components/albumEditor/RevisionsDialog";
+import AutoSketchDialog from "@/components/albumEditor/AutoSketchDialog";
+import ExportDialog from "@/components/albumEditor/ExportDialog";
+import { downloadSpreadFile } from "@/lib/albumExport";
 
 // Album design editor — stage 1 (2026-10-08, the owner's request: design the album sketch inside
 // AVIRA instead of SmartAlbums). Desktop only, opened from an album order ("🎨 עורך סקיצה (בטא)").
@@ -201,8 +204,11 @@ function SaveBadge({ state, error }) {
   return <span className="flex items-center gap-1 text-xs text-emerald-300"><Check className="h-3.5 w-3.5" /> נשמר</span>;
 }
 
-function Editor({ design, names, back, extraPrice }) {
-  const { doc, edit, undo, redo, canUndo, canRedo, saveState, saveError, snapshot } = useDesignDoc(design);
+function Editor({ design, order, names, back, extraPrice }) {
+  const { doc, edit, undo, redo, canUndo, canRedo, saveState, saveError, snapshot, saveNow } = useDesignDoc(design);
+  const [showAuto, setShowAuto] = useState(false);
+  const [showExport, setShowExport] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [currentId, setCurrentId] = useState(() => doc.pages[0]?.id);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -276,6 +282,17 @@ function Editor({ design, names, back, extraPrice }) {
     edit((d) => placeAsset(d, page.id, selectedSlot, assetId));
   };
 
+  const downloadCurrent = async () => {
+    setDownloading(true);
+    try {
+      await downloadSpreadFile(page, doc, `${String(pageIndex + 1).padStart(3, "0")}.jpg`);
+      toast.success("הכפולה ירדה בגודל מלא (9449×3543, 300dpi)");
+    } catch (e) {
+      toast.error(e?.message || "הורדת הכפולה נכשלה");
+    }
+    setDownloading(false);
+  };
+
   const saveVersion = async () => {
     const { error } = await snapshot("manual");
     error ? toast.error("שמירת הגרסה נכשלה") : toast.success("נשמרה גרסה — אפשר לחזור אליה מ'היסטוריה'");
@@ -294,9 +311,16 @@ function Editor({ design, names, back, extraPrice }) {
           <div className="ms-auto flex items-center gap-1">
             <button type="button" onClick={undo} disabled={!canUndo} title="ביטול (⌘Z)" className="rounded p-1.5 text-slate-300 hover:bg-white/10 disabled:opacity-30"><Undo2 className="h-4 w-4" /></button>
             <button type="button" onClick={redo} disabled={!canRedo} title="חזרה (⌘⇧Z)" className="rounded p-1.5 text-slate-300 hover:bg-white/10 disabled:opacity-30"><Redo2 className="h-4 w-4" /></button>
+            <button type="button" onClick={() => setShowAuto(true)} className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-amber-200 hover:bg-white/10"><Sparkles className="h-4 w-4" /> סקיצה אוטומטית</button>
+            <button type="button" onClick={downloadCurrent} disabled={downloading} title="מוריד את הכפולה הזו בגודל הדפסה מלא — לבדיקת איכות" className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-300 hover:bg-white/10 disabled:opacity-50">
+              {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} כפולה בגודל מלא
+            </button>
             <button type="button" onClick={saveVersion} className="rounded-md px-2 py-1 text-xs text-slate-300 hover:bg-white/10">שמור גרסה</button>
             <button type="button" onClick={() => setShowRevisions(true)} className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-300 hover:bg-white/10"><History className="h-4 w-4" /> היסטוריה</button>
           </div>
+          <button type="button" onClick={() => setShowExport(true)} disabled={saveState === "conflict"} className="flex items-center gap-1.5 rounded-lg bg-amber-400 px-3 py-1.5 text-xs font-bold text-gray-900 hover:bg-amber-500 disabled:opacity-40">
+            <Send className="h-4 w-4" /> ייצוא לזוג
+          </button>
           <div className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-200" title={`${price.included} כפולות כלולות במחיר האלבום`}>
             {price.pages} כפולות · {price.extra ? <span className="text-amber-300">{price.extra} נוספות · +₪{price.extraCost.toLocaleString()}</span> : <span className="text-emerald-300">בתוך ה-{price.included} הכלולות</span>}
           </div>
@@ -377,6 +401,29 @@ function Editor({ design, names, back, extraPrice }) {
         </div>
       </div>
 
+      {showAuto && (
+        <AutoSketchDialog
+          doc={doc}
+          onClose={() => setShowAuto(false)}
+          onApply={async (pages) => {
+            await snapshot("manual");
+            edit((d) => ({ ...d, pages }));
+            setShowAuto(false);
+            goTo(pages[0].id);
+            toast.success(`נוצרה סקיצה של ${pages.length} כפולות — עכשיו מתקנים (⌘Z מבטל)`);
+          }}
+        />
+      )}
+      {showExport && (
+        <ExportDialog
+          design={design}
+          doc={doc}
+          orderId={design.album_order_id}
+          tenantId={order?.tenantId || design.tenant_id}
+          beforeExport={saveNow}
+          onClose={() => setShowExport(false)}
+        />
+      )}
       {showRevisions && (
         <RevisionsDialog
           designId={design.id}
