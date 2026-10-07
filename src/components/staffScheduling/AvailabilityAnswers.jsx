@@ -11,6 +11,7 @@ import { formatDateWithWeekday } from "@/lib/chatModel";
 import StaffBookingMessageDialog from "@/components/events/StaffBookingMessageDialog";
 
 export const AVAILABILITY_INBOX_KEY = ["availabilityInbox"];
+const TEAM_ORDER = ["photographer1", "photographer2", "videographer", "videographer2"];
 
 // Every availability request for an upcoming event (one query, reused by the tab's count).
 export function useAvailabilityRequests() {
@@ -141,6 +142,20 @@ export default function AvailabilityAnswers({ events, staffMembers, onEventsChan
                     <span className="flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" />{g.date ? formatDateWithWeekday(g.date) : "—"}</span>
                     {g.venue && <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{g.venue}</span>}
                   </div>
+                  {/* The team as it stands, slot by slot (editor left out). */}
+                  {g.event && (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      <span className="text-[11px] text-slate-500">הצוות כרגע:</span>
+                      {(() => {
+                        const crew = (g.event.team || [])
+                          .filter((m) => m.role !== "editor" && String(m.staffMemberName || "").trim())
+                          .sort((a, b) => TEAM_ORDER.indexOf(a.role) - TEAM_ORDER.indexOf(b.role));
+                        return crew.length ? crew.map((m, i) => (
+                          <span key={i} className="e-chip e-chip-blue text-[11px]">{eventTeamRoleLabel(m.role)}: {m.staffMemberName}</span>
+                        )) : <span className="text-[11px] text-slate-500">אף אחד עוד</span>;
+                      })()}
+                    </div>
+                  )}
                 </div>
                 {!g.event ? (
                   <span className="e-chip e-chip-gray">אין אירוע עדיין</span>
@@ -156,6 +171,8 @@ export default function AvailabilityAnswers({ events, staffMembers, onEventsChan
                   const ui = STATE_UI[row.state];
                   const Icon = ui.icon;
                   const asked = r.teamRole ? AVAILABILITY_SLOT_LABELS[r.teamRole] : null;
+                  // Where they are on the team, by slot (2026-10-07: "שיבצתי את זיו — לצלם 1 או 2?").
+                  const stateText = row.state === "assigned" && row.assignedSlot ? `✔ משובץ/ת כ${eventTeamRoleLabel(row.assignedSlot)}` : ui.text;
                   const slot = slotPick[r.id] || row.defaultSlot;
                   return (
                     <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
@@ -164,7 +181,7 @@ export default function AvailabilityAnswers({ events, staffMembers, onEventsChan
                         <div className="min-w-0">
                           <div className="text-sm font-medium text-white">{r.staffNameSnapshot}</div>
                           <div className="text-[11px] text-slate-400">
-                            {asked ? `שאלתי: ${asked} · ` : ""}{ui.text}
+                            {asked ? `שאלתי: ${asked} · ` : ""}{stateText}
                             {r.respondedAt && row.state !== "pending" ? ` · ענה ${hhmm(r.respondedAt)}` : ""}
                           </div>
                         </div>

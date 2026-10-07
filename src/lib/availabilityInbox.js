@@ -39,7 +39,8 @@ export function buildAvailabilityInbox({ requests, events, today }) {
       });
     }
     const team = event?.team || [];
-    const onTeam = team.some((m) => named(m) && m.staffMemberName === r.staffNameSnapshot);
+    const teamEntry = team.find((m) => named(m) && m.staffMemberName === r.staffNameSnapshot);
+    const onTeam = !!teamEntry;
     let state;
     let freeSlots = [];
     if (onTeam) state = "assigned";
@@ -52,7 +53,7 @@ export function buildAvailabilityInbox({ requests, events, today }) {
       state = freeSlots.length ? "decide" : "full";
     }
     const defaultSlot = freeSlots.includes(r.teamRole) ? r.teamRole : freeSlots[0] || null;
-    groups.get(key).rows.push({ request: r, state, freeSlots, defaultSlot });
+    groups.get(key).rows.push({ request: r, state, freeSlots, defaultSlot, assignedSlot: teamEntry?.role || null });
   }
 
   const ORDER = { decide: 0, full: 1, no_event: 2, pending: 3, assigned: 4, declined: 5, dismissed: 6 };
