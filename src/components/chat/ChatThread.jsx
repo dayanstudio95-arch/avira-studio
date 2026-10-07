@@ -3,7 +3,8 @@ import { ChevronRight, Pin, PinOff, Archive, ArchiveRestore, Tag, Send, Loader2,
 import { toast } from "sonner";
 import MessageBubble from "@/components/whatsapp/MessageBubble";
 import { groupMessagesByDay, formatMessageDateTime } from "@/components/whatsapp/whatsappInboxShared";
-import { contactTypeLabel, effectiveStage, renderTemplate, eventDateFor, hasStage, displayType } from "@/lib/chatModel";
+import { contactTypeLabel, effectiveStage, renderTemplate, eventDateFor, hasStage, displayType, followUpOutcome } from "@/lib/chatModel";
+import FollowUpChip from "./FollowUpChip";
 import DateAvailability from "./DateAvailability";
 import { Avatar, conversationTitle } from "./ChatList";
 import { typeColor, stageColor } from "@/lib/chatColors";
@@ -28,7 +29,7 @@ function NoteBubble({ note, onDelete }) {
 
 // The conversation column: header, timeline (messages + internal notes), composer.
 export default function ChatThread({
-  conversation, lead, labels, thread, onBack, onTogglePanel, onPin, onArchive, onHandled, needsReplyNow, onToggleFollowUp, inFollowUp, onScheduleMeeting, isHot, onClearHot,
+  conversation, lead, labels, thread, onBack, onTogglePanel, onPin, onArchive, onHandled, needsReplyNow, onToggleFollowUp, inFollowUp, onScheduleMeeting, isHot, onClearHot, onMarkFollowUpSent,
   templates, onSaveTemplate, onDeleteTemplate, userContext,
 }) {
   const [text, setText] = useState("");
@@ -132,7 +133,7 @@ export default function ChatThread({
         </button>
         {/* On a phone these two get their own line under the name (2026-10-07: squeezed in one
             row they covered the couple's name and tags). */}
-        {((onToggleFollowUp && hasStage(conversation)) || needsReplyNow || (isHot && onClearHot)) && (
+        {((onToggleFollowUp && hasStage(conversation)) || needsReplyNow || (isHot && onClearHot) || followUpOutcome(conversation)) && (
         <div className="order-last flex w-full gap-2 ps-12 md:order-none md:w-auto md:ps-0">
         {onToggleFollowUp && hasStage(conversation) && (
           <button
@@ -144,6 +145,18 @@ export default function ChatThread({
             }`}
           >
             {inFollowUp ? "בפולו-אפ ✓" : "לפולו-אפ"}
+          </button>
+        )}
+        {followUpOutcome(conversation) ? (
+          <FollowUpChip conversation={conversation} className="self-center py-1 text-xs" />
+        ) : onMarkFollowUpSent && hasStage(conversation) && (
+          <button
+            type="button"
+            onClick={onMarkFollowUpSent}
+            title="לפולו-אפ שכתבת ידנית או שלחת מהטלפון — יוצא מהממתינים ונכנס ל'פולו-אפ · לא ענו'"
+            className="flex h-9 shrink-0 items-center gap-1 rounded-full border border-gray-700 bg-gray-800 px-3 text-sm text-gray-300 hover:text-white md:h-10"
+          >
+            📨 סמן שנשלח פולו-אפ
           </button>
         )}
         {needsReplyNow && (

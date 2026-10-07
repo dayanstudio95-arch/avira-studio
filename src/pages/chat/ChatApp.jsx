@@ -540,6 +540,7 @@ export default function ChatApp() {
             onHandled={() => run(data.actions.setHandled([active], true), () => 'סומן "טופל" · יחזור ל"דורש מענה" כשיכתבו שוב')}
             inFollowUp={isAwaitingFollowUp(active, data.followUpAfterDays || 0)}
             isHot={isHotLead(active, activeLead)}
+            onMarkFollowUpSent={() => run(data.actions.markFollowUpSent([active]), () => 'סומן: נשלח פולו-אפ · עבר ל"פולו-אפ · לא ענו"')}
             onClearHot={() => run(data.actions.clearHot([active]), () => 'הוסר מ"ליד חם"')}
             onScheduleMeeting={() => openMeetingFor(active)}
             onToggleFollowUp={(on) => run(data.actions.setFollowUpFlag([active], on), () => (on ? "נוסף לתור הפולו-אפ" : "הוסר מתור הפולו-אפ"))}

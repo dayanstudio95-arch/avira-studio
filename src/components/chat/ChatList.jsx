@@ -9,6 +9,7 @@ import { typeColor, stageColor } from "@/lib/chatColors";
 import { fetchDateAvailability, fetchMessageDates } from "@/lib/dateAvailability";
 import { displayPhone } from "@/components/whatsapp/whatsappInboxShared";
 import { isManuallyFlagged } from "@/lib/followUpQueue";
+import FollowUpChip from "./FollowUpChip";
 
 const AVATAR_COLORS = ["#3E63DD", "#C2410C", "#7C3AED", "#0E7490", "#B45309", "#15803D", "#BE185D", "#475569"];
 function avatarColor(id) {
@@ -246,6 +247,7 @@ export default function ChatList({
                         <Tag className="h-3 w-3" /> בפולו-אפ
                       </span>
                     )}
+                    <FollowUpChip conversation={c} />
                     {convLabels.map((l) => (
                       <span key={l.id} className="rounded-md px-1.5 text-[11px] text-white" style={{ background: l.color }}>{l.name}</span>
                     ))}

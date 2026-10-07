@@ -1936,5 +1936,19 @@ console.log('\n— PART 34: hot lead vs closed deal —');
   check('box hot uses ctx.leadsById', cm31.matchesBox({ leadTemperature: 'hot', contactType: 'lead', matchedLeadId: 'L1' }, 'hot', { leadsById: { L1: { status: 'חוזה' } } }), false);
 }
 
+// PART 35 — follow-up outcome boxes (2026-10-07)
+console.log('\n— PART 35: follow-up sent / replied —');
+{
+  const sent = { contactType: 'lead', followupSentAt: '2026-10-07T10:00:00Z', lastInboundAt: '2026-10-06T10:00:00Z' };
+  const replied = { contactType: 'lead', followupSentAt: '2026-10-07T10:00:00Z', lastInboundAt: '2026-10-07T12:00:00Z' };
+  check('none → null', cm31.followUpOutcome({ contactType: 'lead' }), null);
+  check('no answer since → sent', cm31.followUpOutcome(sent), 'sent');
+  check('wrote after → replied', cm31.followUpOutcome(replied), 'replied');
+  check('box לא ענו', cm31.matchesBox(sent, 'followup_noreply', {}), true);
+  check('box ענו', cm31.matchesBox(replied, 'followup_replied', {}), true);
+  check('replied not in לא ענו', cm31.matchesBox(replied, 'followup_noreply', {}), false);
+  check('group never', cm31.matchesBox({ ...sent, contactType: 'group' }, 'followup_noreply', {}), false);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

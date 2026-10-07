@@ -266,6 +266,17 @@ export function useChatData() {
     },
 
     // "טופל": out of "דורש מענה" until they write again.
+    // "סמן שנשלח פולו-אפ" — a follow-up written by hand in the chat or sent from the phone
+    // counts like one sent from the follow-up dialog: out of the waiting queue, into
+    // "פולו-אפ · לא ענו" until the couple answers (2026-10-07).
+    async markFollowUpSent(convs) {
+      const at = new Date().toISOString();
+      await updateConversations(convs.map((c) => c.id), { followupSentAt: at });
+      await logActivity(convs.map((c) => ({ conversationId: c.id, action: "followup_mark_sent", before: { followupSentAt: c.followupSentAt || null }, after: { followupSentAt: at } })));
+      refresh();
+      return { count: convs.length };
+    },
+
     async setHandled(convs, handled) {
       const batchId = uuid();
       const value = handled ? new Date().toISOString() : null;

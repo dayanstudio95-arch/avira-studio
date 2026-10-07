@@ -138,7 +138,8 @@ export const BOXES = [
   { key: "unread", label: "לא נקראו", primary: true },
   { key: "all", label: "הכל", primary: true },
   { key: "needs", label: "דורש מענה" },
-  { key: "followup_sent", label: "נשלח פולו-אפ" },
+  { key: "followup_noreply", label: "פולו-אפ · לא ענו" },
+  { key: "followup_replied", label: "ענו אחרי פולו-אפ" },
   { key: "pricelist_sent", label: "נשלח מחירון" },
   { key: "client", label: "לקוחות" },
   { key: "staff", label: "צוות" },
@@ -162,6 +163,14 @@ export function isHotLead(c, lead) {
   return c?.leadTemperature === "hot" && !["group", "staff"].includes(c?.contactType || "unknown") && !isClosedDeal(c, lead);
 }
 
+// After a follow-up (2026-10-07): null = none sent; "sent" = sent, no answer since;
+// "replied" = the couple wrote after it.
+export function followUpOutcome(c) {
+  if (!c?.followupSentAt) return null;
+  const sent = new Date(c.followupSentAt).getTime();
+  return c.lastInboundAt && new Date(c.lastInboundAt).getTime() > sent ? "replied" : "sent";
+}
+
 export function matchesBox(c, box, ctx = {}) {
   if (box === "archive") return !!c.archivedAt;
   if (c.archivedAt) return false;
@@ -179,6 +188,8 @@ export function matchesBox(c, box, ctx = {}) {
     // From the old inbox (WhatsAppInbox.jsx), same rules — groups and staff never count.
     case "hot": return isHotLead(c, c.matchedLeadId ? ctx.leadsById?.[c.matchedLeadId] : null);
     case "followup_sent": return !!c.followupSentAt && !["group", "staff"].includes(type);
+    case "followup_noreply": return followUpOutcome(c) === "sent" && !["group", "staff"].includes(type);
+    case "followup_replied": return followUpOutcome(c) === "replied" && !["group", "staff"].includes(type);
     case "pricelist_sent": return c.state === "PRICELIST_SENT" && !["group", "staff"].includes(type);
     default:
       if (box.startsWith("label:")) return (ctx.labelsByConv?.[c.id] || []).includes(box.slice(6));
