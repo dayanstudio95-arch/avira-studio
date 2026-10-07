@@ -9,12 +9,12 @@ import { useAuth } from "@/lib/SupabaseAuthContext";
 import { isAdmin } from "@/lib/permissions";
 import LeadFormDialog from "@/components/leads/LeadFormDialog";
 import { BOXES, DEFAULT_BOX, boxCounts, matchesBox, matchesSearch, sortConversations, needsReply, isHotLead } from "@/lib/chatModel";
-import { isAwaitingFollowUp } from "@/lib/followUpQueue";
+import { isAwaitingFollowUp, followUpsSentToday } from "@/lib/followUpQueue";
 import WhatsAppFollowUpDialog from "@/components/whatsapp/WhatsAppFollowUpDialog";
 import WhatsAppFollowUpSettingsDialog from "@/components/whatsapp/WhatsAppFollowUpSettingsDialog";
 import MeetingDialog from "@/components/meetings/MeetingDialog";
 import MeetingsList, { useMeetings, MEETINGS_KEY } from "@/components/meetings/MeetingsList";
-import { nextSoon, kindLabel as meetingKindLabel, utcToIsraelParts } from "@/lib/meetings";
+import { nextSoon, kindLabel as meetingKindLabel, utcToIsraelParts, todayIsrael } from "@/lib/meetings";
 import { shortCoupleNames } from "@/lib/chatModel";
 import { useChatData } from "@/components/chat/useChatData";
 import { useThread } from "@/components/chat/useThread";
@@ -658,6 +658,8 @@ export default function ChatApp() {
         isOpen={followUpOpen}
         onClose={() => setFollowUpOpen(false)}
         conversations={followUpQueue}
+        leadsById={data.leadsById}
+        sentToday={followUpsSentToday(data.conversations, todayIsrael())}
         onSent={() => qc.invalidateQueries({ queryKey: ["chatConversations"] })}
       />
 

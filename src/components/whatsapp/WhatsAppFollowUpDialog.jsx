@@ -4,7 +4,7 @@ import { format } from "date-fns";
 import { X, Send, Loader2, CheckSquare, Square, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { conversationTitle, daysSince } from "./whatsappInboxShared";
-import { followUpReferenceDate, followUpPaceRange, followUpEstimateSeconds } from "@/lib/followUpQueue";
+import { followUpReferenceDate, followUpPaceRange, followUpEstimateSeconds, followUpWaveLimit, renderFollowUpMessage, FOLLOWUP_WAVE_SIZE, FOLLOWUP_DAILY_CAP } from "@/lib/followUpQueue";
 
 // "Everyone who got a price list and then went quiet" — the studio's actual sales
 // queue, and the thing Daniel asked for in the same breath as the bot itself:
@@ -37,7 +37,9 @@ export const DEFAULT_TEMPLATE = `היי {{names}} 😊
 
 זמינים לכל שאלה! 📸`;
 
-export default function WhatsAppFollowUpDialog({ isOpen, onClose, conversations, onSent }) {
+// `leadsById` (chat app): the CRM lead of a conversation (linked or found by phone) fills in
+// a date / venue the bot never collected. `sentToday`: follow-ups already sent today.
+export default function WhatsAppFollowUpDialog({ isOpen, onClose, conversations, onSent, leadsById = {}, sentToday = 0 }) {
   const [template, setTemplate] = useState(DEFAULT_TEMPLATE);
   const [isEditingTemplate, setIsEditingTemplate] = useState(false);
   const [checkedIds, setCheckedIds] = useState(new Set());
@@ -46,19 +48,30 @@ export default function WhatsAppFollowUpDialog({ isOpen, onClose, conversations,
   const [progress, setProgress] = useState(null); // { done, total }
   const stopRef = useRef(false);
 
-  // Oldest silence first — that is the one most likely to be slipping away.
+  // The date / venue this couple's message will carry: the conversation's, else the CRM lead's.
+  const detailsOf = (c) => {
+    const lead = c.matchedLeadId ? leadsById[c.matchedLeadId] : null;
+    return { date: c.eventDate || lead?.eventDate || null, venue: c.venue || lead?.venueName || "" };
+  };
+  // Nearest wedding first (2026-10-07: the pulse goes to whoever needs it soonest); no date
+  // last; then the oldest silence.
   const queue = useMemo(
     () =>
-      (conversations || [])
-        .slice()
-        .sort((a, b) => new Date(followUpReferenceDate(a) || 0) - new Date(followUpReferenceDate(b) || 0)),
-    [conversations]
+      (conversations || []).slice().sort((a, b) => {
+        const da = detailsOf(a).date || "9999", db = detailsOf(b).date || "9999";
+        if (da !== db) return String(da).localeCompare(String(db));
+        return new Date(followUpReferenceDate(a) || 0) - new Date(followUpReferenceDate(b) || 0);
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [conversations, leadsById]
   );
+  const waveLimit = followUpWaveLimit(sentToday);
 
   useEffect(() => {
     if (!isOpen) return;
     setSendResults(null);
-    setCheckedIds(new Set(queue.filter((c) => c.phone).map((c) => c.id)));
+    // Only the first pulse is ticked; the rest wait in the queue.
+    setCheckedIds(new Set(queue.filter((c) => c.phone).slice(0, followUpWaveLimit(sentToday)).map((c) => c.id)));
     (async () => {
       try {
         const rows = await base44.entities.AppSetting.filter({ key: FOLLOWUP_TEMPLATE_KEY });
@@ -75,11 +88,12 @@ export default function WhatsAppFollowUpDialog({ isOpen, onClose, conversations,
   // Merge fields come from what the bot actually collected. An empty one leaves an empty
   // string rather than the raw {{token}} — a customer should never see our plumbing.
   const applyVariables = (tpl, c) => {
-    const eventDateFormatted = c.eventDate ? format(new Date(c.eventDate), "d/M/yyyy") : "";
-    return tpl
-      .replace(/\{\{names\}\}/g, c.coupleNames || c.displayName || "")
-      .replace(/\{\{event_date\}\}/g, eventDateFormatted)
-      .replace(/\{\{venue\}\}/g, c.venue || "");
+    const d = detailsOf(c);
+    return renderFollowUpMessage(tpl, {
+      names: c.coupleNames || c.displayName || "",
+      eventDate: d.date ? format(new Date(d.date), "d/M/yyyy") : "",
+      venue: d.venue,
+    });
   };
 
   const toggle = (id) =>
@@ -90,12 +104,17 @@ export default function WhatsAppFollowUpDialog({ isOpen, onClose, conversations,
     });
 
   const eligible = queue.filter((c) => c.phone);
-  const allChecked = eligible.length > 0 && checkedIds.size === eligible.length;
+  // "Select" ticks the next pulse, never more than today's limit.
   const toggleAll = () =>
-    setCheckedIds((prev) => (prev.size === eligible.length ? new Set() : new Set(eligible.map((c) => c.id))));
+    setCheckedIds((prev) => (prev.size > 0 ? new Set() : new Set(eligible.slice(0, waveLimit).map((c) => c.id))));
+  const overLimit = checkedIds.size > waveLimit;
 
   const handleSend = async () => {
     const targets = eligible.filter((c) => checkedIds.has(c.id));
+    if (targets.length > waveLimit) {
+      toast.error(`אפשר עד ${waveLimit} בפעימה הזו`);
+      return;
+    }
     if (targets.length === 0) {
       toast.error("לא נבחרו שיחות לשליחה");
       return;
@@ -197,9 +216,16 @@ export default function WhatsAppFollowUpDialog({ isOpen, onClose, conversations,
               onClick={toggleAll}
               className="flex items-center gap-2 text-sm text-gray-300 hover:text-white mb-2"
             >
-              {allChecked ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
-              {allChecked ? "בטל בחירת הכל" : "בחר הכל"} ({checkedIds.size}/{eligible.length})
+              {checkedIds.size > 0 ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+              {checkedIds.size > 0 ? "נקה בחירה" : `בחר את הפעימה הבאה (${Math.min(waveLimit, eligible.length)})`} · נבחרו {checkedIds.size} מתוך {eligible.length}
             </button>
+            {/* Pulses (2026-10-07): at most FOLLOWUP_WAVE_SIZE now, FOLLOWUP_DAILY_CAP a day. */}
+            <div className={`mb-3 rounded-lg border px-3 py-2 text-xs ${waveLimit === 0 || overLimit ? "border-amber-500/50 bg-amber-500/10 text-amber-200" : "border-sky-500/30 bg-sky-500/10 text-sky-200"}`}>
+              {waveLimit === 0
+                ? `היום כבר נשלחו ${sentToday} פולו-אפים — המכסה היומית (${FOLLOWUP_DAILY_CAP}) מלאה. נמשיך מחר; כולם נשארים בתור.`
+                : `שולחים בפעימות כדי לשמור על המספר: עד ${FOLLOWUP_WAVE_SIZE} בפעימה, עד ${FOLLOWUP_DAILY_CAP} ביום. היום נשלחו ${sentToday} — אפשר עוד ${waveLimit} עכשיו. מי שלא נשלח נשאר בתור לפעימה הבאה (הקרובים לחתונה קודם).`}
+              {overLimit && waveLimit > 0 && <div className="mt-1 font-semibold">בחרת {checkedIds.size} — הורד ל-{waveLimit} או לחץ "נקה בחירה" ואז "בחר את הפעימה הבאה".</div>}
+            </div>
 
             <div className="space-y-2">
               {queue.map((c) => {
@@ -276,7 +302,7 @@ export default function WhatsAppFollowUpDialog({ isOpen, onClose, conversations,
           )}
           <button
             onClick={handleSend}
-            disabled={isSending || checkedIds.size === 0}
+            disabled={isSending || checkedIds.size === 0 || overLimit}
             className="inline-flex items-center gap-2 rounded-lg bg-yellow-500 px-4 py-2 text-sm font-medium text-black hover:bg-yellow-600 disabled:opacity-50"
           >
             {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}

@@ -56,3 +56,33 @@ export function followUpEstimateSeconds(count) {
   const [a, b] = followUpPaceRange(count);
   return Math.round((count - 1) * ((a + b) / 2 / 1000) + count);
 }
+
+// Sending follow-ups in pulses (2026-10-07, the owner: "84 at once — won't they block us?").
+// At most FOLLOWUP_WAVE_SIZE per send and FOLLOWUP_DAILY_CAP per Israel day; whoever is
+// left stays in the queue for the next pulse.
+export const FOLLOWUP_WAVE_SIZE = 30;
+export const FOLLOWUP_DAILY_CAP = 40;
+
+export function followUpsSentToday(conversations, todayIsrael) {
+  return (conversations || []).filter((c) => c?.followupSentAt && israelDateOf(c.followupSentAt) === todayIsrael).length;
+}
+
+export function followUpWaveLimit(sentToday) {
+  return Math.max(0, Math.min(FOLLOWUP_WAVE_SIZE, FOLLOWUP_DAILY_CAP - (sentToday || 0)));
+}
+
+function israelDateOf(iso) {
+  return new Date(iso).toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
+}
+
+// Fills {{names}} / {{event_date}} / {{venue}}. A line whose {{event_date}} or {{venue}}
+// has no value is left out entirely — "התאריך  עדיין פנוי" must never reach a couple.
+export function renderFollowUpMessage(template, { names = "", eventDate = "", venue = "" } = {}) {
+  return String(template || "")
+    .split("\n")
+    .filter((line) => !(line.includes("{{event_date}}") && !eventDate) && !(line.includes("{{venue}}") && !venue))
+    .join("\n")
+    .replace(/\{\{names\}\}/g, names)
+    .replace(/\{\{event_date\}\}/g, eventDate)
+    .replace(/\{\{venue\}\}/g, venue);
+}

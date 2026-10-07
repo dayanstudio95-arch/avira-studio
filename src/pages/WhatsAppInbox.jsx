@@ -13,7 +13,7 @@ import WhatsAppFollowUpSettingsDialog from "@/components/whatsapp/WhatsAppFollow
 import BotSimulator from "@/components/whatsapp/BotSimulator";
 import { usePermission } from "@/lib/permissions";
 import { phoneDigits, CONTACT_TYPE_LABELS } from "@/components/whatsapp/whatsappInboxShared";
-import { isAwaitingFollowUp, isManuallyFlagged } from "@/lib/followUpQueue";
+import { isAwaitingFollowUp, isManuallyFlagged, followUpsSentToday } from "@/lib/followUpQueue";
 
 // WhatsApp inbox — every conversation the studio's WhatsApp number is having, shown
 // like WhatsApp itself, with the ability to reply from here.
@@ -577,6 +577,7 @@ export default function WhatsAppInbox() {
         isOpen={isFollowUpOpen}
         onClose={() => setIsFollowUpOpen(false)}
         conversations={followUpQueue}
+        sentToday={followUpsSentToday(conversations, new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" }))}
         onSent={() => queryClient.invalidateQueries({ queryKey: ["whatsappConversations"] })}
       />
     </div>

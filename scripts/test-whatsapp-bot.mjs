@@ -1981,5 +1981,19 @@ console.log('\n— PART 36: availability answers inbox —');
   check('no event yet → no_event', noEv.groups[0].rows[0].state, 'no_event');
 }
 
+// PART 37 — follow-up pulses and the date line (2026-10-07)
+console.log('\n— PART 37: follow-up pulses —');
+{
+  const fq = await loadModule('src/lib/followUpQueue.js', 'fq37');
+  check('wave: none sent → 30', fq.followUpWaveLimit(0), 30);
+  check('wave: 27 sent → 13 (cap 40)', fq.followUpWaveLimit(27), 13);
+  check('wave: 40 sent → 0', fq.followUpWaveLimit(40), 0);
+  const tpl = 'היי {{names}}\nהתאריך {{event_date}} עדיין פנוי\nבאולם {{venue}}\nזמינים!';
+  check('date filled', fq.renderFollowUpMessage(tpl, { names: 'סוניה ועוז', eventDate: '28/5/2027', venue: 'גן' }), 'היי סוניה ועוז\nהתאריך 28/5/2027 עדיין פנוי\nבאולם גן\nזמינים!');
+  check('no date → line dropped', fq.renderFollowUpMessage(tpl, { names: 'גל', venue: 'גן' }), 'היי גל\nבאולם גן\nזמינים!');
+  check('no venue → line dropped', fq.renderFollowUpMessage(tpl, { names: 'גל', eventDate: '1/1/2027' }), 'היי גל\nהתאריך 1/1/2027 עדיין פנוי\nזמינים!');
+  check('sent today counts Israel day', fq.followUpsSentToday([{ followupSentAt: '2026-10-07T20:30:00Z' }, { followupSentAt: '2026-10-07T22:30:00Z' }], '2026-10-07'), 1);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
