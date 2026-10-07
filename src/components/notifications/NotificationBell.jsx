@@ -53,6 +53,12 @@ export default function NotificationBell() {
 
   const handleClick = (notification) => {
     markAsRead(notification);
+    // A crew member's availability answer opens "📥 תשובות זמינות" on that couple (2026-10-07).
+    if (notification.type === "staff_availability_response") {
+      setOpen(false);
+      navigate(`/StaffScheduling?tab=answers${notification.relatedLeadId ? `&leadId=${notification.relatedLeadId}` : ""}`);
+      return;
+    }
     if (notification.relatedLeadId) {
       setOpen(false);
       // Reuses the ?openLeadId= deep-link pattern already established by

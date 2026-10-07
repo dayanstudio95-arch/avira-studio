@@ -58,6 +58,7 @@ import GlobalSearch from "@/components/layout/GlobalSearch";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/SupabaseAuthContext";
 import { isLeadCoordinator, isPhotographerRole, isAlbumManagerRole, isEditorRole } from "@/lib/permissions";
+import { buildAvailabilityInbox } from "@/lib/availabilityInbox";
 
 const ROLE_LABELS = {
   owner: "בעלים",
@@ -161,10 +162,10 @@ function NavBadge({ count }) {
 }
 
 // The work waiting on a page (sidebar v2): red = someone is waiting, amber = to do.
-function WorkCount({ value, tone = "neutral" }) {
+function WorkCount({ value, tone = "neutral", title }) {
   if (!value) return null;
-  const cls = tone === "red" ? "bg-[#F05B70]/15 text-rose-300 ring-1 ring-[#F05B70]/25" : tone === "amber" ? "bg-[#F59E0B]/15 text-amber-300 ring-1 ring-[#F59E0B]/25" : "bg-[#3B82F6]/15 text-sky-300 ring-1 ring-[#3B82F6]/25";
-  return <span className={`ms-auto rounded-full px-2 py-0.5 text-[11px] font-semibold leading-none ${cls}`}>{value}</span>;
+  const cls = tone === "green" ? "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/25" : tone === "red" ? "bg-[#F05B70]/15 text-rose-300 ring-1 ring-[#F05B70]/25" : tone === "amber" ? "bg-[#F59E0B]/15 text-amber-300 ring-1 ring-[#F59E0B]/25" : "bg-[#3B82F6]/15 text-sky-300 ring-1 ring-[#3B82F6]/25";
+  return <span title={title} className={`ms-auto rounded-full px-2 py-0.5 text-[11px] font-semibold leading-none ${cls}`}>{value}</span>;
 }
 
 // The list is shared by the bell (rendered twice) and the menu, so it lives above both.
@@ -252,11 +253,12 @@ function LayoutShell({ children }) {
     let alive = true;
     const loadStats = async () => {
       try {
-        const [events, convs, newLeads, meetings] = await Promise.all([
+        const [events, convs, newLeads, meetings, availability] = await Promise.all([
           base44.entities.Event.list(),
           base44.entities.WhatsAppConversation.list("-lastMessageAt", 600).catch(() => []),
           base44.entities.Lead.filter({ status: "חדש" }, undefined, 500, "id").catch(() => []),
           base44.entities.SalesMeeting.filter({ status: "scheduled" }, "startsAt", 200).catch(() => []),
+          base44.entities.StaffAvailabilityRequest.filter({ eventDateSnapshot: { $gte: israelToday() } }, "-requestedAt", 1000).catch(() => []),
         ]);
         const today = israelToday();
         const year = yearProgress(events);
@@ -269,6 +271,7 @@ function LayoutShell({ children }) {
           waitingChats: (convs || []).filter(needsReply).length,
           newLeads: (newLeads || []).length,
           meetingsToday: (meetings || []).filter((m) => utcToIsraelParts(m.startsAt).date === today).length,
+          availabilityToDecide: buildAvailabilityInbox({ requests: availability || [], events, today }).toDecide,
         });
       } catch (error) {
         console.error('Failed to load stats:', error);
@@ -462,7 +465,7 @@ function LayoutShell({ children }) {
                 '/chat': { value: stats.waitingChats, tone: 'red' },
                 [createPageUrl("Leads")]: { value: stats.newLeads },
                 '/Meetings': { value: stats.meetingsToday ? `${stats.meetingsToday} היום` : 0, tone: 'amber' },
-                [createPageUrl("StaffScheduling")]: { value: stats.urgentStaffing, tone: 'red' },
+                [createPageUrl("StaffScheduling")]: { value: stats.urgentStaffing, tone: 'red', extra: stats.availabilityToDecide ? { value: `✋${stats.availabilityToDecide}`, tone: 'green', title: 'תשובות "פנוי" שמחכות להחלטה' } : null },
                 [createPageUrl("ProgressStatus")]: { value: stats.editingBacklog, tone: 'amber' },
               }[url] || {});
               const row = (item) => {
@@ -478,6 +481,7 @@ function LayoutShell({ children }) {
                         <item.icon className={`w-[18px] h-[18px] shrink-0 ${on ? 'text-sky-300' : 'text-slate-500'}`} strokeWidth={1.75} />
                         <span className="text-[13.5px] font-medium truncate">{item.label || item.title}</span>
                         <WorkCount value={work.value} tone={work.tone} />
+                        {work.extra && <WorkCount value={work.extra.value} tone={work.extra.tone} title={work.extra.title} />}
                         <NavBadge count={countsByRoute[item.url]} />
                       </Link>
                     </SidebarMenuButton>

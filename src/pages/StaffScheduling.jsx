@@ -18,6 +18,8 @@ import { sendCalendarInviteByName } from "@/lib/calendarInvites";
 import MobileStaffAssignmentSheet from "@/components/events/MobileStaffAssignmentSheet";
 import StaffAssignmentRoleList from "@/components/events/StaffAssignmentRoleList";
 import StaffAvailabilityModal from "@/components/leads/StaffAvailabilityModal";
+import AvailabilityAnswers, { useAvailabilityRequests } from "@/components/staffScheduling/AvailabilityAnswers";
+import { buildAvailabilityInbox } from "@/lib/availabilityInbox";
 
 // Module-level so the array isn't rebuilt on every render. Short form on mobile
 // (a 7-column month grid leaves ~48px per column on a phone, where "ראשון" wraps).
@@ -36,7 +38,10 @@ export default function StaffScheduling() {
   const [events, setEvents] = useState([]);
   const [staffMembers, setStaffMembers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [viewMode, setViewMode] = useState("list");
+  // "answers" = 📥 תשובות זמינות (2026-10-07); ?tab=answers&leadId= opens it on that couple.
+  const [viewMode, setViewMode] = useState(() => (new URLSearchParams(window.location.search).get("tab") === "answers" ? "answers" : "list"));
+  const focusLeadId = new URLSearchParams(window.location.search).get("leadId");
+  const answersQ = useAvailabilityRequests();
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -72,8 +77,10 @@ export default function StaffScheduling() {
     loadData();
   }, []);
 
-  const loadData = async () => {
-    setIsLoading(true);
+  // `silent` (2026-10-07): refresh in place, without the full-page skeleton — the
+  // availability answers tab keeps its open assignment-message window across a refresh.
+  const loadData = async (opts) => {
+    if (!opts?.silent) setIsLoading(true);
     try {
       const [rawEvents, staffData, leadNotes] = await Promise.all([
         base44.entities.Event.list("-date"),
@@ -632,7 +639,7 @@ export default function StaffScheduling() {
               <p className="text-slate-400">נהל ושבץ אנשי צוות לאירועים</p>
             </div>
           </div>
-          <div className="flex gap-1 rounded-xl border border-[#2A3B57] bg-[#0B1529] p-1">
+          <div className="flex w-full gap-1 rounded-xl border border-[#2A3B57] bg-[#0B1529] p-1 md:w-auto [&>button]:flex-1 [&>button]:px-2 [&>button]:text-[13px] md:[&>button]:flex-none md:[&>button]:px-4 md:[&>button]:text-sm">
             <Button
               variant={viewMode === "list" ? "default" : "outline"}
               onClick={() => setViewMode("list")}
@@ -649,6 +656,19 @@ export default function StaffScheduling() {
               <Calendar className="w-4 h-4 mr-2" />
               לוח שנה
             </Button>
+            {(() => {
+              const toDecide = buildAvailabilityInbox({ requests: answersQ.data || [], events, today }).toDecide;
+              return (
+                <Button
+                  variant={viewMode === "answers" ? "default" : "outline"}
+                  onClick={() => setViewMode("answers")}
+                  className={viewMode === "answers" ? "rounded-lg bg-[#FACC15] text-gray-900 hover:bg-yellow-300 font-semibold" : "rounded-lg border-0 bg-transparent text-slate-300 hover:bg-white/[0.06] hover:text-white"}
+                >
+                  📥 תשובות זמינות
+                  {toDecide > 0 && <span className="mr-1.5 rounded-full bg-emerald-500 px-1.5 text-[11px] font-bold text-white">{toDecide}</span>}
+                </Button>
+              );
+            })()}
           </div>
         </div>
 
@@ -678,7 +698,9 @@ export default function StaffScheduling() {
           );
         })()}
 
-        {viewMode === "list" ? renderListView() : renderCalendarView()}
+        {viewMode === "answers" ? (
+          <AvailabilityAnswers events={events} staffMembers={staffMembers} onEventsChanged={() => loadData({ silent: true })} focusLeadId={focusLeadId} />
+        ) : viewMode === "list" ? renderListView() : renderCalendarView()}
 
         {/* Calendar Edit Modal */}
         <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>

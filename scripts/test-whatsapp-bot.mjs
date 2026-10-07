@@ -1950,5 +1950,36 @@ console.log('\n— PART 35: follow-up sent / replied —');
   check('group never', cm31.matchesBox({ ...sent, contactType: 'group' }, 'followup_noreply', {}), false);
 }
 
+// PART 36 — "תשובות זמינות" grouping (2026-10-07)
+console.log('\n— PART 36: availability answers inbox —');
+{
+  const ai = await loadModule('src/lib/availabilityInbox.js', 'availinbox');
+  const ev = { id: 'E1', sourceLeadId: 'L1', date: '2026-10-08', coupleNames: 'יקור ושני', team: [{ role: 'photographer1', staffMemberName: "ג׳וני" }] };
+  const req = (o) => ({ eventId: 'E1', leadId: 'L1', role: 'photographer', eventDateSnapshot: '2026-10-08', requestedAt: '2026-10-07T10:00:00Z', ...o });
+  const out = ai.buildAvailabilityInbox({ today: '2026-10-07', events: [ev], requests: [
+    req({ id: 'a', staffMemberId: 's1', staffNameSnapshot: "ג׳וני", status: 'available', teamRole: 'photographer1' }),
+    req({ id: 'b', staffMemberId: 's2', staffNameSnapshot: 'סלבה', status: 'available', teamRole: 'photographer2' }),
+    req({ id: 'c', staffMemberId: 's3', staffNameSnapshot: 'רודי', status: 'pending' }),
+    req({ id: 'd', staffMemberId: 's4', staffNameSnapshot: 'אביהו', status: 'declined' }),
+    req({ id: 'old', staffMemberId: 's2', staffNameSnapshot: 'סלבה', status: 'declined', requestedAt: '2026-10-01T10:00:00Z' }),
+    req({ id: 'past', staffMemberId: 's5', staffNameSnapshot: 'עבר', status: 'available', eventDateSnapshot: '2026-10-01' }),
+  ] });
+  const g = out.groups[0];
+  const st = Object.fromEntries(g.rows.map((r) => [r.request.id, r.state]));
+  check('one group, past dropped', out.groups.length, 1);
+  check('on team → assigned', st.a, 'assigned');
+  check('free slot → decide', st.b, 'decide');
+  check('asked slot preselected', g.rows.find((r) => r.request.id === 'b').defaultSlot, 'photographer2');
+  check('latest answer per person wins', st.old, undefined);
+  check('pending / declined', [st.c, st.d].join(','), 'pending,declined');
+  check('toDecide counts 1', out.toDecide, 1);
+  const full = ai.buildAvailabilityInbox({ today: '2026-10-07', events: [{ ...ev, team: [{ role: 'photographer1', staffMemberName: 'x' }, { role: 'photographer2', staffMemberName: 'y' }] }], requests: [req({ id: 'e', staffMemberId: 's6', staffNameSnapshot: 'עידן', status: 'available' })] });
+  check('slots taken → full', full.groups[0].rows[0].state, 'full');
+  const dis = ai.buildAvailabilityInbox({ today: '2026-10-07', events: [ev], requests: [req({ id: 'f', staffMemberId: 's7', staffNameSnapshot: 'ז', status: 'available', decisionDismissedAt: '2026-10-07T11:00:00Z' })] });
+  check('לא צריך → dismissed, not counted', [dis.groups[0].rows[0].state, dis.toDecide].join(','), 'dismissed,0');
+  const noEv = ai.buildAvailabilityInbox({ today: '2026-10-07', events: [], requests: [req({ id: 'g', eventId: null, leadId: 'L9', staffMemberId: 's8', staffNameSnapshot: 'ח', status: 'available' })] });
+  check('no event yet → no_event', noEv.groups[0].rows[0].state, 'no_event');
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
