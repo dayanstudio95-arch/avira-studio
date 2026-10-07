@@ -67,11 +67,11 @@ export default function EventMobileCards({ events, isLoading, onOpenDetail, onOp
         return (
           <React.Fragment key={event.id}>
             {showMonthHeader && (
-              <div className="text-xs text-gray-500 font-semibold pt-2 pb-1 px-1 border-b border-gray-800">
+              <div className="text-xs text-slate-300 font-semibold pt-2 pb-1 px-1 border-b border-white/[0.06]">
                 {monthKey}
               </div>
             )}
-            <div id={`event-row-${event.id}`} className="bg-gray-900 border border-gray-800 rounded-xl p-3 space-y-2">
+            <div id={`event-row-${event.id}`} className="dash-card p-3.5 space-y-2">
               {/* Top row: name + payment badge */}
               <div className="flex items-start justify-between gap-2">
                 <button
@@ -117,7 +117,7 @@ export default function EventMobileCards({ events, isLoading, onOpenDetail, onOp
               </div>
 
               {/* Quick actions */}
-              <div className="flex items-center gap-2 pt-1 border-t border-gray-800">
+              <div className="flex items-center gap-2 pt-1 border-t border-white/[0.06]">
                 <button
                   onClick={() => onOpenDetail?.(event)}
                   className="flex items-center gap-1 text-xs text-gray-400 hover:text-yellow-400 px-2 py-1 rounded-lg hover:bg-yellow-500/10 transition-colors"

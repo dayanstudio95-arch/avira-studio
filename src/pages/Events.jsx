@@ -3,13 +3,14 @@ import { isMissingTeam } from "@/lib/missingTeam";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, X, CalendarDays, Upload, RefreshCw, Loader2, MoreHorizontal } from "lucide-react";
+import { Search, X, CalendarDays, Upload, RefreshCw, Loader2, MoreHorizontal, Filter, ListFilter } from "lucide-react";
 import { format } from "date-fns";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import EventsTableWithBulkDelete from "../components/events/EventsTableWithBulkDelete";
 import CSVImportDialog from "../components/CSVImportDialog";
 import EventsMobileMenu from "../components/events/EventsMobileMenu";
+import EventsStatsRow from "../components/events/EventsStatsRow";
 
 export default function Events() {
   const [events, setEvents] = useState([]);
@@ -302,28 +303,32 @@ export default function Events() {
   }, [events, searchTerm, selectedYear, filterParam, sortOrder]);
 
   return (
-    <div className="min-h-screen bg-gray-950 p-3 md:p-5">
+    <div className="e-page min-h-screen p-3 md:p-6">
       <div className="w-full">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-          <div>
-            <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">
-              {filterParam === 'urgentStaffing' ? 'אירועים עם חוסר צוות' : 'כל האירועים'}
-            </h1>
-            <p className="text-gray-400">
-              {filterParam === 'urgentStaffing' 
-                ? 'אירועים ב-30 הימים הקרובים שחסר להם צוות' 
-                : 'ניהול ומעקב אחר כל האירועים שלך'}
-            </p>
+        <div className="flex flex-col md:flex-row justify-between items-start gap-4 mb-5">
+          <div className="flex items-center gap-4">
+            <div className="hidden sm:flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-[#3B82F6]/45 bg-[#3B82F6]/10 text-sky-300 shadow-[0_0_24px_-6px_rgba(59,130,246,0.7)]">
+              <CalendarDays className="h-7 w-7" strokeWidth={1.75} />
+            </div>
+            <div>
+              <h1 className="text-3xl md:text-4xl font-bold text-white mb-1">
+                {filterParam === 'urgentStaffing' ? 'אירועים עם חוסר צוות' : 'כל האירועים'}
+              </h1>
+              <p className="text-slate-400">
+                {filterParam === 'urgentStaffing'
+                  ? 'אירועים ב-30 הימים הקרובים שחסר להם צוות'
+                  : 'ניהול ומעקב אחר כל האירועים שלך'}
+              </p>
+            </div>
           </div>
           {/* Desktop buttons */}
           <div className="hidden md:flex items-center gap-3">
             {/* Hidden by the owner's decision B3+R6 (buttons review, 2026-10-07): 'שאלון הכנה' (template placeholders mismatch — questionnaires go out from the automations screen) and 'בדוק כפילויות' (deletes the older record automatically; there are no duplicates). */}
             <Button 
               onClick={() => setIsImportDialogOpen(true)}
-              variant="outline"
-              className="border-gray-700 text-gray-300 hover:bg-gray-800 hover:text-yellow-400 hover:border-yellow-400"
+              className="rounded-xl bg-white text-slate-800 hover:bg-slate-100 font-medium shadow-[0_8px_24px_-12px_rgba(255,255,255,0.5)]"
             >
-              <Upload className="w-5 h-5 mr-2" />
+              <Upload className="w-4 h-4 ml-2" />
               ייבוא CSV
             </Button>
           </div>
@@ -346,15 +351,15 @@ export default function Events() {
         </div>
 
         {/* Filters Bar */}
-        <div className="flex flex-col md:flex-row gap-3 md:gap-4 mb-6">
-          <div className="relative flex-1">
+        <div className="flex flex-col md:flex-row gap-3 md:gap-3 mb-5">
+          <div className="relative flex-1 md:max-w-xl">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <Input
               type="text"
               placeholder="חפש לפי שם הזוג, אולם, איש צוות או תאריך..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 bg-gray-900/50 border-gray-700 text-white placeholder-gray-400 focus:border-yellow-400 focus:ring-yellow-400/20 w-full"
+              className="pl-10 h-11 rounded-xl bg-[#0B1529] border-[#2A3B57] text-white placeholder:text-slate-500 focus:border-sky-500 focus:ring-sky-500/20 w-full"
             />
             {searchTerm && (
               <Button
@@ -369,11 +374,11 @@ export default function Events() {
           </div>
 
           {/* Year + Sort + Today — side by side on mobile, inline on desktop */}
-          <div className="flex items-center gap-2 w-full md:w-auto">
+          <div className="flex items-center gap-2 w-full md:w-auto md:mr-auto">
             <div className="flex items-center gap-2 flex-shrink-0">
-              <CalendarDays className="w-4 h-4 text-gray-400" />
+              <CalendarDays className="w-4 h-4 text-slate-400" />
               <Select value={selectedYear.toString()} onValueChange={(val) => setSelectedYear(parseInt(val))}>
-                <SelectTrigger className="w-24 md:w-32 bg-gray-900/50 border-gray-700 text-white text-sm">
+                <SelectTrigger className="w-[5.5rem] md:w-32 h-11 rounded-xl bg-[#0B1529] border-[#2A3B57] text-white text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-gray-900 border-gray-700 text-white">
@@ -387,7 +392,8 @@ export default function Events() {
               </Select>
             </div>
             <Select value={sortOrder} onValueChange={v => { setSortOrder(v); localStorage.setItem('events_sort', v); }}>
-              <SelectTrigger className="flex-1 md:w-56 bg-gray-900/50 border-gray-700 text-white text-sm">
+              <SelectTrigger className="flex-1 min-w-0 md:w-64 h-11 rounded-xl bg-[#0B1529] border-[#2A3B57] text-white text-sm">
+                <ListFilter className="h-4 w-4 text-slate-500 shrink-0" />
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-gray-900 border-gray-700 text-white">
@@ -403,13 +409,15 @@ export default function Events() {
             </Select>
             <button
               onClick={scrollToClosestEvent}
-              className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg border border-yellow-500/60 bg-yellow-500/10 text-yellow-300 hover:bg-yellow-500/20 text-xs font-semibold transition-colors whitespace-nowrap"
+              className="flex-shrink-0 flex h-11 items-center gap-1.5 px-3 md:px-4 rounded-xl border border-[#FACC15]/70 bg-[#FACC15]/10 text-[#FDE047] hover:bg-[#FACC15]/20 text-sm font-semibold transition-colors whitespace-nowrap shadow-[0_0_18px_-6px_rgba(250,204,21,0.6)]"
               title="גלול לאירוע הקרוב ביותר להיום"
             >
-              📍 היום
+              <Filter className="h-4 w-4" /> היום
             </button>
           </div>
         </div>
+
+        <div className="mb-5"><EventsStatsRow events={events} shownCount={filteredEvents.length} year={selectedYear} /></div>
 
         {searchTerm && (
           <p className="text-sm text-gray-400 mb-4">

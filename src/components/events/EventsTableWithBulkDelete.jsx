@@ -231,7 +231,7 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
 
   const ColumnHeader = ({ column, label, width }) => (
     <TableHead
-      className="text-gray-400 px-1 relative group select-none overflow-hidden"
+      className="text-slate-400 font-medium px-1 relative group select-none overflow-hidden"
       style={{ width: `${width}px`, minWidth: `${width}px`, maxWidth: `${width}px` }}
       data-column={column}
     >
@@ -366,11 +366,11 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
     </div>
 
     {/* Desktop: full table — hidden on mobile */}
-    <Card className="hidden md:block bg-gray-900/50 border-gray-800 backdrop-blur-sm">
-      <CardHeader className="border-b border-gray-800">
+    <Card className="dash-card hidden md:block overflow-hidden">
+      <CardHeader className="dash-head py-4">
         <div className="flex justify-between items-center">
-          <CardTitle className="text-xl font-bold text-white flex items-center gap-2">
-            <Heart className="w-5 h-5 text-yellow-400" />
+          <CardTitle className="text-base font-semibold text-white flex items-center gap-2">
+            <Heart className="w-5 h-5 text-amber-400" />
             כל האירועים
             {selectedEvents.length > 0 && (
               <span className="text-sm font-normal text-gray-400">({selectedEvents.length} נבחרו)</span>
@@ -404,9 +404,9 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
               variant="outline"
               size="sm"
               onClick={onRefresh}
-              className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
+              className="gap-1.5 rounded-lg border-[#2A3B57] bg-white/[0.03] text-slate-200 hover:bg-white/[0.07] hover:text-white"
             >
-              רענן
+              <RefreshCw className="h-4 w-4" /> רענן
             </Button>
           </div>
         </div>
@@ -415,7 +415,7 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
         <div className="w-full overflow-x-auto" ref={tableRef}>
           <Table className="text-xs border-collapse w-full">
             <TableHeader>
-              <TableRow className="border-gray-800 hover:bg-gray-800/30 sticky top-0 bg-gray-900">
+              <TableRow className="border-white/[0.06] hover:bg-transparent sticky top-0 bg-[#0B1529]">
                 <TableHead className="text-gray-400 px-1" style={{ width: `${widths.checkbox}px`, minWidth: `${widths.checkbox}px` }}>
                   <Checkbox
                     checked={events.length > 0 && selectedEvents.length === events.length}
@@ -437,7 +437,7 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
                 <ColumnHeader column="payment" label="תשלום" width={widths.payment} />
                 <ColumnHeader column="progress" label="התקד'" width={widths.progress} />
                 <ColumnHeader column="album" label="אלבום" width={widths.album} />
-                <TableHead className="text-gray-400 px-1 sticky right-0 bg-gray-900" style={{ width: '72px', minWidth: '72px' }}>פעולות</TableHead>
+                <TableHead className="text-slate-400 font-medium px-1 sticky right-0 bg-[#0B1529]" style={{ width: '72px', minWidth: '72px' }}>פעולות</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -473,15 +473,15 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
                   return (
                     <React.Fragment key={`event-${event.id}`}>
                       {monthChanged && (
-                        <TableRow className="bg-gray-800/20 border-t border-b border-gray-700/40 hover:bg-gray-800/20">
+                        <TableRow className="bg-white/[0.025] border-t border-b border-white/[0.06] hover:bg-white/[0.025]">
                           <TableCell colSpan={16} className="text-center py-2 px-1">
-                            <span className="text-gray-500 text-xs font-medium">
+                            <span className="text-slate-300 text-xs font-semibold tracking-wide">
                               {format(currentMonth, "MMMM yyyy")}
                             </span>
                           </TableCell>
                         </TableRow>
                       )}
-                      <TableRow id={`event-row-${event.id}`} className="border-gray-800 hover:bg-gray-800/30 transition-colors duration-200">
+                      <TableRow id={`event-row-${event.id}`} className="border-white/[0.05] hover:bg-white/[0.03] transition-colors duration-200">
                         {/* Checkbox */}
                         <TableCell className="px-1 py-1" style={{ width: `${widths.checkbox}px`, minWidth: `${widths.checkbox}px` }}>
                           <Checkbox
@@ -746,7 +746,7 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
                         </TableCell>
 
                         {/* Actions */}
-                        <TableCell className="px-1 py-1 sticky right-0 bg-gray-800/50" style={{ width: '72px', minWidth: '72px' }}>
+                        <TableCell className="px-1 py-1 sticky right-0 bg-[#0C1729]" style={{ width: '72px', minWidth: '72px' }}>
                           <div className="flex gap-0.5">
                             <Button variant="ghost" size="sm"
                               onClick={() => openUnifiedPanelForEvent(event)}
