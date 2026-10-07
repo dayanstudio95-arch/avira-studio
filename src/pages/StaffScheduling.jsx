@@ -294,23 +294,23 @@ export default function StaffScheduling() {
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* Left: Events List */}
       <div className="lg:col-span-1">
-        <Card className="bg-gray-900/50 border-gray-800">
+        <Card className="dash-card">
           <CardHeader>
             <div className="flex justify-between items-center">
               <CardTitle className="text-white">אירועים קרובים</CardTitle>
               <div className="flex gap-1">
               <button
                 onClick={() => setFilterMissing(false)}
-                className={`text-xs px-2 py-1 rounded transition-colors ${
-                  !filterMissing ? 'bg-yellow-400 text-gray-900 font-bold' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${
+                  !filterMissing ? 'bg-[#FACC15]/10 border-[#FACC15]/80 text-[#FDE047] font-bold' : 'bg-[#0B1529] border-[#2A3B57] text-slate-300 hover:text-white'
                 }`}
               >
                 📅 כל האירועים
               </button>
               <button
                 onClick={() => setFilterMissing(true)}
-                className={`text-xs px-2 py-1 rounded transition-colors ${
-                  filterMissing ? 'bg-red-500 text-white font-bold' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${
+                  filterMissing ? 'bg-[#F05B70]/15 border-[#F05B70]/70 text-rose-200 font-bold' : 'bg-[#0B1529] border-[#2A3B57] text-slate-300 hover:text-white'
                 }`}
               >
                 ⚠️ חסר צוות
@@ -338,10 +338,10 @@ export default function StaffScheduling() {
                       // the existing inline split view untouched.
                       if (isMobile) setMobileSheetOpen(true);
                     }}
-                    className={`w-full text-left p-4 rounded-lg transition-colors ${
+                    className={`w-full text-left p-4 rounded-xl border transition-colors ${
                       isSelected
-                        ? 'bg-yellow-500/20 border border-yellow-500/50'
-                        : 'bg-gray-800/50 hover:bg-gray-800 border border-transparent'
+                        ? 'border-[#60A5FA]/50 bg-[#2563EB]/20 shadow-[0_0_22px_-8px_rgba(59,130,246,0.7)]'
+                        : 'bg-white/[0.025] border-white/[0.07] hover:border-[#4F7BFF]/40'
                     }`}
                   >
                     <div className="flex justify-between items-start mb-2">
@@ -407,8 +407,8 @@ export default function StaffScheduling() {
       {/* Right: Detail View */}
       <div className="lg:col-span-2">
         {selectedEvent ? (
-          <Card className="bg-gray-900/50 border-gray-800">
-            <CardHeader className="border-b border-gray-800">
+          <Card className="dash-card">
+            <CardHeader className="dash-head">
               <div className="flex justify-between items-start">
                 <div>
                   <CardTitle className="text-white text-2xl">{selectedEvent.coupleNames}</CardTitle>
@@ -462,7 +462,7 @@ export default function StaffScheduling() {
             </CardContent>
           </Card>
         ) : (
-          <Card className="bg-gray-900/50 border-gray-800">
+          <Card className="dash-card">
             <CardContent className="p-12 text-center">
               <Users className="w-16 h-16 mx-auto mb-4 text-gray-600" />
               <p className="text-gray-400">בחר אירוע כדי לשבץ צוות</p>
@@ -495,12 +495,12 @@ export default function StaffScheduling() {
     const leadingCount = monthStart.getDay();
     const trailingCount = (7 - ((leadingCount + daysInMonth.length) % 7)) % 7;
     const renderBlankCell = (key) => (
-      <div key={key} className="bg-gray-900/30 min-h-[76px] md:min-h-[120px]" />
+      <div key={key} className="bg-[#09121F] min-h-[76px] md:min-h-[120px]" />
     );
 
     return (
-      <Card className="bg-gray-900/50 border-gray-800">
-        <CardHeader className="border-b border-gray-800">
+      <Card className="dash-card">
+        <CardHeader className="dash-head">
           <div className="flex justify-between items-center gap-3 flex-wrap">
             <div>
               <CardTitle className="text-white text-xl">
@@ -518,13 +518,13 @@ export default function StaffScheduling() {
               </div>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">
+              <Button variant="outline" size="sm" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="rounded-lg border-[#2A3B57] bg-white/[0.04] text-slate-200 hover:bg-white/[0.08] hover:text-white">
                 <ChevronRight className="w-4 h-4" />
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setCurrentMonth(new Date())} className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">
+              <Button variant="outline" size="sm" onClick={() => setCurrentMonth(new Date())} className="rounded-lg border-[#2A3B57] bg-white/[0.04] text-slate-200 hover:bg-white/[0.08] hover:text-white">
                 היום
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">
+              <Button variant="outline" size="sm" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="rounded-lg border-[#2A3B57] bg-white/[0.04] text-slate-200 hover:bg-white/[0.08] hover:text-white">
                 <ChevronLeft className="w-4 h-4" />
               </Button>
             </div>
@@ -539,7 +539,7 @@ export default function StaffScheduling() {
               </div>
             ))}
           </div>
-          <div className="grid grid-cols-7 gap-px bg-gray-800 border border-gray-800 rounded-lg overflow-hidden">
+          <div className="grid grid-cols-7 gap-px bg-[#22334B]/70 border border-[#22334B]/70 rounded-xl overflow-hidden">
             {Array.from({ length: leadingCount }, (_, idx) => renderBlankCell(`lead-${idx}`))}
             {daysInMonth.map((day) => {
               const dayEvents = eventsByDay.get(format(day, "yyyy-MM-dd")) || [];
@@ -547,14 +547,14 @@ export default function StaffScheduling() {
               return (
                 <div
                   key={day.toString()}
-                  className={`min-h-[76px] md:min-h-[120px] p-1 md:p-1.5 ${isToday ? 'bg-yellow-500/[0.07]' : 'bg-gray-900'}`}
+                  className={`min-h-[76px] md:min-h-[120px] p-1 md:p-1.5 ${isToday ? 'bg-[#2563EB]/[0.14]' : 'bg-[#0C1729]'}`}
                 >
                   {/* Today marked by a filled circle on the number, Google-style,
                       rather than tinting and outlining the whole cell. */}
                   <div className="mb-1">
                     <span
                       className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[11px] md:text-xs ${
-                        isToday ? 'bg-yellow-400 text-gray-900 font-bold' : 'text-gray-400'
+                        isToday ? 'bg-[#3B82F6] text-white font-bold shadow-[0_0_12px_rgba(59,130,246,0.8)]' : 'text-slate-400'
                       }`}
                     >
                       {format(day, "d")}
@@ -610,7 +610,7 @@ export default function StaffScheduling() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-950 p-4 md:p-8">
+      <div className="e-page min-h-screen p-4 md:p-8">
         <div className="max-w-7xl mx-auto">
           <Skeleton className="h-12 w-64 mb-8" />
           <Skeleton className="h-96 w-full" />
@@ -620,18 +620,23 @@ export default function StaffScheduling() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 p-4 md:p-8">
+    <div className="e-page min-h-screen p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">שיבוץ צוות</h1>
-            <p className="text-gray-400">נהל ושבץ אנשי צוות לאירועים</p>
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-5">
+          <div className="flex items-center gap-4">
+            <div className="hidden sm:flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-[#F97316]/45 bg-[#F97316]/10 text-orange-300 shadow-[0_0_24px_-6px_rgba(249,115,22,0.7)]">
+              <Users className="h-7 w-7" strokeWidth={1.75} />
+            </div>
+            <div>
+              <h1 className="text-3xl md:text-4xl font-bold text-white mb-1">שיבוץ צוות</h1>
+              <p className="text-slate-400">נהל ושבץ אנשי צוות לאירועים</p>
+            </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-1 rounded-xl border border-[#2A3B57] bg-[#0B1529] p-1">
             <Button
               variant={viewMode === "list" ? "default" : "outline"}
               onClick={() => setViewMode("list")}
-              className={viewMode === "list" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500" : "border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"}
+              className={viewMode === "list" ? "rounded-lg bg-[#FACC15] text-gray-900 hover:bg-yellow-300 font-semibold" : "rounded-lg border-0 bg-transparent text-slate-300 hover:bg-white/[0.06] hover:text-white"}
             >
               <List className="w-4 h-4 mr-2" />
               רשימה
@@ -639,13 +644,39 @@ export default function StaffScheduling() {
             <Button
               variant={viewMode === "calendar" ? "default" : "outline"}
               onClick={() => setViewMode("calendar")}
-              className={viewMode === "calendar" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500" : "border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"}
+              className={viewMode === "calendar" ? "rounded-lg bg-[#FACC15] text-gray-900 hover:bg-yellow-300 font-semibold" : "rounded-lg border-0 bg-transparent text-slate-300 hover:bg-white/[0.06] hover:text-white"}
             >
               <Calendar className="w-4 h-4 mr-2" />
               לוח שנה
             </Button>
           </div>
         </div>
+
+        {/* Design E: three counts over the upcoming events, by the shared missing-team rule. */}
+        {(() => {
+          const upcoming = events.filter((e) => eventDay(e) >= today);
+          const missing = upcoming.filter((e) => isMissingTeam(e, today)).length;
+          const tiles = [
+            { label: "אירועים קרובים", value: upcoming.length, icon: Calendar, tone: "border-[#3B82F6]/50 bg-[#3B82F6]/12 text-sky-300 shadow-[0_0_18px_-4px_rgba(59,130,246,0.6)]" },
+            { label: "חסר צוות", value: missing, icon: AlertTriangle, tone: "border-[#F05B70]/55 bg-[#F05B70]/12 text-rose-300 shadow-[0_0_18px_-4px_rgba(240,91,112,0.6)]" },
+            { label: "צוות מלא", value: upcoming.length - missing, icon: UserCheck, tone: "border-[#22C987]/50 bg-[#22C987]/12 text-emerald-300 shadow-[0_0_18px_-4px_rgba(34,201,135,0.55)]" },
+          ];
+          return (
+            <div className="grid grid-cols-3 gap-2.5 md:gap-4 mb-5">
+              {tiles.map((t) => (
+                <div key={t.label} className="dash-card flex items-center justify-end gap-2 px-3 py-3 md:gap-4 md:px-5 md:py-4">
+                  <div>
+                    <div className="text-xl md:text-2xl font-bold leading-tight text-white tabular-nums">{t.value}</div>
+                    <div className="text-[11px] md:text-sm text-slate-400 whitespace-nowrap">{t.label}</div>
+                  </div>
+                  <div className={`hidden sm:flex h-10 w-10 md:h-12 md:w-12 shrink-0 items-center justify-center rounded-xl border ${t.tone}`}>
+                    <t.icon className="h-5 w-5 md:h-6 md:w-6" strokeWidth={1.75} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
 
         {viewMode === "list" ? renderListView() : renderCalendarView()}
 
