@@ -50,13 +50,33 @@ export default function AlbumPrintAccess() {
     })();
   }, [token]);
 
+  // Spreads are 15-30MB each and an album can have 30-40+ of them, so nothing may be held in
+  // memory all at once (2026-10-08: the old code fetched every file into a Blob first —
+  // 30 x 30MB = ~1GB of RAM before the ZIP even started).
+  //   - Chrome/Edge: the ZIP is written straight to a file the print shop picks
+  //     (showSaveFilePicker); each spread is fetched only when client-zip reaches it.
+  //   - Other browsers: "one by one" saves each spread as its own file, one at a time.
+  // File names are 001.jpg, 002.jpg, … in album order (two digits broke past 99).
+  const numberedName = (f, i) => {
+    const ext = (String(f.fileName || "").match(/\.[a-z0-9]+$/i) || [".jpg"])[0].toLowerCase();
+    return `${String(i + 1).padStart(3, "0")}${ext}`;
+  };
+  const safeZipName = () => `${(info?.coupleNames || "album").replace(/[^\u0590-\u05FFa-zA-Z0-9\-_ ]/g, "").trim() || "album"}.zip`;
+  const canStream = typeof window !== "undefined" && typeof window.showSaveFilePicker === "function";
+
+  const listFiles = async () => {
+    const res = await base44.functions.invoke("albumPrintAccess", { token, action: "listFiles" });
+    return res.data?.files || [];
+  };
+
   const handleDownload = async () => {
     setDownloading(true);
     setDownloadError("");
     setDownloadDone(false);
     try {
-      const res = await base44.functions.invoke("albumPrintAccess", { token, action: "listFiles" });
-      const files = res.data?.files || [];
+      // Ask where to save first — the picker needs the click's user activation.
+      const handle = canStream ? await window.showSaveFilePicker({ suggestedName: safeZipName(), types: [{ description: "ZIP", accept: { "application/zip": [".zip"] } }] }) : null;
+      const files = await listFiles();
       if (!files.length) {
         setDownloadError("לא נמצאו קבצים להורדה");
         setDownloading(false);
@@ -64,28 +84,62 @@ export default function AlbumPrintAccess() {
       }
       setProgress({ done: 0, total: files.length });
 
-      // Fetch each spread as a blob (with progress), then stream them all into
-      // a single ZIP client-side -- no server-side ZIP assembly, ever.
-      const entries = [];
-      for (const f of files) {
-        const fileRes = await fetch(f.signedUrl);
-        if (!fileRes.ok) throw new Error(`הורדת הקובץ ${f.fileName} נכשלה`);
-        const blob = await fileRes.blob();
-        entries.push({ name: f.fileName, input: blob });
-        setProgress((p) => ({ ...p, done: p.done + 1 }));
+      async function* entries() {
+        for (const [i, f] of files.entries()) {
+          const fileRes = await fetch(f.signedUrl);
+          if (!fileRes.ok) throw new Error(`הורדת הקובץ ${numberedName(f, i)} נכשלה`);
+          yield { name: numberedName(f, i), input: fileRes };
+          setProgress((p) => ({ ...p, done: i + 1 }));
+        }
       }
 
-      const zipResponse = downloadZip(entries);
-      const zipBlob = await zipResponse.blob();
-      const url = URL.createObjectURL(zipBlob);
-      const a = document.createElement("a");
-      a.href = url;
-      const safeName = (info?.coupleNames || "album").replace(/[^֐-׿a-zA-Z0-9\-_ ]/g, "").trim() || "album";
-      a.download = `${safeName}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      const zipResponse = downloadZip(entries());
+      if (handle) {
+        const writable = await handle.createWritable();
+        await zipResponse.body.pipeTo(writable);
+      } else {
+        // No streaming to disk in this browser — fine for a small album; the "one by one"
+        // button below is the safe path for big ones.
+        const zipBlob = await zipResponse.blob();
+        const url = URL.createObjectURL(zipBlob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = safeZipName();
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }
+      setDownloadDone(true);
+    } catch (e) {
+      if (e?.name === "AbortError") { setDownloading(false); return; } // picker cancelled
+      setDownloadError(e?.message || "שגיאה בהורדת הקבצים");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handleDownloadOneByOne = async () => {
+    setDownloading(true);
+    setDownloadError("");
+    setDownloadDone(false);
+    try {
+      const files = await listFiles();
+      setProgress({ done: 0, total: files.length });
+      for (const [i, f] of files.entries()) {
+        const fileRes = await fetch(f.signedUrl);
+        if (!fileRes.ok) throw new Error(`הורדת הקובץ ${numberedName(f, i)} נכשלה`);
+        const url = URL.createObjectURL(await fileRes.blob());
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = numberedName(f, i);
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+        setProgress((p) => ({ ...p, done: i + 1 }));
+        await new Promise((r) => setTimeout(r, 600));
+      }
       setDownloadDone(true);
     } catch (e) {
       setDownloadError(e?.message || "שגיאה בהורדת הקבצים");
@@ -147,6 +201,17 @@ export default function AlbumPrintAccess() {
               {downloading ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileDown className="w-5 h-5" />}
               {downloading ? "מוריד..." : "הורדת כל הקבצים (ZIP)"}
             </Button>
+            <button
+              type="button"
+              disabled={downloading}
+              onClick={handleDownloadOneByOne}
+              className="w-full text-sm text-gray-400 underline hover:text-white disabled:opacity-50"
+            >
+              או: הורדת הקבצים אחד-אחד (001.jpg, 002.jpg…)
+            </button>
+            {!canStream && (
+              <p className="text-xs text-gray-500">לאלבום גדול מומלץ להוריד מ-Chrome או Edge, או להשתמש בהורדה אחד-אחד.</p>
+            )}
           </>
         )}
       </div>

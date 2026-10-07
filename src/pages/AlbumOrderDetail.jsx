@@ -221,7 +221,9 @@ export default function AlbumOrderDetail() {
     if (files.length === 0) return;
     setIsUploading(true);
     setFailedUploads([]);
-    const sorted = [...files].sort((a, b) => a.name.localeCompare(b.name));
+    // Natural order (2026-10-08): "דניאל ויובל_2" before "_10" — a plain localeCompare put
+    // 10.jpg before 2.jpg, so spreads 10-19 landed between 1 and 2.
+    const sorted = [...files].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
     setUploadProgress({ current: 0, total: sorted.length });
     try {
       const nextVersionNumber = (versions[0]?.versionNumber || 0) + 1;
