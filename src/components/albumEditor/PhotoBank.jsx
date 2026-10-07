@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { RefreshCw, Loader2, Clock } from "lucide-react";
 import { sortAssets } from "@/lib/albumDesign";
-import { thumbUrl } from "@/lib/googleDrive";
+import { assetSrc } from "@/lib/albumAssets";
 import { ASSET_MIME } from "./SpreadView";
 
 const FILTERS = [
@@ -12,7 +12,7 @@ const FILTERS = [
 
 // The couple's photos from Drive, in album order (shooting time + per-camera offset).
 // Drag a photo onto a cell, or click it to fill the selected cell.
-export default function PhotoBank({ doc, usage, onPick, onRefresh, refreshing, onCameraOffset, skipped = [] }) {
+export default function PhotoBank({ doc, usage, onPick, onRefresh, refreshing, onCameraOffset, skipped = [], headerExtra = null }) {
   const [filter, setFilter] = useState("all");
   const [showCameras, setShowCameras] = useState(false);
   const sorted = useMemo(() => sortAssets(doc.assets, doc.cameraOffsets), [doc.assets, doc.cameraOffsets]);
@@ -29,9 +29,9 @@ export default function PhotoBank({ doc, usage, onPick, onRefresh, refreshing, o
       <div className="space-y-2 border-b border-white/10 p-3">
         <div className="flex items-center justify-between gap-2">
           <div className="text-sm font-semibold text-white">בנק תמונות</div>
-          <button type="button" onClick={onRefresh} disabled={refreshing} title="טעינה מחדש מהתיקייה ב-Drive (תמונות חדשות נוספות)" className="rounded p-1 text-slate-400 hover:text-white disabled:opacity-50">
+          {onRefresh && <button type="button" onClick={onRefresh} disabled={refreshing} title="טעינה מחדש מהתיקייה ב-Drive (תמונות חדשות נוספות)" className="rounded p-1 text-slate-400 hover:text-white disabled:opacity-50">
             {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-          </button>
+          </button>}
         </div>
         <div className="text-xs text-slate-400">
           {doc.assets.length} תמונות · {usedCount} בשימוש · {doc.assets.length - usedCount} לא בשימוש
@@ -47,7 +47,7 @@ export default function PhotoBank({ doc, usage, onPick, onRefresh, refreshing, o
               {f.label}
             </button>
           ))}
-          {cameras.length > 1 && (
+          {cameras.length > 1 && onCameraOffset && (
             <button type="button" onClick={() => setShowCameras((v) => !v)} className="flex items-center gap-1 rounded-md border border-white/10 px-2.5 py-1 text-xs text-slate-300 hover:text-white">
               <Clock className="h-3.5 w-3.5" /> שעון מצלמות
             </button>
@@ -72,6 +72,7 @@ export default function PhotoBank({ doc, usage, onPick, onRefresh, refreshing, o
             ))}
           </div>
         )}
+        {headerExtra}
         {skipped.length > 0 && (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] text-amber-200">
             {skipped.length} קבצים לא נטענו (רק JPG/PNG): {skipped.slice(0, 3).map((s) => s.name).join(", ")}{skipped.length > 3 ? "…" : ""}
@@ -93,7 +94,7 @@ export default function PhotoBank({ doc, usage, onPick, onRefresh, refreshing, o
               title={a.name}
               className="group relative aspect-square overflow-hidden rounded bg-white/5"
             >
-              <img src={thumbUrl(a.id, 300)} referrerPolicy="no-referrer" loading="lazy" alt="" draggable={false} className="h-full w-full object-cover" />
+              <img src={assetSrc(a, 300)} referrerPolicy="no-referrer" loading="lazy" alt="" draggable={false} className="h-full w-full object-cover" />
               {usage[a.id] ? (
                 <span className="absolute left-1 top-1 rounded bg-emerald-500 px-1 text-[10px] font-bold text-white">×{usage[a.id]}</span>
               ) : null}

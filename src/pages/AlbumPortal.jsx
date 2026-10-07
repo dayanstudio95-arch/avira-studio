@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
+
+// Album editor for the couple (stage 4) — loaded only when they open it.
+const CoupleEditor = lazy(() => import("@/components/albumEditor/CoupleEditor"));
 import { supabase } from "@/api/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -178,6 +181,8 @@ export default function AlbumPortal() {
       <div className="max-w-3xl mx-auto space-y-6">
         <PortalHeader order={order} />
 
+        <DesignEditCard token={token} />
+
         {REVIEW_STATUSES.includes(order.workflowStatus) && (
           <ReviewGallery token={token} order={order} onReloaded={setOrder} />
         )}
@@ -193,6 +198,50 @@ export default function AlbumPortal() {
 }
 
 // -------------------- Branded header --------------------
+
+// "✏️ עריכת האלבום" (album editor stage 4, 2026-10-08). Shown only when the studio opened editing
+// for this order in its editor; the couple edits a draft and sends it to the studio.
+function DesignEditCard({ token }) {
+  const [info, setInfo] = useState(null);
+  const [open, setOpen] = useState(false);
+  const load = () =>
+    base44.functions
+      .invoke("albumPortal", { token, action: "getDesign" })
+      .then((r) => setInfo(r.data))
+      .catch(() => setInfo(null));
+  useEffect(() => {
+    load();
+  }, [token]);
+  if (!info?.enabled) return null;
+  return (
+    <>
+      <div className="bg-gray-900 border border-yellow-500/30 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+        <div>
+          <p className="text-white font-semibold">✏️ רוצים לשנות משהו באלבום בעצמכם?</p>
+          <p className="text-gray-400 text-sm">
+            {info.submittedAt
+              ? "השינויים שלכם נשלחו לסטודיו — נחזור אליכם עם גרסה מעודכנת."
+              : "אפשר להחליף תמונות, לשנות סדר, להעלות תמונות משלכם — ולשלוח לנו. (במחשב)"}
+          </p>
+        </div>
+        <Button onClick={() => setOpen(true)} className="bg-yellow-400 text-gray-900 hover:bg-yellow-500 font-bold shrink-0">
+          {info.submittedAt ? "לצפייה" : "עריכת האלבום"}
+        </Button>
+      </div>
+      {open && (
+        <Suspense fallback={null}>
+          <CoupleEditor
+            token={token}
+            onClose={() => {
+              setOpen(false);
+              load();
+            }}
+          />
+        </Suspense>
+      )}
+    </>
+  );
+}
 
 function PortalHeader({ order }) {
   const displayName = order.coupleNamesManual || "האלבום שלכם";

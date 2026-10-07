@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { getTemplate, cellRects, textRect } from "@/lib/albumTemplates";
 import { computeCrop, centerFromOffset, filterCss, titleFont, effectiveDpi } from "@/lib/albumDesign";
-import { thumbUrl } from "@/lib/googleDrive";
+import { assetSrc } from "@/lib/albumAssets";
 
 const ASSET_MIME = "application/x-avira-asset";
 const SLOT_MIME = "application/x-avira-slot";
@@ -101,8 +101,8 @@ function Cell({ index, rect, slot, asset, pageId, mini, selected, onSelect, onDr
     // The bank's small thumbnail (already cached) shows at once; the sharp one loads on top.
     img = (
       <>
-        <img src={thumbUrl(asset.id, mini ? 240 : 300)} referrerPolicy="no-referrer" draggable={false} alt="" loading={mini ? "lazy" : "eager"} className="absolute max-w-none" style={style} />
-        {!mini && <img src={thumbUrl(asset.id, 1400)} referrerPolicy="no-referrer" draggable={false} alt="" className="absolute max-w-none" style={style} />}
+        <img src={assetSrc(asset, mini ? 240 : 300)} referrerPolicy="no-referrer" draggable={false} alt="" loading={mini ? "lazy" : "eager"} className="absolute max-w-none" style={style} />
+        {!mini && asset.source !== "upload" && <img src={assetSrc(asset, 1400)} referrerPolicy="no-referrer" draggable={false} alt="" className="absolute max-w-none" style={style} />}
       </>
     );
   }

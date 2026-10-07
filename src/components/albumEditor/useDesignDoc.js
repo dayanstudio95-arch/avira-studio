@@ -11,11 +11,13 @@ const REVISION_EVERY_MS = 10 * 60 * 1000;
 //   someone else saved in between (another tab / computer) → `conflict`, and we stop saving
 //   rather than overwrite their work.
 // - Keeps a revision snapshot at most every 10 minutes (album_design_revisions).
-export function useDesignDoc(design) {
+// `persist` (the couple's portal, stage 4): (doc, loadedVersion) → { version } | { conflict } |
+// { error } — saves through the album-portal function instead of the studio's own session.
+export function useDesignDoc(design, { persist = null, initialVersion = null } = {}) {
   const [state, setState] = useState(() => ({ doc: design?.doc || null, past: [], future: [] }));
   const [saveState, setSaveState] = useState("saved"); // saved | dirty | saving | error | conflict
   const [saveError, setSaveError] = useState("");
-  const versionRef = useRef(design?.doc_version || 1);
+  const versionRef = useRef(initialVersion ?? design?.doc_version ?? 1);
   const lastRevisionRef = useRef(0);
   const timerRef = useRef(null);
   const docRef = useRef(state.doc);
@@ -23,9 +25,25 @@ export function useDesignDoc(design) {
   const conflictRef = useRef(false);
 
   const save = useCallback(async () => {
-    if (!design?.id || conflictRef.current) return;
+    if (conflictRef.current) return;
     const doc = docRef.current;
     const loaded = versionRef.current;
+    if (persist) {
+      setSaveState("saving");
+      const r = await persist(doc, loaded);
+      if (r?.conflict) {
+        conflictRef.current = true;
+        setSaveState("conflict");
+      } else if (r?.error) {
+        setSaveState("error");
+        setSaveError(r.error);
+      } else {
+        versionRef.current = r.version;
+        setSaveState(docRef.current === doc ? "saved" : "dirty");
+      }
+      return;
+    }
+    if (!design?.id) return;
     setSaveState("saving");
     const { data, error } = await supabase
       .from("album_designs")
@@ -49,7 +67,7 @@ export function useDesignDoc(design) {
       lastRevisionRef.current = Date.now();
       await supabase.from("album_design_revisions").insert({ design_id: design.id, doc, doc_version: loaded + 1, label: "autosave" });
     }
-  }, [design?.id]);
+  }, [design?.id, persist]);
 
   const scheduleSave = useCallback(() => {
     setSaveState((s) => (s === "conflict" ? s : "dirty"));

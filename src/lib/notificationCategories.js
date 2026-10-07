@@ -18,6 +18,7 @@ export const NAV_ROUTE_BY_NOTIFICATION_TYPE = {
   album_round_approved: "/AlbumOrders",
   album_revision_requested: "/AlbumOrders",
   album_transfer_proof_uploaded: "/AlbumOrders",
+  album_design_client_edits: "/AlbumOrders",
   staff_availability_response: "/StaffScheduling",
   meeting_reminder: "/Meetings",
 };

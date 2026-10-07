@@ -15,6 +15,7 @@ import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createServiceRoleClient } from '../_shared/supabaseClients.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { hashToken } from '../_shared/albumTokens.ts';
+import { sanitizeClientDoc, clientAssets, safeUploadName, MAX_PAGES } from '../_shared/albumDesignSanitize.ts';
 
 const BUCKET = 'album-files';
 const SIGNED_URL_TTL_SECONDS = 60 * 30; // 30 min — long enough to browse a full gallery
@@ -119,18 +120,49 @@ async function insertNotification(supabase: any, order: any, type: string, title
   }
 }
 
+
+// ---- Couple editing of the album design (stage 4, 2026-10-08) ------------------------------
+// The design row of this order — only when the studio switched "הזוג יכול לערוך" on.
+async function loadEditableDesign(supabase: any, order: any) {
+  const { data } = await supabase
+    .from('album_designs')
+    .select('id, tenant_id, doc, client_edit_enabled, client_doc, client_doc_version, client_uploads, client_submitted_at, client_note')
+    .eq('tenant_id', order.tenant_id)
+    .eq('album_order_id', order.id)
+    .maybeSingle();
+  return data && data.client_edit_enabled ? data : null;
+}
+
+const MAX_CLIENT_UPLOADS = 60;
+const EDIT_ACTIONS = new Set(['getDesign', 'saveClientDoc', 'createClientPhotoUploadUrl', 'confirmClientPhotoUpload']);
+const MAX_DOC_BYTES = 1_500_000;
+
+async function signUploads(supabase: any, uploads: any[]) {
+  const list = Array.isArray(uploads) ? uploads : [];
+  if (!list.length) return {};
+  const { data } = await supabase.storage.from(BUCKET).createSignedUrls(list.map((u) => u.fileKey), SIGNED_URL_TTL_SECONDS);
+  const urls: Record<string, string> = {};
+  list.forEach((u, i) => { if (data?.[i]?.signedUrl) urls[u.id] = data[i].signedUrl; });
+  return urls;
+}
+
 Deno.serve(async (req) => {
   const preflight = handleOptions(req);
   if (preflight) return preflight;
 
-  const rateLimit = await checkRateLimit(req, 'album-portal');
-  if (!rateLimit.allowed) {
-    return jsonResponse({ error: 'יותר מדי בקשות, נסה שוב בעוד כמה דקות' }, { status: 429 });
-  }
-
   try {
     const body = await req.json();
     const { token, action } = body ?? {};
+
+    // The couple's album editor (stage 4) autosaves while they work — its own, roomier bucket,
+    // so editing never eats into (or gets blocked by) the 30-per-10-minutes of the other actions.
+    const editing = EDIT_ACTIONS.has(action);
+    const rateLimit = editing
+      ? await checkRateLimit(req, 'album-portal-edit', { maxHits: 600, windowSeconds: 600 })
+      : await checkRateLimit(req, 'album-portal');
+    if (!rateLimit.allowed) {
+      return jsonResponse({ error: 'יותר מדי בקשות, נסה שוב בעוד כמה דקות' }, { status: 429 });
+    }
     const supabase = createServiceRoleClient();
 
     const resolved = await resolveOrderByToken(supabase, token);
@@ -574,6 +606,96 @@ Deno.serve(async (req) => {
       await insertNotification(supabase, order, 'album_transfer_proof_uploaded', `אישור העברה הועלה: ${displayName}`, 'הזוג העלה אסמכתת העברה בנקאית — ממתין לאישור ידני של הסטודיו.');
 
       return jsonResponse({ paymentStatus: 'transfer_pending_review' });
+    }
+
+    // ---- couple editing (stage 4) ----
+    if (action === 'getDesign') {
+      const design = await loadEditableDesign(supabase, order);
+      if (!design) return jsonResponse({ enabled: false });
+      const assets = clientAssets(design.doc, design.client_uploads);
+      const base = design.client_doc || design.doc || {};
+      const { data: addon } = await supabase
+        .from('album_addons').select('price').eq('tenant_id', order.tenant_id).eq('category', 'extra_pages').eq('active', true).maybeSingle();
+      return jsonResponse({
+        enabled: true,
+        doc: { ...base, assets },
+        docVersion: design.client_doc_version,
+        submittedAt: design.client_submitted_at,
+        note: design.client_note,
+        uploadUrls: await signUploads(supabase, design.client_uploads),
+        extraPagePrice: Number(addon?.price) || 0,
+      });
+    }
+
+    if (action === 'saveClientDoc') {
+      const design = await loadEditableDesign(supabase, order);
+      if (!design) return jsonResponse({ error: 'העריכה לא פתוחה כרגע' }, { status: 403 });
+      if (design.client_submitted_at) return jsonResponse({ error: 'השינויים כבר נשלחו לסטודיו' }, { status: 409 });
+      if (JSON.stringify(body.doc ?? {}).length > MAX_DOC_BYTES) return jsonResponse({ error: 'המסמך גדול מדי' }, { status: 413 });
+      const assets = clientAssets(design.doc, design.client_uploads);
+      const clean = sanitizeClientDoc(body.doc, assets, design.doc);
+      const expected = Number(body.version) || 0;
+      const { data, error } = await supabase
+        .from('album_designs')
+        .update({ client_doc: clean, client_doc_version: expected + 1 })
+        .eq('id', design.id)
+        .eq('client_doc_version', expected)
+        .select('client_doc_version');
+      if (error) return jsonResponse({ error: error.message }, { status: 500 });
+      if (!data?.length) return jsonResponse({ error: 'conflict' }, { status: 409 });
+      return jsonResponse({ version: data[0].client_doc_version });
+    }
+
+    if (action === 'createClientPhotoUploadUrl') {
+      const design = await loadEditableDesign(supabase, order);
+      if (!design) return jsonResponse({ error: 'העריכה לא פתוחה כרגע' }, { status: 403 });
+      if ((design.client_uploads || []).length >= MAX_CLIENT_UPLOADS) return jsonResponse({ error: `אפשר להעלות עד ${MAX_CLIENT_UPLOADS} תמונות` }, { status: 400 });
+      const path = `${order.tenant_id}/${order.id}/client-uploads/${Date.now()}-${safeUploadName(body.fileName)}`;
+      const { data, error } = await supabase.storage.from(BUCKET).createSignedUploadUrl(path);
+      if (error) return jsonResponse({ error: error.message }, { status: 500 });
+      return jsonResponse({ path: data.path, token: data.token });
+    }
+
+    if (action === 'confirmClientPhotoUpload') {
+      const design = await loadEditableDesign(supabase, order);
+      if (!design) return jsonResponse({ error: 'העריכה לא פתוחה כרגע' }, { status: 403 });
+      const dir = `${order.tenant_id}/${order.id}/client-uploads/`;
+      const path = String(body.path || '');
+      if (!path.startsWith(dir) || path.slice(dir.length).includes('/')) return jsonResponse({ error: 'נתיב קובץ לא תקין' }, { status: 400 });
+      // the file must really be there (uploaded through the signed URL above)
+      const { data: found } = await supabase.storage.from(BUCKET).list(dir.slice(0, -1), { search: path.slice(dir.length), limit: 1 });
+      if (!found?.length) return jsonResponse({ error: 'הקובץ לא נמצא' }, { status: 400 });
+      const uploads = Array.isArray(design.client_uploads) ? design.client_uploads : [];
+      if (uploads.some((u: any) => u.fileKey === path)) return jsonResponse({ error: 'כבר נקלט' }, { status: 409 });
+      const upload = {
+        id: `up_${crypto.randomUUID().slice(0, 12)}`,
+        name: String(body.name || '').slice(0, 120),
+        w: Math.max(0, Math.round(Number(body.w) || 0)),
+        h: Math.max(0, Math.round(Number(body.h) || 0)),
+        size: Number(found[0]?.metadata?.size) || 0,
+        fileKey: path,
+        uploadedAt: new Date().toISOString(),
+        warnings: Array.isArray(body.warnings) ? body.warnings.slice(0, 5).map((w: any) => String(w).slice(0, 40)) : [],
+      };
+      const { error } = await supabase.from('album_designs').update({ client_uploads: [...uploads, upload] }).eq('id', design.id);
+      if (error) return jsonResponse({ error: error.message }, { status: 500 });
+      const urls = await signUploads(supabase, [upload]);
+      return jsonResponse({ asset: { ...clientAssets({ assets: [] }, [upload])[0], url: urls[upload.id] || null } });
+    }
+
+    if (action === 'submitClientEdits') {
+      const design = await loadEditableDesign(supabase, order);
+      if (!design) return jsonResponse({ error: 'העריכה לא פתוחה כרגע' }, { status: 403 });
+      if (!design.client_doc) return jsonResponse({ error: 'עוד לא נעשו שינויים' }, { status: 400 });
+      const note = String(body.note || '').slice(0, 2000);
+      const now = new Date().toISOString();
+      const { error } = await supabase.from('album_designs').update({ client_submitted_at: now, client_note: note || null }).eq('id', design.id);
+      if (error) return jsonResponse({ error: error.message }, { status: 500 });
+      await supabase.from('album_design_revisions').insert({ tenant_id: order.tenant_id, design_id: design.id, doc: design.client_doc, label: 'client_edits' });
+      const displayName = order.couple_names_manual || 'הזמנת אלבום';
+      const pages = Array.isArray(design.client_doc?.pages) ? Math.min(design.client_doc.pages.length, MAX_PAGES) : 0;
+      await insertNotification(supabase, order, 'album_design_client_edits', `הזוג שלח שינויים בסקיצה: ${displayName}`, `${pages} כפולות${note ? ` · "${note.slice(0, 140)}"` : ''} — פתחו את עורך הסקיצה כדי לאשר או לדחות.`);
+      return jsonResponse({ submittedAt: now });
     }
 
     return jsonResponse({ error: 'פעולה לא מוכרת' }, { status: 400 });

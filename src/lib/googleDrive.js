@@ -8,7 +8,7 @@
 //   - originals: files/<id>?alt=media&key=… (needs our referrer for the key) ~2s per 10–19MB.
 import { cameraOf } from "./albumDesign";
 
-const KEY = import.meta.env.VITE_GOOGLE_API_KEY;
+const KEY = import.meta.env?.VITE_GOOGLE_API_KEY; // `?.` so the pure helpers load in node tests
 const API = "https://www.googleapis.com/drive/v3/files";
 
 export const hasDriveKey = () => Boolean(KEY);

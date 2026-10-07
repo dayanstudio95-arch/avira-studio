@@ -2119,5 +2119,47 @@ console.log('\n— PART 41: album export —');
   check('full height', rs[0].h, 3543);
 }
 
+// PART 42 — couple edits: server sanitising + upload quality (2026-10-08)
+console.log('\n— PART 42: couple edits —');
+{
+  const sz = await loadModule('supabase/functions/_shared/albumDesignSanitize.ts', 'sz42');
+  const aa = await loadModule('src/lib/albumAssets.js', 'aa42');
+  const studio = { assets: [{ id: 'd1' }, { id: 'd2' }], cameraOffsets: { X: 30 }, pages: [{ id: 's', templateId: 'p1-a', slots: [{ assetId: 'd1' }] }] };
+  const assets = sz.clientAssets(studio, [{ id: 'up_1', name: 'a.jpg', w: 4000, h: 3000, fileKey: 't/o/client-uploads/a.jpg' }]);
+  check('assets = studio + uploads', assets.map((a) => a.id).join(','), 'd1,d2,up_1');
+  const evil = {
+    assets: [{ id: 'evil', source: 'upload', fileKey: 'other-tenant/x.jpg' }],
+    pages: [
+      { id: 'a', templateId: 'p2-a', slots: [{ assetId: 'evil', zoom: 99, cx: -3, filter: 'url(javascript:x)' }, { assetId: 'up_1' }] },
+      { id: 'a', templateId: '<script>', slots: [] },
+      { id: 'c', templateId: 't-a', slots: [], title: { names: 'x'.repeat(500), color: 'red;background:url(x)', font: 'Comic' } },
+    ],
+  };
+  const clean = sz.sanitizeClientDoc(evil, assets, studio);
+  check('client assets ignored', clean.assets.map((a) => a.id).join(','), 'd1,d2,up_1');
+  check('unknown photo emptied', clean.pages[0].slots[0].assetId, null);
+  check('upload kept', clean.pages[0].slots[1].assetId, 'up_1');
+  check('zoom clamped', clean.pages[0].slots[0].zoom, 4);
+  check('cx clamped', clean.pages[0].slots[0].cx, 0);
+  check('bad filter → none', clean.pages[0].slots[0].filter, 'none');
+  check('bad template → p4-a', clean.pages[1].templateId, 'p4-a');
+  check('duplicate page id fixed', clean.pages[1].id !== clean.pages[0].id, true);
+  check('title trimmed', clean.pages[2].title.names.length, 120);
+  check('bad colour → default', clean.pages[2].title.color, '#3a3a3a');
+  check('bad font → josefin', clean.pages[2].title.font, 'josefin');
+  check('camera offsets from studio', clean.cameraOffsets.X, 30);
+  check('81 pages capped', sz.sanitizeClientDoc({ pages: Array.from({ length: 200 }, (_, i) => ({ id: 'p' + i, templateId: 'p1-a', slots: [] })) }, assets, studio).pages.length, 80);
+  check('empty → studio pages', sz.sanitizeClientDoc({}, assets, studio).pages[0].id, 's');
+  check('safe file name', sz.safeUploadName('../../etc/פספורט.png'), '.._.._etc_______.png');
+  const w = (x) => aa.uploadQualityWarnings(x).map((y) => y.code).join(',');
+  check('good photo → no warnings', w({ name: 'a.jpg', type: 'image/jpeg', size: 9e6, width: 6000, height: 4000 }), '');
+  check('small photo', w({ name: 'a.jpg', type: 'image/jpeg', size: 2e6, width: 1600, height: 1200 }), 'small');
+  check('screenshot', w({ name: 'IMG.PNG', type: 'image/png', size: 3e6, width: 1179, height: 2556 }), 'screenshot');
+  check('whatsapp-compressed', w({ name: 'w.jpg', type: 'image/jpeg', size: 300000, width: 1600, height: 1200 }), 'small,compressed');
+  check('heic flagged', w({ name: 'x.heic', type: 'image/heic', size: 3e6, width: 4000, height: 3000 }), 'type');
+  check('upload src = signed url', aa.assetSrc({ id: 'up', source: 'upload', url: 'https://s/x' }), 'https://s/x');
+  check('drive src = lh3', aa.assetSrc({ id: 'abc' }, 200), 'https://lh3.googleusercontent.com/d/abc=w200');
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

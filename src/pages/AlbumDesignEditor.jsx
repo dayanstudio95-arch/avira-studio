@@ -215,7 +215,54 @@ function Editor({ design, order, names, back, extraPrice }) {
   const [skipped, setSkipped] = useState([]);
   const [showRevisions, setShowRevisions] = useState(false);
 
-  const assetsById = useMemo(() => Object.fromEntries(doc.assets.map((a) => [a.id, a])), [doc.assets]);
+  // ---- the couple (stage 4): edit switch, their submitted draft, their uploaded photos ----
+  const [client, setClient] = useState({ enabled: !!design.client_edit_enabled, submittedAt: design.client_submitted_at, note: design.client_note, doc: null, uploads: [] });
+  const loadClient = useCallback(async () => {
+    const { data } = await supabase.from("album_designs").select("client_edit_enabled, client_submitted_at, client_note, client_doc, client_uploads").eq("id", design.id).maybeSingle();
+    if (data) setClient({ enabled: data.client_edit_enabled, submittedAt: data.client_submitted_at, note: data.client_note, doc: data.client_doc, uploads: data.client_uploads || [] });
+  }, [design.id]);
+  useEffect(() => {
+    loadClient();
+    const t = setInterval(loadClient, 60000);
+    return () => clearInterval(t);
+  }, [loadClient]);
+  const [uploadUrls, setUploadUrls] = useState({});
+  const uploadKeys = useMemo(() => doc.assets.filter((a) => a.source === "upload" && a.fileKey && !uploadUrls[a.id]), [doc.assets, uploadUrls]);
+  useEffect(() => {
+    if (!uploadKeys.length) return;
+    supabase.storage.from("album-files").createSignedUrls(uploadKeys.map((a) => a.fileKey), 3600).then(({ data }) => {
+      const m = {};
+      uploadKeys.forEach((a, i) => { if (data?.[i]?.signedUrl) m[a.id] = data[i].signedUrl; });
+      setUploadUrls((u) => ({ ...u, ...m }));
+    });
+  }, [uploadKeys]);
+  const shownAssets = useMemo(() => doc.assets.map((a) => (a.source === "upload" ? { ...a, url: uploadUrls[a.id] } : a)), [doc.assets, uploadUrls]);
+  const shownDoc = useMemo(() => ({ ...doc, assets: shownAssets }), [doc, shownAssets]);
+
+  const toggleClientEdit = async () => {
+    const enabled = !client.enabled;
+    const { error } = await supabase.from("album_designs").update({ client_edit_enabled: enabled }).eq("id", design.id);
+    if (error) return toast.error("העדכון נכשל");
+    setClient((c) => ({ ...c, enabled }));
+    toast.success(enabled ? "הזוג יכול לערוך עכשיו מהקישור שלהם (בכפתור 'עריכת האלבום')" : "העריכה של הזוג נסגרה");
+  };
+  const acceptClient = async () => {
+    if (!client.doc) return;
+    if (!window.confirm("לקחת את הגרסה של הזוג לעורך? הגרסה הנוכחית שלך נשמרת בהיסטוריה (ואפשר ⌘Z).")) return;
+    await snapshot("manual");
+    const theirs = client.doc;
+    edit(() => ({ ...theirs, cameraOffsets: doc.cameraOffsets }));
+    await supabase.from("album_designs").update({ client_submitted_at: null, client_note: null, client_doc: null }).eq("id", design.id);
+    toast.success("הגרסה של הזוג נטענה. בדקו, תקנו אם צריך, ו'ייצוא לזוג' כשמוכן.");
+    loadClient();
+  };
+  const returnToClient = async () => {
+    await supabase.from("album_designs").update({ client_submitted_at: null }).eq("id", design.id);
+    toast.success("הוחזר לזוג — הם יכולים להמשיך לערוך את הטיוטה שלהם");
+    loadClient();
+  };
+
+  const assetsById = useMemo(() => Object.fromEntries(shownAssets.map((a) => [a.id, a])), [shownAssets]);
   const usage = useMemo(() => usageCounts(doc), [doc]);
   const page = doc.pages.find((p) => p.id === currentId) || doc.pages[0];
   const pageIndex = doc.pages.indexOf(page);
@@ -318,6 +365,14 @@ function Editor({ design, order, names, back, extraPrice }) {
             <button type="button" onClick={saveVersion} className="rounded-md px-2 py-1 text-xs text-slate-300 hover:bg-white/10">שמור גרסה</button>
             <button type="button" onClick={() => setShowRevisions(true)} className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-300 hover:bg-white/10"><History className="h-4 w-4" /> היסטוריה</button>
           </div>
+          <button
+            type="button"
+            onClick={toggleClientEdit}
+            title="כשפתוח — הזוג רואה בקישור שלהם כפתור 'עריכת האלבום', עורך טיוטה משלו ושולח לך. הגרסה שלך לא משתנה עד שתאשר."
+            className={`rounded-lg border px-2.5 py-1.5 text-xs ${client.enabled ? "border-emerald-400/60 bg-emerald-400/10 text-emerald-200" : "border-white/15 text-slate-300 hover:bg-white/10"}`}
+          >
+            {client.enabled ? "✓ הזוג יכול לערוך" : "לאפשר לזוג לערוך"}
+          </button>
           <button type="button" onClick={() => setShowExport(true)} disabled={saveState === "conflict"} className="flex items-center gap-1.5 rounded-lg bg-amber-400 px-3 py-1.5 text-xs font-bold text-gray-900 hover:bg-amber-500 disabled:opacity-40">
             <Send className="h-4 w-4" /> ייצוא לזוג
           </button>
@@ -326,6 +381,15 @@ function Editor({ design, order, names, back, extraPrice }) {
           </div>
         </div>
 
+        {client.submittedAt && (
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-sky-500/15 px-4 py-2 text-sm text-sky-100">
+            <span>💌 הזוג שלח שינויים בסקיצה ({new Date(client.submittedAt).toLocaleString("he-IL", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" })}){client.note ? ` — "${client.note}"` : ""}</span>
+            <span className="flex gap-2">
+              <button type="button" onClick={acceptClient} className="rounded-md bg-sky-500 px-3 py-1 text-xs font-semibold text-white hover:bg-sky-600">לקחת את הגרסה שלהם לעורך</button>
+              <button type="button" onClick={returnToClient} className="rounded-md border border-sky-300/40 px-3 py-1 text-xs hover:bg-white/10">להחזיר להם לעריכה</button>
+            </span>
+          </div>
+        )}
         {saveState === "conflict" && (
           <div className="flex items-center justify-between gap-3 bg-rose-500/15 px-4 py-2 text-sm text-rose-100">
             <span>⚠️ הסקיצה נשמרה בינתיים ממקום אחר (לשונית או מחשב אחר). כדי לא לדרוס — השינויים כאן לא נשמרים. רעננו את הדף.</span>
@@ -337,7 +401,7 @@ function Editor({ design, order, names, back, extraPrice }) {
           {/* photo bank (right) */}
           <div className="w-72 shrink-0 border-l border-white/10 bg-[#0B1529]">
             <PhotoBank
-              doc={doc}
+              doc={shownDoc}
               usage={usage}
               onPick={pickFromBank}
               onRefresh={refresh}
