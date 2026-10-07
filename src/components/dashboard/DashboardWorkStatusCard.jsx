@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { format } from "date-fns";
 import { Clapperboard, ChevronDown, ChevronUp } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { base44 } from "@/api/base44Client";
 
 // same fields as ProgressStatus
@@ -35,13 +34,13 @@ export function getProgress(event) {
   items.push(!!(event.finalLink || event.finalDoneManual));
 
   const total = items.length;
-  if (total === 0) return { label: "ממתין", pct: 0, color: "bg-red-500/20 text-red-400 border-red-500/30" };
+  if (total === 0) return { label: "ממתין", pct: 0, color: "e-chip-red" };
   const completed = items.filter(Boolean).length;
   const pct = Math.round((completed / total) * 100);
 
-  if (pct === 100) return { label: `הושלם (${pct}%)`, pct, color: "bg-green-500/20 text-green-400 border-green-500/30" };
-  if (pct > 0) return { label: `בתהליך (${pct}%)`, pct, color: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" };
-  return { label: "ממתין", pct: 0, color: "bg-red-500/20 text-red-400 border-red-500/30" };
+  if (pct === 100) return { label: `הושלם (${pct}%)`, pct, color: "e-chip-green" };
+  if (pct > 0) return { label: `בתהליך (${pct}%)`, pct, color: "e-chip-yellow" };
+  return { label: "ממתין", pct: 0, color: "e-chip-red" };
 }
 
 function getRelevantFields(event) {
@@ -78,26 +77,19 @@ function EventWorkRow({ event, onUpdated }) {
   }
 
   return (
-    <div className="border-b border-white/[0.05] last:border-0">
+    <div className="e-row">
       <div
-        className="flex items-center justify-between gap-2 px-3 py-2.5 cursor-pointer hover:bg-white/[0.03] transition-colors"
+        className="flex items-center justify-between gap-2 px-2 py-3 cursor-pointer rounded-lg hover:bg-white/[0.03] transition-colors"
         onClick={() => setExpanded((v) => !v)}
       >
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-white truncate">{localEvent.coupleNames}</p>
-          <p className="text-xs text-gray-400">{format(new Date(localEvent.date), "d/M/yyyy")}</p>
-          {/* Design D: the same percentage as a bar (display only). */}
-          <div className="mt-1.5 h-1.5 w-full max-w-[160px] overflow-hidden rounded-full bg-white/5">
-            <div
-              className={`h-full rounded-full ${progress.pct >= 80 ? "bg-[#22C987]" : progress.pct >= 50 ? "bg-[#06B6D4]" : progress.pct > 0 ? "bg-[#F59E0B]" : "bg-[#F05B70]"}`}
-              style={{ width: `${Math.max(progress.pct, 4)}%` }}
-            />
-          </div>
+          <p className="text-xs text-slate-400">{format(new Date(localEvent.date), "d/M/yyyy")}</p>
         </div>
         <div className="flex items-center gap-1.5">
-          <Badge variant="outline" className={`${progress.color} border text-xs whitespace-nowrap`}>
+          <span className={`e-chip ${progress.color}`}>
             {progress.label}
-          </Badge>
+          </span>
           {expanded ? (
             <ChevronUp className="w-3.5 h-3.5 text-gray-400" />
           ) : (
@@ -145,19 +137,19 @@ export default function DashboardWorkStatusCard({ events, onRefresh }) {
   return (
     <Card className="dash-card flex flex-col h-full">
       <CardHeader className="dash-head pb-3 flex-shrink-0">
-        <CardTitle className="text-white flex items-center gap-2 text-sm font-semibold">
-          <Clapperboard className="w-4 h-4 text-yellow-400" />
+        <CardTitle className="text-white flex items-center gap-2 text-base font-semibold">
+          <Clapperboard className="w-5 h-5 text-amber-400" />
           סטטוס עבודה
           {incompleteEvents.length > 0 && (
-            <span className="bg-yellow-500 text-gray-900 text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+            <span className="e-count e-count-yellow">
               {incompleteEvents.length}
             </span>
           )}
         </CardTitle>
       </CardHeader>
-      <CardContent className="p-0 overflow-y-auto flex-grow" style={{ maxHeight: "260px" }}>
+      <CardContent className="e-scroll px-3 py-1 overflow-y-auto flex-grow" style={{ maxHeight: "260px" }}>
         {incompleteEvents.length === 0 ? (
-          <div className="py-8 text-center text-gray-500 text-sm">כל האירועים הושלמו ✅</div>
+          <div className="py-8 text-center text-slate-400 text-sm">כל האירועים הושלמו ✅</div>
         ) : (
           <div>
             {incompleteEvents.map((event) => (

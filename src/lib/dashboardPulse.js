@@ -12,11 +12,8 @@ export function whatsappPulse(conversations, now = Date.now()) {
   const hot = live
     .filter((c) => c.leadTemperature === "hot" && !["group", "staff"].includes(c.contactType))
     .sort((a, b) => t(b.leadTemperatureAt || b.lastMessageAt) - t(a.leadTemperatureAt || a.lastMessageAt));
-  const latest = [...waiting].sort((a, b) => t(b.lastInboundAt) - t(a.lastInboundAt));
   return {
     waitingCount: waiting.length,
-    // The newest ones first — what just came in (design D's list).
-    recent: latest.slice(0, 4).map((c) => ({ id: c.id, title: chatTitle(c), preview: c.lastMessagePreview || "", at: c.lastInboundAt, wait: waitingLabel(c, now) })),
     oldest: waiting[0] ? { id: waiting[0].id, title: chatTitle(waiting[0]), label: waitingLabel(waiting[0], now) } : null,
     hot: hot.map((c) => ({ id: c.id, title: chatTitle(c), reason: c.leadTemperatureReason || "" })),
   };

@@ -13,7 +13,7 @@ import DashboardUnpaidCard from "../components/dashboard/DashboardUnpaidCard";
 import DashboardWorkStatusCard from "../components/dashboard/DashboardWorkStatusCard";
 import DashboardMissingTeamCard from "../components/dashboard/DashboardMissingTeamCard";
 import TodayEventsCard from "../components/dashboard/TodayEventsCard";
-import KpiRow from "../components/dashboard/KpiRow";
+import FinanceCard from "../components/dashboard/FinanceCard";
 import { MeetingsTodayCard, WhatsAppPulseCard, FollowUpCard, PostSignCard } from "../components/dashboard/DailyPulseCards";
 import { israelToday, eventDay } from "@/lib/missingTeam";
 import { calculateNetProfit } from "../lib/profitCalculations";
@@ -233,7 +233,7 @@ export default function Dashboard() {
             placeholder="חפש לפי שם הזוג או תאריך..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 bg-gray-900/50 border-gray-700 text-white placeholder-gray-400 focus:border-yellow-400 focus:ring-yellow-400/20"
+            className="pl-10 rounded-lg bg-[#0B1529] border-[#2A3B57] text-white placeholder:text-slate-500 focus:border-sky-500 focus:ring-sky-500/20"
           />
           {searchTerm && (
             <Button
@@ -252,7 +252,7 @@ export default function Dashboard() {
             variant={timeFilter === "all" ? "default" : "outline"}
             size="sm"
             onClick={() => setTimeFilter("all")}
-            className={timeFilter === "all" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500 text-xs" : "border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 text-xs"}
+            className={timeFilter === "all" ? "rounded-lg bg-[#FACC15] text-gray-900 hover:bg-yellow-300 text-xs font-semibold shadow-[0_6px_18px_-8px_rgba(250,204,21,0.8)]" : "rounded-lg border-[#2A3B57] bg-[#0B1529] text-slate-300 hover:bg-white/[0.06] hover:text-white text-xs"}
           >
             הכל ({filterCounts.all})
           </Button>
@@ -260,7 +260,7 @@ export default function Dashboard() {
             variant={timeFilter === "thisWeek" ? "default" : "outline"}
             size="sm"
             onClick={() => setTimeFilter("thisWeek")}
-            className={timeFilter === "thisWeek" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500 text-xs" : "border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 text-xs"}
+            className={timeFilter === "thisWeek" ? "rounded-lg bg-[#FACC15] text-gray-900 hover:bg-yellow-300 text-xs font-semibold shadow-[0_6px_18px_-8px_rgba(250,204,21,0.8)]" : "rounded-lg border-[#2A3B57] bg-[#0B1529] text-slate-300 hover:bg-white/[0.06] hover:text-white text-xs"}
           >
             השבוע ({filterCounts.thisWeek})
           </Button>
@@ -268,7 +268,7 @@ export default function Dashboard() {
             variant={timeFilter === "thisMonth" ? "default" : "outline"}
             size="sm"
             onClick={() => setTimeFilter("thisMonth")}
-            className={timeFilter === "thisMonth" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500 text-xs" : "border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 text-xs"}
+            className={timeFilter === "thisMonth" ? "rounded-lg bg-[#FACC15] text-gray-900 hover:bg-yellow-300 text-xs font-semibold shadow-[0_6px_18px_-8px_rgba(250,204,21,0.8)]" : "rounded-lg border-[#2A3B57] bg-[#0B1529] text-slate-300 hover:bg-white/[0.06] hover:text-white text-xs"}
           >
             החודש ({filterCounts.thisMonth})
           </Button>
@@ -276,7 +276,7 @@ export default function Dashboard() {
             variant={timeFilter === "nextMonth" ? "default" : "outline"}
             size="sm"
             onClick={() => setTimeFilter("nextMonth")}
-            className={timeFilter === "nextMonth" ? "bg-yellow-400 text-gray-900 hover:bg-yellow-500 text-xs" : "border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 text-xs"}
+            className={timeFilter === "nextMonth" ? "rounded-lg bg-[#FACC15] text-gray-900 hover:bg-yellow-300 text-xs font-semibold shadow-[0_6px_18px_-8px_rgba(250,204,21,0.8)]" : "rounded-lg border-[#2A3B57] bg-[#0B1529] text-slate-300 hover:bg-white/[0.06] hover:text-white text-xs"}
           >
             החודש הבא ({filterCounts.nextMonth})
           </Button>
@@ -291,7 +291,7 @@ export default function Dashboard() {
   );
 
   return (
-    <div className="min-h-screen p-2 sm:p-4 md:p-8">
+    <div className="e-page min-h-screen p-2 sm:p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-3">
           <div>
@@ -306,7 +306,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-2 flex-1 md:flex-none">
               <CalendarDays className="w-4 h-4 text-gray-400 flex-shrink-0" />
               <Select value={selectedYear.toString()} onValueChange={(val) => setSelectedYear(parseInt(val))}>
-                <SelectTrigger className="w-full sm:w-32 bg-gray-900/50 border-gray-700 text-white">
+                <SelectTrigger className="w-full sm:w-36 rounded-lg bg-[#0B1529] border-[#2A3B57] text-white">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-gray-900 border-gray-700 text-white">
@@ -330,22 +330,19 @@ export default function Dashboard() {
             every detail he needs on the day, and all the money in one tile. Then the four
             "what do I do today" tiles, then the state of the work. "צריך טיפול" left: the
             WhatsApp and follow-up tiles now say the same thing, each with its own door. */}
-        {/* Design D (2026-10-07): the money as four gradient cards on top, then the next
-            event as a photo hero beside the WhatsApp inbox, then the daily tiles. */}
-        <div className="mb-4 sm:mb-6"><KpiRow stats={stats} events={events} year={selectedYear} pendingCollection={pendingCollection} /></div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6 mb-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-5 mb-5">
           <div className="lg:col-span-2"><TodayEventsCard events={events} /></div>
-          <WhatsAppPulseCard />
+          <FinanceCard stats={stats} year={selectedYear} pendingCollection={pendingCollection} events={events} />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 md:gap-5 mb-5">
           <MeetingsTodayCard />
+          <WhatsAppPulseCard />
           <FollowUpCard />
           <PostSignCard />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 md:gap-5 mb-6">
           <DashboardMissingTeamCard events={events} />
           <DashboardWorkStatusCard events={events} onRefresh={loadEvents} />
           <DashboardUnpaidCard events={events} onRefresh={loadEvents} />

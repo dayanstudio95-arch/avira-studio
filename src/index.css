@@ -99,20 +99,74 @@
   --d-muted: #94A3B8;
   font-family: "Heebo", ui-sans-serif, system-ui, sans-serif;
 }
+/* Design E (2026-10-07): the owner's reference image, matched as closely as the real
+   content allows. Cards: deep navy, a thin border that lights up blue-violet along the top,
+   a soft inner glow under that edge, rounded 16px. Colour/shape only. */
 .avira-d .dash-card {
-  background: linear-gradient(180deg, rgba(16, 31, 53, 0.92) 0%, rgba(12, 23, 40, 0.96) 100%);
-  border: 1px solid rgba(34, 51, 75, 0.85);
-  border-radius: 18px;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 18px 40px -24px rgba(0, 0, 0, 0.75);
-  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  border: 1px solid transparent;
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, #0F1C36 0%, #0B1529 55%, #0A1324 100%) padding-box,
+    linear-gradient(180deg, rgba(110, 130, 255, 0.70) 0%, rgba(79, 110, 230, 0.28) 22%, rgba(34, 51, 75, 0.55) 60%, rgba(34, 51, 75, 0.45) 100%) border-box;
+  box-shadow:
+    inset 0 28px 36px -34px rgba(120, 130, 255, 0.55),
+    0 22px 44px -26px rgba(0, 0, 0, 0.85);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
 .avira-d .dash-card:hover {
-  border-color: rgba(59, 130, 246, 0.35);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 22px 48px -24px rgba(0, 0, 0, 0.85);
+  box-shadow:
+    inset 0 28px 36px -30px rgba(120, 130, 255, 0.70),
+    0 26px 52px -26px rgba(0, 0, 0, 0.9);
 }
 .avira-d .dash-card .dash-head {
-  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  margin: 0 12px;
+  padding-left: 6px; padding-right: 6px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.10);
 }
+/* The money tile: teal along the top fading to violet at the bottom. */
+.avira-d .dash-card.fin-card {
+  background:
+    linear-gradient(180deg, #0B2A33 0%, #0B1A2E 38%, #0E1530 75%, #191536 100%) padding-box,
+    linear-gradient(180deg, #19C2A0 0%, rgba(25, 194, 160, 0.35) 30%, rgba(99, 102, 241, 0.30) 70%, #8B5CF6 100%) border-box;
+  box-shadow: inset 0 30px 40px -34px rgba(25, 194, 160, 0.55), 0 22px 44px -26px rgba(0, 0, 0, 0.85);
+}
+/* The event tile: blue to violet all round. */
+.avira-d .dash-card.hero-card {
+  background:
+    linear-gradient(180deg, #0F1C36 0%, #0A1324 100%) padding-box,
+    linear-gradient(135deg, #4F7BFF 0%, rgba(79, 123, 255, 0.35) 40%, rgba(139, 92, 246, 0.45) 75%, #8B5CF6 100%) border-box;
+}
+.avira-d .e-count {
+  min-width: 24px; height: 24px; padding: 0 7px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; line-height: 1;
+}
+.avira-d .e-count-orange { background: #F97316; color: #fff; box-shadow: 0 0 14px rgba(249, 115, 22, 0.55); }
+.avira-d .e-count-yellow { background: #FACC15; color: #111827; box-shadow: 0 0 14px rgba(250, 204, 21, 0.45); }
+.avira-d .e-count-red    { background: #EF4444; color: #fff; box-shadow: 0 0 14px rgba(239, 68, 68, 0.55); }
+.avira-d .e-chip {
+  display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
+  border-radius: 8px; padding: 3px 10px; font-size: 12px; font-weight: 600; line-height: 1.35;
+  border: 1px solid transparent;
+}
+.avira-d .e-chip-orange { background: rgba(249, 115, 22, 0.14); color: #FDBA74; border-color: rgba(249, 115, 22, 0.45); }
+.avira-d .e-chip-yellow { background: rgba(250, 204, 21, 0.12); color: #FDE047; border-color: rgba(250, 204, 21, 0.45); }
+.avira-d .e-chip-red    { background: rgba(239, 68, 68, 0.14); color: #FCA5A5; border-color: rgba(239, 68, 68, 0.45); }
+.avira-d .e-chip-green  { background: rgba(16, 185, 129, 0.14); color: #6EE7B7; border-color: rgba(16, 185, 129, 0.45); }
+.avira-d .e-chip-pink   { background: rgba(236, 72, 153, 0.14); color: #F9A8D4; border-color: rgba(236, 72, 153, 0.45); }
+.avira-d .e-chip-blue   { background: rgba(59, 130, 246, 0.14); color: #93C5FD; border-color: rgba(59, 130, 246, 0.45); }
+.avira-d .e-chip-gray   { background: rgba(148, 163, 184, 0.10); color: #CBD5E1; border-color: rgba(148, 163, 184, 0.35); }
+.avira-d .e-row { border-bottom: 1px solid rgba(148, 163, 184, 0.08); }
+.avira-d .e-row:last-child { border-bottom: 0; }
+.avira-d .e-page {
+  background:
+    radial-gradient(900px 420px at 72% -6%, rgba(37, 99, 235, 0.20), transparent 62%),
+    radial-gradient(700px 380px at 10% 0%, rgba(79, 70, 229, 0.10), transparent 60%),
+    #060D1B;
+}
+.avira-d .e-scroll::-webkit-scrollbar { width: 6px; }
+.avira-d .e-scroll::-webkit-scrollbar-thumb { background: rgba(203, 213, 225, 0.55); border-radius: 6px; }
+.avira-d .e-scroll::-webkit-scrollbar-track { background: transparent; }
 .avira-d .kpi {
   position: relative;
   overflow: hidden;

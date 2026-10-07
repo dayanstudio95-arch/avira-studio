@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Heart, Album, UserCheck, AlertTriangle, MessageCircle, ClipboardList } from "lucide-react";
+import { Heart, Album, UserCheck, AlertTriangle, MessageCircle, ClipboardList, RefreshCw } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
@@ -138,17 +138,17 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
     <Card className="dash-card">
       <CardHeader className="dash-head">
         <div className="flex justify-between items-center">
-          <CardTitle className="text-xl font-bold text-white flex items-center gap-2">
-            <Heart className="w-5 h-5 text-yellow-400" />
+          <CardTitle className="text-lg font-bold text-white flex items-center gap-2">
+            <Heart className="w-5 h-5 text-amber-400" />
             אירועים אחרונים
           </CardTitle>
           <Button 
             variant="outline" 
             size="sm"
             onClick={onRefresh}
-            className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
+            className="gap-1.5 rounded-lg border-[#2A3B57] bg-white/[0.03] text-slate-200 hover:bg-white/[0.07] hover:text-white"
           >
-            רענן
+            <RefreshCw className="h-4 w-4" /> רענן
           </Button>
         </div>
       </CardHeader>
@@ -242,16 +242,16 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
         <div className="hidden md:block overflow-x-auto">
           <Table>
             <TableHeader>
-              <TableRow className="border-gray-800 hover:bg-gray-800/30">
-                <TableHead className="text-gray-400">תאריך</TableHead>
-                <TableHead className="text-gray-400">זוג</TableHead>
-                <TableHead className="text-gray-400">סכום ברוטו</TableHead>
-                <TableHead className="text-gray-400">רווח נקי</TableHead>
-                <TableHead className="text-gray-400">סטטוס תשלום</TableHead>
-                <TableHead className="text-gray-400">סטטוס התקדמות</TableHead>
-                <TableHead className="text-gray-400">אלבום</TableHead>
-                <TableHead className="text-gray-400">יומן</TableHead>
-                <TableHead className="text-gray-400">שאלון</TableHead>
+              <TableRow className="border-white/[0.06] hover:bg-white/[0.03]">
+                <TableHead className="text-slate-400 font-medium">תאריך</TableHead>
+                <TableHead className="text-slate-400 font-medium">זוג</TableHead>
+                <TableHead className="text-slate-400 font-medium">סכום ברוטו</TableHead>
+                <TableHead className="text-slate-400 font-medium">רווח נקי</TableHead>
+                <TableHead className="text-slate-400 font-medium">סטטוס תשלום</TableHead>
+                <TableHead className="text-slate-400 font-medium">סטטוס התקדמות</TableHead>
+                <TableHead className="text-slate-400 font-medium">אלבום</TableHead>
+                <TableHead className="text-slate-400 font-medium">יומן</TableHead>
+                <TableHead className="text-slate-400 font-medium">שאלון</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -271,7 +271,7 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
                   return (
                     <TableRow 
                       key={event.id} 
-                      className="border-gray-800 hover:bg-gray-800/30 transition-colors duration-200"
+                      className="border-white/[0.06] hover:bg-white/[0.03] transition-colors duration-200"
                     >
                       <TableCell className="text-gray-300">
                         {format(new Date(event.date), "d/M/yyyy")}
