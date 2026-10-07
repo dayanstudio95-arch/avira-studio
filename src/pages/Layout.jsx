@@ -32,7 +32,6 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -51,6 +50,8 @@ import AIAssistant from "@/components/AIAssistant";
 import PostSignWizardHost from "@/components/postSign/PostSignWizardHost";
 import { isMissingTeam, israelToday, eventDay, yearProgress } from "@/lib/missingTeam";
 import { progressPct } from "@/lib/eventProgress";
+import { needsReply } from "@/lib/chatModel";
+import { utcToIsraelParts } from "@/lib/meetings";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import { NotificationsProvider, useNotifications } from "@/components/notifications/NotificationsContext";
 import GlobalSearch from "@/components/layout/GlobalSearch";
@@ -98,22 +99,31 @@ const scopedNavItemsByRole = {
   ],
 };
 
+// Sidebar v2 (2026-10-07, the owner chose design A): three sections, clean labels, the work
+// waiting on each page as a number beside it. `title` stays the key of the saved menu order
+// and hidden items (localStorage) — `label` is only what is shown.
+const NAV_SECTIONS = [
+  { key: "today", label: "היום" },
+  { key: "events", label: "אירועים" },
+  { key: "studio", label: "כסף וסטודיו" },
+];
+
 const primaryNavItems = [
-  { title: "לוח בקרה",        url: "/",                              icon: LayoutDashboard },
-  { title: "לידים CRM",       url: createPageUrl("Leads"),           icon: Heart },
-  { title: "💬 שיחות וואטסאפ", url: "/chat",                          icon: MessageSquare },
-  { title: "📅 פגישות", url: "/Meetings", icon: CalendarClock },
-  { title: "רשימת אירועים",   url: createPageUrl("Events"),          icon: Calendar },
-  { title: "סטטוס עבודה",     url: createPageUrl("ProgressStatus"),  icon: CheckSquare },
-  { title: "תשלומים",         url: createPageUrl("Payments"),        icon: WalletCards },
-  { title: "דוחות",           url: createPageUrl("Reports"),         icon: PieChart },
-  { title: "שיבוץ צוות",      url: createPageUrl("StaffScheduling"), icon: Users },
-  { title: "🤖 לוח אוטומציות", url: "/AutomationsDashboard",         icon: Zap },
-  { title: "📅 יומן Google",   url: "/GoogleCalendarSync",           icon: Calendar },
-  { title: "📷 הזמנות אלבומים", url: "/AlbumOrders",                  icon: BookImage },
+  { title: "לוח בקרה",        url: "/",                              icon: LayoutDashboard, section: "today" },
+  { title: "💬 שיחות וואטסאפ", url: "/chat",                          icon: MessageSquare, section: "today", label: "שיחות וואטסאפ" },
+  { title: "לידים CRM",       url: createPageUrl("Leads"),           icon: Heart, section: "today", label: "לידים" },
+  { title: "📅 פגישות", url: "/Meetings", icon: CalendarClock, section: "today", label: "פגישות" },
+  { title: "רשימת אירועים",   url: createPageUrl("Events"),          icon: Calendar, section: "events" },
+  { title: "שיבוץ צוות",      url: createPageUrl("StaffScheduling"), icon: Users, section: "events" },
+  { title: "סטטוס עבודה",     url: createPageUrl("ProgressStatus"),  icon: CheckSquare, section: "events" },
+  { title: "📅 יומן Google",   url: "/GoogleCalendarSync",           icon: Calendar, section: "events", label: "יומן Google" },
+  { title: "תשלומים",         url: createPageUrl("Payments"),        icon: WalletCards, section: "studio" },
+  { title: "דוחות",           url: createPageUrl("Reports"),         icon: PieChart, section: "studio" },
+  { title: "📷 הזמנות אלבומים", url: "/AlbumOrders",                  icon: BookImage, section: "studio", label: "הזמנות אלבומים" },
+  { title: "🤖 לוח אוטומציות", url: "/AutomationsDashboard",         icon: Zap, section: "studio", label: "לוח אוטומציות" },
   // S8 (owner's decision, 2026-10-07): "🛡️ יועץ מערכת" removed from the menu — its numbers were
   // wrong (200-event cap, partial payments as full debt). The route /SystemAdvisor stays.
-  { title: "הגדרות מערכת",    url: createPageUrl("Settings"),        icon: Settings },
+  { title: "הגדרות מערכת",    url: createPageUrl("Settings"),        icon: Settings, section: "studio" },
 ];
 
 const secondaryNavItems = [
@@ -148,6 +158,13 @@ function NavBadge({ count }) {
       {count > 9 ? "9+" : count}
     </span>
   );
+}
+
+// The work waiting on a page (sidebar v2): red = someone is waiting, amber = to do.
+function WorkCount({ value, tone = "neutral" }) {
+  if (!value) return null;
+  const cls = tone === "red" ? "bg-red-500/15 text-red-300" : tone === "amber" ? "bg-yellow-500/15 text-yellow-300" : "bg-white/5 text-gray-300";
+  return <span className={`ms-auto rounded-full px-2 py-0.5 text-[11px] font-semibold leading-none ${cls}`}>{value}</span>;
 }
 
 // The list is shared by the bell (rendered twice) and the menu, so it lives above both.
@@ -217,7 +234,7 @@ function LayoutShell({ children }) {
     }
   });
   const [draggedItem, setDraggedItem] = useState(null);
-  const [stats, setStats] = useState({ urgentStaffing: 0, editingBacklog: 0, yearDone: 0, yearTotal: 0 });
+  const [stats, setStats] = useState({ urgentStaffing: 0, editingBacklog: 0, yearDone: 0, yearTotal: 0, waitingChats: 0, newLeads: 0, meetingsToday: 0 });
 
   // "מבט מהיר" (2026-10-07): the owner's three numbers, in his order — missing team (the
   // shared rule, src/lib/missingTeam.js), waiting for editing, and this year's events
@@ -228,7 +245,12 @@ function LayoutShell({ children }) {
     let alive = true;
     const loadStats = async () => {
       try {
-        const events = await base44.entities.Event.list();
+        const [events, convs, newLeads, meetings] = await Promise.all([
+          base44.entities.Event.list(),
+          base44.entities.WhatsAppConversation.list("-lastMessageAt", 600).catch(() => []),
+          base44.entities.Lead.filter({ status: "חדש" }, undefined, 500, "id").catch(() => []),
+          base44.entities.SalesMeeting.filter({ status: "scheduled" }, "startsAt", 200).catch(() => []),
+        ]);
         const today = israelToday();
         const year = yearProgress(events);
         if (!alive) return;
@@ -237,6 +259,9 @@ function LayoutShell({ children }) {
           editingBacklog: events.filter((e) => eventDay(e) < today && progressPct(e) < 100).length,
           yearDone: year.done,
           yearTotal: year.total,
+          waitingChats: (convs || []).filter(needsReply).length,
+          newLeads: (newLeads || []).length,
+          meetingsToday: (meetings || []).filter((m) => utcToIsraelParts(m.startsAt).date === today).length,
         });
       } catch (error) {
         console.error('Failed to load stats:', error);
@@ -358,8 +383,8 @@ function LayoutShell({ children }) {
         }
       `}</style>
       <div className="min-h-screen flex w-full bg-gray-950">
-        <Sidebar side="right" className="border-l border-gray-800 bg-gray-900">
-          <SidebarHeader className="border-b border-gray-800 p-6">
+        <Sidebar side="right" className="border-l border-white/5 bg-[#0B0D12] [&>div]:bg-[#0B0D12]">
+          <SidebarHeader className="px-4 pt-5 pb-3 gap-3">
             <div className="flex items-center justify-between gap-2 w-full">
               <div className="flex items-center gap-2.5 shrink-0">
               {/* The studio's own mark (2026-10-07: the heart + camera looked cheap). A logo
@@ -405,7 +430,6 @@ function LayoutShell({ children }) {
               ) : (
                 <div className="flex items-center gap-1">
                   <NotificationBell />
-                  {!scopedRole && <GlobalSearch />}
                   {!scopedRole && (
                     <Button
                       variant="ghost"
@@ -420,47 +444,66 @@ function LayoutShell({ children }) {
                 </div>
               )}
             </div>
+            {!scopedRole && !isEditingMenu && <GlobalSearch variant="pill" />}
           </SidebarHeader>
           
-          <SidebarContent className="bg-slate-700 p-3 flex min-h-0 flex-1 flex-col gap-2 overflow-auto group-data-[collapsible=icon]:overflow-hidden">
-            {/* Primary nav group */}
-            <SidebarGroup>
-              <SidebarGroupLabel className="text-xs font-medium text-gray-500 uppercase tracking-wider px-3 py-2">
-                תפריט ראשי
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {(scopedNavItems || groupForDisplay(primaryNavItems)).map((item) => (isEditingMenu && !scopedNavItems) ? renderEditRow(item) : (
-                    <SidebarMenuItem key={item.title}>
-                      <SidebarMenuButton
-                        asChild
-                        className={`hover:bg-gray-800 hover:text-yellow-400 transition-all duration-300 rounded-xl mb-1 group ${
-                          (item.url === '/' && location.pathname === '/') ||
-                          (item.url !== '/' && location.pathname === item.url)
-                            ? 'bg-gray-800 text-yellow-400 shadow-lg'
-                            : 'text-gray-300'
-                        }`}
-                      >
-                        <Link to={item.url} className="flex items-center gap-3 px-4 py-3">
-                          <item.icon className="w-5 h-5 group-hover:scale-110 transition-transform duration-200" />
-                          <span className="font-medium">{item.title}</span>
-                          <NavBadge count={countsByRoute[item.url]} />
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
+          <SidebarContent className="bg-[#0B0D12] px-3 pb-3 flex min-h-0 flex-1 flex-col gap-1 overflow-auto group-data-[collapsible=icon]:overflow-hidden">
+            {(() => {
+              const isActive = (item) => (item.url === '/' ? location.pathname === '/' : location.pathname === item.url);
+              // What waits on each page — the same numbers the dashboard shows.
+              const workFor = (url) => ({
+                '/chat': { value: stats.waitingChats, tone: 'red' },
+                [createPageUrl("Leads")]: { value: stats.newLeads },
+                '/Meetings': { value: stats.meetingsToday ? `${stats.meetingsToday} היום` : 0, tone: 'amber' },
+                [createPageUrl("StaffScheduling")]: { value: stats.urgentStaffing, tone: 'red' },
+                [createPageUrl("ProgressStatus")]: { value: stats.editingBacklog, tone: 'amber' },
+              }[url] || {});
+              const row = (item) => {
+                const on = isActive(item);
+                const work = scopedRole ? {} : workFor(item.url);
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      className={`rounded-xl transition-colors ${on ? 'bg-yellow-500/[0.08] text-yellow-400 shadow-[inset_-2px_0_0_#F5CF00]' : 'text-gray-400 hover:bg-white/[0.04] hover:text-gray-100'}`}
+                    >
+                      <Link to={item.url} className="flex items-center gap-2.5 px-3 py-2">
+                        <item.icon className={`w-[18px] h-[18px] shrink-0 ${on ? 'text-yellow-400' : 'text-gray-500'}`} strokeWidth={1.75} />
+                        <span className="text-[13.5px] font-medium truncate">{item.label || item.title}</span>
+                        <WorkCount value={work.value} tone={work.tone} />
+                        <NavBadge count={countsByRoute[item.url]} />
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              };
+              if (scopedNavItems) {
+                return <SidebarMenu className="mt-1">{scopedNavItems.map(row)}</SidebarMenu>;
+              }
+              if (isEditingMenu) {
+                return <SidebarMenu className="mt-1">{groupForDisplay(primaryNavItems).map(renderEditRow)}</SidebarMenu>;
+              }
+              const visible = groupForDisplay(primaryNavItems);
+              return NAV_SECTIONS.map((sec) => {
+                const items = visible.filter((i) => (i.section || 'studio') === sec.key);
+                if (!items.length) return null;
+                return (
+                  <div key={sec.key}>
+                    <div className="px-3 pt-3 pb-1 text-[10px] font-semibold tracking-[0.14em] text-gray-600">{sec.label}</div>
+                    <SidebarMenu className="gap-0.5">{items.map(row)}</SidebarMenu>
+                  </div>
+                );
+              });
+            })()}
 
             {/* Secondary nav group — collapsible (hidden entirely for scoped roles) */}
             {!scopedRole && (
             <SidebarGroup>
               <button
                 onClick={() => setSecondaryOpen(prev => !prev)}
-                className="flex items-center justify-between w-full px-3 py-2 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-gray-200 transition-all duration-200 group"
+                className="mt-2 flex items-center justify-between w-full px-3 py-2 rounded-xl text-gray-600 hover:bg-white/[0.04] hover:text-gray-300 transition-colors group"
               >
-                <span className="text-xs font-medium uppercase tracking-wider">ניהול מתקדם</span>
+                <span className="text-[10px] font-semibold tracking-[0.14em]">ניהול מתקדם</span>
                 <svg
                   className={`w-4 h-4 transition-transform duration-200 ${secondaryOpen ? 'rotate-180' : ''}`}
                   fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
@@ -475,10 +518,10 @@ function LayoutShell({ children }) {
                       <SidebarMenuItem key={item.title}>
                         <SidebarMenuButton
                           asChild
-                          className={`hover:bg-gray-700 hover:text-gray-200 transition-all duration-200 rounded-lg mb-0.5 group ${
+                          className={`rounded-xl transition-colors ${
                             (item.url !== '/' && location.pathname === item.url)
-                              ? 'bg-gray-800 text-yellow-400 shadow-lg'
-                              : 'text-gray-500'
+                              ? 'bg-yellow-500/[0.08] text-yellow-400'
+                              : 'text-gray-500 hover:bg-white/[0.04] hover:text-gray-200'
                           }`}
                         >
                           <Link to={item.url} className="flex items-center gap-3 px-3 py-2">
@@ -496,39 +539,27 @@ function LayoutShell({ children }) {
             )}
 
             {!scopedRole && (
-            <SidebarGroup className="mt-8">
-              <SidebarGroupLabel className="text-xs font-medium text-gray-500 uppercase tracking-wider px-3 py-2">
-                מבט מהיר
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
-                <div className="px-4 py-3 space-y-1">
-                  <Link to="/StaffScheduling" className="flex items-center gap-3 text-sm hover:bg-gray-800/50 p-2 rounded-lg transition-colors">
-                    <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
-                    <span className="text-gray-400">חסר צוות</span>
-                    <span className="ml-auto font-semibold text-orange-400">{stats.urgentStaffing}</span>
-                  </Link>
-                  <Link to="/ProgressStatus" className="flex items-center gap-3 text-sm hover:bg-gray-800/50 p-2 rounded-lg transition-colors">
-                    <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-                    <span className="text-gray-400">ממתינים לעריכה</span>
-                    <span className="ml-auto font-semibold text-purple-400">{stats.editingBacklog}</span>
-                  </Link>
-                  <Link to="/Events" className="flex items-center gap-3 text-sm hover:bg-gray-800/50 p-2 rounded-lg transition-colors">
-                    <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
-                    <span className="text-gray-400 whitespace-nowrap">אירועים השנה</span>
-                    <span className="ml-auto font-semibold text-yellow-400 whitespace-nowrap">{stats.yearDone} מתוך {stats.yearTotal}</span>
-                  </Link>
+              <Link
+                to="/Events"
+                className="mx-1 mt-auto block rounded-2xl border border-white/[0.06] bg-white/[0.025] p-3 transition-colors hover:border-white/15"
+              >
+                <div className="flex items-baseline justify-between text-xs text-gray-400">
+                  <span>אירועים השנה</span>
+                  <span className="font-semibold text-gray-200">{stats.yearDone} <span className="text-gray-500">מתוך</span> {stats.yearTotal}</span>
                 </div>
-              </SidebarGroupContent>
-            </SidebarGroup>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/5">
+                  <div className="h-full rounded-full bg-yellow-400" style={{ width: `${stats.yearTotal ? Math.round((stats.yearDone / stats.yearTotal) * 100) : 0}%` }} />
+                </div>
+              </Link>
             )}
           </SidebarContent>
 
-          <SidebarFooter className="bg-slate-700 p-4 flex flex-col gap-2 border-t border-gray-800">
+          <SidebarFooter className="bg-[#0B0D12] px-4 py-3 flex flex-col gap-2 border-t border-white/5">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-3 w-full text-right hover:bg-slate-600/50 rounded-lg p-1 -m-1 transition-colors">
-                  <div className="w-10 h-10 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-full flex items-center justify-center shrink-0">
-                    <span className="text-gray-900 font-bold text-sm">
+                <button className="flex items-center gap-3 w-full text-right hover:bg-white/[0.04] rounded-xl p-1.5 -m-1 transition-colors">
+                  <div className="w-9 h-9 bg-yellow-500/10 ring-1 ring-yellow-500/30 rounded-full flex items-center justify-center shrink-0">
+                    <span className="text-yellow-400 font-semibold text-sm">
                       {(user?.full_name || user?.email || "A").charAt(0).toUpperCase()}
                     </span>
                   </div>

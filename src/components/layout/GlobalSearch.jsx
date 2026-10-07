@@ -40,7 +40,7 @@ function safeFormatDate(dateStr) {
   return d.toLocaleDateString("he-IL");
 }
 
-export default function GlobalSearch() {
+export default function GlobalSearch({ variant = "icon" } = {}) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -142,16 +142,30 @@ export default function GlobalSearch() {
 
   return (
     <>
-      <Button
-        ref={triggerRef}
-        variant="ghost"
-        size="icon"
-        onClick={() => setOpen(true)}
-        className="text-gray-400 hover:text-white hover:bg-gray-800"
-        title="חיפוש (Ctrl+K)"
-      >
-        <SearchIcon className="w-5 h-5" />
-      </Button>
+      {variant === "pill" ? (
+        // The sidebar's wide search field (2026-10-07 redesign) — same palette behind it.
+        <button
+          ref={triggerRef}
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex w-full items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-gray-500 hover:border-white/20 hover:text-gray-300"
+        >
+          <SearchIcon className="h-4 w-4" />
+          חיפוש
+          <kbd className="ms-auto rounded-md border border-white/10 px-1.5 text-[10px] text-gray-500">⌘K</kbd>
+        </button>
+      ) : (
+        <Button
+          ref={triggerRef}
+          variant="ghost"
+          size="icon"
+          onClick={() => setOpen(true)}
+          className="text-gray-400 hover:text-white hover:bg-gray-800"
+          title="חיפוש (Ctrl+K)"
+        >
+          <SearchIcon className="w-5 h-5" />
+        </Button>
+      )}
 
       <Dialog open={open} onOpenChange={(v) => (v ? setOpen(true) : closeAndReset())}>
         <DialogContent className="overflow-hidden p-0 bg-gray-900 border-gray-800 max-w-xl">
