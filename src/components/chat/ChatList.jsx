@@ -2,7 +2,7 @@ import React, { createContext, useContext, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Pin, Check, BellOff, X, Flame, CalendarDays, CalendarCheck, CalendarX2, Megaphone, Tag } from "lucide-react";
 import {
-  contactTypeLabel, effectiveStage, waitingLabel, isLongWait, CONTACT_TYPES, STAGES,
+  contactTypeLabel, effectiveStage, waitingLabel, isLongWait, CONTACT_TYPES, STAGES, isHotLead,
   rowEventDate, formatDateWithWeekday, dateStatus, hasStage, displayType, chatTitle,
 } from "@/lib/chatModel";
 import { typeColor, stageColor } from "@/lib/chatColors";
@@ -212,13 +212,13 @@ export default function ChatList({
                   <span className="flex items-center gap-1.5">
                     {c.pinnedAt && <Pin className="h-3.5 w-3.5 shrink-0 text-gray-500" aria-label="נעוץ" />}
                     <span className="truncate font-semibold text-white">{conversationTitle(c)}</span>
-                    {c.leadTemperature === "hot" && <Flame className="h-4 w-4 shrink-0 text-orange-400" aria-label="ליד חם" />}
+                    {isHotLead(c, lead) && <Flame className="h-4 w-4 shrink-0 text-orange-400" aria-label="ליד חם" />}
                     <span className={`ms-auto shrink-0 text-xs ${n ? "font-semibold text-yellow-400" : "text-gray-500"}`}>{timeLabel(c.lastMessageAt)}</span>
                   </span>
                   {displayPhone(c) && displayPhone(c) !== conversationTitle(c) && (
                     <span dir="ltr" className="text-end text-xs text-gray-500">{displayPhone(c)}</span>
                   )}
-                  {c.leadTemperature === "hot" && c.leadTemperatureReason && (
+                  {isHotLead(c, lead) && c.leadTemperatureReason && (
                     <span className="truncate text-xs text-red-300">חם: {c.leadTemperatureReason}</span>
                   )}
                   <span className="flex items-center gap-1.5">

@@ -1919,5 +1919,22 @@ section('work progress (shared)');
 }
 
 await rm(outDir, { recursive: true, force: true });
+// ---------------------------------------------------------------------------------
+// PART 34 — "ליד חם" drops couples who already closed (2026-10-07)
+// ---------------------------------------------------------------------------------
+console.log('\n— PART 34: hot lead vs closed deal —');
+{
+  const hotConv = { leadTemperature: 'hot', contactType: 'lead' };
+  check('hot, no lead → hot', cm31.isHotLead(hotConv, null), true);
+  check('hot, open lead → hot', cm31.isHotLead(hotConv, { status: 'נשלחה הצעה' }), true);
+  check('hot, lead נסגר/חתימה → not hot', cm31.isHotLead(hotConv, { status: 'נסגר/חתימה' }), false);
+  check('hot, lead חוזה → not hot', cm31.isHotLead(hotConv, { status: 'חוזה' }), false);
+  check('hot, lead signed → not hot', cm31.isHotLead(hotConv, { status: 'נשלחה הצעה', signed: true }), false);
+  check('hot client → not hot', cm31.isHotLead({ leadTemperature: 'hot', contactType: 'client' }, null), false);
+  check('hot group → not hot', cm31.isHotLead({ leadTemperature: 'hot', contactType: 'group' }, null), false);
+  check('warm → not hot', cm31.isHotLead({ leadTemperature: 'warm', contactType: 'lead' }, null), false);
+  check('box hot uses ctx.leadsById', cm31.matchesBox({ leadTemperature: 'hot', contactType: 'lead', matchedLeadId: 'L1' }, 'hot', { leadsById: { L1: { status: 'חוזה' } } }), false);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

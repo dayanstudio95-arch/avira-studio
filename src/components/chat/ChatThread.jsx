@@ -28,7 +28,7 @@ function NoteBubble({ note, onDelete }) {
 
 // The conversation column: header, timeline (messages + internal notes), composer.
 export default function ChatThread({
-  conversation, lead, labels, thread, onBack, onTogglePanel, onPin, onArchive, onHandled, needsReplyNow, onToggleFollowUp, inFollowUp, onScheduleMeeting,
+  conversation, lead, labels, thread, onBack, onTogglePanel, onPin, onArchive, onHandled, needsReplyNow, onToggleFollowUp, inFollowUp, onScheduleMeeting, isHot, onClearHot,
   templates, onSaveTemplate, onDeleteTemplate, userContext,
 }) {
   const [text, setText] = useState("");
@@ -132,7 +132,7 @@ export default function ChatThread({
         </button>
         {/* On a phone these two get their own line under the name (2026-10-07: squeezed in one
             row they covered the couple's name and tags). */}
-        {((onToggleFollowUp && hasStage(conversation)) || needsReplyNow) && (
+        {((onToggleFollowUp && hasStage(conversation)) || needsReplyNow || (isHot && onClearHot)) && (
         <div className="order-last flex w-full gap-2 ps-12 md:order-none md:w-auto md:ps-0">
         {onToggleFollowUp && hasStage(conversation) && (
           <button
@@ -149,6 +149,11 @@ export default function ChatThread({
         {needsReplyNow && (
           <button type="button" onClick={onHandled} title="לא צריך מענה — יוצא מ'דורש מענה' עד שיכתבו שוב" className="flex h-9 shrink-0 items-center gap-1 rounded-full border border-emerald-800 md:h-10 bg-emerald-950/50 px-3 text-sm text-emerald-200 hover:bg-emerald-900/60">
             ✓ טופל
+          </button>
+        )}
+        {isHot && onClearHot && (
+          <button type="button" onClick={onClearHot} title='מוציא את השיחה מ"ליד חם"' className="flex h-9 shrink-0 items-center gap-1 rounded-full border border-orange-700 bg-orange-950/50 px-3 text-sm text-orange-200 hover:bg-orange-900/60 md:h-10">
+            🔥 לא חם
           </button>
         )}
         </div>

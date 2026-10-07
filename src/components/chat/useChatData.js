@@ -5,6 +5,7 @@ import { supabase } from "@/api/supabaseClient";
 import { useAuth } from "@/lib/SupabaseAuthContext";
 import { FOLLOWUP_AFTER_DAYS_KEY } from "@/components/whatsapp/WhatsAppFollowUpDialog";
 import { reverseOf, stageTarget, effectiveStage } from "@/lib/chatModel";
+import { fetchLeadPhoneIndex, leadForPhone, LEAD_PHONE_INDEX_KEY } from "@/lib/leadPhoneIndex";
 
 // All data of "אווירה צ'אט" (stage 1א, 2026-10-05) and every write it makes.
 //
@@ -74,7 +75,20 @@ export function useChatData() {
     queryFn: () => base44.entities.WhatsAppTemplate.list("sortOrder", 100),
   });
 
-  const conversations = conversationsQ.data || [];
+  // Conversations not linked to a CRM lead find it by phone (display only — see
+  // src/lib/leadPhoneIndex.js). Groups and staff are never matched.
+  const phoneIndexQ = useQuery({ queryKey: LEAD_PHONE_INDEX_KEY, queryFn: fetchLeadPhoneIndex, staleTime: 120000 });
+  const conversations = useMemo(() => {
+    const list = conversationsQ.data || [];
+    const index = phoneIndexQ.data;
+    if (!index) return list;
+    return list.map((c) => {
+      const phone = c.phone || String(c.chatId || "").split("@")[0];
+      if (c.matchedLeadId || !phone || ["group", "staff"].includes(c.contactType)) return c;
+      const lead = leadForPhone(index, phone);
+      return lead ? { ...c, matchedLeadId: lead.id, leadLinkedByPhone: true } : c;
+    });
+  }, [conversationsQ.data, phoneIndexQ.data]);
 
   // The CRM leads linked to conversations — their status IS the stage.
   const leadIds = useMemo(
@@ -88,11 +102,11 @@ export function useChatData() {
       for (let i = 0; i < leadIds.length; i += 150) {
         const { data, error } = await supabase
           .from("leads")
-          .select("id, couple_names, event_date, venue_name, status, phone_number")
+          .select("id, couple_names, event_date, venue_name, status, phone_number, signed_at")
           .in("id", leadIds.slice(i, i + 150));
         if (error) throw error;
         for (const l of data || []) {
-          out[l.id] = { id: l.id, coupleNames: l.couple_names, eventDate: l.event_date, venueName: l.venue_name, status: l.status, phoneNumber: l.phone_number };
+          out[l.id] = { id: l.id, coupleNames: l.couple_names, eventDate: l.event_date, venueName: l.venue_name, status: l.status, phoneNumber: l.phone_number, signed: !!l.signed_at };
         }
       }
       return out;
@@ -184,6 +198,16 @@ export function useChatData() {
       })));
       refresh();
       return { batchId, count: targets.length };
+    },
+
+    // "לא חם" — the owner takes a conversation out of "ליד חם" by hand. The bot may mark it
+    // hot again if the couple writes again after the price list.
+    async clearHot(convs) {
+      const targets = convs.filter((c) => c.leadTemperature === "hot");
+      await updateConversations(targets.map((c) => c.id), { leadTemperature: null });
+      await logActivity(targets.map((c) => ({ conversationId: c.id, action: "hot_clear", before: { leadTemperature: "hot", reason: c.leadTemperatureReason || null } })));
+      refresh();
+      return { count: targets.length };
     },
 
     async setStage(convs, stage, leadsById = {}) {

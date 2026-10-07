@@ -8,7 +8,7 @@ import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/SupabaseAuthContext";
 import { isAdmin } from "@/lib/permissions";
 import LeadFormDialog from "@/components/leads/LeadFormDialog";
-import { BOXES, DEFAULT_BOX, boxCounts, matchesBox, matchesSearch, sortConversations, needsReply } from "@/lib/chatModel";
+import { BOXES, DEFAULT_BOX, boxCounts, matchesBox, matchesSearch, sortConversations, needsReply, isHotLead } from "@/lib/chatModel";
 import { isAwaitingFollowUp } from "@/lib/followUpQueue";
 import WhatsAppFollowUpDialog from "@/components/whatsapp/WhatsAppFollowUpDialog";
 import WhatsAppFollowUpSettingsDialog from "@/components/whatsapp/WhatsAppFollowUpSettingsDialog";
@@ -139,11 +139,11 @@ export default function ChatApp() {
   }, [unreadConversations]);
 
   const labelsById = useMemo(() => Object.fromEntries(data.labels.map((l) => [l.id, l])), [data.labels]);
-  const ctx = { unread: data.unread, labelsByConv: data.labelsByConv, followUpAfterDays: data.followUpAfterDays };
+  const ctx = { unread: data.unread, labelsByConv: data.labelsByConv, followUpAfterDays: data.followUpAfterDays, leadsById: data.leadsById };
   const counts = useMemo(
     () => boxCounts(data.conversations, ctx, data.labels.map((l) => l.id)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [data.conversations, data.unread, data.labelsByConv, data.followUpAfterDays, data.labels]
+    [data.conversations, data.unread, data.labelsByConv, data.followUpAfterDays, data.labels, data.leadsById]
   );
 
   // The follow-up queue, for the bulk send (WhatsAppFollowUpDialog, from the old inbox).
@@ -173,7 +173,7 @@ export default function ChatApp() {
       : data.conversations.filter((c) => matchesBox(c, box, ctx));
     return sortConversations(list);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data.conversations, box, q, searchHits, data.unread, data.labelsByConv, data.followUpAfterDays]);
+  }, [data.conversations, box, q, searchHits, data.unread, data.labelsByConv, data.followUpAfterDays, data.leadsById]);
 
   // Profile pictures: one signed-URL request for every picture on screen (private bucket).
   const avatarPaths = useMemo(
@@ -539,6 +539,8 @@ export default function ChatApp() {
             needsReplyNow={needsReply(active)}
             onHandled={() => run(data.actions.setHandled([active], true), () => 'סומן "טופל" · יחזור ל"דורש מענה" כשיכתבו שוב')}
             inFollowUp={isAwaitingFollowUp(active, data.followUpAfterDays || 0)}
+            isHot={isHotLead(active, activeLead)}
+            onClearHot={() => run(data.actions.clearHot([active]), () => 'הוסר מ"ליד חם"')}
             onScheduleMeeting={() => openMeetingFor(active)}
             onToggleFollowUp={(on) => run(data.actions.setFollowUpFlag([active], on), () => (on ? "נוסף לתור הפולו-אפ" : "הוסר מתור הפולו-אפ"))}
             templates={data.templates}

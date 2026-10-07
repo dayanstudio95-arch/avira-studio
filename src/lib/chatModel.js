@@ -152,6 +152,16 @@ export const BOXES = [
 // Opens on "לידים" (the owner, 2026-10-07 — after the bot-recognised strangers moved there).
 export const DEFAULT_BOX = "lead";
 
+// "ליד חם" is a lead still being won (2026-10-07: couples who had signed stayed in the box).
+// A client, or a conversation whose CRM lead is closed / signed, is no longer hot.
+export function isClosedDeal(c, lead) {
+  if (["client", "past_client"].includes(c?.contactType)) return true;
+  return !!lead && (lead.signed || ["נסגר/חתימה", "חוזה"].includes(lead.status));
+}
+export function isHotLead(c, lead) {
+  return c?.leadTemperature === "hot" && !["group", "staff"].includes(c?.contactType || "unknown") && !isClosedDeal(c, lead);
+}
+
 export function matchesBox(c, box, ctx = {}) {
   if (box === "archive") return !!c.archivedAt;
   if (c.archivedAt) return false;
@@ -167,7 +177,7 @@ export function matchesBox(c, box, ctx = {}) {
     case "followup": return isAwaitingFollowUp(c, ctx.followUpAfterDays || 0) && !c.optedOutAt;
     case "optedout": return !!c.optedOutAt;
     // From the old inbox (WhatsAppInbox.jsx), same rules — groups and staff never count.
-    case "hot": return c.leadTemperature === "hot" && !["group", "staff"].includes(type);
+    case "hot": return isHotLead(c, c.matchedLeadId ? ctx.leadsById?.[c.matchedLeadId] : null);
     case "followup_sent": return !!c.followupSentAt && !["group", "staff"].includes(type);
     case "pricelist_sent": return c.state === "PRICELIST_SENT" && !["group", "staff"].includes(type);
     default:

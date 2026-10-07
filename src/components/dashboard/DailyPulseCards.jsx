@@ -9,6 +9,7 @@ import { CalendarDays, MessageCircle, Flame, Hourglass, Signature, ChevronLeft, 
 import { useMeetings } from "@/components/meetings/MeetingsList";
 import { kindLabel, utcToIsraelParts, todayIsrael } from "@/lib/meetings";
 import { whatsappPulse, followUpSummary } from "@/lib/dashboardPulse";
+import { fetchLeadPhoneIndex, LEAD_PHONE_INDEX_KEY } from "@/lib/leadPhoneIndex";
 import { isPostSignPending, STEPS, currentStep, SIGNED_STATUS } from "@/lib/postSignFlow";
 import { todayInIsrael } from "@/lib/localDate";
 import PostSignWizard from "@/components/postSign/PostSignWizard";
@@ -74,7 +75,8 @@ export function MeetingsTodayCard() {
 export function WhatsAppPulseCard() {
   const navigate = useNavigate();
   const q = useDashConversations();
-  const p = useMemo(() => whatsappPulse(q.data || []), [q.data]);
+  const idxQ = useQuery({ queryKey: LEAD_PHONE_INDEX_KEY, queryFn: fetchLeadPhoneIndex, staleTime: 120000 });
+  const p = useMemo(() => whatsappPulse(q.data || [], Date.now(), idxQ.data || null), [q.data, idxQ.data]);
   return (
     <Card className={shell}>
       <CardHeader className="dash-head pb-3">

@@ -1,16 +1,18 @@
 // The daily numbers on the dashboard (2026-10-07) — pure, tested in PART 33.
-import { needsReply, waitingLabel, chatTitle } from "@/lib/chatModel";
+import { needsReply, waitingLabel, chatTitle, isHotLead } from "@/lib/chatModel";
+import { leadForPhone } from "@/lib/leadPhoneIndex";
 import { isAwaitingFollowUp } from "@/lib/followUpQueue";
 import { buildAttentionList } from "@/lib/needsAttention";
 
 const t = (iso) => (iso ? new Date(iso).getTime() : 0);
 
-// WhatsApp: who is waiting for an answer (longest first) and the hot leads.
-export function whatsappPulse(conversations, now = Date.now()) {
+// WhatsApp: who is waiting for an answer (longest first) and the hot leads. `phoneIndex`
+// (src/lib/leadPhoneIndex.js) drops couples whose CRM lead is already closed / signed.
+export function whatsappPulse(conversations, now = Date.now(), phoneIndex = null) {
   const live = (conversations || []).filter((c) => !c.archivedAt);
   const waiting = live.filter(needsReply).sort((a, b) => t(a.lastInboundAt) - t(b.lastInboundAt));
   const hot = live
-    .filter((c) => c.leadTemperature === "hot" && !["group", "staff"].includes(c.contactType))
+    .filter((c) => isHotLead(c, phoneIndex ? leadForPhone(phoneIndex, c.phone || String(c.chatId || "").split("@")[0]) : null))
     .sort((a, b) => t(b.leadTemperatureAt || b.lastMessageAt) - t(a.leadTemperatureAt || a.lastMessageAt));
   return {
     waitingCount: waiting.length,
