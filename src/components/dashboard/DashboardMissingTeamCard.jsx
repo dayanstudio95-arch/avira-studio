@@ -19,7 +19,7 @@ export default function DashboardMissingTeamCard({ events }) {
     .sort((a, b) => eventDay(a).localeCompare(eventDay(b)));
 
   return (
-    <Card className="dash-card flex flex-col h-full">
+    <Card className="dash-card flex flex-col h-full overflow-hidden">
       <CardHeader className="dash-head pb-3 flex-shrink-0">
         <CardTitle className="text-white flex items-center gap-2 text-base font-semibold">
           <Users className="w-5 h-5 text-orange-400" />
@@ -31,7 +31,7 @@ export default function DashboardMissingTeamCard({ events }) {
           )}
         </CardTitle>
       </CardHeader>
-      <CardContent className="e-scroll px-3 py-1 overflow-y-auto flex-grow" style={{ maxHeight: "260px" }}>
+      <CardContent className="e-scroll px-3 py-1 overflow-y-auto flex-grow min-h-0" >
         {missingTeamEvents.length === 0 ? (
           <div className="py-8 text-center text-slate-400 text-sm">כל האירועים משובצים ✅</div>
         ) : (
@@ -50,15 +50,11 @@ export default function DashboardMissingTeamCard({ events }) {
                     <p className="text-xs text-slate-400 truncate">
                       {format(new Date(event.date), "d/M/yyyy")}{event.venue ? ` · ${event.venue}` : ""}
                     </p>
+                    <p className="text-[11px] text-rose-300/90 truncate">חסר {missingRoles(event, pkgById[event.packageId]).join(" + ")}</p>
                   </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    <span className="e-chip e-chip-orange">
-                      {assigned}/{required} &#x202B;מאויש
-                    </span>
-                    <span className="e-chip e-chip-red text-[11px]">
-                      חסר {missingRoles(event, pkgById[event.packageId]).join(" + ")}
-                    </span>
-                  </div>
+                  <span className="e-chip e-chip-orange shrink-0">
+                    {assigned}/{required} &#x202B;מאויש
+                  </span>
                 </div>
               );
             })}

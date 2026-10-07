@@ -28,14 +28,14 @@ export default function RecentLeadsCard() {
 
   return (
     <>
-      <Card className="dash-card h-full">
+      <Card className="dash-card h-full flex flex-col overflow-hidden">
         <CardHeader className="dash-head pb-3">
           <CardTitle className="text-white flex items-center gap-2 text-base font-semibold">
             <Users className="w-5 h-5 text-sky-400" />
             לידים אחרונים
           </CardTitle>
         </CardHeader>
-        <CardContent className="px-3 py-1">
+        <CardContent className="e-scroll px-3 py-1 min-h-0 flex-1 overflow-y-auto">
           {leads.length === 0 ? (
             <div className="py-8 text-center text-gray-500 text-sm">אין לידים</div>
           ) : (

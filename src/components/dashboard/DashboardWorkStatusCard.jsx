@@ -135,7 +135,7 @@ export default function DashboardWorkStatusCard({ events, onRefresh }) {
   });
 
   return (
-    <Card className="dash-card flex flex-col h-full">
+    <Card className="dash-card flex flex-col h-full overflow-hidden">
       <CardHeader className="dash-head pb-3 flex-shrink-0">
         <CardTitle className="text-white flex items-center gap-2 text-base font-semibold">
           <Clapperboard className="w-5 h-5 text-amber-400" />
@@ -147,7 +147,7 @@ export default function DashboardWorkStatusCard({ events, onRefresh }) {
           )}
         </CardTitle>
       </CardHeader>
-      <CardContent className="e-scroll px-3 py-1 overflow-y-auto flex-grow" style={{ maxHeight: "260px" }}>
+      <CardContent className="e-scroll px-3 py-1 overflow-y-auto flex-grow min-h-0" >
         {incompleteEvents.length === 0 ? (
           <div className="py-8 text-center text-slate-400 text-sm">כל האירועים הושלמו ✅</div>
         ) : (

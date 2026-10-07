@@ -17,7 +17,7 @@ import PostSignWizard from "@/components/postSign/PostSignWizard";
 // meetings today/tomorrow, WhatsApp waiting + hot leads, follow-ups, signed couples still in
 // the post-sign wizard. Each one is a door: a click goes to where the work is done.
 
-const shell = "dash-card h-full flex flex-col";
+const shell = "dash-card h-full flex flex-col overflow-hidden";
 const head = "text-white flex items-center gap-2 text-base font-semibold";
 const rowBtn = "flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-start text-sm hover:bg-white/[0.04]";
 // Design E: a faint outline illustration fills the empty lower part of a short tile, as in
@@ -51,9 +51,9 @@ export function MeetingsTodayCard() {
       <CardHeader className="dash-head pb-3">
         <CardTitle className={head}><CalendarDays className="w-5 h-5 text-amber-400" /> פגישות היום ומחר</CardTitle>
       </CardHeader>
-      <CardContent className="p-3">
+      <CardContent className="e-scroll p-3 min-h-0 flex-1 overflow-y-auto">
         {list.length === 0 && (
-          <div className="flex flex-col items-center gap-3 py-8 text-slate-400">
+          <div className="flex h-full flex-col items-center justify-center gap-3 py-6 text-slate-400">
             <CalendarDays className="h-11 w-11 text-slate-500/70" strokeWidth={1.25} />
             <span className="text-sm">אין פגישות היום ומחר</span>
           </div>
@@ -80,7 +80,7 @@ export function WhatsAppPulseCard() {
       <CardHeader className="dash-head pb-3">
         <CardTitle className={head}><MessageCircle className="w-5 h-5 text-emerald-400" /> וואטסאפ</CardTitle>
       </CardHeader>
-      <CardContent className="p-3 space-y-0.5">
+      <CardContent className="e-scroll p-3 space-y-0.5 min-h-0 flex-1 overflow-y-auto">
         <button type="button" onClick={() => navigate("/chat")} className={rowBtn}>
           <span className="text-slate-200">דורש מענה</span>
           <span className={`e-count ${p.waitingCount ? "e-count-red" : "bg-white/5 text-slate-400"}`}>{p.waitingCount}</span>
@@ -115,7 +115,7 @@ export function FollowUpCard() {
       <CardHeader className="dash-head pb-3">
         <CardTitle className={head}><Hourglass className="w-5 h-5 text-amber-400" /> פולו-אפ</CardTitle>
       </CardHeader>
-      <CardContent className="p-3 space-y-1 flex-1 flex flex-col">
+      <CardContent className="e-scroll p-3 space-y-1 min-h-0 flex-1 flex flex-col overflow-y-auto">
         <button type="button" onClick={() => navigate("/chat?box=followup")} className={rowBtn}>
           <span className="text-slate-200">ממתינים בוואטסאפ</span>
           <span className="e-chip e-chip-orange rounded-full px-3 font-bold">{s.awaitingCount}</span>
@@ -159,7 +159,7 @@ export function PostSignCard() {
       <CardHeader className="dash-head pb-3">
         <CardTitle className={head}><Signature className="w-5 h-5 text-emerald-400" /> חתמו · בתהליך</CardTitle>
       </CardHeader>
-      <CardContent className="p-3 flex-1 flex flex-col">
+      <CardContent className="e-scroll p-3 min-h-0 flex-1 flex flex-col overflow-y-auto">
         {list.length === 0 && <p className="py-6 text-center text-sm text-slate-400">אין זוגות בתהליך ✅</p>}
         {list.slice(0, 5).map((l) => (
           <button key={l.id} type="button" onClick={() => setOpenLead(l)} className={rowBtn}>
