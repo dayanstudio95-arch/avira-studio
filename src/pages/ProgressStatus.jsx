@@ -364,14 +364,18 @@ export default function ProgressStatus() {
       type="button"
       onClick={() => toggleMonth(item)}
       aria-expanded={item.mode !== "closed"}
-      className={`flex w-full items-center justify-between gap-3 border-b border-gray-700 px-1 text-start ${mobile ? "pt-4 pb-1" : "pt-6 pb-2 mb-2"}`}
+      className={`flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-start transition-colors hover:border-[#4F7BFF]/40 ${item.complete ? "border-[#22C987]/25 bg-[#22C987]/[0.05]" : "border-white/[0.08] bg-white/[0.03]"} ${mobile ? "mt-3" : "mt-5 mb-2"}`}
     >
-      <span className={`font-semibold text-gray-300 ${mobile ? "text-base" : "text-lg"}`}>{item.label}</span>
-      <span className="flex items-center gap-2 text-xs">
-        <span className={item.complete ? "text-emerald-400" : "text-yellow-300"}>
+      <span className={`font-semibold text-white ${mobile ? "text-base" : "text-lg"}`}>{item.label}</span>
+      <span className="flex items-center gap-3 text-xs">
+        {/* Design E: the same done/total as a bar (display only). */}
+        <span className="hidden sm:block h-1.5 w-28 overflow-hidden rounded-full bg-white/[0.07]">
+          <span className={`block h-full rounded-full ${item.complete ? "bg-[#22C987]" : "bg-gradient-to-l from-[#FACC15] to-[#F59E0B]"}`} style={{ width: `${item.total ? Math.round((item.done / item.total) * 100) : 0}%` }} />
+        </span>
+        <span className={`font-semibold ${item.complete ? "text-emerald-400" : "text-amber-300"}`}>
           {item.complete ? "✓ הושלם" : `${item.done}/${item.total} הושלמו`}
         </span>
-        <span className="text-gray-500">{item.mode === "closed" ? "▸" : "▾"}</span>
+        <span className="text-slate-500">{item.mode === "closed" ? "▸" : "▾"}</span>
       </span>
     </button>
   );
@@ -380,7 +384,7 @@ export default function ProgressStatus() {
       key={item.id}
       type="button"
       onClick={() => setMonthMode((m) => ({ ...m, [item.label]: "all" }))}
-      className="w-full rounded-lg border border-dashed border-gray-700 py-2 text-xs text-gray-400 hover:text-white"
+      className="w-full rounded-xl border border-dashed border-[#2A3B57] py-2 text-xs text-slate-400 hover:text-white hover:border-[#4F7BFF]/50"
     >
       הצג גם {item.hidden} שהושלמו
     </button>
@@ -388,7 +392,7 @@ export default function ProgressStatus() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-950 p-4 md:p-8">
+      <div className="e-page min-h-screen p-4 md:p-8">
         <div className="max-w-7xl mx-auto space-y-4 animate-pulse">
           {Array(8).fill(0).map((_, i) => <div key={i} className="h-12 bg-gray-800 rounded-lg" />)}
         </div>
@@ -397,23 +401,25 @@ export default function ProgressStatus() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 p-4 md:p-8" dir="rtl">
+    <div className="e-page min-h-screen p-4 md:p-8" dir="rtl">
       <div className="max-w-7xl mx-auto">
 
         {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-          <div>
-            <h1 className="text-3xl md:text-4xl font-bold text-white mb-2 flex items-center gap-3">
-              <CheckSquare className="w-8 h-8 text-yellow-400" />
-              סטטוס עבודה
-            </h1>
-            <p className="text-gray-400">מעקב בזמן אמת על התקדמות כל האירועים</p>
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-5 gap-4">
+          <div className="flex items-center gap-4">
+            <div className="hidden sm:flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-[#22C987]/45 bg-[#22C987]/10 text-emerald-300 shadow-[0_0_24px_-6px_rgba(34,201,135,0.7)]">
+              <CheckSquare className="h-7 w-7" strokeWidth={1.75} />
+            </div>
+            <div>
+              <h1 className="text-3xl md:text-4xl font-bold text-white mb-1">סטטוס עבודה</h1>
+              <p className="text-slate-400">מעקב בזמן אמת על התקדמות כל האירועים</p>
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
               <CalendarDays className="w-4 h-4 text-gray-400" />
               <Select value={selectedYear.toString()} onValueChange={v => setSelectedYear(parseInt(v))}>
-                <SelectTrigger className="w-28 bg-gray-900/50 border-gray-700 text-white h-9">
+                <SelectTrigger className="w-28 rounded-xl bg-[#0B1529] border-[#2A3B57] text-white h-9">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-gray-900 border-gray-700 text-white">
@@ -426,7 +432,7 @@ export default function ProgressStatus() {
             <div className="flex items-center gap-2">
               <Filter className="w-4 h-4 text-gray-400" />
               <Select value={filter} onValueChange={setFilter}>
-                <SelectTrigger className="w-36 bg-gray-900/50 border-gray-700 text-white h-9">
+                <SelectTrigger className="w-36 rounded-xl bg-[#0B1529] border-[#2A3B57] text-white h-9">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-gray-900 border-gray-700 text-white">
@@ -438,7 +444,7 @@ export default function ProgressStatus() {
               </Select>
             </div>
             <Select value={sortOrder} onValueChange={v => { setSortOrder(v); localStorage.setItem('progress_sort', v); }}>
-              <SelectTrigger className="w-56 bg-gray-900/50 border-gray-700 text-white h-9">
+              <SelectTrigger className="w-56 rounded-xl bg-[#0B1529] border-[#2A3B57] text-white h-9">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-gray-900 border-gray-700 text-white">
@@ -448,7 +454,7 @@ export default function ProgressStatus() {
             </Select>
           <button
             onClick={scrollToClosestEvent}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-yellow-500/60 bg-yellow-500/10 text-yellow-300 hover:bg-yellow-500/20 text-xs font-semibold transition-colors whitespace-nowrap"
+            className="flex h-9 items-center gap-1.5 px-3 rounded-xl border border-[#FACC15]/70 bg-[#FACC15]/10 text-[#FDE047] hover:bg-[#FACC15]/20 text-xs font-semibold transition-colors whitespace-nowrap shadow-[0_0_18px_-6px_rgba(250,204,21,0.6)]"
             title="גלול לאירוע הקרוב ביותר להיום"
           >
             📍 היום
@@ -459,11 +465,38 @@ export default function ProgressStatus() {
           </div>
         </div>
 
+        {/* Design E: four counts for the selected year (the same rule as the status filter). */}
+        {(() => {
+          const ofYear = events.filter((e) => new Date(e?.date || "").getFullYear() === selectedYear);
+          const pct = (e) => getProgress(e, e?.team || []).percentage;
+          const tiles = [
+            { label: `אירועי ${selectedYear}`, value: ofYear.length, tone: "border-[#3B82F6]/50 bg-[#3B82F6]/12 text-sky-300 shadow-[0_0_18px_-4px_rgba(59,130,246,0.6)]", icon: Calendar },
+            { label: "ממתין", value: ofYear.filter((e) => pct(e) === 0).length, tone: "border-[#F05B70]/55 bg-[#F05B70]/12 text-rose-300 shadow-[0_0_18px_-4px_rgba(240,91,112,0.6)]", icon: Scissors },
+            { label: "בתהליך", value: ofYear.filter((e) => pct(e) > 0 && pct(e) < 100).length, tone: "border-[#F59E0B]/55 bg-[#F59E0B]/12 text-amber-300 shadow-[0_0_18px_-4px_rgba(245,158,11,0.55)]", icon: Video },
+            { label: "הושלם", value: ofYear.filter((e) => pct(e) === 100).length, tone: "border-[#22C987]/50 bg-[#22C987]/12 text-emerald-300 shadow-[0_0_18px_-4px_rgba(34,201,135,0.55)]", icon: CheckSquare },
+          ];
+          return (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-4 mb-5">
+              {tiles.map((t) => (
+                <div key={t.label} className="dash-card flex items-center justify-end gap-3 px-3 py-3 md:gap-4 md:px-5 md:py-4">
+                  <div>
+                    <div className="text-xl md:text-2xl font-bold leading-tight text-white tabular-nums">{t.value}</div>
+                    <div className="text-xs md:text-sm text-slate-400 whitespace-nowrap">{t.label}</div>
+                  </div>
+                  <div className={`flex h-10 w-10 md:h-12 md:w-12 shrink-0 items-center justify-center rounded-xl border ${t.tone}`}>
+                    <t.icon className="h-5 w-5 md:h-6 md:w-6" strokeWidth={1.75} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+
         {/* Duplicates Viewer */}
-        <div className="mb-6">
+        <div className="mb-4">
           <button
             onClick={() => setShowDuplicates(v => !v)}
-            className="text-sm px-4 py-2 rounded-lg border border-orange-600 text-orange-300 hover:bg-orange-500/10 transition-colors"
+            className="text-xs px-3.5 py-2 rounded-xl border border-[#F97316]/60 bg-[#F97316]/[0.06] text-orange-300 hover:bg-[#F97316]/15 transition-colors"
           >
             🔍 {showDuplicates ? "הסתר" : "הצג"} אירועים כפולים
           </button>
@@ -564,13 +597,13 @@ export default function ProgressStatus() {
                 const finalDone = isFinalCompleted(event);
 
                 return (
-                  <div key={event?.id} id={`event-row-${event?.id}`} className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 hover:border-gray-700 transition-colors">
+                  <div key={event?.id} id={`event-row-${event?.id}`} className="rounded-xl border border-white/[0.07] bg-gradient-to-b from-[#0F1C36] to-[#0B1529] p-4 transition-colors hover:border-[#4F7BFF]/40">
                     {/* Row: LTR so elements flow left→right */}
                     <div className="flex items-start gap-3 flex-wrap" style={{ direction: "ltr" }}>
 
                       {/* Event Info — forced RTL for Hebrew text */}
                       <div className="flex items-center gap-3 min-w-fit" style={{ direction: "rtl" }}>
-                        <Calendar className="w-5 h-5 text-yellow-400 flex-shrink-0" />
+                        <Calendar className="w-5 h-5 text-amber-400 flex-shrink-0" />
                         <div>
                           <p className="text-sm font-semibold text-white">{event?.coupleNames || "—"}</p>
                           <p className="text-xs text-gray-400">
@@ -744,13 +777,13 @@ export default function ProgressStatus() {
                         >
                           📀 אלבום
                         </Button>
-                        <div className="w-24 h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                        <div className="w-28 h-1.5 bg-white/[0.07] rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-gradient-to-r from-yellow-400 to-yellow-500 transition-all duration-300"
+                            className={`h-full transition-all duration-300 ${progress.percentage === 100 ? "bg-[#22C987]" : progress.percentage >= 50 ? "bg-gradient-to-r from-[#06B6D4] to-[#3B82F6]" : "bg-gradient-to-r from-[#F59E0B] to-[#FACC15]"}`}
                             style={{ width: `${progress.percentage}%` }}
                           />
                         </div>
-                        <span className="text-xs font-semibold text-yellow-400 w-8 text-left">
+                        <span className={`text-xs font-semibold w-8 text-left ${progress.percentage === 100 ? "text-emerald-400" : progress.percentage >= 50 ? "text-sky-300" : "text-amber-300"}`}>
                           {progress.percentage}%
                         </span>
                       </div>

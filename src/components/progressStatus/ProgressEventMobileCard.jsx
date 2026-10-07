@@ -50,7 +50,7 @@ export default function ProgressEventMobileCard({
   const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
 
   return (
-    <div id={`event-row-${event?.id}`} className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 space-y-3" dir="rtl">
+    <div id={`event-row-${event?.id}`} className="dash-card p-4 space-y-3" dir="rtl">
 
       {/* Header: name + date + progress */}
       <div className="flex items-center justify-between gap-2">
@@ -218,7 +218,7 @@ export default function ProgressEventMobileCard({
       </div>
 
       {/* Album status toggle */}
-      <div className="flex items-center justify-between pt-1 border-t border-gray-800">
+      <div className="flex items-center justify-between pt-1 border-t border-white/[0.06]">
         <button
           onClick={() => updateField(event.id, "albumStatus", event?.albumStatus === "sent" ? "pending" : "sent")}
           className={`h-8 px-3 text-xs font-medium rounded-md border transition-colors ${
