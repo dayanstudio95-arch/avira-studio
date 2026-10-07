@@ -13,10 +13,13 @@ import { formatDateWithWeekday } from "@/lib/chatModel";
 export default function TodayEventsCard({ events }) {
   const navigate = useNavigate();
   const today = israelToday();
-  const todays = (events || []).filter((e) => eventDay(e) === today);
-  const next = todays.length
+  const todayEvents = (events || []).filter((e) => eventDay(e) === today);
+  // No event today → every event of the next day that has one (2026-10-07: "on Thursday there
+  // are 2, show both"), with the same details.
+  const nextDay = todayEvents.length
     ? null
-    : (events || []).filter((e) => eventDay(e) > today).sort((a, b) => eventDay(a).localeCompare(eventDay(b)))[0];
+    : (events || []).map(eventDay).filter((d) => d > today).sort()[0] || null;
+  const todays = todayEvents.length ? todayEvents : (events || []).filter((e) => eventDay(e) === nextDay);
   const [leads, setLeads] = useState({});
 
   const leadIds = todays.map((e) => e.sourceLeadId).filter(Boolean).sort().join(",");
@@ -41,14 +44,11 @@ export default function TodayEventsCard({ events }) {
         </CardTitle>
       </CardHeader>
       <CardContent className="p-3 space-y-3">
-        {todays.length === 0 && (
-          <div className="py-4 text-center text-sm text-gray-400">
-            אין אירועים היום
-            {next && (
-              <button type="button" onClick={() => navigate(`/Events?openEventId=${next.id}`)} className="mt-1 block w-full text-gray-300 hover:text-yellow-300">
-                הבא: {next.coupleNames} · {formatDateWithWeekday(eventDay(next))}{next.venue ? ` · ${next.venue}` : ""}
-              </button>
-            )}
+        {todays.length === 0 && <div className="py-4 text-center text-sm text-gray-400">אין אירועים קרובים</div>}
+        {nextDay && todays.length > 0 && (
+          <div className="rounded-lg bg-gray-800/60 px-3 py-1.5 text-sm text-gray-300">
+            אין אירועים היום · <span className="font-semibold text-yellow-300">הבא: {formatDateWithWeekday(nextDay)}</span>
+            {todays.length > 1 ? ` (${todays.length} אירועים)` : ""}
           </div>
         )}
         {todays.map((e) => {

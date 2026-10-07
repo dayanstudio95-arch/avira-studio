@@ -59,3 +59,39 @@ export function combinedNotes(eventNotes, leadNotes) {
   if (b.includes(a)) return b;
   return `${a}\n${b}`;
 }
+
+// Which roles are missing (2026-10-07: "חסר וידאו", "חסר וידאו + צלם 2"). The package says how
+// many photographers / videographers (packages.photographers / .videographers — 61 of 106
+// upcoming events have one); without a package the split follows requiredCrew the way the
+// studio actually staffs (verified on past events): 1 → 1 photo, 2 → 1+1, 3 → 2 photo + 1
+// video, 4 → 2+2. A "אין …" name fills its slot.
+const PHOTO_ROLES = ["photographer1", "photographer2"];
+const VIDEO_ROLES = ["videographer", "videographer2"];
+
+export function expectedSplit(e, pkg) {
+  if (pkg && (Number(pkg.photographers) || Number(pkg.videographers))) {
+    return { photo: Number(pkg.photographers) || 0, video: Number(pkg.videographers) || 0 };
+  }
+  const n = requiredShooters(e);
+  if (n <= 1) return { photo: 1, video: 0 };
+  if (n === 2) return { photo: 1, video: 1 };
+  if (n === 3) return { photo: 2, video: 1 };
+  return { photo: 2, video: n - 2 };
+}
+
+export function missingRoles(e, pkg) {
+  const named = (e?.team || []).filter((m) => m && String(m.staffMemberName || "").trim());
+  const photo = named.filter((m) => PHOTO_ROLES.includes(m.role)).length;
+  const video = named.filter((m) => VIDEO_ROLES.includes(m.role)).length;
+  const want = expectedSplit(e, pkg);
+  const out = [];
+  const p = want.photo - photo;
+  const v = want.video - video;
+  if (p === 1) out.push("צלם");
+  if (p > 1) out.push(`${p} צלמים`);
+  if (v === 1) out.push("וידאו");
+  if (v > 1) out.push(`${v} וידאו`);
+  // The package split may not explain the gap (e.g. an extra role booked) — still say how many.
+  if (!out.length && missingCount(e) > 0) out.push(`${missingCount(e)} אנשי צוות`);
+  return out;
+}

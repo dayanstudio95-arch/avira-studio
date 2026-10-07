@@ -4,12 +4,17 @@ import { format } from "date-fns";
 import { Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useNavigate } from "react-router-dom";
-import { isMissingTeam, israelToday, assignedShooters, requiredShooters, eventDay } from "@/lib/missingTeam";
+import { useQuery } from "@tanstack/react-query";
+import { base44 } from "@/api/base44Client";
+import { isMissingTeam, israelToday, assignedShooters, requiredShooters, eventDay, missingRoles } from "@/lib/missingTeam";
 
 export default function DashboardMissingTeamCard({ events }) {
   const navigate = useNavigate();
   // The shared rule (src/lib/missingTeam.js) — same number as the sidebar and the staff page.
   const today = israelToday();
+  // Packages say how many photographers / videographers each event needs (missingRoles).
+  const pkgQ = useQuery({ queryKey: ["dashPackages"], queryFn: () => base44.entities.Package.list(), staleTime: 600000 });
+  const pkgById = Object.fromEntries((pkgQ.data || []).map((p) => [p.id, p]));
   const missingTeamEvents = events
     .filter((e) => isMissingTeam(e, today))
     .sort((a, b) => eventDay(a).localeCompare(eventDay(b)));
@@ -43,11 +48,18 @@ export default function DashboardMissingTeamCard({ events }) {
                 >
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-white truncate">{event.coupleNames}</p>
-                    <p className="text-xs text-gray-400">{format(new Date(event.date), "d/M/yyyy")}</p>
+                    <p className="text-xs text-gray-400 truncate">
+                      {format(new Date(event.date), "d/M/yyyy")}{event.venue ? ` · ${event.venue}` : ""}
+                    </p>
                   </div>
-                  <Badge variant="outline" className="bg-orange-500/20 text-orange-400 border-orange-500/30 border text-xs whitespace-nowrap">
-                    {assigned}/{required} &#x202B;מאויש
-                  </Badge>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <Badge variant="outline" className="bg-orange-500/20 text-orange-400 border-orange-500/30 border text-xs whitespace-nowrap">
+                      {assigned}/{required} &#x202B;מאויש
+                    </Badge>
+                    <Badge variant="outline" className="bg-red-500/15 text-red-300 border-red-500/30 border text-[11px] whitespace-nowrap">
+                      חסר {missingRoles(event, pkgById[event.packageId]).join(" + ")}
+                    </Badge>
+                  </div>
                 </div>
               );
             })}

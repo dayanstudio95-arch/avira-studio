@@ -150,7 +150,12 @@ export function PostSignCard() {
         {list.length === 0 && <p className="py-6 text-center text-sm text-gray-500">אין זוגות בתהליך ✅</p>}
         {list.slice(0, 5).map((l) => (
           <button key={l.id} type="button" onClick={() => setOpenLead(l)} className={rowBtn}>
-            <span className="truncate text-gray-200">{l.coupleNames}</span>
+            <span className="min-w-0">
+              <span className="block truncate text-gray-200">{l.coupleNames}</span>
+              <span className="block truncate text-xs text-gray-500">
+                {l.eventDate ? String(l.eventDate).slice(0, 10).split("-").reverse().join("/") : "בלי תאריך"}{l.venueName ? ` · ${l.venueName}` : ""}
+              </span>
+            </span>
             <span className="shrink-0 rounded-full bg-emerald-500/15 px-2 text-[11px] text-emerald-200">שלב {stepIndex(l)}/{STEPS.length}</span>
           </button>
         ))}

@@ -1865,6 +1865,16 @@ section('missing team — one rule everywhere');
   check('notes: same text once', mtm.combinedNotes('אותו דבר', 'אותו דבר'), 'אותו דבר');
 }
 
+section('which role is missing');
+{
+  const t = (...roles) => roles.map(([role, name]) => ({ role, staffMemberName: name }));
+  check('package 2 photo + 1 video, video missing', mtm.missingRoles({ requiredCrew: 3, team: t(['photographer1', 'א'], ['photographer2', 'ב']) }, { photographers: 2, videographers: 1 }).join(' + '), 'וידאו');
+  check('video + second photographer missing', mtm.missingRoles({ requiredCrew: 3, team: t(['photographer1', 'א']) }, null).join(' + '), 'צלם + וידאו');
+  check('package with 2 videographers', mtm.missingRoles({ requiredCrew: 4, team: t(['photographer1', 'א'], ['photographer2', 'ב']) }, { photographers: 2, videographers: 2 }).join(' + '), '2 וידאו');
+  check('"אין וידאו" counts as filled', mtm.missingRoles({ requiredCrew: 3, team: t(['photographer1', 'א'], ['videographer', 'אין וידאו']) }, null).join(' + '), 'צלם');
+  check('no package, crew of 2 → 1 photo + 1 video', JSON.stringify(mtm.expectedSplit({ requiredCrew: 2 }, null)), '{"photo":1,"video":1}');
+}
+
 section('search by date');
 {
   const now = new Date('2026-10-07T10:00:00');
