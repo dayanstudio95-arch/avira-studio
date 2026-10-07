@@ -331,7 +331,7 @@ export default function Dashboard() {
             "what do I do today" tiles, then the state of the work. "צריך טיפול" left: the
             WhatsApp and follow-up tiles now say the same thing, each with its own door. */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-5 mb-5">
-          <div className="lg:col-span-2 h-[240px] lg:h-full"><TodayEventsCard events={events} /></div>
+          <div className="lg:col-span-2 min-h-[240px] lg:h-full"><TodayEventsCard events={events} /></div>
           <FinanceCard stats={stats} year={selectedYear} pendingCollection={pendingCollection} events={events} />
         </div>
 
