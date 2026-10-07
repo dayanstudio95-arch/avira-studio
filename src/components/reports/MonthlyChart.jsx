@@ -2,8 +2,9 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { calculateNetProfit } from "../../lib/profitCalculations";
 import { getEventTeamCost } from "../../lib/financialCalculations";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { Calendar } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Calendar, Users, Coins, CreditCard, BarChart3 } from "lucide-react";
+import { chartGradients, gridProps, axisProps, tooltipProps, Legend, CHART_COLORS } from "./chartTheme";
 
 const MONTHS = ["ינו", "פבר", "מרץ", "אפר", "מאי", "יונ", "יול", "אוג", "ספט", "אוק", "נוב", "דצמ"];
 
@@ -44,7 +45,7 @@ export default function MonthlyChart({ events, isLoading, staffMembers = [], yea
 
   if (isLoading) {
     return (
-      <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm">
+      <Card className="dash-card">
         <CardHeader>
           <CardTitle className="text-white">סקירה חודשית</CardTitle>
         </CardHeader>
@@ -57,81 +58,60 @@ export default function MonthlyChart({ events, isLoading, staffMembers = [], yea
     );
   }
 
+  // Design E (2026-10-07, the owner's reference image): the same four totals as tiles with icons.
+  const sum = (k) => chartData.reduce((t, m) => t + m[k], 0);
+  const tiles = [
+    { label: 'סה"כ אירועים', value: sum("events").toLocaleString(), icon: Users, cls: "text-white", icon_cls: "text-sky-400" },
+    { label: 'סה"כ הכנסה', value: `₪${sum("income").toLocaleString()}`, icon: Coins, cls: "text-amber-300", icon_cls: "text-amber-400" },
+    { label: 'סה"כ הוצאות', value: `₪${sum("expenses").toLocaleString()}`, icon: CreditCard, cls: "text-rose-400", icon_cls: "text-rose-400" },
+    { label: 'סה"כ רווח', value: `₪${(Math.round(sum("profit") * 100) / 100).toLocaleString()}`, icon: BarChart3, cls: "text-emerald-400", icon_cls: "text-emerald-400" },
+  ];
+
   return (
-    <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm">
-      <CardHeader>
-        <CardTitle className="text-white flex items-center gap-2">
-          <Calendar className="w-5 h-5 text-yellow-400" />
-          סקירה חודשית - {shownYear}
-        </CardTitle>
+    <Card className="dash-card">
+      <CardHeader className="pb-2">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <CardTitle className="text-white flex items-center gap-2 text-base">
+            <Calendar className="w-6 h-6 text-amber-400" />
+            סקירה חודשית - {shownYear}
+          </CardTitle>
+          <Legend items={[["הכנסה", CHART_COLORS.income], ["הוצאה", CHART_COLORS.expenses], ["רווח נקי", CHART_COLORS.profit]]} />
+        </div>
       </CardHeader>
       <CardContent>
-        <div className="h-80">
+        <div className="h-72">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis 
-                dataKey="month" 
-                stroke="#9CA3AF"
-                fontSize={12}
-              />
-              <YAxis 
-                stroke="#9CA3AF"
-                fontSize={12}
-                tickFormatter={(value) => `₪${(value / 1000).toFixed(0)}K`}
-              />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: '#1F2937', 
-                  border: '1px solid #374151',
-                  borderRadius: '8px',
-                  color: '#F3F4F6'
-                }}
+            <BarChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 5 }} barGap={3}>
+              {chartGradients()}
+              <CartesianGrid {...gridProps} />
+              <XAxis dataKey="month" {...axisProps} fontSize={12} />
+              <YAxis {...axisProps} fontSize={12} tickFormatter={(value) => `₪${(value / 1000).toFixed(0)}K`} />
+              <Tooltip
+                {...tooltipProps}
                 formatter={(value, name) => [
-                  `₪${value.toLocaleString()}`, 
+                  `₪${value.toLocaleString()}`,
                   name === 'income' ? 'הכנסה' : name === 'expenses' ? 'הוצאות' : 'רווח'
                 ]}
                 labelFormatter={(label) => `חודש ${label}`}
               />
-              <Legend 
-                formatter={(value) => 
-                  value === 'income' ? 'הכנסה' : 
-                  value === 'expenses' ? 'הוצאות' : 'רווח נקי'
-                }
-              />
-              <Bar dataKey="income" fill="#F59E0B" name="income" radius={[2, 2, 0, 0]} />
-              <Bar dataKey="expenses" fill="#EF4444" name="expenses" radius={[2, 2, 0, 0]} />
-              <Bar dataKey="profit" fill="#10B981" name="profit" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="income" fill="url(#rg-income)" name="income" radius={[3, 3, 0, 0]} maxBarSize={18} />
+              <Bar dataKey="expenses" fill="url(#rg-expenses)" name="expenses" radius={[3, 3, 0, 0]} maxBarSize={18} />
+              <Bar dataKey="profit" fill="url(#rg-profit)" name="profit" radius={[3, 3, 0, 0]} maxBarSize={18} />
             </BarChart>
           </ResponsiveContainer>
         </div>
-        
+
         {/* Summary Stats */}
-        <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="text-center">
-            <p className="text-sm text-gray-400">סה"כ אירועים</p>
-            <p className="text-lg font-bold text-white">
-              {chartData.reduce((sum, month) => sum + month.events, 0)}
-            </p>
-          </div>
-          <div className="text-center">
-            <p className="text-sm text-gray-400">סה"כ הכנסה</p>
-            <p className="text-lg font-bold text-yellow-400">
-              ₪{chartData.reduce((sum, month) => sum + month.income, 0).toLocaleString()}
-            </p>
-          </div>
-          <div className="text-center">
-            <p className="text-sm text-gray-400">סה"כ הוצאות</p>
-            <p className="text-lg font-bold text-red-400">
-              ₪{chartData.reduce((sum, month) => sum + month.expenses, 0).toLocaleString()}
-            </p>
-          </div>
-          <div className="text-center">
-            <p className="text-sm text-gray-400">סה"כ רווח</p>
-            <p className="text-lg font-bold text-green-400">
-              ₪{chartData.reduce((sum, month) => sum + month.profit, 0).toLocaleString()}
-            </p>
-          </div>
+        <div className="mt-5 grid grid-cols-2 md:grid-cols-4 gap-3">
+          {tiles.map((t) => (
+            <div key={t.label} className="flex items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3">
+              <t.icon className={`h-8 w-8 shrink-0 ${t.icon_cls} drop-shadow-[0_0_8px_currentColor]`} strokeWidth={1.75} />
+              <div className="min-w-0">
+                <p className="text-xs text-slate-400">{t.label}</p>
+                <p className={`truncate text-lg font-bold tabular-nums ${t.cls}`}>{t.value}</p>
+              </div>
+            </div>
+          ))}
         </div>
       </CardContent>
     </Card>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Receipt } from "lucide-react";
+import { Receipt, Users, Coins, FileText, Calculator, CreditCard, BarChart3, Gem, CalendarDays } from "lucide-react";
 import { calculateNetProfit } from "../../lib/profitCalculations";
 import { getEventVatAmount, getEventTeamCost } from "../../lib/financialCalculations";
 
@@ -9,7 +9,21 @@ import { getEventVatAmount, getEventTeamCost } from "../../lib/financialCalculat
 const money = (n) =>
   `₪${(Math.round((n || 0) * 100) / 100).toLocaleString("he-IL", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 
-export default function ReportsTable({ events, period, isLoading, staffMembers = [] }) {
+// Design E (2026-10-07, the owner's reference image): each line its own row with an icon;
+// net profit a lit green box; the per-event averages two small cards. Same numbers as before.
+function Row({ icon: Icon, label, value, cls }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.07] bg-white/[0.03] px-3.5 py-2.5">
+      <span className="flex items-center gap-3 text-sm text-slate-300">
+        <Icon className="h-5 w-5 shrink-0 text-sky-300/80" strokeWidth={1.75} />
+        {label}
+      </span>
+      <span className={`font-bold tabular-nums ${cls}`}>{value}</span>
+    </div>
+  );
+}
+
+export default function ReportsTable({ events, period, isLoading, staffMembers = [], periodLabel }) {
   // Every line comes from the same three per-event numbers (gross, VAT, crew cost), and
   // profit is derived from them — so the card adds up: gross − VAT − expenses = profit.
   // See calculateNetProfit for what used to break that.
@@ -27,7 +41,7 @@ export default function ReportsTable({ events, period, isLoading, staffMembers =
 
   if (isLoading) {
     return (
-      <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm">
+      <Card className="dash-card">
         <CardHeader>
           <CardTitle className="text-white">סיכום פיננסי</CardTitle>
         </CardHeader>
@@ -45,62 +59,57 @@ export default function ReportsTable({ events, period, isLoading, staffMembers =
     );
   }
 
+  const positive = totals.profit >= 0;
+
   return (
-    <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm">
-      <CardHeader>
-        <CardTitle className="text-white flex items-center gap-2">
-          <Receipt className="w-5 h-5 text-yellow-400" />
-          סיכום פיננסי
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          <div className="flex justify-between items-center py-3 border-b border-gray-800">
-            <span className="text-gray-400">מספר אירועים</span>
-            <span className="text-white font-semibold">{events.length}</span>
-          </div>
-
-          <div className="flex justify-between items-center py-3 border-b border-gray-800">
-            <span className="text-gray-400">הכנסה ברוטו (כולל מע״מ)</span>
-            <span className="text-yellow-400 font-semibold">{money(totals.income)}</span>
-          </div>
-
-          <div className="flex justify-between items-center py-3 border-b border-gray-800">
-            <span className="text-gray-400">− מע״מ</span>
-            <span className="text-blue-400 font-semibold">{money(totals.vat)}</span>
-          </div>
-
-          <div className="flex justify-between items-center py-3 border-b border-gray-800">
-            <span className="text-gray-400">= הכנסה לפני מע״מ</span>
-            <span className="text-white font-semibold">{money(beforeVat)}</span>
-          </div>
-
-          <div className="flex justify-between items-center py-3 border-b border-gray-800">
-            <span className="text-gray-400">− הוצאות צוות (כפי שנרשמו באירועים)</span>
-            <span className="text-red-400 font-semibold">{money(totals.expenses)}</span>
-          </div>
-
-          <div className="flex justify-between items-center py-4 border-t-2 border-yellow-400/20">
-            <span className="text-white font-bold text-lg">= רווח נקי</span>
-            <span className={`font-bold text-xl ${
-              totals.profit >= 0 ? 'text-green-400' : 'text-red-400'
-            }`}>
-              {money(totals.profit)}
+    <Card className="dash-card">
+      <CardHeader className="pb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="text-white flex items-center gap-2 text-base">
+            <Receipt className="w-6 h-6 text-amber-400" />
+            סיכום פיננסי
+          </CardTitle>
+          {periodLabel && (
+            <span className="flex items-center gap-1.5 text-sm text-sky-300">
+              <CalendarDays className="h-4 w-4" /> {periodLabel}
             </span>
-          </div>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <Row icon={Users} label="מספר אירועים" value={events.length} cls="text-white" />
+        <Row icon={Coins} label="הכנסה ברוטו (כולל מע״מ)" value={money(totals.income)} cls="text-amber-300" />
+        <Row icon={FileText} label="− מע״מ" value={money(totals.vat)} cls="text-sky-400" />
+        <Row icon={Calculator} label="= הכנסה לפני מע״מ" value={money(beforeVat)} cls="text-white" />
+        <Row icon={CreditCard} label="− הוצאות צוות (כפי שנרשמו באירועים)" value={money(totals.expenses)} cls="text-rose-400" />
+
+        <div className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3.5 ${positive ? "border-[#22C987]/70 bg-gradient-to-l from-[#22C987]/[0.04] to-[#22C987]/[0.16] shadow-[0_0_26px_-8px_rgba(34,201,135,0.8)]" : "border-[#F05B70]/70 bg-[#F05B70]/10"}`}>
+          <span className="flex items-center gap-3 text-lg font-bold text-white">
+            <BarChart3 className={`h-6 w-6 ${positive ? "text-emerald-400" : "text-rose-400"}`} />
+            = רווח נקי
+          </span>
+          <span className={`text-xl font-bold tabular-nums ${positive ? "text-emerald-400" : "text-rose-400"}`}>
+            {money(totals.profit)}
+          </span>
         </div>
 
         {events.length > 0 && (
-          <div className="mt-6 pt-6 border-t border-gray-800">
-            <h4 className="text-white font-medium mb-4">ממוצע לאירוע</h4>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-400">הכנסה ממוצעת</span>
-                <span className="text-white">₪{Math.round(totals.income / events.length).toLocaleString()}</span>
+          <div className="pt-3">
+            <h4 className="text-white font-semibold mb-2">ממוצע לאירוע</h4>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex items-center justify-between gap-2 rounded-xl border border-white/[0.07] bg-white/[0.03] px-3.5 py-2.5">
+                <div>
+                  <div className="text-xs text-slate-400">הכנסה ממוצעת</div>
+                  <div className="font-bold text-white tabular-nums">₪{Math.round(totals.income / events.length).toLocaleString()}</div>
+                </div>
+                <BarChart3 className="h-7 w-7 text-sky-400" />
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">רווח ממוצע</span>
-                <span className="text-white">₪{Math.round(totals.profit / events.length).toLocaleString()}</span>
+              <div className="flex items-center justify-between gap-2 rounded-xl border border-white/[0.07] bg-white/[0.03] px-3.5 py-2.5">
+                <div>
+                  <div className="text-xs text-slate-400">רווח ממוצע</div>
+                  <div className="font-bold text-white tabular-nums">₪{Math.round(totals.profit / events.length).toLocaleString()}</div>
+                </div>
+                <Gem className="h-7 w-7 text-emerald-400" />
               </div>
             </div>
           </div>

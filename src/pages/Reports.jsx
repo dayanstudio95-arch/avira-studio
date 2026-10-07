@@ -11,7 +11,6 @@ import { Download, TrendingUp, Calendar, BarChart3 } from "lucide-react";
 import ReportsChart from "../components/reports/ReportsChart";
 import MonthlyChart from "../components/reports/MonthlyChart";
 import ReportsTable from "../components/reports/ReportsTable";
-import PageIcon from "@/components/layout/PageIcon";
 
 const MONTHS = [
   { value: 0, label: "ינואר" },
@@ -119,14 +118,17 @@ export default function Reports() {
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
           <div className="flex items-center gap-4">
-            <PageIcon icon={BarChart3} tone="cyan" />
+            <div className="hidden sm:flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-[#FACC15]/55 bg-[#FACC15]/10 text-[#FDE047] shadow-[0_0_26px_-6px_rgba(250,204,21,0.8)]">
+              <BarChart3 className="h-7 w-7" strokeWidth={2} />
+            </div>
             <div>
-              <h1 className="text-3xl md:text-4xl font-bold text-white mb-1">דוחות פיננסיים</h1>
+              <h1 className="text-3xl md:text-4xl font-bold mb-1 bg-gradient-to-l from-[#FDE68A] via-[#FACC15] to-[#F59E0B] bg-clip-text text-transparent">דוחות פיננסיים</h1>
               <p className="text-slate-400">ניתוח ביצועי העסק שלך</p>
             </div>
           </div>
           <Select value={selectedYear.toString()} onValueChange={(val) => setSelectedYear(parseInt(val))}>
-            <SelectTrigger className="w-32 bg-gray-900/50 border-gray-700 text-white">
+            <SelectTrigger className="w-40 h-11 rounded-xl bg-[#0B1529] border-[#2A3B57] text-white">
+              <Calendar className="h-4 w-4 text-slate-400 shrink-0" />
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-gray-900 border-gray-700 text-white">
@@ -141,12 +143,12 @@ export default function Reports() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 bg-gray-900/50 border border-gray-800">
+          <TabsList className="grid w-full grid-cols-3 h-11 rounded-xl bg-[#0B1529] border border-[#2A3B57] p-1">
             {tabs.map((tab) => (
               <TabsTrigger 
                 key={tab.id}
                 value={tab.id} 
-                className="data-[state=active]:bg-yellow-400 data-[state=active]:text-gray-900 text-gray-300 flex items-center gap-2"
+                className="rounded-lg data-[state=active]:bg-gradient-to-b data-[state=active]:from-[#FFD84A] data-[state=active]:to-[#F5B800] data-[state=active]:text-gray-900 data-[state=active]:font-bold data-[state=active]:shadow-[0_0_18px_-4px_rgba(250,204,21,0.8)] text-slate-300 flex items-center gap-2"
               >
                 <tab.icon className="w-4 h-4" />
                 {tab.label}
@@ -160,7 +162,7 @@ export default function Reports() {
               <div className="flex items-center gap-4">
                 <h2 className="text-xl font-semibold text-white">דוח חודשי</h2>
                 <Select value={selectedMonth.toString()} onValueChange={(value) => setSelectedMonth(parseInt(value))}>
-                  <SelectTrigger className="w-40 bg-gray-900/50 border-gray-700 text-white">
+                  <SelectTrigger className="w-40 h-10 rounded-xl bg-[#0B1529] border-[#2A3B57] text-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-gray-900 border-gray-700 text-white">
@@ -175,7 +177,7 @@ export default function Reports() {
               <Button
                 onClick={() => exportToCSV('monthly')}
                 variant="outline"
-                className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
+                className="h-10 rounded-xl border-[#3B5BA0]/70 bg-[#0B1529] text-slate-100 hover:bg-white/[0.06] shadow-[0_0_16px_-8px_rgba(96,130,240,0.8)]"
                 disabled={filterEventsByPeriod('monthly').length === 0}
               >
                 <Download className="w-4 h-4 mr-2" />
@@ -195,6 +197,7 @@ export default function Reports() {
                 period="monthly"
                 isLoading={isLoading}
                 staffMembers={staffMembers}
+                periodLabel={`${MONTHS[selectedMonth].label} ${selectedYear}`}
               />
             </div>
 
@@ -209,7 +212,7 @@ export default function Reports() {
               <Button
                 onClick={() => exportToCSV('daily')}
                 variant="outline"
-                className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
+                className="h-10 rounded-xl border-[#3B5BA0]/70 bg-[#0B1529] text-slate-100 hover:bg-white/[0.06] shadow-[0_0_16px_-8px_rgba(96,130,240,0.8)]"
                 disabled={filterEventsByPeriod('daily').length === 0}
               >
                 <Download className="w-4 h-4 mr-2" />
@@ -229,6 +232,7 @@ export default function Reports() {
                 period="daily"
                 isLoading={isLoading}
                 staffMembers={staffMembers}
+                periodLabel={new Date().toLocaleDateString("he-IL")}
               />
             </div>
           </TabsContent>
@@ -240,7 +244,7 @@ export default function Reports() {
               <Button
                 onClick={() => exportToCSV('annual')}
                 variant="outline"
-                className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700"
+                className="h-10 rounded-xl border-[#3B5BA0]/70 bg-[#0B1529] text-slate-100 hover:bg-white/[0.06] shadow-[0_0_16px_-8px_rgba(96,130,240,0.8)]"
                 disabled={filterEventsByPeriod('annual').length === 0}
               >
                 <Download className="w-4 h-4 mr-2" />
@@ -260,6 +264,7 @@ export default function Reports() {
                 period="annual"
                 isLoading={isLoading}
                 staffMembers={staffMembers}
+                periodLabel={String(selectedYear)}
               />
             </div>
 

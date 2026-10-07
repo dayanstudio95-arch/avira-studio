@@ -2,6 +2,8 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { TrendingUp } from "lucide-react";
+import { format } from "date-fns";
+import { chartGradients, gridProps, axisProps, tooltipProps, Legend, CHART_COLORS } from "./chartTheme";
 
 import { calculateNetProfit } from "../../lib/profitCalculations";
 import { getEventTeamCost } from "../../lib/financialCalculations";
@@ -16,7 +18,10 @@ export default function ReportsChart({ events, period, isLoading, staffMembers =
     const data = [...events]
       .sort((a, b) => new Date(a.date) - new Date(b.date))
       .map(event => ({
-        name: (event.coupleNames || '').split(' ')[0] || 'אירוע',
+        // Design E (2026-10-07): the axis shows the date (d/M, as in the owner's reference);
+        // the couple's names are in the tooltip.
+        name: event.date ? format(new Date(event.date), "d/M") : "—",
+        couple: event.coupleNames || 'אירוע',
         income: event.totalAmountGross || 0,
         expenses: getEventTeamCost(event),
         profit: calculateNetProfit(event, staffMembers)
@@ -29,7 +34,7 @@ export default function ReportsChart({ events, period, isLoading, staffMembers =
 
   if (isLoading) {
     return (
-      <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm">
+      <Card className="dash-card">
         <CardHeader>
           <CardTitle className="text-white">הכנסות מול הוצאות</CardTitle>
         </CardHeader>
@@ -44,10 +49,10 @@ export default function ReportsChart({ events, period, isLoading, staffMembers =
 
   if (chartData.length === 0) {
     return (
-      <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm">
+      <Card className="dash-card">
         <CardHeader>
-          <CardTitle className="text-white flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-yellow-400" />
+          <CardTitle className="text-white flex items-center gap-2 text-base">
+            <TrendingUp className="w-6 h-6 text-amber-400" />
             הכנסות מול הוצאות — לפי אירוע
           </CardTitle>
         </CardHeader>
@@ -64,43 +69,43 @@ export default function ReportsChart({ events, period, isLoading, staffMembers =
   }
 
   return (
-    <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm">
-      <CardHeader>
-        <CardTitle className="text-white flex items-center gap-2">
-          <TrendingUp className="w-5 h-5 text-yellow-400" />
-          Income vs Expenses
-        </CardTitle>
+    <Card className="dash-card">
+      <CardHeader className="pb-2">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <CardTitle className="text-white flex items-center gap-2 text-base">
+            <TrendingUp className="w-6 h-6 text-amber-400" />
+            Income vs Expenses
+          </CardTitle>
+          <Legend items={[["הכנסה", CHART_COLORS.income], ["הוצאה", CHART_COLORS.expenses]]} />
+        </div>
       </CardHeader>
       <CardContent>
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+            <BarChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 5 }} barGap={2}>
+              {chartGradients()}
+              <CartesianGrid {...gridProps} />
               <XAxis
                 dataKey="name"
-                stroke="#9CA3AF"
-                fontSize={chartData.length > 14 ? 10 : 12}
-                interval={0}
-                angle={chartData.length > 14 ? -45 : 0}
-                textAnchor={chartData.length > 14 ? "end" : "middle"}
-                height={chartData.length > 14 ? 50 : 30}
+                {...axisProps}
+                fontSize={11}
+                interval={chartData.length > 16 ? 1 : 0}
+                angle={chartData.length > 8 ? -45 : 0}
+                textAnchor={chartData.length > 8 ? "end" : "middle"}
+                height={chartData.length > 8 ? 46 : 30}
               />
-              <YAxis 
-                stroke="#9CA3AF"
+              <YAxis
+                {...axisProps}
                 fontSize={12}
                 tickFormatter={(value) => `₪${value.toLocaleString()}`}
               />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: '#1F2937', 
-                  border: '1px solid #374151',
-                  borderRadius: '8px',
-                  color: '#F3F4F6'
-                }}
+              <Tooltip
+                {...tooltipProps}
+                labelFormatter={(label, payload) => `${label}${payload?.[0]?.payload?.couple ? ` · ${payload[0].payload.couple}` : ""}`}
                 formatter={(value, name) => [`₪${value.toLocaleString()}`, name]}
               />
-              <Bar dataKey="income" fill="#F59E0B" name="הכנסה ברוטו" radius={[2, 2, 0, 0]} />
-              <Bar dataKey="expenses" fill="#EF4444" name="הוצאות צוות" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="income" fill="url(#rg-income)" name="הכנסה ברוטו" radius={[3, 3, 0, 0]} maxBarSize={14} />
+              <Bar dataKey="expenses" fill="url(#rg-expenses)" name="הוצאות צוות" radius={[3, 3, 0, 0]} maxBarSize={14} />
             </BarChart>
           </ResponsiveContainer>
         </div>
