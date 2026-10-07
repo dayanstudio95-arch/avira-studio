@@ -462,9 +462,9 @@ export default function ChatApp() {
 
   return (
     <AvatarUrlContext.Provider value={avatarUrls}>
-    <div dir="rtl" className="fixed inset-0 flex w-full overflow-hidden bg-gray-950 text-gray-100">
+    <div dir="rtl" className="avira-d avira-chat e-page fixed inset-0 flex w-full overflow-hidden text-gray-100 md:gap-3 md:p-3">
       <ChatSidebar
-        className="hidden w-60 shrink-0 md:flex"
+        className="chat-col hidden w-60 shrink-0 md:flex"
         box={q ? "" : box}
         setBox={(k) => { setBox(k); setSearch(""); setSelected({}); }}
         counts={counts}
@@ -480,7 +480,7 @@ export default function ChatApp() {
       />
 
       {/* List: full screen on a phone when no conversation is open */}
-      <div className={`min-h-0 min-w-0 flex-col border-gray-800 md:flex md:border-l md:w-[360px] md:flex-none md:shrink-0 ${active ? "hidden" : "flex flex-1"} pt-[env(safe-area-inset-top)] md:pt-0`}>
+      <div className={`chat-col min-h-0 min-w-0 flex-col md:flex md:w-[360px] md:flex-none md:shrink-0 ${active ? "hidden" : "flex flex-1"} pt-[env(safe-area-inset-top)] md:pt-0`}>
         <ChatList
           title={title}
           conversations={visible}
@@ -526,7 +526,7 @@ export default function ChatApp() {
 
       {/* Thread */}
       {active ? (
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col pt-[env(safe-area-inset-top)] md:pt-0">
+        <div className="chat-col chat-thread flex min-h-0 min-w-0 flex-1 flex-col pt-[env(safe-area-inset-top)] md:pt-0">
           <ChatThread
             conversation={active}
             lead={activeLead}
@@ -548,7 +548,7 @@ export default function ChatApp() {
           />
         </div>
       ) : (
-        <div className="hidden flex-1 flex-col items-center justify-center gap-3 text-gray-500 md:flex">
+        <div className="chat-col chat-thread hidden flex-1 flex-col items-center justify-center gap-3 text-gray-500 md:flex">
           <MessageSquare className="h-12 w-12 text-gray-700" />
           <p>בחר שיחה מהרשימה</p>
           <p className="text-xs text-gray-600">קיצורים: J / K מעבר בין שיחות · D טופל · E ארכיון · Esc סגירה</p>
@@ -558,7 +558,7 @@ export default function ChatApp() {
       {/* Contact panel: a column on a wide screen, a bottom sheet on a phone */}
       {active && panelOpen && (
         <>
-          <aside aria-label="פרטים ותיוג" className="hidden w-[320px] shrink-0 overflow-y-auto border-r border-gray-800 bg-gray-950 p-4 xl:block">
+          <aside aria-label="פרטים ותיוג" className="chat-col hidden w-[320px] shrink-0 overflow-y-auto bg-gray-950 p-4 xl:block">
             <ContactPanel {...panelProps} />
           </aside>
           <div className="fixed inset-0 z-40 flex flex-col justify-end bg-black/60 xl:hidden" onClick={() => setPanelOpen(false)}>

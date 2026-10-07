@@ -189,7 +189,7 @@ export default function ChatList({
           return (
             <div
               key={c.id}
-              className={`flex items-start gap-2.5 border-b border-gray-800/70 px-3.5 py-3 ${on ? "bg-gray-800/80" : checked ? "bg-yellow-500/10" : "hover:bg-gray-800/40"}`}
+              className={`flex items-start gap-2.5 border-b border-gray-800/70 px-3.5 py-3 ${on ? "chat-row-on" : checked ? "bg-yellow-500/10" : "hover:bg-gray-800/40"}`}
             >
               {selectMode && (
                 <button

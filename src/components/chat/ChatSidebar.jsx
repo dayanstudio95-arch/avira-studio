@@ -36,7 +36,7 @@ export default function ChatSidebar({ box, setBox, counts, labels, onCreateLabel
         type="button"
         onClick={() => setBox(key)}
         className={`group flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-start text-sm transition-colors ${
-          on ? "bg-gray-800 font-semibold text-yellow-400" : "text-gray-300 hover:bg-gray-800/60"
+          on ? "chat-box-on font-semibold text-white" : "text-gray-300 hover:bg-gray-800/60"
         }`}
       >
         <span className="flex min-w-0 items-center gap-2 truncate">{extra}{label}</span>

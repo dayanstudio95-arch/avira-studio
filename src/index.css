@@ -198,3 +198,66 @@
    app reads as one surface. Colour only — no layout. */
 .avira-d .bg-gray-950 { background-color: var(--d-bg); }
 .avira-d .bg-gray-950\/95 { background-color: rgba(6, 13, 27, 0.95); }
+
+/* Design E for "אווירה צ'אט" (2026-10-07, the owner's reference image). The chat app is
+   gray-on-black throughout; inside .avira-chat those grays become the navy family of the
+   rest of the system, and on a computer each column floats as its own glowing card. */
+.avira-chat .bg-gray-950 { background-color: #08111F; }
+.avira-chat .bg-gray-900 { background-color: #0E1A30; }
+.avira-chat .bg-gray-800 { background-color: #15233D; }
+.avira-chat .bg-gray-800\/40 { background-color: rgba(21, 35, 61, 0.4); }
+.avira-chat .bg-gray-800\/60 { background-color: rgba(21, 35, 61, 0.6); }
+.avira-chat .bg-gray-800\/70 { background-color: rgba(21, 35, 61, 0.7); }
+.avira-chat .bg-gray-800\/80 { background-color: rgba(21, 35, 61, 0.8); }
+.avira-chat .bg-gray-700 { background-color: #22324E; }
+.avira-chat .border-gray-800 { border-color: rgba(42, 59, 87, 0.6); }
+.avira-chat .border-gray-800\/70 { border-color: rgba(42, 59, 87, 0.45); }
+.avira-chat .border-gray-700 { border-color: #2A3B57; }
+.avira-chat .border-gray-600 { border-color: #3A4D6E; }
+.avira-chat .text-gray-400 { color: #94A3B8; }
+.avira-chat .text-gray-500 { color: #7C8AA3; }
+.avira-chat .text-gray-600 { color: #5B6B86; }
+.avira-chat .text-gray-700 { color: #3A4D6E; }
+/* The open conversation in the list, the chosen box in the sidebar: a lit blue row. */
+.avira-chat .chat-row-on {
+  background: linear-gradient(90deg, rgba(37, 99, 235, 0.10), rgba(37, 99, 235, 0.28));
+  box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.55), 0 0 22px -8px rgba(59, 130, 246, 0.7);
+  border-radius: 14px;
+}
+.avira-chat .chat-box-on {
+  background: linear-gradient(90deg, rgba(37, 99, 235, 0.12), rgba(37, 99, 235, 0.30));
+  box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.45);
+}
+/* Bubbles: incoming navy glass, outgoing (sent by the owner) green. */
+.avira-chat .bg-gray-800.border-gray-700.rounded-2xl {
+  background: rgba(16, 31, 56, 0.88);
+  border-color: rgba(96, 130, 240, 0.35);
+  box-shadow: 0 10px 26px -18px rgba(0, 0, 0, 0.9);
+}
+.avira-chat .bg-green-900\/60 {
+  background: linear-gradient(180deg, #11905E 0%, #0B6A46 100%);
+  border-color: rgba(52, 211, 153, 0.45);
+  box-shadow: 0 0 22px -8px rgba(16, 185, 129, 0.75);
+}
+@media (min-width: 768px) {
+  .avira-chat .chat-col {
+    border: 1px solid transparent;
+    border-radius: 18px;
+    overflow: hidden;
+    background:
+      linear-gradient(180deg, #0F1C36 0%, #0B1529 55%, #0A1324 100%) padding-box,
+      linear-gradient(180deg, rgba(110, 130, 255, 0.65) 0%, rgba(79, 110, 230, 0.25) 22%, rgba(34, 51, 75, 0.55) 60%, rgba(34, 51, 75, 0.45) 100%) border-box;
+    box-shadow: inset 0 28px 36px -34px rgba(120, 130, 255, 0.5), 0 22px 44px -26px rgba(0, 0, 0, 0.85);
+  }
+  .avira-chat .chat-col.bg-gray-950 { background-color: transparent; }
+  .avira-chat .chat-col .bg-gray-950 { background-color: #0C182D; }
+  .avira-chat .chat-col.chat-thread .bg-gray-950 { background-color: rgba(8, 17, 34, 0.55); }
+  .avira-chat .chat-col.chat-thread {
+    background:
+      radial-gradient(520px 340px at 30% 35%, rgba(37, 99, 235, 0.22), transparent 70%),
+      radial-gradient(420px 300px at 75% 70%, rgba(59, 130, 246, 0.14), transparent 70%),
+      radial-gradient(300px 220px at 85% 15%, rgba(99, 102, 241, 0.12), transparent 70%),
+      linear-gradient(180deg, #0B1630 0%, #081226 100%) padding-box,
+      linear-gradient(180deg, rgba(110, 130, 255, 0.65) 0%, rgba(79, 110, 230, 0.25) 22%, rgba(34, 51, 75, 0.55) 60%, rgba(34, 51, 75, 0.45) 100%) border-box;
+  }
+}
