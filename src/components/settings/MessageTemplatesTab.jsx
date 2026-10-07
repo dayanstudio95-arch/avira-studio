@@ -16,7 +16,7 @@ const TEMPLATES = [
 {{contract_link}}
 
 נשמח שתחתמו בהקדם 🙏`,
-    variables: ["{{names}}", "{{event_date}}", "{{contract_link}}"],
+    variables: ["{{names}}", "{{event_date}}", "{{venue}}", "{{contract_link}}"],
   },
   {
     key: "template_questionnaire",

@@ -16,15 +16,17 @@ export function questionnaireLinkFor(leadId) {
   return leadId ? `${baseUrl}/questionnaire/${leadId}` : `${baseUrl}/questionnaire`;
 }
 
-// {{names}} / {{event_date}} / {{contract_link}} / {{questionnaire_link}}; any other
-// {{x}} is taken from extraVars or left as is.
-export function applyLeadTemplateVariables(template, lead, { eventDate, extraVars = {} } = {}) {
+// {{names}} / {{event_date}} / {{venue}} / {{contract_link}} / {{questionnaire_link}}; any other
+// {{x}} is taken from extraVars or left as is. {{venue}} (2026-10-07, for the contract
+// message): the event's venue when the caller has one, else the lead's.
+export function applyLeadTemplateVariables(template, lead, { eventDate, venue, extraVars = {} } = {}) {
   const baseUrl = window.location.origin;
   const contractLink = `${baseUrl}/contract/${lead?.id}`;
   const eventDateFormatted = eventDate ? format(new Date(eventDate), "d/M/yyyy") : "";
   return template
     .replace(/\{\{names\}\}/g, lead?.coupleNames || "")
     .replace(/\{\{event_date\}\}/g, eventDateFormatted)
+    .replace(/\{\{venue\}\}/g, venue || lead?.venueName || "")
     .replace(/\{\{contract_link\}\}/g, contractLink)
     .replace(/\{\{questionnaire_link\}\}/g, questionnaireLinkFor(lead?.id))
     .replace(/\{\{[^}]+\}\}/g, (m) => extraVars[m] || m);

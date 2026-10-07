@@ -280,7 +280,7 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
 
   // Shared with the post-sign wizard — src/lib/leadMessages.js.
   const applyVariables = (template, lead, extraVars = {}) =>
-    applyLeadTemplateVariables(template, lead, { eventDate, extraVars });
+    applyLeadTemplateVariables(template, lead, { eventDate, venue: safeEvent?.venue, extraVars });
 
   const handleSendFollowUp = async () => {
     if (!lead?.phoneNumber) { toast.error('אין מספר טלפון'); return; }
