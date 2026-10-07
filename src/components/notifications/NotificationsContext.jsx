@@ -17,7 +17,7 @@ import { unreadCountsByRoute, unreadNotificationsForRoute } from "@/lib/notifica
 
 const NotificationsContext = createContext(null);
 
-const EMPTY = { notifications: [], unreadCount: 0, countsByRoute: {}, markAsRead: async () => {}, markAllAsRead: async () => {}, markRouteAsRead: async () => {} };
+const EMPTY = { notifications: [], unreadCount: 0, countsByRoute: {}, markAsRead: async () => {}, markAllAsRead: async () => {}, markRouteAsRead: async () => {}, markMany: async () => {} };
 
 export function NotificationsProvider({ children }) {
   const { isAdmin } = usePermission();
@@ -26,7 +26,8 @@ export function NotificationsProvider({ children }) {
   const load = useCallback(async () => {
     if (!isAdmin) return;
     try {
-      const rows = await base44.entities.Notification.list("-createdAt", 30);
+      // 60 (was 30, 2026-10-07): with tabs, a quiet category still shows its recent history.
+      const rows = await base44.entities.Notification.list("-createdAt", 60);
       setNotifications(rows || []);
     } catch (e) {
       console.error("Error loading notifications:", e);
@@ -71,8 +72,9 @@ export function NotificationsProvider({ children }) {
       markAsRead,
       markAllAsRead,
       markRouteAsRead,
+      markMany,
     };
-  }, [isAdmin, notifications, markAsRead, markAllAsRead, markRouteAsRead]);
+  }, [isAdmin, notifications, markAsRead, markAllAsRead, markRouteAsRead, markMany]);
 
   return <NotificationsContext.Provider value={value}>{children}</NotificationsContext.Provider>;
 }

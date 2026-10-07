@@ -1,14 +1,13 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { usePermission } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Bell, FileCheck, CheckCheck, AlertTriangle } from "lucide-react";
-import { format } from "date-fns";
-import { he } from "date-fns/locale";
+import { Bell, CheckCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { useNotifications } from "./NotificationsContext";
+import { NOTIFICATION_TABS, notificationTab, notificationEmoji, notificationDayGroup } from "@/lib/notificationCategories";
 
 // In-app notifications bell — the one place in the app that reports things nobody
 // asked to see. Started as contract-signed only (migration
@@ -25,8 +24,15 @@ import { useNotifications } from "./NotificationsContext";
 // Polling (30s, the WhatsAppPanel.jsx convention) moved to NotificationsContext.jsx on
 // 2026-09-24, when the menu started showing a per-page count of the same rows.
 
-const TYPE_ICONS = {
-  contract_signed: FileCheck,
+// The entity layer names created_at "created_date"; read as createdAt it was always empty,
+// so no notification ever showed its time (fixed 2026-10-07).
+const createdOf = (n) => n.createdAt || n.created_date || null;
+const DAY_LABELS = { today: "היום", yesterday: "אתמול", earlier: "קודם" };
+const timeOf = (iso, group) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const hm = d.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jerusalem" });
+  return group === "earlier" ? `${d.toLocaleDateString("he-IL", { day: "numeric", month: "numeric", timeZone: "Asia/Jerusalem" })} · ${hm}` : hm;
 };
 
 // Written by monthly-events-backup/index.ts and contract-signed-webhook/index.ts.
@@ -39,15 +45,42 @@ export default function NotificationBell() {
   const navigate = useNavigate();
   // The list itself lives in NotificationsContext (shared with the menu badges, one poll
   // for the whole shell). This component only renders it and forwards clicks.
-  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
+  const { notifications, unreadCount, markAsRead, markAllAsRead, markMany } = useNotifications();
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
+  // Tabs by subject (2026-10-07). Opens on the first tab that has something unread.
+  const [tab, setTab] = useState("all");
+
+  const unreadByTab = useMemo(() => {
+    const out = { all: 0 };
+    for (const n of notifications) {
+      if (n.isRead) continue;
+      out.all += 1;
+      const k = notificationTab(n.type);
+      out[k] = (out[k] || 0) + 1;
+    }
+    return out;
+  }, [notifications]);
+
+  const sections = useMemo(() => {
+    const list = notifications.filter((n) => tab === "all" || notificationTab(n.type) === tab);
+    const out = [];
+    for (const n of list) {
+      const g = notificationDayGroup(createdOf(n));
+      let sec = out.find((x) => x.key === g);
+      if (!sec) { sec = { key: g, items: [] }; out.push(sec); }
+      sec.items.push(n);
+    }
+    return out;
+  }, [notifications, tab]);
 
   if (!isAdmin) return null;
 
+  const tabUnread = tab === "all" ? notifications.filter((n) => !n.isRead) : notifications.filter((n) => !n.isRead && notificationTab(n.type) === tab);
   const handleMarkAll = async () => {
     setLoading(true);
-    await markAllAsRead();
+    if (tab === "all") await markAllAsRead();
+    else await markMany(tabUnread);
     setLoading(false);
   };
 
@@ -86,65 +119,71 @@ export default function NotificationBell() {
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-80 bg-gray-900 border-gray-700 text-white p-0" dir="rtl">
-        <div className="flex items-center justify-between p-3 border-b border-gray-800">
+      <PopoverContent align="end" className="w-[22rem] max-w-[calc(100vw-1rem)] bg-gray-900 border-gray-700 text-white p-0" dir="rtl">
+        <div className="flex items-center justify-between px-3 pt-3 pb-2">
           <span className="font-semibold text-sm">התראות</span>
-          {unreadCount > 0 && (
+          {tabUnread.length > 0 && (
             <button
               onClick={handleMarkAll}
               disabled={loading}
               className="flex items-center gap-1 text-xs text-gray-400 hover:text-yellow-400 disabled:opacity-50"
             >
               <CheckCheck className="w-3.5 h-3.5" />
-              סמן הכל כנקרא
+              {tab === "all" ? "סמן הכל כנקרא" : "סמן לשונית כנקראה"}
             </button>
           )}
         </div>
-        {/* Plain scrollable div instead of the shadcn ScrollArea -- matches the
-            established pattern used by every other popover-nested scrollable
-            list in this codebase (StaffAssignmentRoleList.jsx,
-            EventsTableWithBulkDelete.jsx): Radix's ScrollArea wraps native
-            overflow in its own custom scrollbar/viewport handling, which was
-            unreliable for touch-scrolling on mobile here, whereas a plain
-            overflow-y-auto div + WebkitOverflowScrolling works reliably and
-            lets the user actually scroll through the full notification list
-            instead of it just being clipped at a fixed height. */}
-        <div
-          className="max-h-[70vh] overflow-y-auto"
-          style={{ WebkitOverflowScrolling: 'touch' }}
-        >
-          {notifications.length === 0 ? (
-            <p className="text-gray-500 text-sm text-center py-8">אין התראות</p>
+        <div className="flex flex-wrap gap-1.5 border-b border-gray-800 px-3 pb-2.5">
+          {NOTIFICATION_TABS.map((t) => {
+            const n = unreadByTab[t.key] || 0;
+            const on = tab === t.key;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setTab(t.key)}
+                className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                  on ? "border-yellow-400/70 bg-yellow-400/15 font-semibold text-yellow-200" : "border-gray-700 text-gray-300 hover:text-white"
+                }`}
+              >
+                {t.icon && <span>{t.icon}</span>}
+                {t.label}
+                {n > 0 && <span className="rounded-full bg-red-500 px-1.5 text-[10px] font-bold leading-4 text-white">{n}</span>}
+              </button>
+            );
+          })}
+        </div>
+        {/* Plain scrollable div instead of the shadcn ScrollArea — touch scrolling inside a
+            Radix ScrollArea was unreliable on mobile (see StaffAssignmentRoleList.jsx). */}
+        <div className="max-h-[65vh] overflow-y-auto" style={{ WebkitOverflowScrolling: "touch" }}>
+          {sections.length === 0 ? (
+            <p className="text-gray-500 text-sm text-center py-8">אין התראות כאן</p>
           ) : (
-            <div className="divide-y divide-gray-800">
-              {notifications.map((n) => {
-                const failed = isFailure(n.type);
-                const Icon = failed ? AlertTriangle : (TYPE_ICONS[n.type] || Bell);
-                return (
-                  <button
-                    key={n.id}
-                    onClick={() => handleClick(n)}
-                    className={`w-full text-right p-3 flex items-start gap-2 hover:bg-gray-800/60 transition-colors ${
-                      !n.isRead ? "bg-blue-500/10" : ""
-                    }`}
-                  >
-                    <Icon
-                      className={`w-4 h-4 mt-0.5 shrink-0 ${failed ? "text-red-400" : "text-yellow-400"}`}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm ${!n.isRead ? "font-semibold text-white" : "text-gray-300"}`}>
-                        {n.title}
-                      </p>
-                      {n.body && <p className="text-xs text-gray-500 mt-0.5">{n.body}</p>}
-                      <p className="text-[10px] text-gray-600 mt-1">
-                        {n.createdAt ? format(new Date(n.createdAt), "d בMMMM, HH:mm", { locale: he }) : ""}
-                      </p>
-                    </div>
-                    {!n.isRead && <span className="w-2 h-2 rounded-full bg-blue-400 mt-1.5 shrink-0" />}
-                  </button>
-                );
-              })}
-            </div>
+            sections.map((sec) => (
+              <div key={sec.key}>
+                <div className="sticky top-0 z-10 bg-gray-900/95 px-3 pb-1 pt-2 text-[11px] font-semibold text-gray-400 backdrop-blur">{DAY_LABELS[sec.key]}</div>
+                {sec.items.map((n) => {
+                  const failed = isFailure(n.type);
+                  return (
+                    <button
+                      key={n.id}
+                      onClick={() => handleClick(n)}
+                      className={`flex w-full items-start gap-2 px-3 py-2 text-right transition-colors hover:bg-gray-800/60 ${!n.isRead ? "bg-blue-500/10" : ""}`}
+                    >
+                      <span className="mt-0.5 w-5 shrink-0 text-center text-sm">{notificationEmoji(n.type)}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <p className={`truncate text-sm ${failed ? "text-red-300" : !n.isRead ? "font-semibold text-white" : "text-gray-300"}`}>{n.title}</p>
+                          <span className="shrink-0 text-[10px] text-gray-500 tabular-nums">{timeOf(createdOf(n), sec.key)}</span>
+                        </div>
+                        {n.body && <p className="mt-0.5 line-clamp-1 text-xs text-gray-500">{n.body}</p>}
+                      </div>
+                      {!n.isRead && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-blue-400" />}
+                    </button>
+                  );
+                })}
+              </div>
+            ))
           )}
         </div>
       </PopoverContent>

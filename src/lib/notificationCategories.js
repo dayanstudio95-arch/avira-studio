@@ -44,3 +44,42 @@ export function unreadNotificationsForRoute(notifications, route) {
   if (!route) return [];
   return (notifications || []).filter((n) => !n?.isRead && navRouteForNotification(n?.type) === route);
 }
+
+// The bell's tabs (2026-10-07, the owner: one long list was too crowded). Pure — PART 38.
+export const NOTIFICATION_TABS = [
+  { key: "all", label: "הכל", icon: "" },
+  { key: "whatsapp", label: "וואטסאפ", icon: "💬" },
+  { key: "staff", label: "צוות", icon: "👥" },
+  { key: "contracts", label: "חוזים", icon: "✍️" },
+  { key: "albums", label: "אלבומים", icon: "📒" },
+  { key: "system", label: "מערכת", icon: "⚙️" },
+];
+
+export function notificationTab(type) {
+  const t = String(type || "");
+  if (t.startsWith("whatsapp_")) return "whatsapp";
+  if (t.startsWith("staff_")) return "staff";
+  if (t.startsWith("contract_")) return "contracts";
+  if (t.startsWith("album_")) return "albums";
+  return "system"; // backups, failures, meeting reminders, anything new
+}
+
+// A small emoji per notification, so the kind reads at a glance.
+export function notificationEmoji(type) {
+  const t = String(type || "");
+  if (t.endsWith("_failed")) return "⚠️";
+  if (t === "whatsapp_hot_lead") return "🔥";
+  if (t === "whatsapp_opt_out") return "🚫";
+  if (t === "meeting_reminder") return "⏰";
+  return NOTIFICATION_TABS.find((x) => x.key === notificationTab(t))?.icon || "🔔";
+}
+
+// "היום" / "אתמול" / "קודם" by Israel date.
+export function notificationDayGroup(iso, now = new Date()) {
+  if (!iso) return "earlier";
+  const day = (d) => new Date(d).toLocaleDateString("en-CA", { timeZone: "Asia/Jerusalem" });
+  const today = day(now);
+  const yesterday = day(new Date(now.getTime() - 86400000));
+  const d = day(iso);
+  return d === today ? "today" : d === yesterday ? "yesterday" : "earlier";
+}

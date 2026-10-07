@@ -1995,5 +1995,24 @@ console.log('\n— PART 37: follow-up pulses —');
   check('sent today counts Israel day', fq.followUpsSentToday([{ followupSentAt: '2026-10-07T20:30:00Z' }, { followupSentAt: '2026-10-07T22:30:00Z' }], '2026-10-07'), 1);
 }
 
+// PART 38 — notification tabs (2026-10-07)
+console.log('\n— PART 38: notification tabs —');
+{
+  const nc = await loadModule('src/lib/notificationCategories.js', 'nc38');
+  check('hot lead → whatsapp', nc.notificationTab('whatsapp_hot_lead'), 'whatsapp');
+  check('opt-out → whatsapp', nc.notificationTab('whatsapp_opt_out'), 'whatsapp');
+  check('availability → staff', nc.notificationTab('staff_availability_response'), 'staff');
+  check('signed → contracts', nc.notificationTab('contract_signed'), 'contracts');
+  check('album → albums', nc.notificationTab('album_round_approved'), 'albums');
+  check('backup failed → system', nc.notificationTab('monthly_backup_failed'), 'system');
+  check('meeting → system', nc.notificationTab('meeting_reminder'), 'system');
+  check('emoji hot', nc.notificationEmoji('whatsapp_hot_lead'), '🔥');
+  check('emoji failure', nc.notificationEmoji('monthly_backup_failed'), '⚠️');
+  const now = new Date('2026-10-07T20:00:00Z');
+  check('today', nc.notificationDayGroup('2026-10-07T10:00:00Z', now), 'today');
+  check('yesterday', nc.notificationDayGroup('2026-10-06T10:00:00Z', now), 'yesterday');
+  check('earlier', nc.notificationDayGroup('2026-10-01T10:00:00Z', now), 'earlier');
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
