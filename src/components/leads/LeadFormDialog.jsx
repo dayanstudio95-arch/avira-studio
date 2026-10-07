@@ -12,10 +12,16 @@ import "react-quill/dist/quill.snow.css";
 import { DEFAULT_CONTRACT_TERMS } from "@/lib/defaultContractTerms";
 import { parseWhatsAppLead } from "@/lib/whatsappLeadParser";
 import { leadSyncOutcome } from "@/lib/actionOutcome";
+import { applyLeadTemplateVariables } from "@/lib/leadMessages";
 
 // ששת הערכים שה-CHECK ב-0001_init.sql:106 מתיר. 'חוזה' נכתב ע"י sign-lead-public
 // בכל חתימה ציבורית — בלעדיו ה-Select נשאר ריק בעריכת ליד חתום.
 const STATUSES = ["חדש", "נשלחה הצעה", "פולו-אפ", "נסגר/חתימה", "חוזה", "לא רלוונטי"];
+
+// After the contract of a couple who already received it is edited (2026-10-07: the owner
+// saved a change and thought it had not saved). Editable before sending; nothing is sent
+// without a click and a confirm.
+const UPDATED_CONTRACT_MESSAGE = "שלום {{names}} 😊\nעדכנו את החוזה לפי מה שביקשתם. הנה הקישור לחוזה המעודכן:\n{{contract_link}}";
 
 // `lead`          — an existing lead being EDITED; handleSave takes the update path.
 // `initialValues` — pre-filled values for a NEW lead; handleSave still takes the create
@@ -52,6 +58,12 @@ export default function LeadFormDialog({ isOpen, onClose, lead, initialValues, p
     packageDetails: "",
   });
   const [isSaving, setIsSaving] = useState(false);
+  // True only when the user typed in the contract editor (Quill normalises the HTML on
+  // load, so comparing texts would flag edits that never happened).
+  const [contractEdited, setContractEdited] = useState(false);
+  // { phone, names, text } — the "contract updated" screen shown instead of closing.
+  const [updatedNotice, setUpdatedNotice] = useState(null);
+  const [isSendingUpdate, setIsSendingUpdate] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [pasteWarnings, setPasteWarnings] = useState([]);
 
@@ -76,6 +88,8 @@ export default function LeadFormDialog({ isOpen, onClose, lead, initialValues, p
     // כל פתיחה מתחילה נקי — אחרת אזהרות מהדבקה קודמת נשארות על המסך.
     setPasteText("");
     setPasteWarnings([]);
+    setContractEdited(false);
+    setUpdatedNotice(null);
     if (lead) {
       setForm({
         coupleNames: lead.coupleNames || "",
@@ -210,24 +224,27 @@ export default function LeadFormDialog({ isOpen, onClose, lead, initialValues, p
       };
 
       if (lead) {
-        console.log('[LeadFormDialog] 🔵 BEFORE UPDATE: lead.id =', lead.id, '| lead.studio_id =', lead.studio_id);
-        const updateResult = await base44.entities.Lead.update(lead.id, data);
-        console.log('[LeadFormDialog] 🟢 AFTER UPDATE: result.id =', updateResult?.id, '| result.studio_id =', updateResult?.studio_id);
-        
-        // ✅ Verify UUID ID is the same (studio_id may change, that's different)
-        if (updateResult?.id !== lead.id) {
-          console.error('🔴 CRITICAL: Lead UUID ID changed! Original:', lead.id, 'Returned:', updateResult?.id);
-        } else {
-          console.log('✅ Lead UUID ID is identical. studio_id changed:', lead.studio_id, '→', updateResult?.studio_id);
-        }
-        
+        await base44.entities.Lead.update(lead.id, data);
+
         if (data.status === "נסגר/חתימה") {
           // E2: the lead is saved either way — a failed event sync is a warning, not "save failed".
           const res = await base44.functions.invoke('syncLeadToEvent', { leadId: lead.id }).catch((e) => ({ data: { error: e.message } }));
           const out = leadSyncOutcome(res?.data);
           if (!out.ok) toast.warning(`הליד נשמר, אבל ${out.text}`);
         }
-        toast.success("הליד עודכן בהצלחה");
+        // The couple already has this contract and has not signed it: say so plainly and
+        // offer to send them the link again, instead of closing on a small toast.
+        if (contractEdited && lead.contractSent && !lead.signedAt) {
+          toast.success("החוזה עודכן ונשמר");
+          setUpdatedNotice({
+            phone: form.phoneNumber || lead.phoneNumber || "",
+            names: form.coupleNames,
+            text: applyLeadTemplateVariables(UPDATED_CONTRACT_MESSAGE, { ...lead, coupleNames: form.coupleNames }),
+          });
+          setIsSaving(false);
+          return;
+        }
+        toast.success(contractEdited ? "הליד והחוזה עודכנו" : "הליד עודכן בהצלחה");
       } else {
         // Create NEW lead
         const newLead = await base44.entities.Lead.create(data);
@@ -248,18 +265,62 @@ export default function LeadFormDialog({ isOpen, onClose, lead, initialValues, p
       }
       onSaved(createdLead);
     } catch (error) {
-      toast.error("שגיאה בשמירה");
+      console.error("[LeadFormDialog] save failed:", error);
+      toast.error("שגיאה בשמירה", { description: error?.message });
     }
     setIsSaving(false);
   };
 
+  const sendUpdatedContract = async () => {
+    if (!updatedNotice?.phone) return;
+    if (!window.confirm(`לשלוח ל-${updatedNotice.names} (${updatedNotice.phone}) את הקישור לחוזה המעודכן?`)) return;
+    setIsSendingUpdate(true);
+    try {
+      const res = await base44.functions.invoke("sendWhatsAppMessage", { to: updatedNotice.phone, message: updatedNotice.text });
+      if (res?.data?.error) throw new Error(res.data.error);
+      toast.success("החוזה המעודכן נשלח לזוג");
+      onSaved(null);
+    } catch (e) {
+      toast.error("השליחה נכשלה", { description: e?.message });
+    }
+    setIsSendingUpdate(false);
+  };
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => { if (!open) { if (updatedNotice) onSaved(null); else onClose(); } }}>
       <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-3xl max-h-[90vh] overflow-y-auto" dir="rtl">
         <DialogHeader>
           <DialogTitle className="text-white text-xl">{lead ? "עריכת ליד" : "ליד חדש"}</DialogTitle>
         </DialogHeader>
 
+        {updatedNotice ? (
+          <div className="space-y-4 py-2">
+            <div className="rounded-xl border border-emerald-500/50 bg-emerald-500/10 p-4">
+              <div className="text-lg font-bold text-emerald-300">✅ החוזה עודכן ונשמר</div>
+              <p className="mt-1 text-sm text-gray-300">
+                {updatedNotice.names} כבר קיבלו את החוזה. הם יראו את הנוסח החדש כשיפתחו שוב את הקישור.
+                אפשר לשלוח להם עכשיו הודעה עם הקישור לחוזה המעודכן:
+              </p>
+            </div>
+            <div>
+              <Label className="text-gray-300">ההודעה שתישלח בוואטסאפ</Label>
+              <Textarea
+                dir="rtl"
+                rows={5}
+                value={updatedNotice.text}
+                onChange={(e) => setUpdatedNotice((n) => ({ ...n, text: e.target.value }))}
+                className="mt-1 bg-gray-800 border-gray-700 text-white"
+              />
+              {!updatedNotice.phone && <p className="mt-1 text-xs text-amber-300">אין טלפון לליד — אי אפשר לשלוח.</p>}
+            </div>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => onSaved(null)} disabled={isSendingUpdate} className="border-gray-700 bg-gray-800 text-gray-300">סגור בלי לשלוח</Button>
+              <Button onClick={sendUpdatedContract} disabled={isSendingUpdate || !updatedNotice.phone || !updatedNotice.text.trim()} className="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold">
+                {isSendingUpdate ? "שולח..." : "📨 שלח לזוג את החוזה המעודכן"}
+              </Button>
+            </DialogFooter>
+          </div>
+        ) : (<>
         <div className="space-y-4 py-2">
           {/* רק בליד חדש: הדבקה על ליד קיים עלולה לדרוס פרטים שכבר אושרו. */}
           {!lead && (
@@ -429,7 +490,10 @@ export default function LeadFormDialog({ isOpen, onClose, lead, initialValues, p
               <ReactQuill
                 className="contract-quill"
                 value={form.contractTerms}
-                onChange={(val) => setForm((f) => ({ ...f, contractTerms: val }))}
+                onChange={(val, _delta, source) => {
+                  setForm((f) => ({ ...f, contractTerms: val }));
+                  if (source === "user") setContractEdited(true);
+                }}
                 modules={{
                   toolbar: [
                     [{ header: [2, 3, false] }],
@@ -451,6 +515,7 @@ export default function LeadFormDialog({ isOpen, onClose, lead, initialValues, p
             {isSaving ? "שומר..." : "שמור"}
           </Button>
         </DialogFooter>
+        </>)}
       </DialogContent>
     </Dialog>
   );
