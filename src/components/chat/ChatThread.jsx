@@ -110,7 +110,7 @@ export default function ChatThread({
 
   return (
     <section aria-label="שיחה" className="flex min-h-0 min-w-0 flex-1 flex-col bg-gray-950">
-      <header className="flex items-center gap-2 border-b border-gray-800 bg-gray-900/70 px-2 py-2 md:px-4">
+      <header className="flex flex-wrap items-center gap-2 border-b border-gray-800 bg-gray-900/70 px-2 py-2 md:flex-nowrap md:px-4">
         {onBack && (
           <button type="button" onClick={onBack} aria-label="חזרה לשיחות" className="flex h-11 w-11 shrink-0 items-center justify-center text-yellow-400 md:hidden">
             <ChevronRight className="h-6 w-6" />
@@ -130,12 +130,16 @@ export default function ChatThread({
             </span>
           </span>
         </button>
+        {/* On a phone these two get their own line under the name (2026-10-07: squeezed in one
+            row they covered the couple's name and tags). */}
+        {((onToggleFollowUp && hasStage(conversation)) || needsReplyNow) && (
+        <div className="order-last flex w-full gap-2 ps-12 md:order-none md:w-auto md:ps-0">
         {onToggleFollowUp && hasStage(conversation) && (
           <button
             type="button"
             onClick={() => onToggleFollowUp(!inFollowUp)}
             title="מכניס את השיחה לתור הפולו-אפ, גם אם הבוט לא שלח מחירון"
-            className={`flex h-10 shrink-0 items-center gap-1 rounded-full border px-3 text-sm ${
+            className={`flex h-9 shrink-0 items-center gap-1 rounded-full border px-3 text-sm md:h-10 ${
               inFollowUp ? "border-orange-700 bg-orange-950/50 text-orange-200" : "border-gray-700 bg-gray-800 text-gray-300 hover:text-white"
             }`}
           >
@@ -143,9 +147,11 @@ export default function ChatThread({
           </button>
         )}
         {needsReplyNow && (
-          <button type="button" onClick={onHandled} title="לא צריך מענה — יוצא מ'דורש מענה' עד שיכתבו שוב" className="flex h-10 shrink-0 items-center gap-1 rounded-full border border-emerald-800 bg-emerald-950/50 px-3 text-sm text-emerald-200 hover:bg-emerald-900/60">
+          <button type="button" onClick={onHandled} title="לא צריך מענה — יוצא מ'דורש מענה' עד שיכתבו שוב" className="flex h-9 shrink-0 items-center gap-1 rounded-full border border-emerald-800 md:h-10 bg-emerald-950/50 px-3 text-sm text-emerald-200 hover:bg-emerald-900/60">
             ✓ טופל
           </button>
+        )}
+        </div>
         )}
         <button type="button" onClick={onPin} aria-label={conversation.pinnedAt ? "בטל נעיצה" : "נעץ למעלה"} title={conversation.pinnedAt ? "בטל נעיצה" : "נעץ למעלה"} className="hidden h-10 w-10 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white md:flex">
           {conversation.pinnedAt ? <PinOff className="h-5 w-5" /> : <Pin className="h-5 w-5" />}
