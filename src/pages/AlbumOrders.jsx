@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { BookImage, Plus, Search, Link2, PenLine, Trash2 } from "lucide-react";
 import { format } from "date-fns";
+import PageIcon from "@/components/layout/PageIcon";
 
 const BUCKET = "album-files";
 
@@ -235,7 +236,7 @@ export default function AlbumOrders() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-950 p-4 md:p-8">
+      <div className="e-page min-h-screen bg-gray-950 p-4 md:p-8">
         <div className="max-w-6xl mx-auto animate-pulse space-y-6">
           <div className="h-12 bg-gray-800 rounded-lg w-64"></div>
           <div className="space-y-3">
@@ -249,17 +250,17 @@ export default function AlbumOrders() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 p-4 md:p-8" dir="rtl">
+    <div className="e-page min-h-screen bg-gray-950 p-4 md:p-8" dir="rtl">
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-8">
-          <div>
-            <h1 className="text-3xl md:text-4xl font-bold text-white mb-2 flex items-center gap-3">
-              <BookImage className="w-8 h-8 text-yellow-400" />
-              הזמנות אלבומים
-            </h1>
-            <p className="text-gray-400">ניהול הזמנות אלבום, מסקיצה ועד משלוח להדפסה</p>
+          <div className="flex items-center gap-4">
+            <PageIcon icon={BookImage} tone="pink" />
+            <div>
+              <h1 className="text-3xl md:text-4xl font-bold text-white mb-1">הזמנות אלבומים</h1>
+              <p className="text-slate-400">ניהול הזמנות אלבום, מסקיצה ועד משלוח להדפסה</p>
+            </div>
           </div>
-          <Button onClick={() => setIsDialogOpen(true)} className="bg-yellow-400 text-gray-900 hover:bg-yellow-500">
+          <Button onClick={() => setIsDialogOpen(true)} className="rounded-xl bg-gradient-to-b from-[#FFD84A] to-[#F5B800] text-gray-900 font-bold hover:brightness-105 shadow-[0_8px_24px_-8px_rgba(250,204,21,0.8)]">
             <Plus className="w-5 h-5 mr-2" />
             הזמנה חדשה
           </Button>
@@ -293,7 +294,7 @@ export default function AlbumOrders() {
             <BookImage className="w-16 h-16 mx-auto text-gray-600 mb-4" />
             <h3 className="text-xl font-bold text-white mb-2">אין הזמנות אלבומים</h3>
             <p className="text-gray-400 mb-6">צור את ההזמנה הראשונה</p>
-            <Button onClick={() => setIsDialogOpen(true)} className="bg-yellow-400 text-gray-900 hover:bg-yellow-500">
+            <Button onClick={() => setIsDialogOpen(true)} className="rounded-xl bg-gradient-to-b from-[#FFD84A] to-[#F5B800] text-gray-900 font-bold hover:brightness-105 shadow-[0_8px_24px_-8px_rgba(250,204,21,0.8)]">
               <Plus className="w-5 h-5 mr-2" />
               הזמנה חדשה
             </Button>

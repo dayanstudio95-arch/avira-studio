@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, RefreshCw, Calendar, CheckCircle2, XCircle, Clock, Send, ListChecks, CalendarSync, ChevronDown, ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
+import PageIcon from "@/components/layout/PageIcon";
 
 const HEBREW_MONTHS = [
   "ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
@@ -389,14 +390,14 @@ export default function GoogleCalendarSync() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 p-4 md:p-8" dir="rtl">
+    <div className="e-page min-h-screen bg-gray-950 p-4 md:p-8" dir="rtl">
       <div className="mb-8 flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-3xl md:text-4xl font-bold text-white flex items-center gap-2">
-            <Calendar className="w-8 h-8 text-blue-400" />
-            יומן Google
-          </h1>
-          <p className="text-gray-400 mt-1 text-sm">חיבור חשבונות, בריאות סנכרון ושליטה ידנית</p>
+        <div className="flex items-center gap-4">
+          <PageIcon icon={Calendar} tone="blue" />
+          <div>
+            <h1 className="text-3xl md:text-4xl font-bold text-white">יומן Google</h1>
+            <p className="text-slate-400 mt-1 text-sm">חיבור חשבונות, בריאות סנכרון ושליטה ידנית</p>
+          </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
         <Button

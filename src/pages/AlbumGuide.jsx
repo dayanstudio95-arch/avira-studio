@@ -255,7 +255,7 @@ export default function AlbumGuide() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center" dir="rtl">
+      <div className="e-page min-h-screen bg-gray-950 flex items-center justify-center" dir="rtl">
         <Loader2 className="w-10 h-10 text-yellow-400 animate-spin" />
       </div>
     );
@@ -263,7 +263,7 @@ export default function AlbumGuide() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center p-6" dir="rtl">
+      <div className="e-page min-h-screen bg-gray-950 flex items-center justify-center p-6" dir="rtl">
         <div className="max-w-md w-full bg-gray-900 border border-gray-800 rounded-2xl p-8 text-center space-y-3">
           <AlertTriangle className="w-10 h-10 text-red-400 mx-auto" />
           <h1 className="text-lg font-bold text-white">לא ניתן לטעון את המדריך</h1>
@@ -298,7 +298,7 @@ export default function AlbumGuide() {
     setActiveImageIdx((i) => (activeExample ? Math.min((activeExample.images || []).length - 1, i + 1) : i));
 
   return (
-    <div className="min-h-screen bg-gray-950 py-8 px-4" dir="rtl">
+    <div className="e-page min-h-screen bg-gray-950 py-8 px-4" dir="rtl">
       <div className="max-w-2xl mx-auto space-y-5">
         {/* Header */}
         <div className="bg-gradient-to-l from-yellow-500/10 via-gray-900 to-gray-900 border border-gray-800 rounded-2xl p-5 sm:p-6 text-center space-y-2">

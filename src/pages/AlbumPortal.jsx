@@ -155,7 +155,7 @@ export default function AlbumPortal() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center" dir="rtl">
+      <div className="e-page min-h-screen bg-gray-950 flex items-center justify-center" dir="rtl">
         <Loader2 className="w-10 h-10 text-yellow-400 animate-spin" />
       </div>
     );
@@ -163,7 +163,7 @@ export default function AlbumPortal() {
 
   if (!order) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center p-6" dir="rtl">
+      <div className="e-page min-h-screen bg-gray-950 flex items-center justify-center p-6" dir="rtl">
         <div className="max-w-md w-full bg-gray-900 border border-gray-800 rounded-2xl p-8 text-center space-y-3">
           <AlertTriangle className="w-10 h-10 text-red-400 mx-auto" />
           <h1 className="text-lg font-bold text-white">לא ניתן להציג את ההזמנה</h1>
@@ -174,7 +174,7 @@ export default function AlbumPortal() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 py-8 px-4" dir="rtl">
+    <div className="e-page min-h-screen bg-gray-950 py-8 px-4" dir="rtl">
       <div className="max-w-3xl mx-auto space-y-6">
         <PortalHeader order={order} />
 

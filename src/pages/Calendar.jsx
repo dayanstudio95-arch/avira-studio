@@ -299,7 +299,7 @@ export default function Calendar() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-950 p-4 md:p-8">
+      <div className="e-page min-h-screen bg-gray-950 p-4 md:p-8">
         <div className="max-w-7xl mx-auto">
           <div className="animate-pulse">
             <div className="h-12 bg-gray-800 rounded-lg w-64 mb-6"></div>
@@ -311,7 +311,7 @@ export default function Calendar() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 p-4 md:p-8">
+    <div className="e-page min-h-screen bg-gray-950 p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
           <div>

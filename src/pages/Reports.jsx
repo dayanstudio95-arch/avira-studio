@@ -11,6 +11,7 @@ import { Download, TrendingUp, Calendar, BarChart3 } from "lucide-react";
 import ReportsChart from "../components/reports/ReportsChart";
 import MonthlyChart from "../components/reports/MonthlyChart";
 import ReportsTable from "../components/reports/ReportsTable";
+import PageIcon from "@/components/layout/PageIcon";
 
 const MONTHS = [
   { value: 0, label: "ינואר" },
@@ -114,16 +115,15 @@ export default function Reports() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-950 p-4 md:p-8">
+    <div className="e-page min-h-screen bg-gray-950 p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-          <div>
-            <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">
-              דוחות פיננסיים
-            </h1>
-            <p className="text-gray-400">
-              ניתוח ביצועי העסק שלך
-            </p>
+          <div className="flex items-center gap-4">
+            <PageIcon icon={BarChart3} tone="cyan" />
+            <div>
+              <h1 className="text-3xl md:text-4xl font-bold text-white mb-1">דוחות פיננסיים</h1>
+              <p className="text-slate-400">ניתוח ביצועי העסק שלך</p>
+            </div>
           </div>
           <Select value={selectedYear.toString()} onValueChange={(val) => setSelectedYear(parseInt(val))}>
             <SelectTrigger className="w-32 bg-gray-900/50 border-gray-700 text-white">

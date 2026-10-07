@@ -206,7 +206,7 @@ export default function Guide() {
   const linkedServices = SERVICES.filter((s) => s.url);
 
   return (
-    <div className="min-h-screen bg-gray-950 p-4 md:p-6" dir="rtl">
+    <div className="e-page min-h-screen bg-gray-950 p-4 md:p-6" dir="rtl">
       <div className="max-w-4xl mx-auto space-y-6">
         <Card className="bg-gray-900 border-gray-800 text-white">
           <CardHeader className="pb-2">

@@ -85,7 +85,7 @@ export default function SystemAdvisor() {
     .reduce((s, e) => s + (e.totalAmountGross || 0), 0);
 
   return (
-    <div className="min-h-screen bg-gray-950 p-5" dir="rtl">
+    <div className="e-page min-h-screen bg-gray-950 p-5" dir="rtl">
       <div className="max-w-5xl mx-auto space-y-5">
 
         {/* ── Header ─────────────────────────────────────────────────────────── */}

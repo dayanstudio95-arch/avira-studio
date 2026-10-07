@@ -110,7 +110,7 @@ export default function EventQuestionnaire() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <div className="e-page min-h-screen bg-gray-950 flex items-center justify-center">
         <Loader2 className="w-8 h-8 text-yellow-400 animate-spin" />
       </div>
     );
@@ -118,7 +118,7 @@ export default function EventQuestionnaire() {
 
   if (!leadId || (!lead && !isLoading)) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center text-white" dir="rtl">
+      <div className="e-page min-h-screen bg-gray-950 flex items-center justify-center text-white" dir="rtl">
         <div className="text-center">
           <p className="text-gray-400 text-lg">לינק לא תקין</p>
         </div>
@@ -128,7 +128,7 @@ export default function EventQuestionnaire() {
 
   if (justSubmitted) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center" dir="rtl">
+      <div className="e-page min-h-screen bg-gray-950 flex items-center justify-center" dir="rtl">
         <div className="text-center space-y-4 px-6">
           <CheckCircle2 className="w-16 h-16 text-green-400 mx-auto" />
           <h2 className="text-2xl font-bold text-white">תודה! הפרטים התקבלו 💛</h2>
@@ -149,7 +149,7 @@ export default function EventQuestionnaire() {
     : null;
 
   return (
-    <div className="min-h-screen bg-gray-950 py-10 px-4" dir="rtl">
+    <div className="e-page min-h-screen bg-gray-950 py-10 px-4" dir="rtl">
       <div className="max-w-lg mx-auto">
         {/* Header */}
         <div className="text-center mb-8">

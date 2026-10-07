@@ -131,7 +131,7 @@ export default function TeamMembers() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-950 p-4 md:p-8">
+      <div className="e-page min-h-screen bg-gray-950 p-4 md:p-8">
         <div className="max-w-7xl mx-auto">
           <div className="animate-pulse space-y-6">
             <div className="h-8 bg-gray-800 rounded-lg w-64"></div>
@@ -147,7 +147,7 @@ export default function TeamMembers() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 p-4 md:p-8">
+    <div className="e-page min-h-screen bg-gray-950 p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
           <div>

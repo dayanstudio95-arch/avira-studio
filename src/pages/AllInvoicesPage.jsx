@@ -93,14 +93,14 @@ export default function AllInvoicesPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <div className="e-page min-h-screen bg-gray-950 flex items-center justify-center">
         <Loader2 className="w-8 h-8 text-yellow-400 animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 p-4 md:p-6" dir="rtl">
+    <div className="e-page min-h-screen bg-gray-950 p-4 md:p-6" dir="rtl">
       <div className="max-w-[1600px] mx-auto">
         
         {/* Header */}

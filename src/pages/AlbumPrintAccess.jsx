@@ -96,7 +96,7 @@ export default function AlbumPrintAccess() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center" dir="rtl">
+      <div className="e-page min-h-screen bg-gray-950 flex items-center justify-center" dir="rtl">
         <Loader2 className="w-10 h-10 text-yellow-400 animate-spin" />
       </div>
     );
@@ -104,7 +104,7 @@ export default function AlbumPrintAccess() {
 
   if (!info) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center p-6" dir="rtl">
+      <div className="e-page min-h-screen bg-gray-950 flex items-center justify-center p-6" dir="rtl">
         <div className="max-w-md w-full bg-gray-900 border border-gray-800 rounded-2xl p-8 text-center space-y-3">
           <AlertTriangle className="w-10 h-10 text-red-400 mx-auto" />
           <h1 className="text-lg font-bold text-white">לא ניתן להציג את הקישור</h1>
@@ -115,7 +115,7 @@ export default function AlbumPrintAccess() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-6" dir="rtl">
+    <div className="e-page min-h-screen bg-gray-950 flex items-center justify-center p-6" dir="rtl">
       <div className="max-w-md w-full bg-gray-900 border border-gray-800 rounded-2xl p-8 text-center space-y-5">
         <h1 className="text-xl font-bold text-white">{info.coupleNames || "הזמנת אלבום"}</h1>
         {info.weddingDate && <p className="text-gray-400 text-sm">{formatDate(info.weddingDate)}</p>}

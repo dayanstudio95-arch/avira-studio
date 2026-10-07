@@ -8,13 +8,14 @@ import CustomStaffMessageModal from "@/components/automations/CustomStaffMessage
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Settings, Play, Clock, Calendar, Loader2, X, Send, Eye, RefreshCw, ChevronDown, ChevronUp, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
+import { Settings, Play, Clock, Calendar, Loader2, X, Send, Eye, RefreshCw, ChevronDown, ChevronUp, CheckCircle2, XCircle, AlertCircle, Zap } from "lucide-react";
 import { format } from "date-fns";
 import { STAFF_JOB_ROLES, staffJobRoleLabel } from "@/lib/staffRoles";
 import CreateCustomAutomationModal from "@/components/automations/CreateCustomAutomationModal";
 import TemplateVariablesHelp from "@/components/automations/TemplateVariablesHelp";
 import { VARS_BY_TYPE, VARS_BY_AUDIENCE_TYPE } from "@/lib/automationTemplateVariables";
 import { sendSummary } from "@/lib/actionOutcome";
+import PageIcon from "@/components/layout/PageIcon";
 
 // ── Default automations to seed if none exist ──────────────────────────────
 const DEFAULTS = [
@@ -1311,13 +1312,16 @@ export default function AutomationsDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 p-4 md:p-8" dir="rtl">
+    <div className="e-page min-h-screen bg-gray-950 p-4 md:p-8" dir="rtl">
       <div className="max-w-5xl mx-auto">
         {/* Header */}
         <div className="mb-8 flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="text-3xl md:text-4xl font-bold text-white">⚡ אוטומציות לעסק</h1>
-            <p className="text-gray-400 mt-1 text-sm">ניהול שליחות אוטומטיות בוואטסאפ לצוות וללקוחות</p>
+          <div className="flex items-center gap-4">
+            <PageIcon icon={Zap} tone="purple" />
+            <div>
+              <h1 className="text-3xl md:text-4xl font-bold text-white">אוטומציות לעסק</h1>
+              <p className="text-slate-400 mt-1 text-sm">ניהול שליחות אוטומטיות בוואטסאפ לצוות וללקוחות</p>
+            </div>
           </div>
           <button
             onClick={() => setCreateCustomModal(true)}

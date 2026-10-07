@@ -18,6 +18,7 @@ import { supabase } from '@/api/supabaseClient';
 import { toast } from 'sonner';
 import { unpaidRowsForStaff, creditByStaff, creditForExactPeriod, undoablePaymentIds, periodRange, earlierMonthDebts } from '@/lib/staffPaymentAllocation';
 import { todayInIsrael } from '@/lib/localDate';
+import PageIcon from "@/components/layout/PageIcon";
 const MONTHS_HE = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
 const StaffPayment = base44.entities.StaffPayment;
 
@@ -398,7 +399,7 @@ export default function Payments() {
 
     if (isLoading) {
         return (
-            <div className="min-h-screen bg-gray-950 p-4 md:p-8">
+            <div className="e-page min-h-screen bg-gray-950 p-4 md:p-8">
                 <div className="max-w-6xl mx-auto">
                     <Skeleton className="h-12 w-1/3 mb-4" />
                     <Skeleton className="h-20 w-full mb-8" />
@@ -413,18 +414,16 @@ export default function Payments() {
     }
 
     return (
-        <div className="min-h-screen bg-gray-950 p-4 md:p-8">
+        <div className="e-page min-h-screen bg-gray-950 p-4 md:p-8">
             <div className="max-w-6xl mx-auto">
                 <div className="mb-8">
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                        <div>
-                            <h1 className="text-3xl md:text-4xl font-bold text-white mb-2 flex items-center gap-3">
-                                <WalletCards className="w-8 h-8 text-yellow-400" />
-                                תשלומים לצוות
-                            </h1>
-                            <p className="text-gray-400">
-                                מעקב אחר תשלומים שטרם הועברו לאנשי הצוות
-                            </p>
+                        <div className="flex items-center gap-4">
+                            <PageIcon icon={WalletCards} tone="amber" />
+                            <div>
+                                <h1 className="text-3xl md:text-4xl font-bold text-white mb-1">תשלומים לצוות</h1>
+                                <p className="text-slate-400">מעקב אחר תשלומים שטרם הועברו לאנשי הצוות</p>
+                            </div>
                         </div>
                         <div className="flex items-center gap-2 w-full md:w-auto">
                             <CalendarDays className="w-5 h-5 text-gray-400 flex-shrink-0" />

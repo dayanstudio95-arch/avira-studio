@@ -63,7 +63,7 @@ export default function AutomationLogs() {
   const getRunMessages = (runId) => messages.filter(m => m.automationRunId === runId);
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white p-6" dir="rtl">
+    <div className="e-page min-h-screen bg-gray-950 text-white p-6" dir="rtl">
       <div className="max-w-5xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>

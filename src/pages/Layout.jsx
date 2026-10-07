@@ -177,6 +177,13 @@ export default function Layout({ children }) {
 }
 
 function LayoutShell({ children }) {
+  // Design E: pop-up windows render on <body>, outside this tree — give them the same palette
+  // while the logged-in app is open (the public pages never mount this).
+  useEffect(() => {
+    document.body.classList.add("avira-d");
+    return () => document.body.classList.remove("avira-d");
+  }, []);
+
   const { user, logout } = useAuth();
   const location = useLocation();
   const { countsByRoute, markRouteAsRead } = useNotifications();

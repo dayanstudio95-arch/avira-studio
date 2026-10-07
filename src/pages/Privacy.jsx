@@ -31,7 +31,7 @@ function Section({ title, children }) {
 
 export default function Privacy() {
   return (
-    <div className="min-h-screen bg-gray-950 py-10 px-5" dir="rtl">
+    <div className="e-page min-h-screen bg-gray-950 py-10 px-5" dir="rtl">
       <div className="max-w-2xl mx-auto bg-gray-900 border border-gray-800 rounded-2xl p-6 sm:p-8 space-y-7">
         <header className="space-y-1 border-b border-gray-800 pb-5">
           <h1 className="text-xl font-bold text-white">מדיניות פרטיות</h1>

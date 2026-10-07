@@ -787,7 +787,7 @@ export default function AlbumOrderDetail() {
 
   if (orderLoading || !order) {
     return (
-      <div className="min-h-screen bg-gray-950 p-4 md:p-8">
+      <div className="e-page min-h-screen bg-gray-950 p-4 md:p-8">
         <div className="max-w-4xl mx-auto animate-pulse space-y-6">
           <div className="h-10 bg-gray-800 rounded-lg w-48"></div>
           <div className="h-32 bg-gray-800 rounded-xl"></div>
@@ -862,7 +862,7 @@ export default function AlbumOrderDetail() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 p-4 md:p-8" dir="rtl">
+    <div className="e-page min-h-screen bg-gray-950 p-4 md:p-8" dir="rtl">
       <div className="max-w-4xl mx-auto space-y-6">
         <Link to={createPageUrl("AlbumOrders")} className="inline-flex items-center gap-2 text-gray-400 hover:text-white text-sm">
           <ArrowRight className="w-4 h-4" />

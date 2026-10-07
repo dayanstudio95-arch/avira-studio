@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { DollarSign, Save, Users, Edit, Trash2, Plus, Upload, Download, FileText, Plug, MessageCircle, Building2, History, Bell, ShieldCheck, Loader2 } from "lucide-react";
+import { DollarSign, Save, Users, Edit, Trash2, Plus, Upload, Download, FileText, Plug, MessageCircle, Building2, History, Bell, ShieldCheck, Loader2, Settings as SettingsIcon } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/lib/SupabaseAuthContext";
@@ -42,6 +42,7 @@ import { DEFAULT_CONTRACT_TERMS } from "@/lib/defaultContractTerms";
 import { downloadEventsBackupPdf } from "@/lib/eventsBackupPdf";
 import { toast } from "sonner";
 import { todayInIsrael } from "@/lib/localDate";
+import PageIcon from "@/components/layout/PageIcon";
 
 const VALID_SETTINGS_TABS = ["workspace", "users", "contract", "pricing", "team", "templates", "integrations", "notifications", "data", "audit"];
 
@@ -348,15 +349,14 @@ export default function Settings() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 p-4 md:p-8">
+    <div className="e-page min-h-screen bg-gray-950 p-4 md:p-8">
       <div className="max-w-4xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">
-            הגדרות
-          </h1>
-          <p className="text-gray-400">
-            כל הגדרות המערכת במקום אחד
-          </p>
+        <div className="mb-8 flex items-center gap-4">
+          <PageIcon icon={SettingsIcon} tone="slate" />
+          <div>
+            <h1 className="text-3xl md:text-4xl font-bold text-white mb-1">הגדרות</h1>
+            <p className="text-slate-400">כל הגדרות המערכת במקום אחד</p>
+          </div>
         </div>
 
         <Tabs defaultValue={initialTab} dir="rtl" className="mb-6">
