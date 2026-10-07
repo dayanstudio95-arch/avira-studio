@@ -4,7 +4,7 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, X, Trash2, FileText, Receipt, Pencil, RefreshCw, Link, Banknote, MoreHorizontal, ClipboardList } from "lucide-react";
+import { Plus, Search, X, Trash2, FileText, Receipt, Pencil, RefreshCw, Link, Banknote, MoreHorizontal, ClipboardList, Sparkles, Send, Hourglass, Signature, FileSignature, Ban } from "lucide-react";
 import { format } from "date-fns";
 import LeadFormDialog from "../components/leads/LeadFormDialog";
 import ManualPaymentModal from "../components/leads/ManualPaymentModal";
@@ -25,12 +25,23 @@ import { dateMatches } from "@/lib/searchDate";
 
 
 const statusConfig = {
-  "חדש":          { badge: "bg-blue-900/60 text-blue-300 border-blue-700",    card: "bg-blue-950/80 border-blue-800",   num: "text-blue-300" },
-  "נשלחה הצעה":  { badge: "bg-pink-900/60 text-pink-300 border-pink-700", card: "bg-pink-950/80 border-pink-800", num: "text-pink-300" },
-  "פולו-אפ":      { badge: "bg-orange-900/60 text-orange-300 border-orange-700", card: "bg-orange-950/80 border-orange-800",  num: "text-orange-300" },
-  "נסגר/חתימה":  { badge: "bg-green-900/60 text-green-300 border-green-700",  card: "bg-green-950/80 border-green-800",   num: "text-green-300" },
-  "חוזה":       { badge: "bg-yellow-900/60 text-yellow-300 border-yellow-700", card: "bg-yellow-950/80 border-yellow-800", num: "text-yellow-300" },
-  "לא רלוונטי":  { badge: "bg-gray-800/60 text-gray-400 border-gray-600",     card: "bg-gray-900/80 border-gray-700",     num: "text-gray-400" },
+  "חדש":          { badge: "bg-blue-900/60 text-blue-300 border-blue-700",    card: "bg-blue-950/80 border-blue-800",   num: "text-blue-300",   tone: "blue",   icon: Sparkles },
+  "נשלחה הצעה":  { badge: "bg-pink-900/60 text-pink-300 border-pink-700", card: "bg-pink-950/80 border-pink-800", num: "text-pink-300", tone: "purple", icon: Send },
+  "פולו-אפ":      { badge: "bg-orange-900/60 text-orange-300 border-orange-700", card: "bg-orange-950/80 border-orange-800",  num: "text-orange-300", tone: "red", icon: Hourglass },
+  "נסגר/חתימה":  { badge: "bg-green-900/60 text-green-300 border-green-700",  card: "bg-green-950/80 border-green-800",   num: "text-green-300", tone: "green", icon: Signature },
+  "חוזה":       { badge: "bg-yellow-900/60 text-yellow-300 border-yellow-700", card: "bg-yellow-950/80 border-yellow-800", num: "text-yellow-300", tone: "amber", icon: FileSignature },
+  "לא רלוונטי":  { badge: "bg-gray-800/60 text-gray-400 border-gray-600",     card: "bg-gray-900/80 border-gray-700",     num: "text-gray-400", tone: "navy", icon: Ban },
+};
+
+// Design E (2026-10-07, the owner's reference image): each status count is a glowing
+// gradient tile with its icon. Display only — the counts and the click-to-filter are as before.
+const TILE_TONES = {
+  blue:   { tile: "from-[#13306A] to-[#0B1630] border-[#3B82F6]/55 shadow-[0_0_26px_-10px_rgba(59,130,246,0.8)]", icon: "border-[#3B82F6]/50 bg-[#3B82F6]/15 text-sky-300" },
+  purple: { tile: "from-[#3A1A5A] to-[#150D28] border-[#A855F7]/55 shadow-[0_0_26px_-10px_rgba(168,85,247,0.8)]", icon: "border-[#A855F7]/50 bg-[#A855F7]/15 text-fuchsia-300" },
+  red:    { tile: "from-[#4A1626] to-[#1A0B14] border-[#F05B70]/55 shadow-[0_0_26px_-10px_rgba(240,91,112,0.8)]", icon: "border-[#F05B70]/50 bg-[#F05B70]/15 text-rose-300" },
+  green:  { tile: "from-[#0E3A2C] to-[#081A16] border-[#22C987]/55 shadow-[0_0_26px_-10px_rgba(34,201,135,0.8)]", icon: "border-[#22C987]/50 bg-[#22C987]/15 text-emerald-300" },
+  amber:  { tile: "from-[#3D2A0B] to-[#171108] border-[#F59E0B]/55 shadow-[0_0_26px_-10px_rgba(245,158,11,0.8)]", icon: "border-[#F59E0B]/50 bg-[#F59E0B]/15 text-amber-300" },
+  navy:   { tile: "from-[#13254A] to-[#0A1428] border-[#4F7BFF]/40 shadow-[0_0_26px_-12px_rgba(79,123,255,0.7)]", icon: "border-[#4F7BFF]/40 bg-[#4F7BFF]/12 text-sky-200" },
 };
 
 export default function Leads() {
@@ -511,14 +522,14 @@ export default function Leads() {
   const statOrder = ["חדש", "נשלחה הצעה", "פולו-אפ", "נסגר/חתימה", "חוזה", "לא רלוונטי"];
 
   return (
-    <div className="min-h-screen bg-gray-950 p-4 md:p-6" dir="rtl">
+    <div className="e-page min-h-screen p-4 md:p-6" dir="rtl">
       <div className="max-w-[1600px] mx-auto">
 
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
           <div>
             <h1 className="text-3xl md:text-4xl font-bold text-white">לידים - CRM</h1>
-            <p className="text-gray-400 text-sm mt-1">ניהול לידים ולקוחות פוטנציאליים</p>
+            <p className="text-slate-400 text-sm mt-1">ניהול לידים ולקוחות פוטנציאליים</p>
           </div>
 
           {/* Desktop buttons — unchanged */}
@@ -541,12 +552,12 @@ export default function Leads() {
              )}
            </>
            )}
-            <Button onClick={() => setFollowUpDialogOpen(true)} variant="outline" className="border-orange-500 text-orange-300 bg-transparent hover:bg-orange-600/10 px-4 py-2 rounded-lg font-medium">📨 תזכורת פולו-אפ</Button>
+            <Button onClick={() => setFollowUpDialogOpen(true)} variant="outline" className="h-11 border-[#F97316]/80 text-orange-300 bg-[#F97316]/[0.06] hover:bg-[#F97316]/15 hover:text-orange-200 px-4 rounded-xl font-medium shadow-[0_0_20px_-8px_rgba(249,115,22,0.8)]">📨 תזכורת פולו-אפ</Button>
             {/* D1 + D2 hidden by the owner's decision (2026-10-07): 'שייך IDs' (its number is no longer shown),
                 'תיקון חסרים' (no signed lead lacks an event — that happens automatically now). */}
-            <Button onClick={() => setIsCSVImportOpen(true)} variant="outline" className="border-gray-600 text-gray-300 bg-transparent hover:bg-gray-700 px-4 py-2 rounded-lg font-medium">📂 ייבוא CSV</Button>
-            <Button onClick={() => { setEditingLead(null); setIsFormOpen(true); }} className="bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-bold px-5 py-2 rounded-lg shadow-lg">
-              <Plus className="w-5 h-5 ml-1" />ליד חדש +
+            <Button onClick={() => setIsCSVImportOpen(true)} variant="outline" className="h-11 border-[#2A3B57] text-slate-200 bg-[#0B1529] hover:bg-white/[0.06] hover:text-white px-4 rounded-xl font-medium">📂 ייבוא CSV</Button>
+            <Button onClick={() => { setEditingLead(null); setIsFormOpen(true); }} className="h-11 bg-gradient-to-b from-[#FFD84A] to-[#F5B800] hover:brightness-105 text-gray-900 font-bold px-5 rounded-xl shadow-[0_8px_24px_-8px_rgba(250,204,21,0.8)]">
+              <Plus className="w-5 h-5 ml-1" />ליד חדש
             </Button>
           </div>
 
@@ -574,19 +585,26 @@ export default function Leads() {
         </div>
 
         {/* Stat Cards */}
-        <div className="grid grid-cols-3 md:grid-cols-6 gap-2 md:gap-3 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2.5 md:gap-4 mb-6">
           {statOrder.map((status) => {
             const count = leads.filter((l) => l.status === status).length;
             const cfg = statusConfig[status];
+            const tone = TILE_TONES[cfg.tone];
+            const Icon = cfg.icon;
             const isActive = statusFilter === status;
             return (
               <button
                 key={status}
                 onClick={() => setStatusFilter(isActive ? null : status)}
-                className={`rounded-xl border p-2 md:p-4 text-center transition-all cursor-pointer ${cfg.card} ${isActive ? "ring-2 ring-white/30 scale-105" : "opacity-90 hover:opacity-100"}`}
+                className={`flex items-center justify-between gap-2 rounded-2xl border bg-gradient-to-b px-3 py-3 md:px-5 md:py-4 transition-all cursor-pointer ${tone.tile} ${isActive ? "ring-2 ring-white/40 -translate-y-0.5" : "hover:-translate-y-0.5"}`}
               >
-                <div className={`text-xl md:text-3xl font-bold ${cfg.num}`}>{count}</div>
-                <div className="text-[10px] md:text-xs text-gray-300 mt-0.5 md:mt-1 font-medium leading-tight">{status}</div>
+                <div className="min-w-0 flex-1 text-center">
+                  <div className="text-2xl md:text-3xl font-bold leading-tight text-white tabular-nums">{count}</div>
+                  <div className="text-[11px] md:text-sm text-slate-200 mt-0.5 font-medium leading-tight truncate">{status}</div>
+                </div>
+                <div className={`flex h-10 w-10 md:h-12 md:w-12 shrink-0 items-center justify-center rounded-xl border ${tone.icon}`}>
+                  <Icon className="h-5 w-5 md:h-6 md:w-6" strokeWidth={1.75} />
+                </div>
               </button>
             );
           })}
@@ -604,10 +622,10 @@ export default function Leads() {
             <button
               key={f.key}
               onClick={() => setQuickFilter(f.key)}
-              className={`px-3 py-1 rounded-lg border text-xs font-medium transition-all ${
+              className={`px-3.5 py-1.5 rounded-lg border text-xs font-medium transition-all ${
                 quickFilter === f.key
-                  ? 'bg-yellow-400/20 border-yellow-400 text-yellow-300'
-                  : 'bg-gray-800 border-gray-600 text-gray-400 hover:text-gray-200'
+                  ? 'bg-[#FACC15]/10 border-[#FACC15]/80 text-[#FDE047] shadow-[0_0_16px_-6px_rgba(250,204,21,0.7)]'
+                  : 'bg-[#0B1529] border-[#2A3B57] text-slate-300 hover:text-white'
               }`}
             >
               {f.label}
@@ -618,11 +636,11 @@ export default function Leads() {
         {/* Sort + Search — stacked on mobile, inline on desktop */}
         <div className="flex flex-col md:flex-row md:items-center gap-3 mb-4">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-400 whitespace-nowrap">מיון:</span>
+            <span className="text-xs text-slate-400 whitespace-nowrap">מיון:</span>
             <select
               value={sortOrder}
               onChange={e => { setSortOrder(e.target.value); localStorage.setItem('leads_sort', e.target.value); }}
-              className="text-xs bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-1.5 cursor-pointer w-full md:w-auto"
+              className="text-xs bg-[#0B1529] border border-[#2A3B57] text-white rounded-lg px-3 py-2 cursor-pointer w-full md:w-auto"
             >
               <option value="event_asc">תאריך אירוע – מהקרוב לרחוק</option>
               <option value="event_desc">תאריך אירוע – מהרחוק לקרוב</option>
@@ -641,7 +659,7 @@ export default function Leads() {
               placeholder="חיפוש לפי שם, טלפון או תאריך..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pr-10 bg-gray-900 border-gray-700 text-white placeholder-gray-500 rounded-lg w-full md:w-1/2"
+              className="pr-10 h-11 bg-[#0B1529] border-[#2A3B57] text-white placeholder:text-slate-500 rounded-xl w-full md:w-2/3 focus:border-sky-500 focus:ring-sky-500/20"
             />
             {searchTerm && (
               <button onClick={() => setSearchTerm("")} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white">
@@ -652,12 +670,12 @@ export default function Leads() {
         </div>
 
         {/* Table */}
-        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <div className="dash-card mobile-plain overflow-hidden">
           {/* Desktop */}
           <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="bg-gray-800/80 text-gray-400 text-xs border-b border-gray-700">
+                <tr className="bg-[#0B1529] text-slate-400 text-xs border-b border-white/[0.07]">
                   <th className="text-center px-2 py-3 w-8">
                    <input type="checkbox" checked={filteredLeads.length > 0 && selectedIds.size === filteredLeads.length} onChange={toggleSelectAll} className="cursor-pointer" />
                  </th>
@@ -689,7 +707,7 @@ export default function Leads() {
                     const waLink = lead.phoneNumber ? `https://wa.me/972${lead.phoneNumber.replace(/^0/, "").replace(/\D/g, "")}` : null;
                     const cfg = statusConfig[lead.status || "חדש"];
                     return (
-                     <tr key={lead.id} className={`border-b border-gray-800 hover:bg-gray-800/40 transition-colors ${selectedIds.has(lead.id) ? 'bg-red-900/10' : ''}`}>
+                     <tr key={lead.id} className={`border-b border-white/[0.05] hover:bg-white/[0.03] transition-colors ${selectedIds.has(lead.id) ? 'bg-red-900/10' : ''}`}>
                        <td className="px-2 py-2 text-center">
                          <input type="checkbox" checked={selectedIds.has(lead.id)} onChange={() => toggleSelect(lead.id)} className="cursor-pointer" />
                        </td>
@@ -795,7 +813,7 @@ export default function Leads() {
           </div>
 
           {/* Mobile Cards */}
-          <div className="md:hidden p-4 space-y-4">
+          <div className="md:hidden space-y-3">
             {isLoading ? (
               <p className="text-center text-gray-500">טוען...</p>
             ) : filteredLeads.length === 0 ? (
@@ -805,7 +823,7 @@ export default function Leads() {
                 const balance = (lead.finalPrice || 0) - (lead.totalPaid || 0);
                 const cfg = statusConfig[lead.status || "חדש"];
                 return (
-                  <div key={lead.id} className="bg-gray-800/50 border border-gray-700 rounded-xl p-4 space-y-3">
+                  <div key={lead.id} className="dash-card p-4 space-y-3">
                     <div className="flex justify-between items-start">
                       <div>
                         <button onClick={() => setSelectedLead(lead)} className="font-bold text-blue-400 text-lg hover:text-blue-300 underline">
@@ -830,7 +848,7 @@ export default function Leads() {
                       <div><span className="text-gray-400">סכום: </span><span className="text-white">₪{(lead.finalPrice || 0).toLocaleString()}</span></div>
                       <div><span className="text-gray-400">יתרה: </span><span className={balance === 0 ? "text-green-400" : "text-red-400"}>₪{balance.toLocaleString()}</span></div>
                     </div>
-                    <div className="flex gap-2 pt-1">
+                    <div className="flex flex-wrap gap-2 pt-1">
                       <Button size="sm" onClick={() => { setEditingLead(lead); setIsFormOpen(true); }} className="border-gray-700 text-gray-300 bg-transparent border text-xs">עריכה</Button>
                       <Button size="sm" onClick={() => handleContractButtonClick(lead)} className="text-blue-400 bg-transparent border border-blue-700 text-xs">חוזה</Button>
                       <Button size="sm" onClick={() => handleQuestionnaireButtonClick(lead)} className="text-purple-400 bg-transparent border border-purple-700 text-xs">שאלון</Button>
