@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { MessageSquare, MoreHorizontal, X, LayoutGrid, SlidersHorizontal, LogOut, Bell, Flame, Hourglass, Settings2, History, Users, Phone, AlertCircle } from "lucide-react";
+import { MessageSquare, X, LayoutGrid, SlidersHorizontal, LogOut, Bell, Flame, Hourglass, Settings2, History, Users, Phone, AlertCircle, BookImage } from "lucide-react";
 import { supabase } from "@/api/supabaseClient";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/SupabaseAuthContext";
@@ -30,43 +30,18 @@ import { registerChatServiceWorker, setBadge } from "@/lib/push";
 // Nothing here sends to more than one person: bulk SENDING is stage 2 (the safety
 // rules agreed with the owner). Bulk SORTING is here, and every change can be undone.
 
-// The bottom bar on a phone (the owner's choice, 2026-10-07): clients and two of his own
+// The bottom bar on a phone (the owner's choice, 2026-10-07): clients and three of his own
 // labels, found by name — a label that doesn't exist (renamed, deleted) is simply left out.
 const BOTTOM_LABEL_TABS = [
   { name: "לחזור בטלפון", icon: Phone },
   { name: "דחוף", icon: AlertCircle },
+  { name: "אלבומים", icon: BookImage },
 ];
 // The tab rows above the list (2026-10-07, as in the old inbox). On a phone: two rows —
-// לא מוכר · לידים · פולו אפ / ליד חם · לא נקראו · הכל · עוד. Everything else is under "עוד".
+// לא מוכר · לידים · ליד חם / לא נקראו · פולו אפ · הכל · עוד. Everything else is under "עוד".
 const PRIMARY_BOXES = BOXES.filter((b) => b.primary);
-const CHIP_ROWS = [["unknown", "lead", "followup"], ["hot", "unread", "all"]];
+const CHIP_ROWS = [["unknown", "lead", "hot"], ["unread", "followup", "all"]];
 const CHIP_ICONS = { followup: Hourglass, hot: Flame };
-
-// iPhone home-screen app (navigator.standalone) with the translucent status bar: WebKit
-// reports a viewport shorter than the screen by the status bar's height, so a full-height
-// layout stopped ~50pt above the bottom edge (the owner's screenshot, 2026-10-07). There the
-// app takes the real screen height; everywhere else (Safari, Android, desktop) it stays
-// inset-0. Recomputed on rotation.
-function useIosStandaloneHeight() {
-  const calc = () => {
-    if (typeof window === "undefined" || window.navigator.standalone !== true) return null;
-    const long = Math.max(window.screen.width, window.screen.height);
-    const short = Math.min(window.screen.width, window.screen.height);
-    return window.innerWidth > window.innerHeight ? short : long;
-  };
-  const [h, setH] = useState(calc);
-  useEffect(() => {
-    if (window.navigator.standalone !== true) return undefined;
-    const on = () => setH(calc());
-    window.addEventListener("resize", on);
-    window.addEventListener("orientationchange", on);
-    return () => {
-      window.removeEventListener("resize", on);
-      window.removeEventListener("orientationchange", on);
-    };
-  }, []);
-  return h;
-}
 
 function useDebounced(value, ms) {
   const [v, setV] = useState(value);
@@ -79,7 +54,6 @@ function useDebounced(value, ms) {
 
 export default function ChatApp() {
   const data = useChatData();
-  const iosHeight = useIosStandaloneHeight();
   const { logout } = useAuth();
   const qc = useQueryClient();
   const [params, setParams] = useSearchParams();
@@ -260,6 +234,10 @@ export default function ChatApp() {
       await run(data.actions.setStage(convs, value, data.leadsById), (r) => `${n(r)} שיחות → "${value}"${r?.crm ? ` · ${r.crm} מהן עודכנו גם בדף הלידים` : ""}`);
     } else if (kind === "label") {
       await run(data.actions.addLabel(convs, value), (r) => `התווית "${labelsById[value]?.name}" נוספה ל-${n(r)} שיחות`);
+    } else if (kind === "unlabel") {
+      await run(data.actions.removeLabel(convs, value), (r) => `התווית "${labelsById[value]?.name}" הוסרה מ-${n(r)} שיחות`);
+    } else if (kind === "followup") {
+      await run(data.actions.setFollowUpFlag(convs, value), (r) => (value ? `${n(r)} שיחות נכנסו לפולו-אפ` : `${n(r)} שיחות הוסרו מהפולו-אפ`));
     } else if (kind === "archive") {
       await run(data.actions.setArchived(convs, true), (r) => `${n(r)} שיחות הועברו לארכיון`);
     } else if (kind === "handled") {
@@ -430,11 +408,7 @@ export default function ChatApp() {
 
   return (
     <AvatarUrlContext.Provider value={avatarUrls}>
-    <div
-      dir="rtl"
-      className={`fixed inset-x-0 top-0 flex w-full overflow-hidden bg-gray-950 text-gray-100 ${iosHeight ? "" : "bottom-0"}`}
-      style={iosHeight ? { height: iosHeight } : undefined}
-    >
+    <div dir="rtl" className="fixed inset-0 flex w-full overflow-hidden bg-gray-950 text-gray-100">
       <ChatSidebar
         className="hidden w-60 shrink-0 md:flex"
         box={q ? "" : box}
@@ -489,10 +463,8 @@ export default function ChatApp() {
                 </button>
               );
             })}
-            <button type="button" onClick={() => setMoreOpen(true)} className="flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] text-gray-400">
-              <MoreHorizontal className="h-6 w-6" aria-hidden="true" />
-              עוד
-            </button>
+            {/* "עוד" is the last tab chip above the list (2026-10-07: the bottom bar is the
+                owner's four boxes — לקוחות · לחזור בטלפון · דחוף · אלבומים). */}
           </nav>
         )}
       </div>
@@ -511,6 +483,7 @@ export default function ChatApp() {
             onArchive={panelProps.onArchive}
             needsReplyNow={needsReply(active)}
             onHandled={() => run(data.actions.setHandled([active], true), () => 'סומן "טופל" · יחזור ל"דורש מענה" כשיכתבו שוב')}
+            inFollowUp={isAwaitingFollowUp(active, data.followUpAfterDays || 0)}
             onToggleFollowUp={(on) => run(data.actions.setFollowUpFlag([active], on), () => (on ? "נוסף לתור הפולו-אפ" : "הוסר מתור הפולו-אפ"))}
             templates={data.templates}
             onSaveTemplate={saveTemplate}

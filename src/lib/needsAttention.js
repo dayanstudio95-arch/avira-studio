@@ -97,7 +97,7 @@ export function buildAttentionList(conversations, leads) {
         days: daysSince(c.lastBotMessageAt),
       });
       if (c.phone) seenPhones.add(c.phone);
-    } else if (c.state === "PRICELIST_SENT" && !c.followupSentAt) {
+    } else if (c.state === "PRICELIST_SENT" && !c.followupSentAt && !c.followupDismissedAt) {
       const days = daysSince(c.lastBotMessageAt);
       if (days !== null && days >= STALE_DAYS) {
         rows.push({

@@ -251,13 +251,19 @@ export function useChatData() {
       return { batchId, count: convs.length };
     },
 
-    // "לפולו-אפ" (2026-10-07, from the old inbox): puts the conversation in the follow-up
-    // queue by hand (followUpQueue.isManuallyFlagged), whatever the bot did.
-    async setFollowUpFlag(convs, flagged) {
+    // "לפולו-אפ" / "הסר מפולו-אפ" (2026-10-07). In: a hand flag (followUpQueue.isManuallyFlagged).
+    // Out: clears the flag and stamps followupDismissedAt, which also takes out someone the
+    // bot put there (price list, no reply). Flagging again later brings them back.
+    async setFollowUpFlag(convs, inQueue) {
       const batchId = uuid();
-      const value = flagged ? new Date().toISOString() : null;
-      await updateConversations(convs.map((c) => c.id), { followupFlaggedAt: value });
-      await logActivity(convs.map((c) => ({ conversationId: c.id, action: "followup_flag", batchId, before: { followupFlaggedAt: c.followupFlaggedAt || null }, after: { followupFlaggedAt: value } })));
+      const now = new Date().toISOString();
+      const values = inQueue ? { followupFlaggedAt: now } : { followupFlaggedAt: null, followupDismissedAt: now };
+      await updateConversations(convs.map((c) => c.id), values);
+      await logActivity(convs.map((c) => ({
+        conversationId: c.id, action: "followup_flag", batchId,
+        before: { followupFlaggedAt: c.followupFlaggedAt || null, followupDismissedAt: c.followupDismissedAt || null },
+        after: values,
+      })));
       refresh();
       return { batchId, count: convs.length };
     },

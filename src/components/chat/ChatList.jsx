@@ -3,10 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { Search, Pin, Check, BellOff, X, Flame, CalendarDays, CalendarCheck, CalendarX2, Megaphone, Tag } from "lucide-react";
 import {
   contactTypeLabel, effectiveStage, waitingLabel, isLongWait, CONTACT_TYPES, STAGES,
-  rowEventDate, formatDateWithWeekday, dateStatus, hasStage, displayType,
+  rowEventDate, formatDateWithWeekday, dateStatus, hasStage, displayType, chatTitle,
 } from "@/lib/chatModel";
 import { typeColor, stageColor } from "@/lib/chatColors";
-import { fetchDateAvailability } from "@/lib/dateAvailability";
+import { fetchDateAvailability, fetchMessageDates } from "@/lib/dateAvailability";
 import { displayPhone } from "@/components/whatsapp/whatsappInboxShared";
 import { isManuallyFlagged } from "@/lib/followUpQueue";
 
@@ -53,7 +53,7 @@ export function Avatar({ conversation, size = 44 }) {
 }
 
 export function conversationTitle(c) {
-  return c?.coupleNames || c?.displayName || c?.phone || String(c?.chatId || "").split("@")[0] || "שיחה";
+  return chatTitle(c);
 }
 
 function timeLabel(iso) {
@@ -113,16 +113,27 @@ export default function ChatList({
     await onBulk(kind, value, selectedIds);
   };
 
-  // The event date of every row (2026-10-07) and, in one request, whether each is free.
+  // The event date of every row (2026-10-07): the lead's, the bot's, else the newest date
+  // the customer wrote — the messages are searched in one request, like the thread does.
+  const needMsgDate = useMemo(
+    () => conversations.filter((c) => hasStage(c) && !c.eventDate && !(c.matchedLeadId && leadsById[c.matchedLeadId]?.eventDate)).map((c) => c.id).sort(),
+    [conversations, leadsById]
+  );
+  const msgQ = useQuery({
+    queryKey: ["chatRowMsgDates", needMsgDate.join(",")],
+    queryFn: () => fetchMessageDates(needMsgDate),
+    enabled: needMsgDate.length > 0,
+    staleTime: 60000,
+  });
   const rowDates = useMemo(() => {
     const out = {};
     for (const c of conversations) {
       if (!hasStage(c)) continue;
       const lead = c.matchedLeadId ? leadsById[c.matchedLeadId] : null;
-      out[c.id] = rowEventDate(c, lead);
+      out[c.id] = rowEventDate(c, lead, new Date(), msgQ.data ? msgQ.data[c.id] ?? null : undefined);
     }
     return out;
-  }, [conversations, leadsById]);
+  }, [conversations, leadsById, msgQ.data]);
   const dateKey = useMemo(() => Array.from(new Set(Object.values(rowDates).filter(Boolean))).sort(), [rowDates]);
   const availQ = useQuery({
     queryKey: ["chatRowDates", dateKey.join(",")],
@@ -268,6 +279,7 @@ export default function ChatList({
               ["type", "מי זה…"],
               ["stage", "שלב…"],
               ["label", "תווית…"],
+              ["unlabel", "הסר תווית…"],
             ].map(([k, l]) => (
               <button
                 key={k}
@@ -282,14 +294,8 @@ export default function ChatList({
             <button type="button" onClick={() => bulk("archive", true)} className="min-h-[40px] rounded-lg border border-gray-700 bg-gray-800 px-3 text-sm text-gray-200">ארכיון</button>
             <button type="button" onClick={() => bulk("handled", true)} className="min-h-[40px] rounded-lg border border-emerald-800 bg-emerald-950/50 px-3 text-sm text-emerald-200">✓ טופל</button>
             <button type="button" onClick={() => bulk("pin", true)} className="min-h-[40px] rounded-lg border border-gray-700 bg-gray-800 px-3 text-sm text-gray-200">נעץ</button>
-            <button
-              type="button"
-              disabled
-              title="שליחה לכמה אנשים מגיעה בשלב הבא, עם הגבלות הבטיחות שסיכמנו"
-              className="min-h-[40px] cursor-not-allowed rounded-lg border border-gray-800 px-3 text-sm text-gray-600"
-            >
-              שליחה (בקרוב)
-            </button>
+            <button type="button" onClick={() => bulk("followup", true)} className="min-h-[40px] rounded-lg border border-orange-800 bg-orange-950/50 px-3 text-sm text-orange-200">+ לפולו-אפ</button>
+            <button type="button" onClick={() => bulk("followup", false)} className="min-h-[40px] rounded-lg border border-gray-700 bg-gray-800 px-3 text-sm text-gray-300">הסר מפולו-אפ</button>
           </div>
           {menu && (
             <div className="mt-2 flex flex-wrap gap-1.5 rounded-lg border border-gray-700 bg-gray-950 p-2">
@@ -311,7 +317,13 @@ export default function ChatList({
                     + {l.name}
                   </button>
                 ))}
-              {menu === "label" && labels.length === 0 && <span className="text-sm text-gray-500">אין עדיין תוויות</span>}
+              {menu === "unlabel" &&
+                labels.map((l) => (
+                  <button key={l.id} type="button" onClick={() => bulk("unlabel", l.id)} className="min-h-[36px] rounded-full border-2 px-3 text-sm text-white" style={{ borderColor: l.color }}>
+                    − {l.name}
+                  </button>
+                ))}
+              {(menu === "label" || menu === "unlabel") && labels.length === 0 && <span className="text-sm text-gray-500">אין עדיין תוויות</span>}
               {menu === "stage" && (
                 <p className="w-full text-xs text-gray-500">בשיחה עם ליד מקושר — השלב משתנה גם בדף הלידים. בלי ליד — רק בשיחה.</p>
               )}

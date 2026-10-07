@@ -3,6 +3,7 @@
 // events already in the calendar that day, and leads closing on it (status נסגר/חתימה).
 // Read-only.
 import { supabase } from "@/api/supabaseClient";
+import { findDatesInText } from "@/lib/chatModel";
 
 // → { "2026-08-14": { eventLeadIds: [sourceLeadId|null, …], closingLeadIds: ["…"] }, … }
 // (dates with nothing are absent). chatModel.dateStatus() reads one row's answer.
@@ -30,3 +31,28 @@ export async function fetchDateAvailability(dates) {
   return out;
 }
 
+
+// For each conversation: the newest date the customer wrote in a message (null when none),
+// exactly like the thread's eventDateFor. → { conversationId: "2027-06-30" | null }
+export async function fetchMessageDates(conversationIds, today = new Date()) {
+  const ids = Array.from(new Set(conversationIds || [])).sort();
+  const out = Object.fromEntries(ids.map((id) => [id, null]));
+  for (let i = 0; i < ids.length; i += 50) {
+    const chunk = ids.slice(i, i + 50);
+    const { data, error } = await supabase
+      .from("whatsapp_messages")
+      .select("conversation_id, body_text, created_at")
+      .in("conversation_id", chunk)
+      .eq("direction", "inbound")
+      .not("body_text", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1500);
+    if (error) throw error;
+    for (const m of data || []) {
+      if (out[m.conversation_id]) continue;
+      const dates = findDatesInText(m.body_text, today);
+      if (dates.length) out[m.conversation_id] = dates[0];
+    }
+  }
+  return out;
+}

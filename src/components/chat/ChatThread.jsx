@@ -8,7 +8,6 @@ import DateAvailability from "./DateAvailability";
 import { Avatar, conversationTitle } from "./ChatList";
 import { typeColor, stageColor } from "@/lib/chatColors";
 import { displayPhone } from "@/components/whatsapp/whatsappInboxShared";
-import { isManuallyFlagged } from "@/lib/followUpQueue";
 
 function NoteBubble({ note, onDelete }) {
   return (
@@ -29,7 +28,7 @@ function NoteBubble({ note, onDelete }) {
 
 // The conversation column: header, timeline (messages + internal notes), composer.
 export default function ChatThread({
-  conversation, lead, labels, thread, onBack, onTogglePanel, onPin, onArchive, onHandled, needsReplyNow, onToggleFollowUp,
+  conversation, lead, labels, thread, onBack, onTogglePanel, onPin, onArchive, onHandled, needsReplyNow, onToggleFollowUp, inFollowUp,
   templates, onSaveTemplate, onDeleteTemplate, userContext,
 }) {
   const [text, setText] = useState("");
@@ -134,13 +133,13 @@ export default function ChatThread({
         {onToggleFollowUp && hasStage(conversation) && (
           <button
             type="button"
-            onClick={() => onToggleFollowUp(!isManuallyFlagged(conversation))}
+            onClick={() => onToggleFollowUp(!inFollowUp)}
             title="מכניס את השיחה לתור הפולו-אפ, גם אם הבוט לא שלח מחירון"
             className={`flex h-10 shrink-0 items-center gap-1 rounded-full border px-3 text-sm ${
-              isManuallyFlagged(conversation) ? "border-orange-700 bg-orange-950/50 text-orange-200" : "border-gray-700 bg-gray-800 text-gray-300 hover:text-white"
+              inFollowUp ? "border-orange-700 bg-orange-950/50 text-orange-200" : "border-gray-700 bg-gray-800 text-gray-300 hover:text-white"
             }`}
           >
-            {isManuallyFlagged(conversation) ? "בפולו-אפ ✓" : "לפולו-אפ"}
+            {inFollowUp ? "בפולו-אפ ✓" : "לפולו-אפ"}
           </button>
         )}
         {needsReplyNow && (

@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { format } from "date-fns";
 import { X, Send, Loader2, CheckSquare, Square, Clock } from "lucide-react";
 import { toast } from "sonner";
-import { pauseBetweenSends } from "@/lib/pace";
 import { conversationTitle, daysSince } from "./whatsappInboxShared";
-import { followUpReferenceDate } from "@/lib/followUpQueue";
+import { followUpReferenceDate, followUpPaceRange, followUpEstimateSeconds } from "@/lib/followUpQueue";
 
 // "Everyone who got a price list and then went quiet" — the studio's actual sales
 // queue, and the thing Daniel asked for in the same breath as the bot itself:
@@ -44,6 +43,8 @@ export default function WhatsAppFollowUpDialog({ isOpen, onClose, conversations,
   const [checkedIds, setCheckedIds] = useState(new Set());
   const [isSending, setIsSending] = useState(false);
   const [sendResults, setSendResults] = useState(null);
+  const [progress, setProgress] = useState(null); // { done, total }
+  const stopRef = useRef(false);
 
   // Oldest silence first — that is the one most likely to be slipping away.
   const queue = useMemo(
@@ -100,11 +101,17 @@ export default function WhatsAppFollowUpDialog({ isOpen, onClose, conversations,
       return;
     }
     setIsSending(true);
+    stopRef.current = false;
+    setProgress({ done: 0, total: targets.length });
     const sent = [];
     const failed = [];
     const skipped = []; // AUTO-07: wrote "הסר" — not sent
+    // Tiered pause (2026-10-07): the bigger the batch, the longer between messages.
+    const [minMs, maxMs] = followUpPaceRange(targets.length);
     for (const [i, c] of targets.entries()) {
-      if (i > 0) await pauseBetweenSends();
+      if (stopRef.current) break;
+      if (i > 0) await new Promise((r) => setTimeout(r, minMs + Math.floor(Math.random() * (maxMs - minMs))));
+      if (stopRef.current) break;
       try {
         const message = applyVariables(template, c);
         const res = await base44.functions.invoke("sendWhatsAppMessage", { to: c.phone, message, respect_opt_out: true });
@@ -124,8 +131,12 @@ export default function WhatsAppFollowUpDialog({ isOpen, onClose, conversations,
       } catch {
         failed.push(c);
       }
+      setProgress({ done: i + 1, total: targets.length });
     }
+    const stopped = stopRef.current;
     setIsSending(false);
+    setProgress(null);
+    if (stopped) toast.info(`השליחה נעצרה — נשלחו ${sent.length}. מי שלא נשלח נשאר ברשימה.`);
     setSendResults({ sent, failed, skipped });
     if (sent.length > 0) {
       toast.success(`נשלח פולו-אפ ל-${sent.length} שיחות`);
@@ -145,7 +156,7 @@ export default function WhatsAppFollowUpDialog({ isOpen, onClose, conversations,
               {queue.length} שיחות שקיבלו מחירון (מהבוט או סומנו ידנית) ועדיין לא נשלח אליהן פולו-אפ
             </p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-white">
+          <button onClick={onClose} disabled={isSending} title={isSending ? "השליחה רצה — עצור קודם" : undefined} className="text-gray-400 hover:text-white disabled:opacity-30">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -246,10 +257,23 @@ export default function WhatsAppFollowUpDialog({ isOpen, onClose, conversations,
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-3 p-5 border-t border-gray-800">
-          <button onClick={onClose} className="text-gray-400 hover:text-white text-sm">
-            סגור
-          </button>
+        <div className="flex flex-wrap items-center justify-end gap-3 p-5 border-t border-gray-800">
+          <span className="ml-auto text-xs text-gray-400">
+            {progress
+              ? `נשלחו ${progress.done} מתוך ${progress.total} · אל תסגור את המסך עד הסוף`
+              : checkedIds.size > 0
+              ? `זמן משוער: ${(() => { const sec = followUpEstimateSeconds(checkedIds.size); return sec < 60 ? `${sec} שניות` : `${Math.ceil(sec / 60)} דקות`; })()} · הפסקה של ${followUpPaceRange(checkedIds.size).map((ms) => ms / 1000).join("–")} שניות בין הודעות`
+              : ""}
+          </span>
+          {isSending ? (
+            <button onClick={() => { stopRef.current = true; }} className="text-red-300 hover:text-red-200 text-sm">
+              עצור
+            </button>
+          ) : (
+            <button onClick={onClose} className="text-gray-400 hover:text-white text-sm">
+              סגור
+            </button>
+          )}
           <button
             onClick={handleSend}
             disabled={isSending || checkedIds.size === 0}

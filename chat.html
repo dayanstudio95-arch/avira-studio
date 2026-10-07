@@ -13,7 +13,10 @@
     <meta name="theme-color" content="#030712" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- "black", not "black-translucent" (2026-10-07): with the translucent bar the iPhone
+         home-screen app laid the page out one status-bar height too short, leaving an
+         unpainted strip under the bottom bar. An opaque black bar avoids that code path. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
     <meta name="apple-mobile-web-app-title" content="אווירה צ'אט" />
     <meta name="robots" content="noindex" />
     <title>אווירה צ'אט</title>

@@ -230,7 +230,7 @@ export function reverseOf(row) {
     case "handled":
       return { kind: "conversation", id: row.conversationId, values: { handledAt: b.handledAt ?? null } };
     case "followup_flag":
-      return { kind: "conversation", id: row.conversationId, values: { followupFlaggedAt: b.followupFlaggedAt ?? null } };
+      return { kind: "conversation", id: row.conversationId, values: { followupFlaggedAt: b.followupFlaggedAt ?? null, followupDismissedAt: b.followupDismissedAt ?? null } };
     case "opt_out":
       return { kind: "conversation", id: row.conversationId, values: { optedOutAt: b.optedOutAt ?? null, optedOutReason: b.optedOutReason ?? null } };
     case "label_add":
@@ -285,7 +285,10 @@ export function findDatesInText(text, today = new Date()) {
       if (iso && iso >= todayIso) return push(iso, index);
     }
   };
-  const num = /(^|[^\d])(\d{1,2})[./-](\d{1,2})(?:[./-](\d{4}|\d{2}))?(?![\d])/g;
+  // Latin letters around the digits mean a code or a file name, not a date: "6b1-6e5e"
+  // (a voice note's file name) once read as 1 June (2026-10-07). Hebrew letters are fine
+  // ("ב30/6").
+  const num = /(^|[^\dA-Za-z])(\d{1,2})[./-](\d{1,2})(?:[./-](\d{4}|\d{2}))?(?![\dA-Za-z])/g;
   let mt;
   while ((mt = num.exec(s))) {
     const d = Number(mt[2]), m = Number(mt[3]);
@@ -321,11 +324,15 @@ export function eventDateFor(c, lead, messages = [], today = new Date()) {
 // The date shown on a list row (2026-10-07) — the same order as eventDateFor, but without
 // the thread: the linked lead, what the bot collected, else a date in the last message
 // preview. Inside the conversation eventDateFor also searches older messages.
-export function rowEventDate(c, lead, today = new Date()) {
+// `msgDate` — the newest date found in the customer's messages (dateAvailability.js
+// fetchMessageDates), the same search the thread does. Until it has loaded (undefined) the
+// last message preview stands in; a file name never counts.
+export function rowEventDate(c, lead, today = new Date(), msgDate = undefined) {
   const iso = (v) => (v ? String(v).slice(0, 10) : null);
   if (lead?.eventDate) return iso(lead.eventDate);
   if (c?.eventDate) return iso(c.eventDate);
-  if (c?.lastMessagePreview) {
+  if (msgDate !== undefined) return msgDate;
+  if (c?.lastMessagePreview && !/^\S+\.[A-Za-z0-9]{2,5}$/.test(c.lastMessagePreview.trim())) {
     const dates = findDatesInText(c.lastMessagePreview, today);
     if (dates.length) return dates[0];
   }
@@ -352,4 +359,25 @@ export function dateStatus(map, date, ownLeadId = null) {
     events: info.eventLeadIds.filter((id) => !own(id)).length,
     closing: info.closingLeadIds.filter((id) => !own(id)).length,
   };
+}
+
+// "Adi (עדי ואור)" (2026-10-07, the owner's request): the WhatsApp name, and in brackets the
+// names the couple gave the bot — first names only, so "דניאל דיין וסבינה גויכמן" becomes
+// "דניאל וסבינה". Short names (up to three words) are kept as written: a single name that
+// starts with ו (ויקטוריה) must not be split.
+export function shortCoupleNames(names) {
+  const s = String(names || "").trim().replace(/\s+/g, " ");
+  if (!s) return "";
+  if (s.split(" ").length <= 3) return s;
+  const parts = s.split(/\s*(?:&|,|\+)\s*|\s+ו(?=\S)/).map((p) => p.trim()).filter(Boolean);
+  if (parts.length < 2) return s;
+  return parts.map((p) => p.split(" ")[0]).join(" ו");
+}
+
+export function chatTitle(c) {
+  const wa = String(c?.displayName || "").trim();
+  const names = shortCoupleNames(c?.coupleNames);
+  const phone = c?.phone || String(c?.chatId || "").split("@")[0];
+  if (wa && names && wa !== names && !wa.includes(names)) return `${wa} (${names})`;
+  return wa || names || phone || "שיחה";
 }

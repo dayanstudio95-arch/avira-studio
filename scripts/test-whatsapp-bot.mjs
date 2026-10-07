@@ -1729,6 +1729,37 @@ section('strangers the bot recognised count as leads (display only)');
   check('shown as "ליד (מהבוט)"', cm31.contactTypeLabel(cm31.displayType(asked)), 'ליד (מהבוט)');
 }
 
+section('round 3 (2026-10-07): names, file names, follow-up out, pacing');
+{
+  check('WhatsApp name + the names they gave', cm31.chatTitle({ displayName: 'Adi', coupleNames: 'עדי ואור' }), 'Adi (עדי ואור)');
+  check('long names → first names', cm31.shortCoupleNames('דניאל דיין וסבינה גויכמן'), 'דניאל וסבינה');
+  check('a name starting with ו is not split', cm31.shortCoupleNames('דני ויקטוריה'), 'דני ויקטוריה');
+  check('same name once', cm31.chatTitle({ displayName: 'עדי ואור', coupleNames: 'עדי ואור' }), 'עדי ואור');
+  check('no WhatsApp name → the names', cm31.chatTitle({ coupleNames: 'עדי ואור', phone: '050' }), 'עדי ואור');
+  check('nothing → phone', cm31.chatTitle({ phone: '0501234567' }), '0501234567');
+  const today = new Date('2026-10-07T10:00:00');
+  check('a voice-note file name is not a date', cm31.findDatesInText('fd2c06b1-6e5e-4b24-8e77-8f20b1bd5003.oga', today).length, 0);
+  check('Hebrew prefix still a date', cm31.findDatesInText('ב30/6', today)[0], '2027-06-30');
+  check('row uses the message search once loaded', cm31.rowEventDate({ lastMessagePreview: '1-6' }, null, today, '2027-06-30'), '2027-06-30');
+  check('…and null means none, not the preview', cm31.rowEventDate({ lastMessagePreview: '14.8.27' }, null, today, null), null);
+  check('file-name preview ignored while loading', cm31.rowEventDate({ lastMessagePreview: 'x-1-6.oga' }, null, today), null);
+}
+{
+  const fq = await loadModule('src/lib/followUpQueue.js', 'fq31');
+  const bot = { state: 'PRICELIST_SENT', lastBotMessageAt: '2026-10-01T00:00:00Z' };
+  check('bot path in the queue', fq.isAwaitingFollowUp(bot, 0), true);
+  check('"הסר מפולו-אפ" takes the bot path out', fq.isAwaitingFollowUp({ ...bot, followupDismissedAt: '2026-10-05T00:00:00Z' }, 0), false);
+  check('flagging again after removal brings it back', fq.isAwaitingFollowUp({ ...bot, followupDismissedAt: '2026-10-05T00:00:00Z', followupFlaggedAt: '2026-10-06T00:00:00Z' }, 0), true);
+  check('a flag older than the removal stays out', fq.isAwaitingFollowUp({ followupFlaggedAt: '2026-10-04T00:00:00Z', followupDismissedAt: '2026-10-05T00:00:00Z' }, 0), false);
+  check('after sending: out of the queue', fq.isAwaitingFollowUp({ ...bot, followupSentAt: '2026-10-06T00:00:00Z' }, 0), false);
+  check('re-flag after sending: back in (a reminder)', fq.isAwaitingFollowUp({ ...bot, followupSentAt: '2026-10-06T00:00:00Z', followupFlaggedAt: '2026-10-07T00:00:00Z' }, 0), true);
+  check('pace: 10 → 2–4s', fq.followUpPaceRange(10).join('-'), '2000-4000');
+  check('pace: 20 → 4–7s', fq.followUpPaceRange(20).join('-'), '4000-7000');
+  check('pace: 40 → 8–12s', fq.followUpPaceRange(40).join('-'), '8000-12000');
+  check('pace: 50 → 15–25s', fq.followUpPaceRange(50).join('-'), '15000-25000');
+  check('50 messages ≈ 17 min', Math.round(fq.followUpEstimateSeconds(50) / 60), 17);
+}
+
 section('the date on a row, and whether it is free');
 {
   const today = new Date('2026-10-07T10:00:00');
@@ -1741,7 +1772,7 @@ section('the date on a row, and whether it is free');
   check('busy: other events count', JSON.stringify(cm31.dateStatus(map, '2026-08-14')), '{"events":2,"closing":2}');
   check("the couple's own event is not 'taken'", JSON.stringify(cm31.dateStatus(map, '2026-08-14', 'L1')), '{"events":1,"closing":1}');
   check('free date', JSON.stringify(cm31.dateStatus(map, '2026-09-01')), '{"events":0,"closing":0}');
-  check('undo of "לפולו-אפ"', JSON.stringify(cm31.reverseOf({ action: 'followup_flag', conversationId: 'X', before: {}, after: { followupFlaggedAt: 't' } })), '{"kind":"conversation","id":"X","values":{"followupFlaggedAt":null}}');
+  check('undo of "לפולו-אפ"', JSON.stringify(cm31.reverseOf({ action: 'followup_flag', conversationId: 'X', before: {}, after: { followupFlaggedAt: 't' } })), '{"kind":"conversation","id":"X","values":{"followupFlaggedAt":null,"followupDismissedAt":null}}');
 }
 
 await rm(outDir, { recursive: true, force: true });
