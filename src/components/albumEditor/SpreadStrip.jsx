@@ -1,0 +1,52 @@
+import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
+import { Plus, Copy, Trash2 } from "lucide-react";
+import SpreadView from "./SpreadView";
+
+// All spreads in a row at the bottom. Click = open, drag = reorder.
+export default function SpreadStrip({ doc, assetsById, currentId, onSelect, onMove, onAdd, onDuplicate, onRemove }) {
+  return (
+    <div className="flex items-stretch gap-2 overflow-x-auto px-3 py-2" dir="ltr">
+      <DragDropContext onDragEnd={(r) => r.destination && onMove(r.source.index, r.destination.index)}>
+        <Droppable droppableId="spreads" direction="horizontal">
+          {(dp) => (
+            <div ref={dp.innerRef} {...dp.droppableProps} className="flex items-stretch gap-2">
+              {doc.pages.map((p, i) => (
+                <Draggable key={p.id} draggableId={p.id} index={i}>
+                  {(dg) => (
+                    <div ref={dg.innerRef} {...dg.draggableProps} {...dg.dragHandleProps} className="group relative w-40 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => onSelect(p.id)}
+                        className={`block w-full overflow-hidden rounded border-2 ${p.id === currentId ? "border-amber-400" : "border-transparent hover:border-white/30"}`}
+                      >
+                        <SpreadView page={p} assetsById={assetsById} mini />
+                      </button>
+                      <div className="mt-0.5 flex items-center justify-between text-[10px] text-slate-400">
+                        <span>{i === 0 && p.title ? "פתיחה" : `כפולה ${i + 1}`}</span>
+                        <span className="flex gap-1 opacity-0 group-hover:opacity-100">
+                          <button type="button" title="שכפול" onClick={() => onDuplicate(p.id)} className="hover:text-white"><Copy className="h-3 w-3" /></button>
+                          {doc.pages.length > 1 && (
+                            <button type="button" title="מחיקת הכפולה" onClick={() => onRemove(p.id)} className="hover:text-rose-400"><Trash2 className="h-3 w-3" /></button>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </Draggable>
+              ))}
+              {dp.placeholder}
+            </div>
+          )}
+        </Droppable>
+      </DragDropContext>
+      <button
+        type="button"
+        onClick={onAdd}
+        title="כפולה חדשה אחרי הנוכחית"
+        className="flex h-[64px] w-16 shrink-0 items-center justify-center rounded border-2 border-dashed border-white/20 text-slate-400 hover:border-amber-400/60 hover:text-amber-300"
+      >
+        <Plus className="h-5 w-5" />
+      </button>
+    </div>
+  );
+}

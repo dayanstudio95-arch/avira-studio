@@ -1,0 +1,98 @@
+// Album spread templates (2026-10-08) — measured from the owner's own 98 SmartAlbums sketches
+// (~/Downloads/קולד 2027/album-reference-sketches, 3 albums). Each cell is [x, y, w, h] in
+// percent of the spread, in "cut" coordinates: neighbouring cells touch, and the white gutter is
+// applied at render time (cellRects), so every template gets the same gutter as his albums.
+// `uses` = how many of his spreads used that layout — the auto-sketch (stage 2) leans on it.
+
+// 80×30 cm at 300dpi. The print shop gets exactly this.
+export const SPREAD = { widthPx: 9449, heightPx: 3543, widthCm: 80, heightCm: 30 };
+// His gutter is ~38px at full size, on both axes.
+export const GUTTER_X = (38 / SPREAD.widthPx) * 100;
+export const GUTTER_Y = (38 / SPREAD.heightPx) * 100;
+
+export const PHOTO_TEMPLATES = [
+  { id: "p1-a", uses: 1, cells: [[0, 0, 100, 100]] },
+  { id: "p2-a", uses: 2, cells: [[0, 0, 50, 100], [50, 0, 50, 100]] },
+  { id: "p2-b", uses: 1, cells: [[0, 0, 76, 100], [76, 0, 24, 100]] },
+  { id: "p3-a", uses: 6, cells: [[0, 0, 50, 100], [50, 0, 25, 100], [75, 0, 25, 100]] },
+  { id: "p3-b", uses: 3, cells: [[0, 0, 25, 100], [25, 0, 25, 100], [50, 0, 50, 100]] },
+  { id: "p3-c", uses: 1, cells: [[0, 0, 33.5, 100], [33.5, 0, 33, 100], [66.5, 0, 33.5, 100]] },
+  { id: "p3-d", uses: 1, cells: [[0, 0, 75, 100], [75, 0, 25, 50], [75, 50, 25, 50]] },
+  { id: "p4-a", uses: 18, cells: [[0, 0, 25, 100], [25, 0, 25, 100], [50, 0, 25, 100], [75, 0, 25, 100]] },
+  { id: "p4-b", uses: 2, cells: [[0, 0, 59.5, 100], [59.5, 0, 27, 100], [86.5, 0, 13.5, 50], [86.5, 50, 13.5, 50]] },
+  { id: "p4-c", uses: 2, cells: [[0, 0, 26.5, 50], [0, 50, 26.5, 50], [26.5, 0, 23.5, 100], [50, 0, 50, 100]] },
+  { id: "p4-d", uses: 1, cells: [[0, 0, 24, 100], [24, 0, 26, 50], [24, 50, 26, 50], [50, 0, 50, 100]] },
+  { id: "p5-a", uses: 5, cells: [[0, 0, 28.5, 100], [28.5, 0, 28.5, 100], [57, 0, 14.5, 50], [57, 50, 14.5, 50], [71.5, 0, 28.5, 100]] },
+  { id: "p5-b", uses: 4, cells: [[0, 0, 56.5, 100], [56.5, 0, 29.5, 50], [56.5, 50, 13.5, 50], [70, 50, 30, 50], [86, 0, 14, 50]] },
+  { id: "p5-c", uses: 3, cells: [[0, 0, 50, 100], [50, 0, 25, 50], [50, 50, 25, 50], [75, 0, 25, 50], [75, 50, 25, 50]] },
+  { id: "p5-d", uses: 2, cells: [[0, 0, 26.5, 50], [0, 50, 26.5, 50], [26.5, 0, 23.5, 100], [50, 0, 25, 100], [75, 0, 25, 100]] },
+  { id: "p5-e", uses: 1, cells: [[0, 0, 25, 100], [25, 0, 25, 100], [50, 0, 26, 50], [50, 50, 26, 50], [76, 0, 24, 100]] },
+  { id: "p5-f", uses: 1, cells: [[0, 0, 20, 100], [20, 0, 20, 100], [40, 0, 10, 50], [40, 50, 10, 50], [50, 0, 50, 100]] },
+  { id: "p5-g", uses: 1, cells: [[0, 0, 50, 100], [50, 0, 25, 100], [75, 0, 25, 48], [75, 48, 12.5, 52], [87.5, 48, 12.5, 52]] },
+  { id: "p5-h", uses: 1, cells: [[0, 0, 28.5, 100], [28.5, 0, 14.5, 50], [28.5, 50, 14.5, 50], [43, 0, 28.5, 100], [71.5, 0, 28.5, 100]] },
+  { id: "p5-i", uses: 1, cells: [[0, 0, 14, 50], [0, 50, 30, 50], [14, 0, 29.5, 50], [30, 50, 13.5, 50], [43.5, 0, 56.5, 100]] },
+  { id: "p5-j", uses: 1, cells: [[0, 0, 47, 100], [47, 0, 13, 50], [47, 50, 13, 50], [60, 0, 20, 100], [80, 0, 20, 100]] },
+  { id: "p5-k", uses: 1, cells: [[0, 0, 37, 100], [37, 0, 12.5, 50], [37, 50, 12.5, 50], [49.5, 0, 25, 100], [74.5, 0, 25.5, 100]] },
+  { id: "p6-a", uses: 6, cells: [[0, 0, 30, 50], [0, 50, 30, 50], [30, 0, 20, 33], [30, 33, 20, 34], [30, 67, 20, 33], [50, 0, 50, 100]] },
+  { id: "p6-b", uses: 3, cells: [[0, 0, 24, 100], [24, 0, 26, 50], [24, 50, 26, 50], [50, 0, 23.5, 100], [73.5, 0, 26.5, 50], [73.5, 50, 26.5, 50]] },
+  { id: "p6-c", uses: 3, cells: [[0, 0, 27, 100], [27, 0, 27.5, 100], [54.5, 0, 18.5, 67], [54.5, 67, 9, 33], [63.5, 67, 9.5, 33], [73, 0, 27, 100]] },
+  { id: "p6-d", uses: 2, cells: [[0, 0, 25, 100], [25, 0, 12.5, 50], [25, 50, 12.5, 50], [37.5, 0, 12.5, 50], [37.5, 50, 12.5, 50], [50, 0, 50, 100]] },
+  { id: "p6-e", uses: 1, cells: [[0, 0, 50, 100], [50, 0, 19, 100], [69, 0, 20, 50], [69, 50, 11, 50], [80, 50, 20, 50], [89, 0, 11, 50]] },
+  { id: "p6-f", uses: 1, cells: [[0, 0, 50, 100], [50, 0, 12.5, 50], [50, 50, 12.5, 50], [62.5, 0, 24.5, 100], [87, 0, 13, 50], [87, 50, 13, 50]] },
+  { id: "p6-g", uses: 1, cells: [[0, 0, 24, 40], [0, 40, 36.5, 60], [24, 0, 24.5, 40], [36.5, 40, 36, 60], [48.5, 0, 24, 40], [72.5, 0, 27.5, 100]] },
+  { id: "p6-h", uses: 1, cells: [[0, 0, 27.5, 100], [27.5, 0, 24, 40], [27.5, 40, 36, 60], [51.5, 0, 24.5, 40], [63.5, 40, 36.5, 60], [76, 0, 24, 40]] },
+  { id: "p6-i", uses: 1, cells: [[0, 0, 26.5, 50], [0, 50, 26.5, 50], [26.5, 0, 23.5, 100], [50, 0, 23.5, 100], [73.5, 0, 26.5, 50], [73.5, 50, 26.5, 50]] },
+  { id: "p7-a", uses: 2, cells: [[0, 0, 25, 100], [25, 0, 19, 33.5], [25, 33.5, 37.5, 66.5], [44, 0, 18.5, 33.5], [62.5, 0, 37.5, 66.5], [62.5, 66.5, 18.5, 33.5], [81, 66.5, 19, 33.5]] },
+  { id: "p7-b", uses: 1, cells: [[0, 0, 24, 100], [24, 0, 16.5, 69], [24, 69, 16.5, 31], [40.5, 0, 24, 100], [64.5, 0, 35.5, 66.5], [64.5, 66.5, 17.5, 33.5], [82, 66.5, 18, 33.5]] },
+  { id: "p7-c", uses: 1, cells: [[0, 0, 50, 100], [50, 0, 25, 48], [50, 48, 12.5, 52], [62.5, 48, 12.5, 52], [75, 0, 25, 48], [75, 48, 12.5, 52], [87.5, 48, 12.5, 52]] },
+  { id: "p7-d", uses: 1, cells: [[0, 0, 25, 100], [25, 0, 25, 100], [50, 0, 12.5, 50], [50, 50, 12.5, 50], [62.5, 0, 24.5, 100], [87, 0, 13, 50], [87, 50, 13, 50]] },
+  { id: "p7-e", uses: 1, cells: [[0, 0, 25, 43], [0, 43, 33.5, 57], [25, 0, 25, 43], [33.5, 43, 33, 57], [50, 0, 25, 43], [66.5, 43, 33.5, 57], [75, 0, 25, 43]] },
+  { id: "p7-f", uses: 1, cells: [[0, 0, 25, 50], [0, 50, 25, 50], [25, 0, 25, 100], [50, 0, 25, 50], [50, 50, 25, 50], [75, 0, 25, 50], [75, 50, 25, 50]] },
+  { id: "p7-g", uses: 1, cells: [[0, 0, 25, 100], [25, 0, 25, 100], [50, 0, 20, 33], [50, 33, 20, 34], [50, 67, 20, 33], [70, 0, 30, 50], [70, 50, 30, 50]] },
+  { id: "p8-a", uses: 2, cells: [[0, 0, 13, 50], [0, 50, 13, 50], [13, 0, 24.5, 100], [37.5, 0, 12.5, 50], [37.5, 50, 12.5, 50], [50, 0, 23.5, 100], [73.5, 0, 26.5, 50], [73.5, 50, 26.5, 50]] },
+  { id: "p8-b", uses: 2, cells: [[0, 0, 25, 50], [0, 50, 25, 50], [25, 0, 25, 50], [25, 50, 25, 50], [50, 0, 25, 50], [50, 50, 25, 50], [75, 0, 25, 50], [75, 50, 25, 50]] },
+  { id: "p8-c", uses: 1, cells: [[0, 0, 30, 50], [0, 50, 30, 50], [30, 0, 20, 33], [30, 33, 20, 34], [30, 67, 20, 33], [50, 0, 26, 50], [50, 50, 26, 50], [76, 0, 24, 100]] },
+  { id: "p9-a", uses: 1, cells: [[0, 0, 30, 100], [30, 0, 20, 33], [30, 33, 20, 34], [30, 67, 20, 33], [50, 0, 30, 50], [50, 50, 30, 50], [80, 0, 20, 33], [80, 33, 20, 34], [80, 67, 20, 33]] },
+  { id: "p10-a", uses: 3, cells: [[0, 0, 30, 50], [0, 50, 30, 50], [30, 0, 20, 33], [30, 33, 20, 34], [30, 67, 20, 33], [50, 0, 30, 50], [50, 50, 30, 50], [80, 0, 20, 33], [80, 33, 20, 34], [80, 67, 20, 33]] },];
+
+// Opening spread: photos on one side, the couple's names on a white page (his three albums all
+// open this way). `text` is the white area the title is centred in.
+export const TITLE_TEMPLATES = [
+  { id: "t-a", title: true, uses: 2, cells: [[0, 0, 25, 100], [25, 0, 25, 100]], text: [50, 0, 50, 100] },
+  { id: "t-b", title: true, uses: 1, cells: [[0, 0, 50, 100], [50, 0, 25, 100]], text: [75, 0, 25, 100] },
+  { id: "t-c", title: true, uses: 0, cells: [[0, 0, 50, 100]], text: [50, 0, 50, 100] },
+];
+
+const ALL = [...PHOTO_TEMPLATES, ...TITLE_TEMPLATES];
+const BY_ID = Object.fromEntries(ALL.map((t) => [t.id, t]));
+
+export const getTemplate = (id) => BY_ID[id] || PHOTO_TEMPLATES[0];
+
+export const templatesForCount = (n, { title = false } = {}) =>
+  (title ? TITLE_TEMPLATES : PHOTO_TEMPLATES).filter((t) => t.cells.length === n);
+
+export const PHOTO_COUNTS = [...new Set(PHOTO_TEMPLATES.map((t) => t.cells.length))].sort((a, b) => a - b);
+
+const mirror = ([x, y, w, h]) => [100 - x - w, y, w, h];
+
+// Cell rectangles with the gutter applied: inner edges move in by half a gutter, the spread's
+// outer edge stays full bleed (his spreads have no white border). `flip` mirrors left↔right.
+export function cellRects(template, flip = false) {
+  return template.cells.map((c) => inset(flip ? mirror(c) : c));
+}
+
+export function textRect(template, flip = false) {
+  if (!template.text) return null;
+  return inset(flip ? mirror(template.text) : template.text);
+}
+
+function inset([x, y, w, h]) {
+  const l = x > 0.01 ? GUTTER_X / 2 : 0;
+  const r = x + w < 99.99 ? GUTTER_X / 2 : 0;
+  const t = y > 0.01 ? GUTTER_Y / 2 : 0;
+  const b = y + h < 99.99 ? GUTTER_Y / 2 : 0;
+  return { x: x + l, y: y + t, w: w - l - r, h: h - t - b };
+}
+
+// Width ÷ height of a cell in real centimetres (a 25%×100% cell is 20×30 cm → portrait).
+export const cellAspect = (rect) => (rect.w * SPREAD.widthCm) / (rect.h * SPREAD.heightCm);

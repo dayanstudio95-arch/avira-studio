@@ -2014,5 +2014,55 @@ console.log('\n— PART 38: notification tabs —');
   check('earlier', nc.notificationDayGroup('2026-10-01T10:00:00Z', now), 'earlier');
 }
 
+// PART 39 — album design editor, stage 1 (2026-10-08)
+console.log('\n— PART 39: album editor —');
+{
+  const at = await loadModule('src/lib/albumTemplates.js', 'at39');
+  const ad = await loadModule('src/lib/albumDesign.js', 'ad39');
+  const badArea = at.PHOTO_TEMPLATES.filter((t) => Math.abs(t.cells.reduce((a, c) => a + c[2] * c[3], 0) / 100 - 100) > 1.5);
+  check('every template covers the spread', badArea.length, 0);
+  check('templates for 1..10 photos', at.PHOTO_COUNTS.join(','), '1,2,3,4,5,6,7,8,9,10');
+  const r = at.cellRects(at.getTemplate('p2-a'));
+  check('outer edge full bleed', r[0].x, 0);
+  check('gutter between cells = 38px', Math.round((r[1].x - (r[0].x + r[0].w)) / 100 * 9449), 38);
+  const fl = at.cellRects(at.getTemplate('p2-b'), true);
+  check('flip mirrors the big cell to the right', fl[0].x > 20, true);
+  check('hebrew date', ad.hebrewDateText('2025-03-16'), 'ט״ז באדר, תשפ״ה');
+  check('hebrew 15', ad.hebrewNumeral(15), 'ט״ו');
+  check('dot date', ad.formatDotDate('2025-03-16'), '16.03.2025');
+  check('camera prefix', ad.cameraOf('AVIRA-S-801.jpg') + '|' + ad.cameraOf('AVIRA-3.jpg'), 'AVIRA-S|AVIRA');
+  const a = [
+    { name: 'AVIRA-S-2.jpg', camera: 'AVIRA-S', time: '2026:07:05 14:00:00' },
+    { name: 'AVIRA-10.jpg', camera: 'AVIRA', time: '2026:07:05 15:00:00' },
+    { name: 'AVIRA-2.jpg', camera: 'AVIRA', time: '2026:07:05 13:00:00' },
+    { name: 'no-time.jpg', camera: 'no-time', time: null },
+  ];
+  check('sort by shooting time, two cameras interleave', ad.sortAssets(a).map((x) => x.name).join(' '), 'AVIRA-2.jpg AVIRA-S-2.jpg AVIRA-10.jpg no-time.jpg');
+  check('camera offset +2h moves its photos', ad.sortAssets(a, { 'AVIRA-S': 120 }).map((x) => x.name).join(' '), 'AVIRA-2.jpg AVIRA-10.jpg AVIRA-S-2.jpg no-time.jpg');
+  const c = ad.computeCrop(200, 300, 6000, 4000, {});
+  check('cover fills the cell height', Math.round(c.drawH), 300);
+  check('centred', Math.round(c.offX), Math.round((200 - c.drawW) / 2));
+  const edge = ad.computeCrop(200, 300, 6000, 4000, { cx: 0 });
+  check('pan clamped (no white edge)', edge.offX, 0);
+  check('dpi of a 20×30cm cell from 6000×4000', ad.effectiveDpi({ w: 6000, h: 4000 }, { w: 25, h: 100 }), 339);
+  let d = ad.emptyDoc({ names: 'Talya & Avinoam', date: '2025-03-16' });
+  check('new doc = title + one spread', d.pages.map((p) => p.templateId).join(','), 't-a,p4-a');
+  check('title prefilled', d.pages[0].title.hebrewDate, 'ט״ז באדר, תשפ״ה');
+  const pid = d.pages[1].id;
+  d = ad.placeAsset(d, pid, 0, 'A');
+  d = ad.placeAsset(d, pid, 2, 'B');
+  d = ad.setTemplate(d, pid, 'p2-a');
+  check('template switch keeps photos in order', d.pages[1].slots.map((s) => s.assetId).join(','), 'A,B');
+  d = ad.placeAsset(d, d.pages[0].id, 0, 'A');
+  check('usage counts', JSON.stringify(ad.usageCounts(d)), JSON.stringify({ A: 2, B: 1 }));
+  d = ad.swapSlots(d, { pageId: pid, index: 0 }, { pageId: pid, index: 1 });
+  check('swap', d.pages[1].slots.map((s) => s.assetId).join(','), 'B,A');
+  d = ad.duplicatePage(d, pid);
+  d = ad.movePage(d, 2, 0);
+  check('duplicate + move', d.pages.length + ':' + d.pages[0].templateId, '3:p2-a');
+  check('price 32 spreads × 45', JSON.stringify(ad.priceSummary(32, 45)), JSON.stringify({ pages: 32, included: 30, extra: 2, extraCost: 90 }));
+  check('price under 30', ad.priceSummary(24, 45).extraCost, 0);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

@@ -890,6 +890,13 @@ export default function AlbumOrderDetail() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {/* Album design editor, stage 1 (2026-10-08) — desktop only, nothing reaches the couple yet. */}
+            <Link
+              to={`/AlbumOrders/${orderId}/design`}
+              className="hidden md:inline-flex items-center gap-1.5 rounded-lg border border-amber-400/50 bg-amber-400/10 px-3 py-1.5 text-sm font-medium text-amber-200 hover:bg-amber-400/20"
+            >
+              🎨 עורך סקיצה <span className="text-[10px] text-amber-300/80">בטא</span>
+            </Link>
             <Badge className={WORKFLOW_STATUS_COLORS[order.workflowStatus] || "bg-gray-500/20 text-gray-400 border-gray-500/30"}>
               {WORKFLOW_STATUS_LABELS[order.workflowStatus] || order.workflowStatus}
             </Badge>

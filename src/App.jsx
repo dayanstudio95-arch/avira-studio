@@ -59,6 +59,7 @@ const Meetings = lazy(() => import('./pages/Meetings'));
 // no-login pages (portal + print-shop delivery), lazy-loaded like every other route.
 const AlbumOrders = lazy(() => import('./pages/AlbumOrders'));
 const AlbumOrderDetail = lazy(() => import('./pages/AlbumOrderDetail'));
+const AlbumDesignEditor = lazy(() => import('./pages/AlbumDesignEditor'));
 const AlbumCatalogSettings = lazy(() => import('./pages/AlbumCatalogSettings'));
 const AlbumPortal = lazy(() => import('./pages/AlbumPortal'));
 const AlbumPrintAccess = lazy(() => import('./pages/AlbumPrintAccess'));
@@ -203,6 +204,7 @@ const AuthenticatedApp = () => {
             <Route path="/" element={<AlbumOrders />} />
             <Route path="/AlbumOrders" element={<AlbumOrders />} />
             <Route path="/AlbumOrders/:orderId" element={<AlbumOrderDetail />} />
+            <Route path="/AlbumOrders/:orderId/design" element={<AlbumDesignEditor />} />
             <Route path="/AlbumCatalogSettings" element={<AlbumCatalogSettings />} />
             <Route path="/AlbumGuideSettings" element={<AlbumGuideSettings />} />
             <Route path="*" element={<PageNotFound />} />
@@ -261,6 +263,7 @@ const AuthenticatedApp = () => {
               studio_manager, not just the scoped album_manager role above. */}
           <Route path="/AlbumOrders" element={<AlbumOrders />} />
           <Route path="/AlbumOrders/:orderId" element={<AlbumOrderDetail />} />
+          <Route path="/AlbumOrders/:orderId/design" element={<AlbumDesignEditor />} />
           <Route path="/AlbumCatalogSettings" element={<AlbumCatalogSettings />} />
           <Route path="/AlbumGuideSettings" element={<AlbumGuideSettings />} />
 
