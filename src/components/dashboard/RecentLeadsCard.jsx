@@ -29,8 +29,8 @@ export default function RecentLeadsCard() {
 
   return (
     <>
-      <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm">
-        <CardHeader className="border-b border-gray-800 pb-3">
+      <Card className="dash-card">
+        <CardHeader className="dash-head pb-3">
           <CardTitle className="text-white flex items-center gap-2 text-base">
             <Users className="w-4 h-4 text-blue-400" />
             לידים אחרונים

@@ -13,7 +13,7 @@ import DashboardUnpaidCard from "../components/dashboard/DashboardUnpaidCard";
 import DashboardWorkStatusCard from "../components/dashboard/DashboardWorkStatusCard";
 import DashboardMissingTeamCard from "../components/dashboard/DashboardMissingTeamCard";
 import TodayEventsCard from "../components/dashboard/TodayEventsCard";
-import FinanceCard from "../components/dashboard/FinanceCard";
+import KpiRow from "../components/dashboard/KpiRow";
 import { MeetingsTodayCard, WhatsAppPulseCard, FollowUpCard, PostSignCard } from "../components/dashboard/DailyPulseCards";
 import { israelToday, eventDay } from "@/lib/missingTeam";
 import { calculateNetProfit } from "../lib/profitCalculations";
@@ -291,7 +291,7 @@ export default function Dashboard() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-950 p-2 sm:p-4 md:p-8">
+    <div className="min-h-screen p-2 sm:p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-3">
           <div>
@@ -330,14 +330,17 @@ export default function Dashboard() {
             every detail he needs on the day, and all the money in one tile. Then the four
             "what do I do today" tiles, then the state of the work. "צריך טיפול" left: the
             WhatsApp and follow-up tiles now say the same thing, each with its own door. */}
+        {/* Design D (2026-10-07): the money as four gradient cards on top, then the next
+            event as a photo hero beside the WhatsApp inbox, then the daily tiles. */}
+        <div className="mb-4 sm:mb-6"><KpiRow stats={stats} events={events} year={selectedYear} pendingCollection={pendingCollection} /></div>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6 mb-6">
           <div className="lg:col-span-2"><TodayEventsCard events={events} /></div>
-          <FinanceCard stats={stats} year={selectedYear} pendingCollection={pendingCollection} />
+          <WhatsAppPulseCard />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6 mb-6">
           <MeetingsTodayCard />
-          <WhatsAppPulseCard />
           <FollowUpCard />
           <PostSignCard />
         </div>

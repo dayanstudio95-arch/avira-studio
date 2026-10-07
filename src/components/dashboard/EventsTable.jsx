@@ -112,7 +112,7 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
 
   if (isLoading) {
     return (
-      <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm">
+      <Card className="dash-card">
         <CardHeader>
           <CardTitle className="text-white">אירועים אחרונים</CardTitle>
         </CardHeader>
@@ -135,8 +135,8 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
 
   return (
     <>
-    <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm">
-      <CardHeader className="border-b border-gray-800">
+    <Card className="dash-card">
+      <CardHeader className="dash-head">
         <div className="flex justify-between items-center">
           <CardTitle className="text-xl font-bold text-white flex items-center gap-2">
             <Heart className="w-5 h-5 text-yellow-400" />

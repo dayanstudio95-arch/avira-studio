@@ -78,14 +78,21 @@ function EventWorkRow({ event, onUpdated }) {
   }
 
   return (
-    <div className="border-b border-gray-800/60 last:border-0">
+    <div className="border-b border-white/[0.05] last:border-0">
       <div
-        className="flex items-center justify-between gap-2 px-3 py-2.5 cursor-pointer hover:bg-gray-800/30 transition-colors"
+        className="flex items-center justify-between gap-2 px-3 py-2.5 cursor-pointer hover:bg-white/[0.03] transition-colors"
         onClick={() => setExpanded((v) => !v)}
       >
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-white truncate">{localEvent.coupleNames}</p>
           <p className="text-xs text-gray-400">{format(new Date(localEvent.date), "d/M/yyyy")}</p>
+          {/* Design D: the same percentage as a bar (display only). */}
+          <div className="mt-1.5 h-1.5 w-full max-w-[160px] overflow-hidden rounded-full bg-white/5">
+            <div
+              className={`h-full rounded-full ${progress.pct >= 80 ? "bg-[#22C987]" : progress.pct >= 50 ? "bg-[#06B6D4]" : progress.pct > 0 ? "bg-[#F59E0B]" : "bg-[#F05B70]"}`}
+              style={{ width: `${Math.max(progress.pct, 4)}%` }}
+            />
+          </div>
         </div>
         <div className="flex items-center gap-1.5">
           <Badge variant="outline" className={`${progress.color} border text-xs whitespace-nowrap`}>
@@ -136,8 +143,8 @@ export default function DashboardWorkStatusCard({ events, onRefresh }) {
   });
 
   return (
-    <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm flex flex-col h-full">
-      <CardHeader className="border-b border-gray-800 pb-3 flex-shrink-0">
+    <Card className="dash-card flex flex-col h-full">
+      <CardHeader className="dash-head pb-3 flex-shrink-0">
         <CardTitle className="text-white flex items-center gap-2 text-sm font-semibold">
           <Clapperboard className="w-4 h-4 text-yellow-400" />
           סטטוס עבודה

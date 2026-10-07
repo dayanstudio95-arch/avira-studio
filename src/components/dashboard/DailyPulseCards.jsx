@@ -17,7 +17,7 @@ import PostSignWizard from "@/components/postSign/PostSignWizard";
 // meetings today/tomorrow, WhatsApp waiting + hot leads, follow-ups, signed couples still in
 // the post-sign wizard. Each one is a door: a click goes to where the work is done.
 
-const shell = "bg-gray-900/50 border-gray-800 backdrop-blur-sm h-full";
+const shell = "dash-card h-full";
 const head = "text-white flex items-center gap-2 text-sm font-semibold";
 const rowBtn = "flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-start text-sm hover:bg-gray-800/60";
 
@@ -41,7 +41,7 @@ export function MeetingsTodayCard() {
     .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
   return (
     <Card className={shell}>
-      <CardHeader className="border-b border-gray-800 pb-3">
+      <CardHeader className="dash-head pb-3">
         <CardTitle className={head}><CalendarClock className="w-4 h-4 text-yellow-400" /> פגישות היום ומחר</CardTitle>
       </CardHeader>
       <CardContent className="p-2">
@@ -63,27 +63,41 @@ export function WhatsAppPulseCard() {
   const navigate = useNavigate();
   const q = useDashConversations();
   const p = useMemo(() => whatsappPulse(q.data || []), [q.data]);
+  const timeOf = (iso) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    return d.toDateString() === new Date().toDateString()
+      ? d.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })
+      : d.toLocaleDateString("he-IL", { day: "numeric", month: "numeric" });
+  };
   return (
     <Card className={shell}>
-      <CardHeader className="border-b border-gray-800 pb-3">
-        <CardTitle className={head}><MessageCircle className="w-4 h-4 text-green-400" /> וואטסאפ</CardTitle>
+      <CardHeader className="dash-head pb-3">
+        <CardTitle className={head}>
+          <MessageCircle className="w-4 h-4 text-[#22C987]" /> הודעות וואטסאפ
+          <button type="button" onClick={() => navigate("/chat")} className={`ms-auto rounded-full px-2.5 text-xs font-bold ${p.waitingCount ? "bg-[#F05B70] text-white" : "bg-white/5 text-slate-400"}`}>{p.waitingCount}</button>
+        </CardTitle>
+        {p.oldest && <div className="text-[11px] text-rose-300/80">הוותיק ביותר: {p.oldest.title} · {p.oldest.label}</div>}
       </CardHeader>
-      <CardContent className="p-2 space-y-1">
-        <button type="button" onClick={() => navigate("/chat")} className={rowBtn}>
-          <span className="text-gray-200">דורש מענה</span>
-          <span className={`rounded-full px-2 text-xs font-bold ${p.waitingCount ? "bg-red-500 text-white" : "bg-gray-800 text-gray-400"}`}>{p.waitingCount}</span>
-        </button>
-        {p.oldest && (
-          <button type="button" onClick={() => navigate(`/chat?c=${p.oldest.id}`)} className={`${rowBtn} text-xs text-gray-400`}>
-            <span className="truncate">הכי ותיק: {p.oldest.title}</span><span className="shrink-0 text-red-300">{p.oldest.label}</span>
-          </button>
-        )}
-        <div className="flex items-center gap-1.5 px-2 pt-1 text-xs font-semibold text-orange-300"><Flame className="h-3.5 w-3.5" /> לידים חמים · {p.hot.length}</div>
-        {p.hot.slice(0, 3).map((h) => (
-          <button key={h.id} type="button" onClick={() => navigate(`/chat?c=${h.id}`)} className={rowBtn} title={h.reason}>
-            <span className="truncate text-gray-200">{h.title}</span><ChevronLeft className="h-4 w-4 shrink-0 text-gray-500" />
+      <CardContent className="p-2">
+        {p.recent.length === 0 && <p className="py-6 text-center text-sm text-gray-500">אין הודעות שמחכות לך ✅</p>}
+        {p.recent.map((m) => (
+          <button key={m.id} type="button" onClick={() => navigate(`/chat?c=${m.id}`)} className="flex w-full items-start gap-2.5 rounded-xl px-2 py-2 text-start hover:bg-white/[0.04]">
+            <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#F05B70]" />
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center justify-between gap-2">
+                <span className="truncate text-sm font-medium text-slate-100">{m.title}</span>
+                <span className="shrink-0 text-[11px] text-slate-500">{timeOf(m.at)}</span>
+              </span>
+              <span className="block truncate text-xs text-slate-400">{m.preview}</span>
+            </span>
           </button>
         ))}
+        {p.hot.length > 0 && (
+          <button type="button" onClick={() => navigate("/chat?box=hot")} className="mt-1 flex w-full items-center gap-1.5 rounded-xl px-2 py-1.5 text-xs text-amber-300 hover:bg-white/[0.04]">
+            <Flame className="h-3.5 w-3.5" /> {p.hot.length} לידים חמים <ChevronLeft className="ms-auto h-4 w-4 text-slate-500" />
+          </button>
+        )}
       </CardContent>
     </Card>
   );
@@ -100,7 +114,7 @@ export function FollowUpCard() {
   const s = useMemo(() => followUpSummary(convQ.data || [], leadsQ.data || [], daysQ.data || 0), [convQ.data, leadsQ.data, daysQ.data]);
   return (
     <Card className={shell}>
-      <CardHeader className="border-b border-gray-800 pb-3">
+      <CardHeader className="dash-head pb-3">
         <CardTitle className={head}><Hourglass className="w-4 h-4 text-orange-400" /> פולו-אפ</CardTitle>
       </CardHeader>
       <CardContent className="p-2 space-y-1">
@@ -143,7 +157,7 @@ export function PostSignCard() {
   const stepIndex = (l) => STEPS.findIndex((s) => s.key === currentStep(l.postSignFlow)) + 1;
   return (
     <Card className={shell}>
-      <CardHeader className="border-b border-gray-800 pb-3">
+      <CardHeader className="dash-head pb-3">
         <CardTitle className={head}><Signature className="w-4 h-4 text-emerald-400" /> חתמו · בתהליך</CardTitle>
       </CardHeader>
       <CardContent className="p-2">

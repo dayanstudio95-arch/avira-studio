@@ -163,7 +163,7 @@ function NavBadge({ count }) {
 // The work waiting on a page (sidebar v2): red = someone is waiting, amber = to do.
 function WorkCount({ value, tone = "neutral" }) {
   if (!value) return null;
-  const cls = tone === "red" ? "bg-red-500/15 text-red-300" : tone === "amber" ? "bg-yellow-500/15 text-yellow-300" : "bg-white/5 text-gray-300";
+  const cls = tone === "red" ? "bg-[#F05B70]/15 text-rose-300 ring-1 ring-[#F05B70]/25" : tone === "amber" ? "bg-[#F59E0B]/15 text-amber-300 ring-1 ring-[#F59E0B]/25" : "bg-[#3B82F6]/15 text-sky-300 ring-1 ring-[#3B82F6]/25";
   return <span className={`ms-auto rounded-full px-2 py-0.5 text-[11px] font-semibold leading-none ${cls}`}>{value}</span>;
 }
 
@@ -382,8 +382,8 @@ function LayoutShell({ children }) {
           background-clip: text;
         }
       `}</style>
-      <div className="min-h-screen flex w-full bg-gray-950">
-        <Sidebar side="right" className="border-l border-white/5 bg-[#0B0D12] [&>div]:bg-[#0B0D12]">
+      <div className="avira-d min-h-screen flex w-full bg-[#060D1B]">
+        <Sidebar side="right" className="border-l border-[#22334B]/70 bg-[#08111F] [&>div]:bg-[#08111F]">
           <SidebarHeader className="px-4 pt-5 pb-3 gap-3">
             <div className="flex items-center justify-between gap-2 w-full">
               <div className="flex items-center gap-2.5 shrink-0">
@@ -447,7 +447,7 @@ function LayoutShell({ children }) {
             {!scopedRole && !isEditingMenu && <GlobalSearch variant="pill" />}
           </SidebarHeader>
           
-          <SidebarContent className="bg-[#0B0D12] px-3 pb-3 flex min-h-0 flex-1 flex-col gap-1 overflow-auto group-data-[collapsible=icon]:overflow-hidden">
+          <SidebarContent className="bg-[#08111F] px-3 pb-3 flex min-h-0 flex-1 flex-col gap-1 overflow-auto group-data-[collapsible=icon]:overflow-hidden">
             {(() => {
               const isActive = (item) => (item.url === '/' ? location.pathname === '/' : location.pathname === item.url);
               // What waits on each page — the same numbers the dashboard shows.
@@ -465,10 +465,10 @@ function LayoutShell({ children }) {
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton
                       asChild
-                      className={`rounded-xl transition-colors ${on ? 'bg-yellow-500/[0.08] text-yellow-400 shadow-[inset_-2px_0_0_#F5CF00]' : 'text-gray-400 hover:bg-white/[0.04] hover:text-gray-100'}`}
+                      className={`rounded-xl transition-colors ${on ? 'bg-gradient-to-l from-[#3B82F6]/30 via-[#3B82F6]/12 to-[#06B6D4]/[0.04] text-white ring-1 ring-[#3B82F6]/35 shadow-[0_8px_24px_-12px_rgba(59,130,246,0.7)]' : 'text-slate-400 hover:bg-white/[0.04] hover:text-slate-100'}`}
                     >
                       <Link to={item.url} className="flex items-center gap-2.5 px-3 py-2">
-                        <item.icon className={`w-[18px] h-[18px] shrink-0 ${on ? 'text-yellow-400' : 'text-gray-500'}`} strokeWidth={1.75} />
+                        <item.icon className={`w-[18px] h-[18px] shrink-0 ${on ? 'text-sky-300' : 'text-slate-500'}`} strokeWidth={1.75} />
                         <span className="text-[13.5px] font-medium truncate">{item.label || item.title}</span>
                         <WorkCount value={work.value} tone={work.tone} />
                         <NavBadge count={countsByRoute[item.url]} />
@@ -489,7 +489,7 @@ function LayoutShell({ children }) {
                 if (!items.length) return null;
                 return (
                   <div key={sec.key}>
-                    <div className="px-3 pt-3 pb-1 text-[10px] font-semibold tracking-[0.14em] text-gray-600">{sec.label}</div>
+                    <div className="px-3 pt-3 pb-1 text-[10px] font-semibold tracking-[0.14em] text-slate-500/80">{sec.label}</div>
                     <SidebarMenu className="gap-0.5">{items.map(row)}</SidebarMenu>
                   </div>
                 );
@@ -520,7 +520,7 @@ function LayoutShell({ children }) {
                           asChild
                           className={`rounded-xl transition-colors ${
                             (item.url !== '/' && location.pathname === item.url)
-                              ? 'bg-yellow-500/[0.08] text-yellow-400'
+                              ? 'bg-[#3B82F6]/15 text-white ring-1 ring-[#3B82F6]/30'
                               : 'text-gray-500 hover:bg-white/[0.04] hover:text-gray-200'
                           }`}
                         >
@@ -541,20 +541,20 @@ function LayoutShell({ children }) {
             {!scopedRole && (
               <Link
                 to="/Events"
-                className="mx-1 mt-auto block rounded-2xl border border-white/[0.06] bg-white/[0.025] p-3 transition-colors hover:border-white/15"
+                className="mx-1 mt-auto block rounded-2xl border border-[#22334B] bg-gradient-to-b from-[#101F35] to-[#0C1728] p-3 transition-colors hover:border-[#3B82F6]/40"
               >
                 <div className="flex items-baseline justify-between text-xs text-gray-400">
                   <span>אירועים השנה</span>
                   <span className="font-semibold text-gray-200">{stats.yearDone} <span className="text-gray-500">מתוך</span> {stats.yearTotal}</span>
                 </div>
                 <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/5">
-                  <div className="h-full rounded-full bg-yellow-400" style={{ width: `${stats.yearTotal ? Math.round((stats.yearDone / stats.yearTotal) * 100) : 0}%` }} />
+                  <div className="h-full rounded-full bg-gradient-to-l from-[#06B6D4] to-[#3B82F6]" style={{ width: `${stats.yearTotal ? Math.round((stats.yearDone / stats.yearTotal) * 100) : 0}%` }} />
                 </div>
               </Link>
             )}
           </SidebarContent>
 
-          <SidebarFooter className="bg-[#0B0D12] px-4 py-3 flex flex-col gap-2 border-t border-white/5">
+          <SidebarFooter className="bg-[#08111F] px-4 py-3 flex flex-col gap-2 border-t border-[#22334B]/60">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="flex items-center gap-3 w-full text-right hover:bg-white/[0.04] rounded-xl p-1.5 -m-1 transition-colors">
@@ -594,8 +594,8 @@ function LayoutShell({ children }) {
             app panned left and right. Reproduced on 2026-09-23 in a mirror of this
             shell: 465px of main on a 375px screen without it, 375px with it. Truncation
             and inner horizontal scrollers only work once this is zero. */}
-        <main className="flex-1 flex flex-col min-w-0 bg-gray-950">
-          <header className="bg-gray-900/50 backdrop-blur-sm border-b border-gray-800 px-6 py-4 md:hidden">
+        <main className="flex-1 flex flex-col min-w-0 bg-[#060D1B]">
+          <header className="bg-[#08111F]/90 backdrop-blur-sm border-b border-[#22334B]/70 px-6 py-4 md:hidden">
             <div className="flex items-center gap-4">
               <SidebarTrigger className="hover:bg-gray-800 p-2 rounded-lg transition-colors duration-200 text-gray-300" />
               {tenantBranding?.logoUrl && (

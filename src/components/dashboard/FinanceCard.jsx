@@ -15,8 +15,8 @@ export default function FinanceCard({ stats, year, pendingCollection }) {
     </div>
   );
   return (
-    <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm h-full">
-      <CardHeader className="border-b border-gray-800 pb-3">
+    <Card className="dash-card h-full">
+      <CardHeader className="dash-head pb-3">
         <CardTitle className="text-white flex items-center gap-2 text-base font-semibold">
           <LineChart className="w-5 h-5 text-emerald-400" /> פיננסי · {year}
         </CardTitle>

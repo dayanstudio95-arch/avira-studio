@@ -20,8 +20,8 @@ export default function DashboardMissingTeamCard({ events }) {
     .sort((a, b) => eventDay(a).localeCompare(eventDay(b)));
 
   return (
-    <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm flex flex-col h-full">
-      <CardHeader className="border-b border-gray-800 pb-3 flex-shrink-0">
+    <Card className="dash-card flex flex-col h-full">
+      <CardHeader className="dash-head pb-3 flex-shrink-0">
         <CardTitle className="text-white flex items-center gap-2 text-sm font-semibold">
           <Users className="w-4 h-4 text-orange-400" />
           חסר צוות

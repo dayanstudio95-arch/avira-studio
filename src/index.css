@@ -86,3 +86,61 @@
     @apply bg-background text-foreground;
   }
 }
+/* ── Design D (2026-10-07): premium midnight-navy look for the dashboard and the sidebar.
+   Plain CSS after Tailwind's layers on purpose, so it wins over a Card's default bg/border.
+   Palette: bg #060D1B · card #0C1728 / #101F35 · border #22334B · blue #3B82F6 · cyan #06B6D4
+   · green #22C987 · purple #A855F7 · amber #F59E0B · red #F05B70. */
+.avira-d {
+  --d-bg: #060D1B;
+  --d-card: #0C1728;
+  --d-card-2: #101F35;
+  --d-border: #22334B;
+  --d-text: #F8FAFC;
+  --d-muted: #94A3B8;
+  font-family: "Heebo", ui-sans-serif, system-ui, sans-serif;
+}
+.avira-d .dash-card {
+  background: linear-gradient(180deg, rgba(16, 31, 53, 0.92) 0%, rgba(12, 23, 40, 0.96) 100%);
+  border: 1px solid rgba(34, 51, 75, 0.85);
+  border-radius: 18px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 18px 40px -24px rgba(0, 0, 0, 0.75);
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+.avira-d .dash-card:hover {
+  border-color: rgba(59, 130, 246, 0.35);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 22px 48px -24px rgba(0, 0, 0, 0.85);
+}
+.avira-d .dash-card .dash-head {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+}
+.avira-d .kpi {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 20px 44px -26px rgba(0, 0, 0, 0.9);
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+.avira-d .kpi:hover { transform: translateY(-2px); border-color: rgba(255, 255, 255, 0.14); }
+.avira-d .kpi-green  { background: linear-gradient(145deg, #0E3A2C 0%, #0A2019 55%, #0A1714 100%); }
+.avira-d .kpi-blue   { background: linear-gradient(145deg, #13306A 0%, #0D1C3D 55%, #0B1426 100%); }
+.avira-d .kpi-cyan   { background: linear-gradient(145deg, #0B3A47 0%, #0A2229 55%, #0A161B 100%); }
+.avira-d .kpi-purple { background: linear-gradient(145deg, #3A1A4D 0%, #22112F 55%, #160D1F 100%); }
+.avira-d .kpi-icon {
+  width: 42px; height: 42px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.10);
+}
+.avira-d .hero-photo {
+  background-size: cover;
+  background-position: center 62%;
+}
+.avira-d .d-chip {
+  border-radius: 999px; padding: 2px 9px; font-size: 11px; line-height: 1.5;
+  border: 1px solid transparent;
+}
+
+/* Design D: every page's own near-black (bg-gray-950) becomes the same deep navy, so the
+   app reads as one surface. Colour only — no layout. */
+.avira-d .bg-gray-950 { background-color: var(--d-bg); }
+.avira-d .bg-gray-950\/95 { background-color: rgba(6, 13, 27, 0.95); }
