@@ -2,7 +2,7 @@ import React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Download, Bot, BotOff, Check, CheckCheck, AlertCircle } from "lucide-react";
 import { supabase } from "@/api/supabaseClient";
-import { formatMessageTime, botDecisionLabel } from "./whatsappInboxShared";
+import { formatMessageDateTime, botDecisionLabel } from "./whatsappInboxShared";
 
 // One message in the thread.
 //
@@ -119,8 +119,8 @@ export default function MessageBubble({ message }) {
           </a>
         )}
 
-        <div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-gray-400" dir="ltr">
-          <span>{formatMessageTime(message.createdDate)}</span>
+        <div className="mt-1 flex items-center justify-end gap-1 text-[11px] text-current opacity-70" dir="ltr">
+          <span className="tabular-nums">{formatMessageDateTime(message.createdDate || message.created_date)}</span>
           {isOutbound && <DeliveryTick status={message.deliveryStatus} />}
         </div>
 

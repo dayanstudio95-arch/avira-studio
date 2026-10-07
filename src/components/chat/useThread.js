@@ -58,14 +58,18 @@ export function useThread(conversationId) {
   const timeline = useMemo(() => {
     const statusById = statusQ.data || {};
     const textById = Object.fromEntries(rawMessages.map((m) => [m.idMessage, m.bodyText || m.typeMessage || ""]));
+    // The entity layer names created_at "created_date" (src/api/entities.js
+    // CASE_OVERRIDES_REVERSE), not "createdDate" — read as createdDate it was always empty,
+    // so no bubble showed its time and the day separators never appeared (2026-10-07).
     const msgs = rawMessages.map((m) => ({
       kind: "message",
-      at: m.createdDate,
+      at: m.created_date,
       ...m,
+      createdDate: m.created_date,
       deliveryStatus: statusById[m.idMessage] || null,
       quotedText: m.quotedIdMessage ? textById[m.quotedIdMessage] || "הודעה קודמת" : null,
     }));
-    const notes = (notesQ.data || []).map((n) => ({ kind: "note", at: n.createdDate, ...n }));
+    const notes = (notesQ.data || []).map((n) => ({ kind: "note", at: n.created_date, ...n, createdDate: n.created_date }));
     return [...msgs, ...notes].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
   }, [rawMessages, statusQ.data, notesQ.data]);
 

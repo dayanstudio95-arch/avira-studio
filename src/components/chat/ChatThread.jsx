@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChevronRight, Pin, PinOff, Archive, ArchiveRestore, Tag, Send, Loader2, BellOff, Trash2, Plus, X, CalendarPlus } from "lucide-react";
 import { toast } from "sonner";
 import MessageBubble from "@/components/whatsapp/MessageBubble";
-import { groupMessagesByDay, formatMessageTime } from "@/components/whatsapp/whatsappInboxShared";
+import { groupMessagesByDay, formatMessageDateTime } from "@/components/whatsapp/whatsappInboxShared";
 import { contactTypeLabel, effectiveStage, renderTemplate, eventDateFor, hasStage, displayType } from "@/lib/chatModel";
 import DateAvailability from "./DateAvailability";
 import { Avatar, conversationTitle } from "./ChatList";
@@ -20,7 +20,7 @@ function NoteBubble({ note, onDelete }) {
           </button>
         </div>
         <div className="whitespace-pre-wrap text-sm leading-relaxed">{note.body}</div>
-        <div className="mt-1 text-left text-[10px] text-yellow-600">{formatMessageTime(note.createdDate)}</div>
+        <div className="mt-1 text-left text-[10px] text-yellow-600">{formatMessageDateTime(note.createdDate)}</div>
       </div>
     </div>
   );

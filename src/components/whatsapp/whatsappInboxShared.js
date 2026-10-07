@@ -130,6 +130,19 @@ export function formatMessageTime(iso) {
   }
 }
 
+// "13.9.26 · 14:05" (Israel time) — the date and time under every message bubble
+// (2026-10-07, the owner: "so I know when it was sent"). Text only, no extra loading.
+export function formatMessageDateTime(iso) {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    const date = d.toLocaleDateString("he-IL", { day: "numeric", month: "numeric", year: "2-digit", timeZone: "Asia/Jerusalem" });
+    return `${date} · ${formatMessageTime(iso)}`;
+  } catch {
+    return "";
+  }
+}
+
 export function formatListTime(iso) {
   if (!iso) return "";
   try {
