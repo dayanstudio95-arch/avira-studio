@@ -43,6 +43,8 @@ const getProgress = (event, teamMembers) => {
 
 export default function ProgressStatus() {
   const [events, setEvents] = useState([]);
+  // Per month (label): "closed" | "open" (unfinished only) | "all" — set by a click.
+  const [monthMode, setMonthMode] = useState({});
   const [staffMembers, setStaffMembers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState("all");
@@ -329,6 +331,61 @@ export default function ProgressStatus() {
     return sortOrder === 'asc' ? da - db : db - da;
   });
 
+  // Months as folders (2026-10-07, the owner's request): a month whose events are all at
+  // 100% starts closed; a month with unfinished events shows only those, with "הצג גם N
+  // שהושלמו". A click on the month header opens/closes it. With a status filter on, every
+  // matching event is shown (the filter already decided).
+  const buildMonthItems = () => {
+    const items = [];
+    const groups = [];
+    for (const event of filteredEvents) {
+      const label = formatMonthYear(new Date(event?.date));
+      if (!groups.length || groups[groups.length - 1].label !== label) groups.push({ label, events: [] });
+      groups[groups.length - 1].events.push(event);
+    }
+    for (const g of groups) {
+      const pct = (e) => getProgress(e, e?.team || []).percentage;
+      const done = g.events.filter((e) => pct(e) === 100).length;
+      const complete = done === g.events.length;
+      const mode = monthMode[g.label] || (filter !== "all" ? "all" : complete ? "closed" : "open");
+      const visible = mode === "closed" ? [] : mode === "all" ? g.events : g.events.filter((e) => pct(e) < 100);
+      items.push({ type: "monthHeader", id: `header-${g.label}`, label: g.label, done, total: g.events.length, complete, mode });
+      for (const e of visible) items.push({ type: "event", id: e?.id, data: e });
+      const hidden = g.events.length - visible.length;
+      if (mode === "open" && hidden > 0) items.push({ type: "monthMore", id: `more-${g.label}`, label: g.label, hidden });
+    }
+    return items;
+  };
+  const toggleMonth = (item) =>
+    setMonthMode((m) => ({ ...m, [item.label]: item.mode === "closed" ? (item.complete ? "all" : "open") : "closed" }));
+  const renderMonthHeader = (item, mobile) => (
+    <button
+      key={item.id}
+      type="button"
+      onClick={() => toggleMonth(item)}
+      aria-expanded={item.mode !== "closed"}
+      className={`flex w-full items-center justify-between gap-3 border-b border-gray-700 px-1 text-start ${mobile ? "pt-4 pb-1" : "pt-6 pb-2 mb-2"}`}
+    >
+      <span className={`font-semibold text-gray-300 ${mobile ? "text-base" : "text-lg"}`}>{item.label}</span>
+      <span className="flex items-center gap-2 text-xs">
+        <span className={item.complete ? "text-emerald-400" : "text-yellow-300"}>
+          {item.complete ? "✓ הושלם" : `${item.done}/${item.total} הושלמו`}
+        </span>
+        <span className="text-gray-500">{item.mode === "closed" ? "▸" : "▾"}</span>
+      </span>
+    </button>
+  );
+  const renderMonthMore = (item) => (
+    <button
+      key={item.id}
+      type="button"
+      onClick={() => setMonthMode((m) => ({ ...m, [item.label]: "all" }))}
+      className="w-full rounded-lg border border-dashed border-gray-700 py-2 text-xs text-gray-400 hover:text-white"
+    >
+      הצג גם {item.hidden} שהושלמו
+    </button>
+  );
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-950 p-4 md:p-8">
@@ -455,25 +512,10 @@ export default function ProgressStatus() {
               <p className="text-gray-400">{filter === "all" ? "טרם נוצרו אירועים" : "אין אירועים עבור הסינון שנבחר"}</p>
             </div>
           ) : (() => {
-            const items = [];
-            let lastMonthYear = null;
-            filteredEvents.forEach((event) => {
-              const eventDate = new Date(event?.date);
-              const currentMonthYear = formatMonthYear(eventDate);
-              if (currentMonthYear !== lastMonthYear) {
-                items.push({ type: 'monthHeader', id: `m-header-${currentMonthYear}`, label: currentMonthYear });
-                lastMonthYear = currentMonthYear;
-              }
-              items.push({ type: 'event', id: event?.id, data: event });
-            });
+            const items = buildMonthItems();
             return items.map(item => {
-              if (item.type === 'monthHeader') {
-                return (
-                  <h2 key={item.id} className="text-base font-semibold text-gray-300 pt-4 pb-1 border-b border-gray-700 px-1">
-                    {item.label}
-                  </h2>
-                );
-              }
+              if (item.type === 'monthHeader') return renderMonthHeader(item, true);
+              if (item.type === 'monthMore') return renderMonthMore(item);
               return (
                 <ProgressEventMobileCard
                   key={item.id}
@@ -506,29 +548,14 @@ export default function ProgressStatus() {
             <p className="text-gray-400">{filter === "all" ? "טרם נוצרו אירועים במערכת" : "אין אירועים עבור הסינון שנבחר"}</p>
           </div>
         ) : (() => {
-          // Build itemsToRender with month headers — render-only, filteredEvents unchanged
-          const itemsToRender = [];
-          let lastMonthYear = null;
-          filteredEvents.forEach((event) => {
-            const eventDate = new Date(event?.date);
-            const currentMonthYear = formatMonthYear(eventDate);
-            if (currentMonthYear !== lastMonthYear) {
-              itemsToRender.push({ type: 'monthHeader', id: `header-${currentMonthYear}`, date: eventDate, label: currentMonthYear });
-              lastMonthYear = currentMonthYear;
-            }
-            itemsToRender.push({ type: 'event', id: event?.id, data: event });
-          });
+          // Month headers as folders — render-only, filteredEvents unchanged (buildMonthItems).
+          const itemsToRender = buildMonthItems();
 
           return (
             <div className="space-y-2">
               {itemsToRender.map(item => {
-                if (item.type === 'monthHeader') {
-                  return (
-                    <h2 key={item.id} className="text-lg font-semibold text-gray-300 pt-6 pb-2 border-b border-gray-700 mb-2 px-1">
-                      {item.label}
-                    </h2>
-                  );
-                }
+                if (item.type === 'monthHeader') return renderMonthHeader(item, false);
+                if (item.type === 'monthMore') return renderMonthMore(item);
 
                 const event = item.data;
                 const teamMembers = event?.team || [];

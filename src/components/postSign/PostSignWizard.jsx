@@ -384,6 +384,7 @@ export default function PostSignWizard({ lead: initialLead, isOpen, onClose, onC
                           event={event}
                           team={event.team || []}
                           onAssigned={() => loadEvent(lead)}
+                          lead={lead}
                         />
                       </div>
                     )}

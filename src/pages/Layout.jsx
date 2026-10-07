@@ -49,6 +49,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import AIAssistant from "@/components/AIAssistant";
 import PostSignWizardHost from "@/components/postSign/PostSignWizardHost";
+import { isMissingTeam, israelToday, eventDay, yearProgress } from "@/lib/missingTeam";
+import { progressPct } from "@/lib/eventProgress";
 import NotificationBell from "@/components/notifications/NotificationBell";
 import { NotificationsProvider, useNotifications } from "@/components/notifications/NotificationsContext";
 import GlobalSearch from "@/components/layout/GlobalSearch";
@@ -215,80 +217,36 @@ function LayoutShell({ children }) {
     }
   });
   const [draggedItem, setDraggedItem] = useState(null);
-  const [stats, setStats] = useState({
-    urgentStaffing: 0,
-    editingBacklog: 0,
-    pendingCollection: 0,
-    thisMonthIncome: 0,
-    totalEventsCount: 0
-  });
+  const [stats, setStats] = useState({ urgentStaffing: 0, editingBacklog: 0, yearDone: 0, yearTotal: 0 });
 
+  // "מבט מהיר" (2026-10-07): the owner's three numbers, in his order — missing team (the
+  // shared rule, src/lib/missingTeam.js), waiting for editing, and this year's events
+  // held out of all. Money moved to the dashboard. Refreshed on every page change and
+  // every 5 minutes (it used to be computed once, when the app loaded).
   useEffect(() => {
-    if (scopedRole) return; // lead_coordinator/photographer never fetch tenant-wide events (financial columns)
+    if (scopedRole) return undefined; // lead_coordinator/photographer never fetch tenant-wide events (financial columns)
+    let alive = true;
     const loadStats = async () => {
       try {
         const events = await base44.entities.Event.list();
-        const today = new Date();
-        const currentMonth = today.getMonth();
-        const currentYear = today.getFullYear();
-
-        // Calculate stats
-        const endOfYear = new Date(currentYear, 11, 31, 23, 59, 59);
-        const urgentCount = events.filter(e => {
-          const eventDate = new Date(e.date);
-          if (eventDate < today || eventDate > endOfYear) return false;
-          const requiredCrew = e.requiredCrew || 3;
-          const assignedTeam = (e.team || []).filter(m => m.staffMemberName);
-          return assignedTeam.length < requiredCrew;
-        }).length;
-
-        const thisMonthEvents = events.filter(e => {
-          const eventDate = new Date(e.date);
-          return eventDate.getMonth() === currentMonth && eventDate.getFullYear() === currentYear;
-        });
-        const monthIncome = thisMonthEvents.reduce((sum, e) => sum + (e.totalAmountGross || 0), 0);
-        const ROLE_DONE_FIELDS = {
-          photographer1: "photographer1Done",
-          photographer2: "photographer2Done",
-          videographer:  "video1Done",
-          videographer2: "video2Done",
-          editor:        "editorDone",
-        };
-        const getEventProgress = (e) => {
-          const items = [];
-          (e.team || []).forEach(m => {
-            const field = ROLE_DONE_FIELDS[m?.role];
-            if (field) items.push(!!e[field]);
-          });
-          items.push(!!(e.rawLink || e.rawDoneManual));
-          items.push(!!(e.finalLink || e.finalDoneManual));
-          const total = items.length;
-          const completed = items.filter(Boolean).length;
-          return total > 0 ? Math.round((completed / total) * 100) : 0;
-        };
-        const editingCount = events.filter(e => {
-          const eventDate = new Date(e.date);
-          return eventDate < today && getEventProgress(e) < 100;
-        }).length;
-        const unpaidAmount = events.reduce((sum, e) => {
-          const eventDate = new Date(e.date);
-          if (eventDate < today && e.clientPaymentStatus !== 'Paid') return sum + (e.totalAmountGross || 0);
-          return sum;
-        }, 0);
-
+        const today = israelToday();
+        const year = yearProgress(events);
+        if (!alive) return;
         setStats({
-          urgentStaffing: urgentCount,
-          editingBacklog: editingCount,
-          pendingCollection: unpaidAmount,
-          thisMonthIncome: monthIncome,
-          totalEventsCount: events.length
+          urgentStaffing: events.filter((e) => isMissingTeam(e, today)).length,
+          editingBacklog: events.filter((e) => eventDay(e) < today && progressPct(e) < 100).length,
+          yearDone: year.done,
+          yearTotal: year.total,
         });
       } catch (error) {
         console.error('Failed to load stats:', error);
       }
     };
     loadStats();
-  }, []);
+    const timer = setInterval(loadStats, 5 * 60 * 1000);
+    return () => { alive = false; clearInterval(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
 
   const handleDragStart = (e, index) => {
     setDraggedItem(index);
@@ -402,25 +360,18 @@ function LayoutShell({ children }) {
       <div className="min-h-screen flex w-full bg-gray-950">
         <Sidebar side="right" className="border-l border-gray-800 bg-gray-900">
           <SidebarHeader className="border-b border-gray-800 p-6">
-            <div className="flex items-center justify-between gap-3 w-full">
-              <div className="flex items-center gap-3">
-              <div className="relative">
-                {tenantBranding?.logoUrl ? (
-                  <img
-                    src={tenantBranding.logoUrl}
-                    alt={tenantBranding?.name || 'Studio logo'}
-                    className="w-10 h-10 rounded-xl object-cover shadow-lg"
-                  />
-                ) : (
-                  <div className="w-10 h-10 avira-gradient rounded-xl flex items-center justify-center shadow-lg">
-                    <Heart className="w-5 h-5 text-gray-900" />
-                  </div>
-                )}
-                <Camera className="w-4 h-4 text-yellow-400 absolute -top-1 -right-1" />
-              </div>
-              <div>
-                  <h2 className="font-bold text-xl text-white avira-text-gradient">{tenantBranding?.name || 'Avira'}</h2>
-                  <p className="text-xs text-gray-400">Wedding Finance Studio</p>
+            <div className="flex items-center justify-between gap-2 w-full">
+              <div className="flex items-center gap-2.5 shrink-0">
+              {/* The studio's own mark (2026-10-07: the heart + camera looked cheap). A logo
+                  uploaded for the studio (tenants.logo_url) wins; otherwise the AVIRA "A". */}
+              <img
+                src={tenantBranding?.logoUrl || '/logo-192.png'}
+                alt={tenantBranding?.name || 'AVIRA'}
+                className="w-10 h-10 rounded-xl object-cover ring-1 ring-yellow-500/30"
+              />
+              <div className="leading-tight shrink-0">
+                  <h2 className="text-base font-semibold tracking-[0.18em] text-yellow-400 whitespace-nowrap">AVIRA</h2>
+                  <p className="text-[9px] tracking-[0.3em] text-gray-400 whitespace-nowrap">STUDIO</p>
                 </div>
               </div>
               {isEditingMenu ? (
@@ -550,32 +501,22 @@ function LayoutShell({ children }) {
                 מבט מהיר
               </SidebarGroupLabel>
               <SidebarGroupContent>
-                <div className="px-4 py-3 space-y-3">
-                  <Link to={createPageUrl("Events?filter=urgentStaffing")} className="flex items-center gap-3 text-sm hover:bg-gray-800/50 p-2 rounded-lg transition-colors cursor-pointer">
+                <div className="px-4 py-3 space-y-1">
+                  <Link to="/StaffScheduling" className="flex items-center gap-3 text-sm hover:bg-gray-800/50 p-2 rounded-lg transition-colors">
                     <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
                     <span className="text-gray-400">חסר צוות</span>
                     <span className="ml-auto font-semibold text-orange-400">{stats.urgentStaffing}</span>
                   </Link>
-                  <div className="flex items-center gap-3 text-sm">
+                  <Link to="/ProgressStatus" className="flex items-center gap-3 text-sm hover:bg-gray-800/50 p-2 rounded-lg transition-colors">
                     <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
                     <span className="text-gray-400">ממתינים לעריכה</span>
                     <span className="ml-auto font-semibold text-purple-400">{stats.editingBacklog}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-sm">
-                    <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                    <span className="text-gray-400">לתשלום</span>
-                    <span className="ml-auto font-semibold text-red-400">₪{stats.pendingCollection.toLocaleString()}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-sm">
-                    <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                    <span className="text-gray-400">הכנסות החודש</span>
-                    <span className="ml-auto font-semibold text-green-400">₪{stats.thisMonthIncome.toLocaleString()}</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-sm">
+                  </Link>
+                  <Link to="/Events" className="flex items-center gap-3 text-sm hover:bg-gray-800/50 p-2 rounded-lg transition-colors">
                     <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
-                    <span className="text-gray-400">סה״כ אירועים</span>
-                    <span className="ml-auto font-semibold text-yellow-400">{stats.totalEventsCount}</span>
-                  </div>
+                    <span className="text-gray-400 whitespace-nowrap">אירועים השנה</span>
+                    <span className="ml-auto font-semibold text-yellow-400 whitespace-nowrap">{stats.yearDone} מתוך {stats.yearTotal}</span>
+                  </Link>
                 </div>
               </SidebarGroupContent>
             </SidebarGroup>

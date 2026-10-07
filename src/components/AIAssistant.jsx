@@ -157,12 +157,12 @@ export default function AIAssistant() {
     <>
       {!isOpen && (
         <motion.div
-          initial={{ x: 100, opacity: 0 }}
+          initial={{ x: -100, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
           // On a phone the WhatsApp inbox has a message composer along the bottom edge;
           // this button sat on top of it, exactly where the text starts in RTL. Hidden
           // there on mobile only — the assistant is still one tap away on every other page.
-          className={`fixed bottom-6 right-6 z-50 ${hideOnMobile ? "hidden md:block" : ""}`}
+          className={`fixed bottom-6 left-6 z-50 ${hideOnMobile ? "hidden md:block" : ""}`}
         >
           <Button
             onClick={() => setIsOpen(true)}
@@ -176,11 +176,11 @@ export default function AIAssistant() {
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ x: 400, opacity: 0 }}
+            initial={{ x: -400, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
-            exit={{ x: 400, opacity: 0 }}
+            exit={{ x: -400, opacity: 0 }}
             transition={{ type: "spring", damping: 25 }}
-            className="fixed top-0 right-0 h-full w-96 bg-gray-900 border-l border-gray-800 shadow-2xl z-50 flex flex-col"
+            className="fixed top-0 left-0 h-full w-96 max-w-full bg-gray-900 border-r border-gray-800 shadow-2xl z-50 flex flex-col"
             dir="rtl"
           >
             {/* Header */}

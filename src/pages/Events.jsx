@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { isMissingTeam } from "@/lib/missingTeam";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -256,22 +257,13 @@ export default function Events() {
 
   // Filter events based on search term, year, and filter parameter
   const filteredEvents = useMemo(() => {
-    let filtered = events.filter(event => {
-      const eventDate = new Date(event.date);
-      return eventDate.getFullYear() === selectedYear;
-    });
-    
-    if (filterParam === 'urgentStaffing') {
-      const today = new Date();
-      const thirtyDaysFromNow = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
-      filtered = filtered.filter(event => {
-        const eventDate = new Date(event.date);
-        if (eventDate < today || eventDate > thirtyDaysFromNow) return false;
-        const requiredCrew = event.requiredCrew || 3;
-        const assignedTeam = (event.team || []).filter(m => m.staffMemberName);
-        return assignedTeam.length < requiredCrew;
-      });
-    }
+    // "חסר צוות" (old sidebar link): the shared rule, every upcoming year (src/lib/missingTeam.js).
+    let filtered = filterParam === 'urgentStaffing'
+      ? events.filter((event) => isMissingTeam(event))
+      : events.filter(event => {
+          const eventDate = new Date(event.date);
+          return eventDate.getFullYear() === selectedYear;
+        });
     
     if (searchTerm.trim()) {
       const searchLower = searchTerm.toLowerCase();

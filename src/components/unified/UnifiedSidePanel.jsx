@@ -785,6 +785,7 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                 event={safeEvent}
                 team={team}
                 onAssigned={(newTeam) => setLocalTeamOverride(newTeam)}
+                lead={lead}
               />
             )}
 

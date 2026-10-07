@@ -114,3 +114,37 @@ export function undoablePaymentIds(payments) {
   }
   return new Set([...latest.values()].map((p) => p.id));
 }
+
+// Debts left in EARLIER months (2026-10-07, the owner: "we're in October and I still owe
+// the crew for September — show me"). Per month before `today`'s month: what is still open
+// = for each person, unpaid costed rows of events already held in that month minus their
+// credit on that month (creditByStaff, same rule as the page), never below zero.
+// → [{ key: "2026-09", year: 2026, month: 8 (0-based), remaining }] newest first, remaining > 0.
+export function earlierMonthDebts(events, payments, today = new Date()) {
+  const todayStr = typeof today === "string" ? today : today.toISOString().slice(0, 10);
+  const thisMonth = todayStr.slice(0, 7);
+  const owed = {}; // key -> name -> sum
+  for (const e of events || []) {
+    const day = String(e?.date || "").slice(0, 10);
+    if (!day || day > todayStr) continue;
+    const key = day.slice(0, 7);
+    if (key >= thisMonth) continue;
+    (e.team || []).forEach((m) => {
+      const cost = parseFloat(m?.cost) || 0;
+      if (!m?.staffMemberName || m.isPaid || cost <= 0) return;
+      owed[key] ||= {};
+      owed[key][m.staffMemberName] = round2((owed[key][m.staffMemberName] || 0) + cost);
+    });
+  }
+  const out = [];
+  for (const key of Object.keys(owed)) {
+    const year = Number(key.slice(0, 4));
+    const month = Number(key.slice(5, 7)) - 1;
+    const credits = creditByStaff(payments, periodRange(year, String(month)));
+    let remaining = 0;
+    for (const [name, sum] of Object.entries(owed[key])) remaining += Math.max(0, sum - Math.max(0, credits[name] || 0));
+    remaining = round2(remaining);
+    if (remaining > 0) out.push({ key, year, month, remaining });
+  }
+  return out.sort((a, b) => (a.key < b.key ? 1 : -1));
+}

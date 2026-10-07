@@ -212,8 +212,11 @@ export default function AlbumOrders() {
     return isNaN(d.getTime()) ? null : format(d, "d/M/yy");
   };
 
+  // Orders already at the print shop (or past it) go to the bottom (2026-10-07, the owner:
+  // "so I see what's left"). Within each part the server's newest-first order is kept.
+  const DONE_STATUSES = ["in_print", "delivered", "completed"];
   const filteredOrders = useMemo(() => {
-    return orders.filter((order) => {
+    const list = orders.filter((order) => {
       if (statusFilter !== "all" && order.workflowStatus !== statusFilter) return false;
       if (searchTerm.trim()) {
         const q = searchTerm.trim().toLowerCase();
@@ -223,6 +226,10 @@ export default function AlbumOrders() {
       }
       return true;
     });
+    return [
+      ...list.filter((o) => !DONE_STATUSES.includes(o.workflowStatus)),
+      ...list.filter((o) => DONE_STATUSES.includes(o.workflowStatus)),
+    ];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orders, statusFilter, searchTerm, eventsById]);
 

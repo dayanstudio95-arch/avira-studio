@@ -7,6 +7,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { eventTeamRoleLabel, teamRoleSlotsForJobRole } from "@/lib/staffRoles";
 import { assignStaffToEventSlot } from "@/lib/assignStaffToEvent";
+import StaffBookingMessageDialog from "./StaffBookingMessageDialog";
 
 // The row of "who said what" pills under an event's team, plus the click-to-assign
 // dialog. Extracted from UnifiedSidePanel.jsx on 2026-09-15 so the same pills can be
@@ -14,10 +15,12 @@ import { assignStaffToEventSlot } from "@/lib/assignStaffToEvent";
 //
 // `requests` is the latest staff_availability_requests row per staff member (the
 // caller dedupes). A ✅ pill is clickable when there is an event to assign to.
-export default function AvailabilityPills({ requests, staffMembers, event, team, onAssigned }) {
+export default function AvailabilityPills({ requests, staffMembers, event, team, onAssigned, lead }) {
   const [candidate, setCandidate] = useState(null);
   const [roleSlot, setRoleSlot] = useState(null);
   const [isAssigning, setIsAssigning] = useState(false);
+  // After a booking: the "you're booked" message preview (2026-10-07).
+  const [booked, setBooked] = useState(null); // { staff, roleSlot }
 
   if (!requests || requests.length === 0) return null;
 
@@ -60,6 +63,7 @@ export default function AvailabilityPills({ requests, staffMembers, event, team,
       });
       toast.success(`${candidateStaff.name} שובץ/ה בהצלחה ל${eventTeamRoleLabel(roleSlot)}`);
       onAssigned?.(newTeam);
+      setBooked({ staff: candidateStaff, roleSlot });
       close();
     } catch (error) {
       console.error("Error assigning staff to event team:", error);
@@ -151,6 +155,7 @@ export default function AvailabilityPills({ requests, staffMembers, event, team,
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <StaffBookingMessageDialog booking={booked} event={event} lead={lead} onClose={() => setBooked(null)} />
     </>
   );
 }

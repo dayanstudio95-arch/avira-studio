@@ -21,6 +21,7 @@ import { useAuth } from "@/lib/SupabaseAuthContext";
 import { isAdmin } from "@/lib/permissions";
 import { leadSyncOutcome, settledCounts } from "@/lib/actionOutcome";
 import { packagePrices } from "@/lib/packagePrices";
+import { dateMatches } from "@/lib/searchDate";
 
 
 const statusConfig = {
@@ -450,7 +451,9 @@ export default function Leads() {
   const filteredLeads = leads.filter((lead) => {
     if (searchTerm.trim()) {
       const match = lead.coupleNames?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        lead.phoneNumber?.includes(searchTerm);
+        lead.phoneNumber?.includes(searchTerm) ||
+        // "16/9/26" finds the leads on that date (2026-10-07).
+        dateMatches(lead.eventDate, searchTerm);
       if (!match) return false;
     }
     if (statusFilter && lead.status !== statusFilter) return false;
@@ -635,7 +638,7 @@ export default function Leads() {
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
             <Input
               type="text"
-              placeholder="חיפוש לפי שם או טלפון..."
+              placeholder="חיפוש לפי שם, טלפון או תאריך..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pr-10 bg-gray-900 border-gray-700 text-white placeholder-gray-500 rounded-lg w-full md:w-1/2"

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { isMissingTeam, israelToday, eventDay, assignedShooters, requiredShooters, combinedNotes } from "@/lib/missingTeam";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -74,16 +75,25 @@ export default function StaffScheduling() {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [eventsData, staffData] = await Promise.all([
+      const [rawEvents, staffData, leadNotes] = await Promise.all([
         base44.entities.Event.list("-date"),
-        base44.entities.StaffMember.list()
+        base44.entities.StaffMember.list(),
+        // Only id + notes: an event's notes are often written on its lead (combinedNotes).
+        base44.entities.Lead.filter({}, undefined, undefined, "id, notes").catch(() => []),
       ]);
+      const notesByLead = new Map((leadNotes || []).map((l) => [l.id, l.notes]));
+      const eventsData = rawEvents.map((e) => ({ ...e, displayNotes: combinedNotes(e.notes, notesByLead.get(e.sourceLeadId)) }));
       setEvents(eventsData);
       const sorted = [...staffData].sort((a, b) => (a.orderIndex ?? 999) - (b.orderIndex ?? 999));
       setStaffMembers(sorted);
       setOrderedStaff(sorted.filter(s => s.role !== 'editor'));
-      if (eventsData.length > 0 && !selectedEvent) {
-        setSelectedEvent(eventsData[0]);
+      // ?eventId=… (from "חסר צוות" on the dashboard) opens that event; otherwise the
+      // nearest upcoming one rather than the latest-dated event in the list.
+      if (!selectedEvent && eventsData.length > 0) {
+        const wanted = new URLSearchParams(window.location.search).get("eventId");
+        const today0 = israelToday();
+        const next = eventsData.filter((e) => eventDay(e) >= today0).sort((a, b) => eventDay(a).localeCompare(eventDay(b)))[0];
+        setSelectedEvent(eventsData.find((e) => e.id === wanted) || next || eventsData[0]);
       }
     } catch (error) {
       console.error("Failed to load data:", error);
@@ -91,30 +101,21 @@ export default function StaffScheduling() {
     setIsLoading(false);
   };
 
+  // The shared "חסר צוות" rule (src/lib/missingTeam.js, 2026-10-07) — the same events the
+  // sidebar and the dashboard count. Before: the editor counted as crew here (an event with
+  // 2 shooters + editor looked full) and today's events dropped out from 03:00 (UTC).
+  const today = israelToday();
   const upcomingEvents = events
     .filter(e => {
-      if (new Date(e.date) < new Date()) return false;
-      if (filterMissing) {
-        const assignedTeam = (e.team || []).filter(m => m.staffMemberName);
-        const requiredCrew = e.requiredCrew || 3;
-        return assignedTeam.length < requiredCrew;
-      }
-      return true;
+      if (eventDay(e) < today) return false;
+      return filterMissing ? isMissingTeam(e, today) : true;
     })
-    .sort((a, b) => new Date(a.date) - new Date(b.date));
+    .sort((a, b) => eventDay(a).localeCompare(eventDay(b)));
 
   const getTeamStatus = (event) => {
-    const assignedTeam = event.team?.filter(m => m.staffMemberName) || [];
-    const assignedNonEditorTeam = assignedTeam.filter(member => {
-      const staffMember = staffMembers.find(s => s.name === member.staffMemberName);
-      return staffMember?.role !== 'editor';
-    });
-    const requiredCrew = event.requiredCrew || 3;
-    const isFullTeam = assignedNonEditorTeam.length >= requiredCrew;
-    const missingCount = requiredCrew - assignedNonEditorTeam.length;
-    // requiredCrew is returned (additively -- no existing consumer changes) so the
-    // calendar chip can show "2/3" without recomputing the `|| 3` default itself.
-    return { isFullTeam, missingCount, assignedCount: assignedNonEditorTeam.length, requiredCrew };
+    const assignedCount = assignedShooters(event);
+    const requiredCrew = requiredShooters(event);
+    return { isFullTeam: assignedCount >= requiredCrew, missingCount: Math.max(0, requiredCrew - assignedCount), assignedCount, requiredCrew };
   };
 
   // Group once instead of running `events.filter(...)` inside the day loop, which
@@ -354,9 +355,9 @@ export default function StaffScheduling() {
                         </div>
                         {/* Event notes, verbatim. The owner writes things like "ביקשו את
                             דודו" here and wants to see them while assigning, not after. */}
-                        {event.notes?.trim() && (
+                        {event.displayNotes && (
                           <div className="mt-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-200 whitespace-pre-wrap break-words">
-                            📝 {event.notes.trim()}
+                            📝 {event.displayNotes}
                           </div>
                         )}
                       </div>
@@ -417,9 +418,9 @@ export default function StaffScheduling() {
                   {selectedEvent.venue && (
                     <p className="text-gray-500 text-sm mt-1">📍 {selectedEvent.venue}</p>
                   )}
-                  {selectedEvent.notes?.trim() && (
+                  {selectedEvent.displayNotes && (
                     <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200 whitespace-pre-wrap break-words">
-                      📝 {selectedEvent.notes.trim()}
+                      📝 {selectedEvent.displayNotes}
                     </div>
                   )}
                 </div>
@@ -573,7 +574,7 @@ export default function StaffScheduling() {
                             if (isMobile) setMobileSheetOpen(true);
                             else setEditModalOpen(true);
                           }}
-                          title={`${event.coupleNames} — ${teamStatus.assignedCount}/${teamStatus.requiredCrew} אנשי צוות`}
+                          title={`${event.coupleNames} — ${teamStatus.assignedCount}/${teamStatus.requiredCrew} אנשי צוות${event.venue ? ` · ${event.venue}` : ""}${event.displayNotes ? `\n📝 ${event.displayNotes}` : ""}`}
                           className={`w-full flex items-center gap-1 md:gap-1.5 rounded px-1 py-[3px] md:py-1 transition-colors ${
                             teamStatus.isFullTeam
                               ? 'bg-green-500/10 hover:bg-green-500/20 text-green-300'
@@ -658,9 +659,9 @@ export default function StaffScheduling() {
                   {selectedEvent && format(new Date(selectedEvent.date), "d/M/yyyy")}
                   {selectedEvent?.venue && <span> · {selectedEvent.venue}</span>}
                 </div>
-                {selectedEvent?.notes?.trim() && (
+                {selectedEvent?.displayNotes && (
                   <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm font-normal text-amber-200 whitespace-pre-wrap break-words">
-                    📝 {selectedEvent.notes.trim()}
+                    📝 {selectedEvent.displayNotes}
                   </div>
                 )}
               </DialogTitle>

@@ -4,17 +4,15 @@ import { format } from "date-fns";
 import { Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useNavigate } from "react-router-dom";
+import { isMissingTeam, israelToday, assignedShooters, requiredShooters, eventDay } from "@/lib/missingTeam";
 
 export default function DashboardMissingTeamCard({ events }) {
   const navigate = useNavigate();
-  const now = new Date();
-
-  const missingTeamEvents = events.filter((e) => {
-    if (new Date(e.date) < now) return false;
-    const assigned = e.team?.length || 0;
-    const required = e.requiredCrew || 0;
-    return assigned < required;
-  });
+  // The shared rule (src/lib/missingTeam.js) — same number as the sidebar and the staff page.
+  const today = israelToday();
+  const missingTeamEvents = events
+    .filter((e) => isMissingTeam(e, today))
+    .sort((a, b) => eventDay(a).localeCompare(eventDay(b)));
 
   return (
     <Card className="bg-gray-900/50 border-gray-800 backdrop-blur-sm flex flex-col h-full">
@@ -35,9 +33,8 @@ export default function DashboardMissingTeamCard({ events }) {
         ) : (
           <div className="divide-y divide-gray-800/60">
             {missingTeamEvents.map((event) => {
-              const assigned = event.team?.length || 0;
-              const required = event.requiredCrew || 0;
-              const missing = required - assigned;
+              const assigned = assignedShooters(event);
+              const required = requiredShooters(event);
               return (
                 <div
                   key={event.id}

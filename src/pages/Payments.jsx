@@ -16,7 +16,8 @@ import StaffPaymentDetailDialog from '@/components/payments/StaffPaymentDetailDi
 import RecordStaffPaymentDialog from '@/components/payments/RecordStaffPaymentDialog';
 import { supabase } from '@/api/supabaseClient';
 import { toast } from 'sonner';
-import { unpaidRowsForStaff, creditByStaff, creditForExactPeriod, undoablePaymentIds, periodRange } from '@/lib/staffPaymentAllocation';
+import { unpaidRowsForStaff, creditByStaff, creditForExactPeriod, undoablePaymentIds, periodRange, earlierMonthDebts } from '@/lib/staffPaymentAllocation';
+import { todayInIsrael } from '@/lib/localDate';
 const MONTHS_HE = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
 const StaffPayment = base44.entities.StaffPayment;
 
@@ -391,6 +392,10 @@ export default function Payments() {
     };
     const totalPaidAmount = Object.values(paymentsHistory).reduce((sum, staff) => sum + staff.total, 0);
 
+    // Still owed for earlier months (2026-10-07) — shown whatever month is on screen, so an
+    // open September is not forgotten once October starts.
+    const earlierDebts = useMemo(() => earlierMonthDebts(events, staffPayments, todayInIsrael()), [events, staffPayments]);
+
     if (isLoading) {
         return (
             <div className="min-h-screen bg-gray-950 p-4 md:p-8">
@@ -461,6 +466,23 @@ export default function Payments() {
                     </div>
                 </div>
                 
+                {earlierDebts.length > 0 && (
+                    <div className="mb-4 rounded-xl border border-red-800/60 bg-red-950/30 p-3">
+                        <p className="mb-2 text-sm font-semibold text-red-200">⚠️ נשאר לשלם על חודשים קודמים</p>
+                        <div className="flex flex-wrap gap-2">
+                            {earlierDebts.slice(0, 8).map((d) => (
+                                <button
+                                    key={d.key}
+                                    type="button"
+                                    onClick={() => { setSelectedYear(d.year); setSelectedMonth(String(d.month)); }}
+                                    className={`rounded-full border px-3 py-1 text-sm ${selectedYear === d.year && selectedMonth === String(d.month) ? 'border-yellow-400 bg-yellow-400/15 text-yellow-200' : 'border-red-700 bg-red-900/30 text-red-100 hover:bg-red-900/60'}`}
+                                >
+                                    {MONTHS_HE[d.month]} {d.year}: ₪{Math.round(d.remaining).toLocaleString()}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
                 <Tabs defaultValue="owed" className="w-full">
                     <TabsList className="bg-gray-900 border border-gray-800 mb-6">
                         <TabsTrigger value="owed" className="data-[state=active]:bg-yellow-500 data-[state=active]:text-gray-900">

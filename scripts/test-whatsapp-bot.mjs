@@ -1836,6 +1836,78 @@ section('who gets a reminder');
   check('…other categories still respect them', pp32.shouldNotify({ muteUntil: '2099-01-01T00:00:00Z' }, 'lead', '12:00'), false);
 }
 
+// =================================================================================
+// PART 33 — dashboard v2: one "missing team" rule, notes, date search, old debts,
+//           the booking message (2026-10-07)
+// =================================================================================
+
+const mtm = await loadModule('src/lib/missingTeam.js', 'missingteam33');
+const sd = await loadModule('src/lib/searchDate.js', 'searchdate33');
+const spa = await loadModule('src/lib/staffPaymentAllocation.js', 'spa33');
+const sb33 = await loadModule('src/lib/staffBooking.js', 'booking33');
+const ep = await loadModule('src/lib/eventProgress.js', 'progress33');
+
+section('missing team — one rule everywhere');
+{
+  const today = '2026-10-07';
+  const t = (...roles) => roles.map(([role, name]) => ({ role, staffMemberName: name }));
+  check('3 shooters + editor, needs 3 → full', mtm.isMissingTeam({ date: '2026-11-01', requiredCrew: 3, team: t(['photographer1', 'א'], ['photographer2', 'ב'], ['videographer', 'ג'], ['editor', 'ד']) }, today), false);
+  check('2 shooters + editor, needs 3 → missing (the editor is not crew)', mtm.isMissingTeam({ date: '2026-11-01', requiredCrew: 3, team: t(['photographer1', 'א'], ['videographer', 'ג'], ['editor', 'ד']) }, today), true);
+  check('"אין וידאו" fills its slot', mtm.isMissingTeam({ date: '2026-11-01', requiredCrew: 3, team: t(['photographer1', 'א'], ['photographer2', 'ב'], ['videographer', 'אין וידאו']) }, today), false);
+  check("today's event still counts (no UTC drop)", mtm.isMissingTeam({ date: '2026-10-07', requiredCrew: 2, team: [] }, today), true);
+  check('a past event never counts', mtm.isMissingTeam({ date: '2026-10-06', requiredCrew: 2, team: [] }, today), false);
+  check('next year counts too (the sidebar used to stop at Dec 31)', mtm.isMissingTeam({ date: '2027-05-01', team: [] }, today), true);
+  check('empty name rows are not crew', mtm.assignedShooters({ team: [{ role: 'photographer1', staffMemberName: '' }] }), 0);
+  const yp = mtm.yearProgress([{ date: '2026-01-01' }, { date: '2026-12-01' }, { date: '2025-05-01' }], new Date('2026-10-07T10:00:00Z'));
+  check('events this year: held / all', `${yp.done}/${yp.total}`, '1/2');
+  check('notes: event + lead', mtm.combinedNotes('ביקשו את דניאל', 'להגיע 17:00'), 'ביקשו את דניאל\nלהגיע 17:00');
+  check('notes: only on the lead', mtm.combinedNotes('', 'ביקשו את דודו'), 'ביקשו את דודו');
+  check('notes: same text once', mtm.combinedNotes('אותו דבר', 'אותו דבר'), 'אותו דבר');
+}
+
+section('search by date');
+{
+  const now = new Date('2026-10-07T10:00:00');
+  check('16/9/26', JSON.stringify(sd.searchDates('16/9/26', now)), '["2026-09-16"]');
+  check('16.9.2026', JSON.stringify(sd.searchDates('16.9.2026', now)), '["2026-09-16"]');
+  check('16/9 → that day in nearby years', sd.searchDates('16/9', now).join(), '2024-09-16,2025-09-16,2026-09-16,2027-09-16,2028-09-16');
+  check('a name is not a date', sd.searchDates('עדי ואור', now), null);
+  check('a phone is not a date', sd.searchDates('0501234567', now), null);
+  check('lead on that date matches', sd.dateMatches('2026-09-16', '16/9/26', now), true);
+  check('…another date does not', sd.dateMatches('2026-09-17', '16/9/26', now), false);
+}
+
+section('payments: debts left in earlier months');
+{
+  const events = [
+    { date: '2026-09-10', team: [{ staffMemberName: 'דודו', cost: 1000, isPaid: false }, { staffMemberName: 'רון', cost: 800, isPaid: true }] },
+    { date: '2026-08-02', team: [{ staffMemberName: 'דודו', cost: 900, isPaid: false }] },
+    { date: '2026-10-03', team: [{ staffMemberName: 'דודו', cost: 700, isPaid: false }] },
+    { date: '2026-10-20', team: [{ staffMemberName: 'דודו', cost: 700, isPaid: false }] },
+  ];
+  const payments = [{ staffMemberName: 'דודו', amount: 400, appliedAmount: 0, periodFrom: '2026-08-01', periodTo: '2026-08-31' }];
+  const d = spa.earlierMonthDebts(events, payments, '2026-10-07');
+  check('September and August, newest first; this month left out', d.map((x) => `${x.key}:${x.remaining}`).join(' '), '2026-09:1000 2026-08:500');
+  check('month index 0-based for the page', d[0].month, 8);
+}
+
+section('booking message to the crew');
+{
+  const v = sb33.bookingVars({ staffName: 'איילון כהן', roleLabel: 'צלם 1', event: { date: '2026-10-08', coupleNames: 'נלי ותמיר', venue: 'גבעה' }, lead: { productionBridePrepLocation: 'סטודיו מאיה' } });
+  const msg = sb33.renderBookingMessage('', v);
+  check('first name + role + couple', msg.split('\n').slice(0, 2).join(' | '), 'היי איילון 👋 | שובצת כצלם 1 באירוע של נלי ותמיר');
+  check('date with the weekday', msg.includes('📅 יום חמישי, 8.10.2026'), true);
+  check('empty times are dropped, not left blank', msg.includes('חופה'), false);
+  check('getting-ready place kept', msg.includes('💄 התארגנות: סטודיו מאיה'), true);
+  check('a saved template wins', sb33.renderBookingMessage('שלום {{name}} — {{role}}', v), 'שלום איילון — צלם 1');
+}
+
+section('work progress (shared)');
+{
+  check('raw + final + crew flags', ep.progressPct({ team: [{ role: 'photographer1' }], photographer1Done: true, rawLink: 'x', finalDoneManual: false }), 67);
+  check('nothing → 0', ep.progressPct({}), 0);
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

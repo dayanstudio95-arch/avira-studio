@@ -69,7 +69,11 @@ export default function ChatApp() {
     setParams(next, { replace: !id });
   };
 
-  const [box, setBox] = useState(DEFAULT_BOX);
+  // ?box=followup (the dashboard's "שלח פולו-אפ") opens on that box.
+  const [box, setBox] = useState(() => {
+    const b = new URLSearchParams(window.location.search).get("box");
+    return b && BOXES.some((x) => x.key === b) ? b : DEFAULT_BOX;
+  });
   const [search, setSearch] = useState("");
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState({});

@@ -3,17 +3,19 @@ import { Event } from "@/entities/Event";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { TrendingUp, Calendar, Banknote, Receipt, Search, X, CalendarDays } from "lucide-react";
+import { Search, X, CalendarDays } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
 
-import StatsCards from "../components/dashboard/StatsCards";
 import EventsTable from "../components/dashboard/EventsTable";
 import RecentLeadsCard from "../components/dashboard/RecentLeadsCard";
 import DashboardUnpaidCard from "../components/dashboard/DashboardUnpaidCard";
 import DashboardWorkStatusCard from "../components/dashboard/DashboardWorkStatusCard";
 import DashboardMissingTeamCard from "../components/dashboard/DashboardMissingTeamCard";
-import NeedsAttentionCard from "../components/dashboard/NeedsAttentionCard";
+import TodayEventsCard from "../components/dashboard/TodayEventsCard";
+import FinanceCard from "../components/dashboard/FinanceCard";
+import { MeetingsTodayCard, WhatsAppPulseCard, FollowUpCard, PostSignCard } from "../components/dashboard/DailyPulseCards";
+import { israelToday, eventDay } from "@/lib/missingTeam";
 import { calculateNetProfit } from "../lib/profitCalculations";
 import { calculateEventFinancials } from "../lib/financialCalculations";
 
@@ -127,6 +129,13 @@ export default function Dashboard() {
   };
 
   const stats = useMemo(() => calculateStats(), [events, selectedYear]);
+
+  // Still open to collect: events already held and not marked "שולם" (the old sidebar
+  // number, moved here with the rest of the money).
+  const pendingCollection = useMemo(() => {
+    const today = israelToday();
+    return events.reduce((sum, e) => (eventDay(e) < today && e.clientPaymentStatus !== "Paid" ? sum + (e.totalAmountGross || 0) : sum), 0);
+  }, [events]);
 
   // Filter events based on search term, year, and time filter
   const filteredEvents = useMemo(() => {
@@ -287,10 +296,10 @@ export default function Dashboard() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-3">
           <div>
             <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-1">
-              Financial Dashboard
+              לוח בקרה
             </h1>
             <p className="text-gray-400 text-sm md:text-base">
-              Track your wedding photography business performance
+              מה קורה היום, ומה מחכה לך
             </p>
           </div>
           <div className="flex items-center gap-2 w-full md:w-auto">
@@ -317,57 +326,27 @@ export default function Dashboard() {
             without scrolling — see searchAndFilterBar above. */}
         <div className="md:hidden">{searchAndFilterBar}</div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-6">
-          <StatsCards
-            title="הכנסות היום"
-            value={`₪${stats.today.income.toLocaleString()}`}
-            icon={Banknote}
-            bgColor="bg-yellow-500"
-            textColor="text-yellow-400"
-            subValue={`₪${Math.round(stats.today.netProfit).toLocaleString()}`}
-            trend={null}
-          />
-          <StatsCards
-            title="הכנסות החודש"
-            value={`₪${stats.month.income.toLocaleString()}`}
-            icon={TrendingUp}
-            bgColor="bg-blue-500"
-            textColor="text-blue-400"
-            subValue={`₪${Math.round(stats.month.netProfit).toLocaleString()}`}
-          />
-          <StatsCards
-            title="הכנסות השנה"
-            value={`₪${stats.year.income.toLocaleString()}`}
-            icon={Receipt}
-            bgColor="bg-green-500"
-            textColor="text-green-400"
-            subValue={`₪${Math.round(stats.year.netProfit).toLocaleString()}`}
-          />
-          <StatsCards
-            title="אירועים השבוע הקרוב"
-            value={stats.thisWeekUpcoming.length}
-            icon={Calendar}
-            bgColor="bg-purple-500"
-            textColor="text-purple-400"
-            trend={stats.thisWeekUpcoming.length > 0 ? stats.thisWeekUpcoming.map(e => e.coupleNames).join(', ') : 'אין אירועים'}
-          />
+        {/* Dashboard, 2026-10-07 (the owner's layout): today first — today's events with
+            every detail he needs on the day, and all the money in one tile. Then the four
+            "what do I do today" tiles, then the state of the work. "צריך טיפול" left: the
+            WhatsApp and follow-up tiles now say the same thing, each with its own door. */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6 mb-6">
+          <div className="lg:col-span-2"><TodayEventsCard events={events} /></div>
+          <FinanceCard stats={stats} year={selectedYear} pendingCollection={pendingCollection} />
         </div>
 
-        {/* Middle Cards Row.
-            NeedsAttentionCard goes first: it is the only card here that answers "what
-            should I do next" rather than "what is the state of things", and it is the
-            one that turns into bookings. */}
-        {/* Five across on a wide screen. Adding NeedsAttentionCard to a 4-column grid
-            left a single orphaned card on its own row, which read as broken. The
-            middle step is 3 rather than 4 for the same reason: 3+2 sits better than
-            4+1 when the row can't be filled. */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5 gap-3 sm:gap-4 md:gap-6 mb-6">
-          <NeedsAttentionCard />
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-6">
+          <MeetingsTodayCard />
+          <WhatsAppPulseCard />
+          <FollowUpCard />
+          <PostSignCard />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-6">
+          <DashboardMissingTeamCard events={events} />
+          <DashboardWorkStatusCard events={events} onRefresh={loadEvents} />
           <DashboardUnpaidCard events={events} onRefresh={loadEvents} />
           <RecentLeadsCard />
-          <DashboardWorkStatusCard events={events} onRefresh={loadEvents} />
-          <DashboardMissingTeamCard events={events} />
         </div>
 
         {/* Search Bar and Filters — desktop position (mobile renders this above

@@ -20,6 +20,7 @@
 // detail UI is built here; this component only finds records and hands off to the page
 // that already knows how to display them.
 import React, { useState, useEffect, useRef } from "react";
+import { searchDates } from "@/lib/searchDate";
 import { useNavigate } from "react-router-dom";
 import { Search as SearchIcon, Heart, CalendarDays, Users, Loader2 } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -48,9 +49,13 @@ export default function GlobalSearch() {
   const navigate = useNavigate();
 
   // Ctrl/Cmd+K opens the palette from anywhere in the app.
+  // The layout mounts two copies (desktop sidebar + mobile header), so only the copy whose
+  // button is actually on screen answers — otherwise Cmd+K opened two palettes (2026-10-07).
+  const triggerRef = useRef(null);
   useEffect(() => {
     const handleKeyDown = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        if (!triggerRef.current || triggerRef.current.offsetParent === null) return;
         e.preventDefault();
         setOpen((prev) => !prev);
       }
@@ -78,19 +83,28 @@ export default function GlobalSearch() {
       // double-quoted value is taken literally by PostgREST; " and \ are escaped inside it.
       const quoted = `"${term.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
       try {
+        // A date ("16/9/26", "16.9", "2026-09-16") searches the event date instead
+        // (2026-10-07) — dates are stored as YYYY-MM-DD, so the text never matched.
+        const dates = searchDates(q);
         const [leadsRes, eventsRes, staffRes] = await Promise.all([
-          supabase
-            .from("leads")
-            .select("id, couple_names, phone_number")
-            .or(`couple_names.ilike.${quoted},phone_number.ilike.${quoted}`)
-            .order("created_at", { ascending: false })
-            .limit(RESULT_LIMIT),
-          supabase
-            .from("events")
-            .select("id, couple_names, venue, date")
-            .or(`couple_names.ilike.${quoted},venue.ilike.${quoted}`)
-            .order("date", { ascending: false })
-            .limit(RESULT_LIMIT),
+          dates
+            ? supabase.from("leads").select("id, couple_names, phone_number, event_date").in("event_date", dates)
+                .order("event_date", { ascending: false }).limit(RESULT_LIMIT)
+            : supabase
+                .from("leads")
+                .select("id, couple_names, phone_number")
+                .or(`couple_names.ilike.${quoted},phone_number.ilike.${quoted}`)
+                .order("created_at", { ascending: false })
+                .limit(RESULT_LIMIT),
+          dates
+            ? supabase.from("events").select("id, couple_names, venue, date").in("date", dates)
+                .order("date", { ascending: false }).limit(RESULT_LIMIT)
+            : supabase
+                .from("events")
+                .select("id, couple_names, venue, date")
+                .or(`couple_names.ilike.${quoted},venue.ilike.${quoted}`)
+                .order("date", { ascending: false })
+                .limit(RESULT_LIMIT),
           supabase
             .from("staff_members")
             .select("id, name, phone_number")
@@ -129,6 +143,7 @@ export default function GlobalSearch() {
   return (
     <>
       <Button
+        ref={triggerRef}
         variant="ghost"
         size="icon"
         onClick={() => setOpen(true)}

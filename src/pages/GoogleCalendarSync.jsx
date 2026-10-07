@@ -405,7 +405,7 @@ export default function GoogleCalendarSync() {
           className="border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700 gap-1.5"
         >
           <CalendarSync className="w-4 h-4" />
-          סנכרן אירועים
+          סנכרון לפי חודש…
         </Button>
         <Button
           onClick={handleReconcileNow}
@@ -413,7 +413,7 @@ export default function GoogleCalendarSync() {
           className="bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
         >
           {reconciling ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-          סנכרן הכל עכשיו
+          תקן אירועים שלא סונכרנו
         </Button>
         </div>
       </div>
@@ -734,7 +734,7 @@ export default function GoogleCalendarSync() {
               נמצאו <span className="text-white font-semibold">{eventsInSelectedMonth.length}</span> אירועים ב-{HEBREW_MONTHS[syncMonth - 1]} {syncYear}
             </p>
             <p className="text-xs text-gray-500">
-              סנכרון בלבד מספיק ברוב המקרים — הוא כבר מוסיף את הצוות לאירוע. האפשרות השנייה רק מוסיפה מעבר נוסף על כל חבר צוות, ולא שולחת מייל או התראה.
+              שתי האפשרויות לא שולחות מייל, זימון או התראה לאף אחד. "סנכרן" מעדכן את האירועים ביומן (כולל הצוות). האפשרות השנייה עוברת שוב על כל איש צוות — שימושי רק לאירוע שסונכרן לפני ששובץ אליו צוות.
             </p>
           </div>
           <DialogFooter className="flex-col sm:flex-col gap-2">
@@ -744,7 +744,7 @@ export default function GoogleCalendarSync() {
               className="w-full bg-green-600 hover:bg-green-700 text-white gap-1.5"
             >
               {syncRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              סנכרן + הוסף צוות שוב
+              סנכרן + הוסף את הצוות ליומן שוב
             </Button>
             <Button
               onClick={() => handleRunMonthSync(false)}
@@ -753,7 +753,7 @@ export default function GoogleCalendarSync() {
               className="w-full border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700 gap-1.5"
             >
               {syncRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-              סנכרן בלבד (מומלץ)
+              סנכרן (מומלץ)
             </Button>
           </DialogFooter>
         </DialogContent>

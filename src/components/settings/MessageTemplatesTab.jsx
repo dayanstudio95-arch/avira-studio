@@ -153,6 +153,13 @@ const TEMPLATES = [
     variables: ["{{role}}", "{{event_date}}", "{{venue}}", "{{names}}"],
   },
   {
+    key: "template_staff_booking",
+    label: "הודעת שיבוץ לצוות",
+    description: "ההודעה שמוצעת לשליחה לאיש צוות מיד אחרי ששיבצת אותו מפיל הזמינות (\"פנוי\") בכרטיס הליד/אירוע. שורה שהמשתנה שלה ריק (למשל אין מקום התארגנות) לא תופיע.",
+    defaultValue: `היי {{name}} 👋\nשובצת כ{{role}} באירוע של {{names}}\n📅 {{event_date}}\n📍 {{venue}}\n💄 התארגנות: {{prep_location}}\n🕐 קבלת פנים: {{checkin_time}}\n💍 חופה: {{chuppah_time}}\nתאשר/י ב-👍 בבקשה`,
+    variables: ["{{name}}", "{{role}}", "{{names}}", "{{event_date}}", "{{venue}}", "{{prep_location}}", "{{checkin_time}}", "{{chuppah_time}}"],
+  },
+  {
     key: "template_staff_payment_detail",
     label: "פירוט תשלום לאיש צוות",
     description: "ההודעה שתישלח לאיש/אשת צוות כשלוחצים על כפתור 'שלח פירוט' בדף התשלומים — כוללת רשימת אירועים עם תאריך/מיקום/סכום, ואת הסכום הכולל לתשלום (כולל וללא מע\"מ)",
