@@ -11,7 +11,7 @@ import { eventDay, israelToday } from "@/lib/missingTeam";
 function Bars({ series, color }) {
   const max = Math.max(1, ...series);
   return (
-    <div className="flex h-9 items-end gap-[3px]" aria-hidden="true">
+    <div className="flex h-full max-h-20 min-h-9 items-end gap-[3px]" aria-hidden="true">
       {series.map((v, i) => (
         <span
           key={i}
@@ -50,10 +50,10 @@ export default function FinanceCard({ stats, year, pendingCollection, events = [
   }, [events, year]);
 
   const row = (label, s, bars, color) => (
-    <div className="e-row flex items-center gap-3 py-3">
-      <span className="w-14 shrink-0 text-sm text-slate-300">{label}</span>
-      <div className="flex flex-1 justify-center"><Bars series={bars} color={color} /></div>
-      <span className="shrink-0 text-left">
+    <div className="e-row flex min-h-[68px] flex-1 items-stretch gap-3 py-3">
+      <span className="w-14 shrink-0 self-center text-sm text-slate-300">{label}</span>
+      <div className="flex flex-1 items-end justify-center"><Bars series={bars} color={color} /></div>
+      <span className="shrink-0 self-center text-left">
         <span className="block text-xl font-bold leading-tight text-white tabular-nums">{nis(s.income)}</span>
         <span className="block text-[11px] text-emerald-400 tabular-nums">נטו {nis(s.netProfit)}</span>
       </span>
