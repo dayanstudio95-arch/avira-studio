@@ -199,4 +199,6 @@ export const entities = {
   WhatsAppNote: createEntity('whatsapp_notes'),
   WhatsAppActivity: createEntity('whatsapp_activity'),
   WhatsAppTemplate: createEntity('whatsapp_templates'),
+  // Sales meetings + reminders (0076, 2026-10-07).
+  SalesMeeting: createEntity('sales_meetings'),
 };

@@ -37,7 +37,7 @@ function when(iso) {
 // Tagging and details for one conversation. Desktop: a column. Phone: a bottom sheet.
 export default function ContactPanel({
   conversation, lead, labels, convLabelIds, activity, labelsById,
-  onSetType, onSetStage, onToggleLabel, onCreateLead, onToggleBot, onToggleOptOut, onArchive, onPin,
+  onSetType, onSetStage, onToggleLabel, onCreateLead, onToggleBot, onToggleOptOut, onArchive, onPin, onScheduleMeeting,
 }) {
   const c = conversation;
   const stage = effectiveStage(c, lead);
@@ -131,6 +131,11 @@ export default function ContactPanel({
             + צור ליד מהשיחה
           </button>
         )
+      )}
+      {onScheduleMeeting && (
+        <button type="button" onClick={onScheduleMeeting} className="w-full rounded-xl border border-gray-700 bg-gray-900 py-3 text-sm font-semibold text-gray-100 hover:border-yellow-500">
+          📅 קבע פגישה / שיחה
+        </button>
       )}
       {!linked && ["unknown", "lead"].includes(c.contactType) && (
         <p className="-mt-3 text-[11px] text-gray-500">נפתח טופס עם מה שהבוט אסף. נכנס לדף הלידים רק אחרי "שמור".</p>

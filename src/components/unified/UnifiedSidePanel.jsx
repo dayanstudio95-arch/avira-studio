@@ -19,6 +19,7 @@ import LeadFormDialog from "@/components/leads/LeadFormDialog";
 import { packagePrices } from "@/lib/packagePrices";
 import { applyLeadTemplateVariables } from "@/lib/leadMessages";
 import PostSignWizard from "@/components/postSign/PostSignWizard";
+import MeetingDialog from "@/components/meetings/MeetingDialog";
 import { SIGNED_STATUS } from "@/lib/postSignFlow";
 import { calendarSyncOutcome } from "@/lib/actionOutcome";
 import {
@@ -70,6 +71,7 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
   const [isEditLeadOpen, setIsEditLeadOpen] = useState(false);
   const [isSendingSignedContract, setIsSendingSignedContract] = useState(false);
   const [isPostSignOpen, setIsPostSignOpen] = useState(false);
+  const [isMeetingOpen, setIsMeetingOpen] = useState(false);
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   // The notes as they ARE on the row (event first, else the linked lead). Read from props
   // on every render — never from state — so the panel shows the right text for whichever
@@ -620,6 +622,15 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                 <Receipt className="w-5 h-5" />
                 הפקת חשבונית מס קבלה
               </Button>
+              {lead && (
+                <Button
+                  onClick={() => setIsMeetingOpen(true)}
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl gap-2"
+                >
+                  <CalendarIcon className="w-5 h-5" />
+                  קבע פגישה / שיחה
+                </Button>
+              )}
               {lead && !showPaymentSection && (
                 <Button
                   onClick={handleOpenPaymentSection}
@@ -1359,6 +1370,15 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
         existingRequests={availabilityRequests}
         onStaffMembersChanged={onStaffMembersChanged}
       />
+
+      {lead && isMeetingOpen && (
+        <MeetingDialog
+          isOpen
+          onClose={() => setIsMeetingOpen(false)}
+          meeting={null}
+          initial={{ title: lead.coupleNames || "", phone: lead.phoneNumber || "", leadId: lead.id }}
+        />
+      )}
 
       {lead && isPostSignOpen && (
         <PostSignWizard

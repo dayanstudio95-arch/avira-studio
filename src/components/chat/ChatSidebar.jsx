@@ -1,13 +1,13 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Trash2, SlidersHorizontal, LayoutGrid, X, Bell, History } from "lucide-react";
+import { Plus, Trash2, SlidersHorizontal, LayoutGrid, X, Bell, History, CalendarClock } from "lucide-react";
 import { BOXES } from "@/lib/chatModel";
 
 export const LABEL_COLORS = ["#E5484D", "#F76B15", "#C2410C", "#12A594", "#3E63DD", "#8E4EC6", "#D6409F", "#64748B"];
 
 // Desktop sidebar of "אווירה צ'אט": the boxes, the owner's labels, and the way back to
 // the full system. On a phone the same boxes come from the "עוד" tab (ChatApp.jsx).
-export default function ChatSidebar({ box, setBox, counts, labels, onCreateLabel, onDeleteLabel, onOpenNotifications, className = "" }) {
+export default function ChatSidebar({ box, setBox, counts, labels, onCreateLabel, onDeleteLabel, onOpenNotifications, onOpenMeetings, className = "" }) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [color, setColor] = useState(LABEL_COLORS[0]);
@@ -132,6 +132,11 @@ export default function ChatSidebar({ box, setBox, counts, labels, onCreateLabel
       )}
 
       <div className="mt-auto space-y-0.5 border-t border-gray-800 pt-3">
+        {onOpenMeetings && (
+          <button type="button" onClick={onOpenMeetings} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-start text-sm font-semibold text-yellow-300 hover:bg-gray-800/60">
+            <CalendarClock className="h-4 w-4" /> פגישות
+          </button>
+        )}
         <button type="button" onClick={onOpenNotifications} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-start text-sm text-gray-400 hover:bg-gray-800/60 hover:text-white">
           <Bell className="h-4 w-4" /> התראות
         </button>

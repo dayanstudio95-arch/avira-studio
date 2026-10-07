@@ -52,6 +52,7 @@ const MyEvents = lazy(() => import('./pages/MyEvents'));
 // by full admins and by lead_coordinator (it is a lead-intake screen); RLS enforces the
 // same four roles independently of this routing.
 const WhatsAppInbox = lazy(() => import('./pages/WhatsAppInbox'));
+const Meetings = lazy(() => import('./pages/Meetings'));
 
 // Wedding Albums module (see CLAUDE.md's "Wedding Albums module" section) — admin
 // pages for the album_manager scoped role + full admin access, and the two public
@@ -146,6 +147,7 @@ const AuthenticatedApp = () => {
                 0054_whatsapp_bot.sql's RLS policies (owner/admin/studio_manager/
                 lead_coordinator); RLS, not this route, is the real boundary. */}
             <Route path="/WhatsAppInbox" element={<WhatsAppInbox />} />
+          <Route path="/Meetings" element={<Meetings />} />
             <Route path="*" element={<PageNotFound />} />
           </Routes>
         </Suspense>
@@ -244,6 +246,7 @@ const AuthenticatedApp = () => {
           <Route path="/AutomationLogs" element={<AutomationLogs />} />
           <Route path="/PendingApprovals" element={<PendingApprovals />} />
           <Route path="/WhatsAppInbox" element={<WhatsAppInbox />} />
+          <Route path="/Meetings" element={<Meetings />} />
           <Route path="/BotControlCenter" element={<BotControlCenter />} />
           <Route path="/SystemAdvisor" element={<SystemAdvisor />} />
 

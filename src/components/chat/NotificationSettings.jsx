@@ -147,6 +147,13 @@ export default function NotificationSettings({ tenantId, userId }) {
             <Switch checked={!!prefs[key]} onCheckedChange={(v) => update({ [key]: v })} aria-label={label} />
           </label>
         ))}
+        <div className="flex items-center gap-3 border-t border-gray-800 px-4 py-3">
+          <span className="flex-1">
+            <span className="block text-sm text-gray-100">📅 תזכורות פגישות</span>
+            <span className="block text-xs text-gray-500">תמיד פועלות — גם בלילה וגם כשההתראות מושתקות. 10 דק׳ לפני, ושוב אחרי 5 דק׳ אם לא לחצת.</span>
+          </span>
+          <span className="text-xs font-semibold text-emerald-400">תמיד</span>
+        </div>
       </section>
 
       <section className="overflow-hidden rounded-2xl bg-gray-900">

@@ -19,6 +19,7 @@ export const NAV_ROUTE_BY_NOTIFICATION_TYPE = {
   album_revision_requested: "/AlbumOrders",
   album_transfer_proof_uploaded: "/AlbumOrders",
   staff_availability_response: "/StaffScheduling",
+  meeting_reminder: "/Meetings",
 };
 
 export function navRouteForNotification(type) {

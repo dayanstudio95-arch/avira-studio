@@ -1775,6 +1775,67 @@ section('the date on a row, and whether it is free');
   check('undo of "לפולו-אפ"', JSON.stringify(cm31.reverseOf({ action: 'followup_flag', conversationId: 'X', before: {}, after: { followupFlaggedAt: 't' } })), '{"kind":"conversation","id":"X","values":{"followupFlaggedAt":null,"followupDismissedAt":null}}');
 }
 
+// =================================================================================
+// PART 32 — sales meetings: Israel times, groups, who gets a reminder (2026-10-07)
+// =================================================================================
+
+const mt = await loadModule('src/lib/meetings.js', 'meetings32');
+const mr = await loadModule('supabase/functions/_shared/meetingReminders.ts', 'meetrem32');
+const pp32 = await loadModule('supabase/functions/_shared/pushPrefs.ts', 'pushprefs32');
+
+section('meeting times are Israel wall-clock');
+{
+  check('summer (UTC+3): 12:00 → 09:00Z', mt.israelLocalToUtc('2026-10-08', '12:00').toISOString(), '2026-10-08T09:00:00.000Z');
+  check('winter (UTC+2): 12:00 → 10:00Z', mt.israelLocalToUtc('2026-11-08', '12:00').toISOString(), '2026-11-08T10:00:00.000Z');
+  check('back to the form', JSON.stringify(mt.utcToIsraelParts('2026-10-08T09:00:00.000Z')), '{"date":"2026-10-08","time":"12:00"}');
+  check('bad input → null', mt.israelLocalToUtc('', '12:00'), null);
+  check('when, in words', mt.formatMeetingWhen('2026-10-09T09:00:00.000Z'), 'יום שישי, 9.10 בשעה 12:00');
+}
+
+section('meeting groups');
+{
+  const now = new Date('2026-10-07T07:00:00Z'); // 10:00 Israel
+  const m = (id, startsAt, extra = {}) => ({ id, startsAt, status: 'scheduled', durationMin: 30, ...extra });
+  const g = mt.groupMeetings([
+    m('today', '2026-10-07T13:00:00Z'),
+    m('tomorrow', '2026-10-08T09:00:00Z'),
+    m('week', '2026-10-11T09:00:00Z'),
+    m('later', '2026-10-20T09:00:00Z'),
+    m('done', '2026-10-06T09:00:00Z', { status: 'done' }),
+    m('over', '2026-10-07T05:00:00Z'),
+    m('cancelled', '2026-10-09T09:00:00Z', { status: 'cancelled' }),
+  ], now);
+  check('today', g.today.map((x) => x.id).join(), 'today');
+  check('tomorrow', g.tomorrow.map((x) => x.id).join(), 'tomorrow');
+  check('this week', g.week.map((x) => x.id).join(), 'week');
+  check('later', g.later.map((x) => x.id).join(), 'later');
+  check('past: done, ended, cancelled (newest first)', g.past.map((x) => x.id).join(), 'cancelled,over,done');
+  check('starts in 25 min', mt.startsInLabel('2026-10-07T07:25:00Z', now.getTime()), 'בעוד 25 דק׳');
+  check('the banner picks the next one within the hour', mt.nextSoon([m('a', '2026-10-07T07:40:00Z'), m('b', '2026-10-07T07:20:00Z')], 60, now.getTime())?.id, 'b');
+  check('nothing soon → no banner', mt.nextSoon([m('a', '2026-10-07T12:00:00Z')], 60, now.getTime()), null);
+}
+
+section('who gets a reminder');
+{
+  const now = Date.parse('2026-10-07T09:00:00Z');
+  const base = { id: 'M', title: 'עדי ואור', kind: 'call', status: 'scheduled', phone: '050' };
+  const at = (min) => new Date(now + min * 60000).toISOString();
+  check('11 min ahead → not yet', mr.isFirstDue({ ...base, starts_at: at(11) }, now), false);
+  check('10 min ahead → first', mr.isFirstDue({ ...base, starts_at: at(10) }, now), true);
+  check('booked 3 min ahead → first at once', mr.isFirstDue({ ...base, starts_at: at(3) }, now), true);
+  check('already sent → no', mr.isFirstDue({ ...base, starts_at: at(8), reminder_sent_at: at(-2) }, now), false);
+  check('cancelled → no', mr.isFirstDue({ ...base, starts_at: at(5), status: 'cancelled' }, now), false);
+  check('started 40 min ago → no (stale)', mr.isFirstDue({ ...base, starts_at: at(-40) }, now), false);
+  check('second: 5 min after the first, not seen', mr.isSecondDue({ ...base, starts_at: at(5), reminder_sent_at: at(-5) }, now), true);
+  check('second: only 4 min after → not yet', mr.isSecondDue({ ...base, starts_at: at(6), reminder_sent_at: at(-4) }, now), false);
+  check('second: seen → no', mr.isSecondDue({ ...base, starts_at: at(5), reminder_sent_at: at(-5), acknowledged_at: at(-1) }, now), false);
+  check('second: once only', mr.isSecondDue({ ...base, starts_at: at(5), reminder_sent_at: at(-5), second_reminder_sent_at: at(0) }, now), false);
+  check('first text', mr.reminderText({ ...base, starts_at: at(10) }, 'first', now).title, '⏰ בעוד 10 דק׳: שיחה עם עדי ואור');
+  check('second text at start', mr.reminderText({ ...base, kind: 'zoom', starts_at: at(0), zoom_url: 'https://zoom.us/j/1' }, 'second', now).body, '050 · https://zoom.us/j/1 · עוד לא אישרת שראית');
+  check('a meeting reminder ignores night + mute', pp32.shouldNotify({ muteUntil: '2099-01-01T00:00:00Z' }, 'meeting', '23:30'), true);
+  check('…other categories still respect them', pp32.shouldNotify({ muteUntil: '2099-01-01T00:00:00Z' }, 'lead', '12:00'), false);
+}
+
 await rm(outDir, { recursive: true, force: true });
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

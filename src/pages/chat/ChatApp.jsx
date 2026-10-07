@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { MessageSquare, X, LayoutGrid, SlidersHorizontal, LogOut, Bell, Flame, Hourglass, Settings2, History, Users, Phone, AlertCircle, BookImage } from "lucide-react";
+import { MessageSquare, X, LayoutGrid, SlidersHorizontal, LogOut, Bell, Flame, Hourglass, Settings2, History, Users, Phone, AlertCircle, BookImage, CalendarClock } from "lucide-react";
 import { supabase } from "@/api/supabaseClient";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/SupabaseAuthContext";
@@ -12,6 +12,10 @@ import { BOXES, DEFAULT_BOX, boxCounts, matchesBox, matchesSearch, sortConversat
 import { isAwaitingFollowUp } from "@/lib/followUpQueue";
 import WhatsAppFollowUpDialog from "@/components/whatsapp/WhatsAppFollowUpDialog";
 import WhatsAppFollowUpSettingsDialog from "@/components/whatsapp/WhatsAppFollowUpSettingsDialog";
+import MeetingDialog from "@/components/meetings/MeetingDialog";
+import MeetingsList, { useMeetings, MEETINGS_KEY } from "@/components/meetings/MeetingsList";
+import { nextSoon, kindLabel as meetingKindLabel, utcToIsraelParts } from "@/lib/meetings";
+import { shortCoupleNames } from "@/lib/chatModel";
 import { useChatData } from "@/components/chat/useChatData";
 import { useThread } from "@/components/chat/useThread";
 import ChatSidebar from "@/components/chat/ChatSidebar";
@@ -75,6 +79,25 @@ export default function ChatApp() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [followUpOpen, setFollowUpOpen] = useState(false);
   const [followUpSettingsOpen, setFollowUpSettingsOpen] = useState(false);
+  const [meetingsOpen, setMeetingsOpen] = useState(false);
+  const [meetingDialog, setMeetingDialog] = useState(null); // { initial }
+  const meetingsQ = useMeetings();
+  const soonMeeting = nextSoon(meetingsQ.data || []);
+
+  // A tap on a meeting reminder opens /chat?meeting=<id>: that tap IS "ראיתי" (no second
+  // reminder), and the meetings list opens.
+  const meetingParam = params.get("meeting");
+  useEffect(() => {
+    if (!meetingParam) return;
+    base44.entities.SalesMeeting.update(meetingParam, { acknowledgedAt: new Date().toISOString() })
+      .then(() => qc.invalidateQueries({ queryKey: MEETINGS_KEY }))
+      .catch(() => {});
+    setMeetingsOpen(true);
+    const next = new URLSearchParams(params);
+    next.delete("meeting");
+    setParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meetingParam]);
 
   // The chat lives outside Layout, so the menu's "hot lead" badge (notification type
   // whatsapp_hot_lead → /chat) is cleared here, as Layout does for every other page.
@@ -250,6 +273,17 @@ export default function ChatApp() {
   };
 
   const one = active ? [active] : [];
+  const openMeetingFor = (c) => {
+    const lead = c.matchedLeadId ? data.leadsById[c.matchedLeadId] : null;
+    setMeetingDialog({
+      initial: {
+        title: lead?.coupleNames || shortCoupleNames(c.coupleNames) || c.displayName || c.phone || "",
+        phone: c.callbackPhone || c.phone || lead?.phoneNumber || "",
+        conversationId: c.id,
+        leadId: c.matchedLeadId || null,
+      },
+    });
+  };
   const panelProps = active && {
     conversation: active,
     lead: activeLead,
@@ -273,6 +307,7 @@ export default function ChatApp() {
     onToggleOptOut: (on) => run(data.actions.setOptedOut(active, on), () => (on ? "סומן: לא לשלוח הודעות מרוכזות" : "הסימון הוסר")),
     onArchive: () => run(data.actions.setArchived(one, !active.archivedAt), () => (active.archivedAt ? "הוחזר מהארכיון" : "הועבר לארכיון · יחזור לבד כשיכתבו שוב")),
     onPin: () => run(data.actions.setPinned(one, !active.pinnedAt), () => (active.pinnedAt ? "בוטלה הנעיצה" : "ננעץ למעלה")),
+    onScheduleMeeting: () => openMeetingFor(active),
     onCreateLead: () => {
       const c = active;
       const notes = [];
@@ -378,6 +413,21 @@ export default function ChatApp() {
     </div>
   );
 
+  // A meeting in the next hour: a bar above the list, so it can't be missed.
+  const meetingBanner = soonMeeting && (
+    <button
+      type="button"
+      onClick={() => setMeetingsOpen(true)}
+      className="flex w-full items-center gap-2 border-b border-red-900/60 bg-red-950/40 px-3.5 py-2 text-start text-sm text-red-100"
+    >
+      <CalendarClock className="h-4 w-4 shrink-0 text-red-300" />
+      <span className="min-w-0 flex-1 truncate">
+        {utcToIsraelParts(soonMeeting.startsAt).time} · {meetingKindLabel(soonMeeting.kind)} עם {soonMeeting.title}
+      </span>
+      <span className="shrink-0 text-xs text-red-300">לפגישות ›</span>
+    </button>
+  );
+
   const bottomTabs = [
     { key: "client", label: "לקוחות", icon: Users },
     ...BOTTOM_LABEL_TABS.map((t) => {
@@ -419,6 +469,7 @@ export default function ChatApp() {
           try { await data.actions.createLabel(name, color); toast.success("התווית נוצרה"); } catch (e) { toast.error("יצירת התווית נכשלה", { description: e?.message }); }
         }}
         onOpenNotifications={() => setNotifOpen(true)}
+        onOpenMeetings={() => setMeetingsOpen(true)}
         onDeleteLabel={async (id) => {
           try { await data.actions.deleteLabel(id); if (box === "label:" + id) setBox(DEFAULT_BOX); toast.success("התווית נמחקה"); } catch (e) { toast.error("המחיקה נכשלה", { description: e?.message }); }
         }}
@@ -445,7 +496,7 @@ export default function ChatApp() {
           labels={data.labels}
           onBulk={onBulk}
           mobileChips={chips}
-          topBar={followUpBar}
+          topBar={<>{meetingBanner}{followUpBar}</>}
           compact
         />
         {!selectMode && (
@@ -484,6 +535,7 @@ export default function ChatApp() {
             needsReplyNow={needsReply(active)}
             onHandled={() => run(data.actions.setHandled([active], true), () => 'סומן "טופל" · יחזור ל"דורש מענה" כשיכתבו שוב')}
             inFollowUp={isAwaitingFollowUp(active, data.followUpAfterDays || 0)}
+            onScheduleMeeting={() => openMeetingFor(active)}
             onToggleFollowUp={(on) => run(data.actions.setFollowUpFlag([active], on), () => (on ? "נוסף לתור הפולו-אפ" : "הוסר מתור הפולו-אפ"))}
             templates={data.templates}
             onSaveTemplate={saveTemplate}
@@ -545,6 +597,7 @@ export default function ChatApp() {
             </div>
             <div className="mt-4 space-y-1 border-t border-gray-800 pt-3">
               <Link to="/BotControlCenter" className="flex min-h-[44px] items-center gap-3 rounded-xl px-3 text-gray-300"><SlidersHorizontal className="h-5 w-5" /> מרכז שליטה לבוט</Link>
+              <button type="button" onClick={() => { setMoreOpen(false); setMeetingsOpen(true); }} className="flex min-h-[44px] w-full items-center gap-3 rounded-xl px-3 text-yellow-300"><CalendarClock className="h-5 w-5" /> פגישות</button>
               <Link to="/" className="flex min-h-[44px] items-center gap-3 rounded-xl px-3 text-gray-300"><LayoutGrid className="h-5 w-5" /> למערכת המלאה</Link>
               <Link to="/WhatsAppInbox" className="flex min-h-[44px] items-center gap-3 rounded-xl px-3 text-gray-500"><History className="h-5 w-5" /> מסך השיחות הישן (גיבוי)</Link>
               <button type="button" onClick={() => logout()} className="flex min-h-[44px] w-full items-center gap-3 rounded-xl px-3 text-gray-400"><LogOut className="h-5 w-5" /> התנתקות</button>
@@ -565,6 +618,28 @@ export default function ChatApp() {
           </div>
         </div>
       )}
+
+      {meetingsOpen && (
+        <div className="fixed inset-0 z-40 flex flex-col justify-end bg-black/60 md:items-center md:justify-center" onClick={() => setMeetingsOpen(false)}>
+          <div role="dialog" aria-label="פגישות" onClick={(e) => e.stopPropagation()} className="flex max-h-[90dvh] w-full flex-col overflow-hidden rounded-t-3xl border-t border-gray-800 bg-gray-950 pb-[max(1rem,env(safe-area-inset-bottom))] md:w-[560px] md:rounded-3xl md:border">
+            <div className="flex items-center justify-between px-4 pt-4">
+              <span className="flex items-center gap-2 text-lg font-bold"><CalendarClock className="h-5 w-5 text-yellow-400" /> פגישות</span>
+              <button type="button" onClick={() => setMeetingsOpen(false)} aria-label="סגור" className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-800"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <MeetingsList onOpenConversation={(id) => { setMeetingsOpen(false); setActiveId(id); }} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      <MeetingDialog
+        isOpen={!!meetingDialog}
+        onClose={() => setMeetingDialog(null)}
+        meeting={null}
+        initial={meetingDialog?.initial}
+        onSaved={() => qc.invalidateQueries({ queryKey: MEETINGS_KEY })}
+      />
 
       <WhatsAppFollowUpSettingsDialog
         isOpen={followUpSettingsOpen}

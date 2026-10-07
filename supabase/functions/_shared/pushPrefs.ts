@@ -2,7 +2,9 @@
 // scripts/test-whatsapp-bot.mjs PART 17. The same defaults are mirrored for the screen in
 // src/lib/push.js; if the two ever disagree the server wins (it decides what is sent).
 
-export type PushCategory = 'lead' | 'hot' | 'client' | 'staff' | 'group' | 'other' | 'delivery';
+// 'meeting' (2026-10-07): a sales-meeting reminder the owner set for himself — always sent,
+// whatever the switches, mute or night window say (shouldNotify).
+export type PushCategory = 'lead' | 'hot' | 'client' | 'staff' | 'group' | 'other' | 'delivery' | 'meeting';
 
 export interface PushPrefs {
   lead: boolean;      // a lead or an unknown number wrote
@@ -63,6 +65,7 @@ export function inWindow(nowHHMM: string, start: string, end: string): boolean {
 
 // `nowHHMM` is Jerusalem wall time; `nowMs` the instant.
 export function shouldNotify(rawPrefs: unknown, category: PushCategory, nowHHMM: string, nowMs = Date.now()): boolean {
+  if (category === 'meeting') return true;
   const p = mergePrefs(rawPrefs);
   if (p.muteUntil) {
     const until = new Date(p.muteUntil).getTime();

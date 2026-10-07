@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ChevronRight, Pin, PinOff, Archive, ArchiveRestore, Tag, Send, Loader2, BellOff, Trash2, Plus, X } from "lucide-react";
+import { ChevronRight, Pin, PinOff, Archive, ArchiveRestore, Tag, Send, Loader2, BellOff, Trash2, Plus, X, CalendarPlus } from "lucide-react";
 import { toast } from "sonner";
 import MessageBubble from "@/components/whatsapp/MessageBubble";
 import { groupMessagesByDay, formatMessageTime } from "@/components/whatsapp/whatsappInboxShared";
@@ -28,7 +28,7 @@ function NoteBubble({ note, onDelete }) {
 
 // The conversation column: header, timeline (messages + internal notes), composer.
 export default function ChatThread({
-  conversation, lead, labels, thread, onBack, onTogglePanel, onPin, onArchive, onHandled, needsReplyNow, onToggleFollowUp, inFollowUp,
+  conversation, lead, labels, thread, onBack, onTogglePanel, onPin, onArchive, onHandled, needsReplyNow, onToggleFollowUp, inFollowUp, onScheduleMeeting,
   templates, onSaveTemplate, onDeleteTemplate, userContext,
 }) {
   const [text, setText] = useState("");
@@ -153,6 +153,11 @@ export default function ChatThread({
         <button type="button" onClick={onArchive} aria-label={conversation.archivedAt ? "החזר מהארכיון" : "העבר לארכיון"} title={conversation.archivedAt ? "החזר מהארכיון" : "ארכיון (חוזר לבד כשכותבים שוב)"} className="hidden h-10 w-10 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white md:flex">
           {conversation.archivedAt ? <ArchiveRestore className="h-5 w-5" /> : <Archive className="h-5 w-5" />}
         </button>
+        {onScheduleMeeting && (
+          <button type="button" onClick={onScheduleMeeting} aria-label="קבע פגישה" title="קבע פגישה / שיחה" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-800 text-gray-200 hover:text-yellow-300">
+            <CalendarPlus className="h-5 w-5" />
+          </button>
+        )}
         <button type="button" onClick={onTogglePanel} aria-label="תיוג ופרטים" title="תיוג ופרטים" className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-800 text-gray-200 hover:text-white">
           <Tag className="h-5 w-5" />
         </button>

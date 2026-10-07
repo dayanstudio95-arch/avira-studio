@@ -42,6 +42,11 @@ export interface PushPayload {
   title: string;
   body: string;
   conversationId?: string | null;
+  // Meeting reminders (2026-10-07): where a tap opens, the replace-key, and "stay on screen
+  // until tapped". Without them the behaviour is exactly as before.
+  url?: string;
+  tag?: string;
+  requireInteraction?: boolean;
 }
 
 async function unreadBadge(supabase: any, tenantId: string): Promise<number | null> {
@@ -86,8 +91,9 @@ export async function sendPush(
     const text = JSON.stringify({
       title: payload.title.slice(0, 80),
       body: payload.body.slice(0, 180),
-      url: payload.conversationId ? `/chat?c=${payload.conversationId}` : '/chat',
-      tag: payload.conversationId ? `c-${payload.conversationId}` : `a-${category}`,
+      url: payload.url || (payload.conversationId ? `/chat?c=${payload.conversationId}` : '/chat'),
+      tag: payload.tag || (payload.conversationId ? `c-${payload.conversationId}` : `a-${category}`),
+      requireInteraction: !!payload.requireInteraction,
       badge,
     });
     // Topic: a newer notification for the same chat replaces one still waiting in the push

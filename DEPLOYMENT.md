@@ -903,3 +903,12 @@ logic is sound, not that the file-upload UI has zero bugs of its own.
    precisely the kind of thing that can silently break a restore path.
 
 
+
+
+## Sales-meeting reminders (2026-10-07)
+
+`supabase/functions/meeting-reminders` runs every minute (pg_cron job `meeting-reminders-1min`),
+authenticated by `x-cron-secret` = `MEETING_REMINDERS_CRON_SECRET` (`verify_jwt = false` in
+config.toml). The job's SQL is generated into `.secrets/meeting-reminders-cron.sql` (git-ignored,
+contains the secret) and run once with `npx supabase db query --linked -f …`. To stop it:
+`select cron.unschedule('meeting-reminders-1min');`
