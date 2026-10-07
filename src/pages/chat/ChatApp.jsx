@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { MessageSquare, Clock, Send, MoreHorizontal, X, LayoutGrid, SlidersHorizontal, LogOut, Bell, HelpCircle, Flame, Hourglass, Settings2, History } from "lucide-react";
+import { MessageSquare, MoreHorizontal, X, LayoutGrid, SlidersHorizontal, LogOut, Bell, Flame, Hourglass, Settings2, History, Users, Phone, AlertCircle } from "lucide-react";
 import { supabase } from "@/api/supabaseClient";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/SupabaseAuthContext";
@@ -30,14 +30,16 @@ import { registerChatServiceWorker, setBadge } from "@/lib/push";
 // Nothing here sends to more than one person: bulk SENDING is stage 2 (the safety
 // rules agreed with the owner). Bulk SORTING is here, and every change can be undone.
 
-const MOBILE_TABS = [
-  { key: "unknown", label: "לא מוכר", icon: HelpCircle },
-  { key: "needs", label: "דורש מענה", icon: Clock },
-  { key: "followup", label: "פולו-אפ", icon: Send },
+// The bottom bar on a phone (the owner's choice, 2026-10-07): clients and two of his own
+// labels, found by name — a label that doesn't exist (renamed, deleted) is simply left out.
+const BOTTOM_LABEL_TABS = [
+  { name: "לחזור בטלפון", icon: Phone },
+  { name: "דחוף", icon: AlertCircle },
 ];
-// The primary row (2026-10-07, as in the old inbox): strangers, leads, follow-ups, hot,
-// needs-reply, all. Everything else is under "עוד".
+// The tab rows above the list (2026-10-07, as in the old inbox). On a phone: two rows —
+// לא מוכר · לידים · פולו אפ / ליד חם · לא נקראו · הכל · עוד. Everything else is under "עוד".
 const PRIMARY_BOXES = BOXES.filter((b) => b.primary);
+const CHIP_ROWS = [["unknown", "lead", "followup"], ["hot", "unread", "all"]];
 const CHIP_ICONS = { followup: Hourglass, hot: Flame };
 
 function useDebounced(value, ms) {
@@ -84,6 +86,16 @@ export default function ChatApp() {
       })
       .catch(() => {});
   }, [data.user]);
+
+  // Opened from the system (index.html, white page) the area under the bottom bar on an
+  // iPhone showed white. The page behind the app is dark while the chat is open.
+  useEffect(() => {
+    const html = document.documentElement, body = document.body;
+    const prev = [html.style.background, body.style.background];
+    html.style.background = "#030712";
+    body.style.background = "#030712";
+    return () => { html.style.background = prev[0]; body.style.background = prev[1]; };
+  }, []);
 
   useEffect(() => {
     document.title = "אווירה צ'אט";
@@ -320,38 +332,54 @@ export default function ChatApp() {
 
   const title = q ? `חיפוש: ${q}` : box.startsWith("label:") ? `תווית: ${labelsById[box.slice(6)]?.name || ""}` : BOXES.find((b) => b.key === box)?.label;
 
-  const chips = (
-    <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none] md:flex-wrap md:overflow-visible [&::-webkit-scrollbar]:hidden">
-      {PRIMARY_BOXES.map((b) => {
-        const on = box === b.key && !q;
-        const n = counts[b.key] || 0;
-        const Icon = CHIP_ICONS[b.key];
-        const showN = b.key !== "all" && n > 0;
-        const alert = (b.key === "needs" || b.key === "hot") && n > 0;
-        return (
-          <button
-            key={b.key}
-            type="button"
-            onClick={() => { setBox(b.key); setSearch(""); }}
-            className={`flex min-h-[34px] shrink-0 items-center gap-1 rounded-full px-3 text-sm md:min-h-[30px] md:px-2.5 md:text-xs ${on ? "bg-yellow-400 font-semibold text-gray-900" : "border border-gray-800 bg-gray-800/70 text-gray-300"}`}
-          >
-            {Icon && <Icon className={`h-3.5 w-3.5 ${b.key === "hot" && !on ? "text-orange-400" : ""}`} aria-hidden="true" />}
-            {b.label}
-            {showN && (
-              <span className={`rounded-full px-1.5 text-[11px] font-bold ${on ? "bg-gray-900/20" : alert ? "bg-red-500 text-white" : "bg-gray-700 text-gray-200"}`}>{n}</span>
-            )}
-          </button>
-        );
-      })}
+  const chip = (key) => {
+    const b = BOXES.find((x) => x.key === key);
+    const on = box === key && !q;
+    const n = counts[key] || 0;
+    const Icon = CHIP_ICONS[key];
+    const alert = key === "hot" && n > 0;
+    return (
       <button
+        key={key}
         type="button"
-        onClick={() => setMoreOpen(true)}
-        className={`min-h-[34px] shrink-0 rounded-full border border-gray-800 bg-gray-800/70 px-3 text-sm text-gray-400 md:hidden ${!PRIMARY_BOXES.some((b) => b.key === box) && !q ? "border-yellow-500 text-yellow-300" : ""}`}
+        onClick={() => { setBox(key); setSearch(""); }}
+        className={`flex min-h-[36px] items-center justify-center gap-1 rounded-full text-sm md:min-h-[30px] md:flex-none md:px-2.5 md:text-xs ${key === "all" ? "flex-none px-3.5" : "min-w-0 flex-1 px-2"} ${on ? "bg-yellow-400 font-semibold text-gray-900" : "border border-gray-800 bg-gray-800/70 text-gray-300"}`}
       >
-        עוד ▾
+        {Icon && <Icon className={`h-3.5 w-3.5 shrink-0 ${key === "hot" && !on ? "text-orange-400" : ""}`} aria-hidden="true" />}
+        <span className="truncate">{b.label}</span>
+        {key !== "all" && n > 0 && (
+          <span className={`shrink-0 rounded-full px-1.5 text-[11px] font-bold ${on ? "bg-gray-900/20" : alert ? "bg-red-500 text-white" : "bg-gray-700 text-gray-200"}`}>{n}</span>
+        )}
       </button>
+    );
+  };
+  const onMoreBox = !PRIMARY_BOXES.some((b) => b.key === box) && !q;
+  const chips = (
+    <div className="space-y-1.5 md:flex md:flex-wrap md:gap-1.5 md:space-y-0">
+      {CHIP_ROWS.map((row, i) => (
+        <div key={i} className="flex gap-1.5 md:contents">
+          {row.map(chip)}
+          {i === CHIP_ROWS.length - 1 && (
+            <button
+              type="button"
+              onClick={() => setMoreOpen(true)}
+              className={`flex min-h-[36px] flex-none items-center justify-center rounded-full border px-3 text-sm md:hidden ${onMoreBox ? "border-yellow-500 bg-yellow-400/10 text-yellow-300" : "border-gray-800 bg-gray-800/70 text-gray-400"}`}
+            >
+              עוד ▾
+            </button>
+          )}
+        </div>
+      ))}
     </div>
   );
+
+  const bottomTabs = [
+    { key: "client", label: "לקוחות", icon: Users },
+    ...BOTTOM_LABEL_TABS.map((t) => {
+      const l = data.labels.find((x) => x.name === t.name);
+      return l ? { key: "label:" + l.id, label: t.name, icon: t.icon, color: l.color } : null;
+    }).filter(Boolean),
+  ];
 
   // In the follow-up box: the bulk send and its settings (from the old inbox).
   const followUpBar = box === "followup" && !q && (
@@ -375,7 +403,7 @@ export default function ChatApp() {
 
   return (
     <AvatarUrlContext.Provider value={avatarUrls}>
-    <div dir="rtl" className="flex h-[100dvh] w-full overflow-hidden bg-gray-950 text-gray-100">
+    <div dir="rtl" className="fixed inset-0 flex w-full overflow-hidden bg-gray-950 text-gray-100">
       <ChatSidebar
         className="hidden w-60 shrink-0 md:flex"
         box={q ? "" : box}
@@ -417,15 +445,15 @@ export default function ChatApp() {
         />
         {!selectMode && (
           <nav aria-label="ניווט" className="flex border-t border-gray-800 bg-gray-950 pb-[max(0.25rem,env(safe-area-inset-bottom))] md:hidden">
-            {MOBILE_TABS.map((t) => {
+            {bottomTabs.map((t) => {
               const on = box === t.key && !q;
               const n = counts[t.key] || 0;
               return (
                 <button key={t.key} type="button" onClick={() => { setBox(t.key); setSearch(""); }} className={`relative flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] ${on ? "font-semibold text-yellow-400" : "text-gray-400"}`}>
-                  <t.icon className="h-6 w-6" aria-hidden="true" />
+                  <t.icon className="h-6 w-6" aria-hidden="true" style={!on && t.color ? { color: t.color } : undefined} />
                   {t.label}
-                  {t.key !== "all" && n > 0 && (
-                    <span className={`absolute right-[calc(50%-22px)] top-1 rounded-full px-1.5 text-[10px] font-bold ${t.key === "needs" ? "bg-red-500 text-white" : "bg-yellow-400 text-gray-900"}`}>{n}</span>
+                  {n > 0 && (
+                    <span className="absolute right-[calc(50%-22px)] top-1 rounded-full bg-yellow-400 px-1.5 text-[10px] font-bold text-gray-900">{n}</span>
                   )}
                 </button>
               );

@@ -1711,7 +1711,22 @@ section('boxes from the old inbox');
   check('ליד חם: never a group', n('hot'), 'l');
   check('נשלח פולו-אפ: never staff', n('followup_sent'), 'p');
   check('נשלח מחירון', n('pricelist_sent'), 'p');
-  check('the primary row', cm31.BOXES.filter((b) => b.primary).map((b) => b.key).join(','), 'unknown,lead,followup,hot,needs,all');
+  check('the primary tabs (owner, 2026-10-07)', cm31.BOXES.filter((b) => b.primary).map((b) => b.key).join(','), 'unknown,lead,followup,hot,unread,all');
+}
+
+section('strangers the bot recognised count as leads (display only)');
+{
+  const n = (c, box) => cm31.matchesBox(c, box, {});
+  const asked = { contactType: 'unknown', state: 'PRICELIST_SENT', botWouldReplyAt: 't' };
+  const friend = { contactType: 'unknown', state: 'NEW' };
+  check('price list sent → לידים', n(asked, 'lead'), true);
+  check('…and not לא מוכר', n(asked, 'unknown'), false);
+  check('a friend saying hi → לא מוכר', n(friend, 'unknown'), true);
+  check('…not לידים', n(friend, 'lead'), false);
+  check('mid-details counts too', cm31.isBotLead({ contactType: 'unknown', state: 'AWAITING_DETAILS' }), true);
+  check('bot saw an inquiry but the first message is still NEW', cm31.isBotLead({ contactType: 'unknown', state: 'NEW', botWouldReplyAt: 't' }), true);
+  check('a real lead is just a lead', cm31.displayType({ contactType: 'lead', state: 'PRICELIST_SENT' }), 'lead');
+  check('shown as "ליד (מהבוט)"', cm31.contactTypeLabel(cm31.displayType(asked)), 'ליד (מהבוט)');
 }
 
 section('the date on a row, and whether it is free');

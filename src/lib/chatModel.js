@@ -23,7 +23,22 @@ export const CONTACT_TYPES = [
 ];
 
 export function contactTypeLabel(type) {
+  if (type === "bot_lead") return "ליד (מהבוט)";
   return CONTACT_TYPES.find((t) => t.key === type)?.label || type || "לא מוכר";
+}
+
+// A stranger the bot recognised as a wedding/photography inquiry (it asked for details or
+// sent the price list, or rated their reply). Shown with the leads (2026-10-07, the owner's
+// choice) — display only: contact_type stays 'unknown' in the database, so the bot keeps
+// working exactly as before and nothing enters the CRM until "צור ליד".
+export function isBotLead(c) {
+  if ((c?.contactType || "unknown") !== "unknown") return false;
+  return !!(c.botWouldReplyAt || c.leadTemperature || (c.state && c.state !== "NEW"));
+}
+
+// The type a row shows: 'bot_lead' for the above, otherwise the stored one.
+export function displayType(c) {
+  return isBotLead(c) ? "bot_lead" : c?.contactType || "unknown";
 }
 
 // leads.status's CHECK (0001_init.sql) — the stage vocabulary must match it exactly,
@@ -118,13 +133,13 @@ export function sortConversations(list) {
 export const BOXES = [
   { key: "unknown", label: "לא מוכר", primary: true },
   { key: "lead", label: "לידים", primary: true },
-  { key: "followup", label: "ממתינים לפולו-אפ", primary: true },
+  { key: "followup", label: "פולו אפ", primary: true },
   { key: "hot", label: "ליד חם", primary: true },
-  { key: "needs", label: "דורש מענה", primary: true },
+  { key: "unread", label: "לא נקראו", primary: true },
   { key: "all", label: "הכל", primary: true },
+  { key: "needs", label: "דורש מענה" },
   { key: "followup_sent", label: "נשלח פולו-אפ" },
   { key: "pricelist_sent", label: "נשלח מחירון" },
-  { key: "unread", label: "לא נקראו" },
   { key: "client", label: "לקוחות" },
   { key: "staff", label: "צוות" },
   { key: "vendor", label: "ספקים" },
@@ -142,6 +157,9 @@ export function matchesBox(c, box, ctx = {}) {
   const type = c.contactType || "unknown";
   switch (box) {
     case "all": return type === "lead" || type === "unknown";
+    // Strangers the bot recognised as inquiries count as leads (isBotLead).
+    case "unknown": return type === "unknown" && !isBotLead(c);
+    case "lead": return type === "lead" || isBotLead(c);
     case "needs": return needsReply(c);
     case "unread": return (ctx.unread?.[c.id] || 0) > 0;
     case "client": return type === "client" || type === "past_client";

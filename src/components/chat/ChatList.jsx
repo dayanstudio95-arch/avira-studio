@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Search, Pin, Check, BellOff, X, Flame, CalendarDays, CalendarCheck, CalendarX2, Megaphone, Tag } from "lucide-react";
 import {
   contactTypeLabel, effectiveStage, waitingLabel, isLongWait, CONTACT_TYPES, STAGES,
-  rowEventDate, formatDateWithWeekday, dateStatus, hasStage,
+  rowEventDate, formatDateWithWeekday, dateStatus, hasStage, displayType,
 } from "@/lib/chatModel";
 import { typeColor, stageColor } from "@/lib/chatColors";
 import { fetchDateAvailability } from "@/lib/dateAvailability";
@@ -218,7 +218,7 @@ export default function ChatList({
                     )}
                   </span>
                   <span className="mt-0.5 flex flex-wrap gap-1">
-                    <span className={`rounded-full px-2 text-[11px] ${typeColor(c.contactType)}`}>{contactTypeLabel(c.contactType)}</span>
+                    <span className={`rounded-full px-2 text-[11px] ${typeColor(displayType(c))}`}>{contactTypeLabel(displayType(c))}</span>
                     {stage && (
                       <span className={`flex items-center gap-1 rounded-full border px-2 text-[11px] ${stageColor(stage).chip}`}>
                         <span className={`h-1.5 w-1.5 rounded-full ${stageColor(stage).dot}`} />

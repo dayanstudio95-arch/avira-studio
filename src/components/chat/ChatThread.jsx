@@ -3,7 +3,7 @@ import { ChevronRight, Pin, PinOff, Archive, ArchiveRestore, Tag, Send, Loader2,
 import { toast } from "sonner";
 import MessageBubble from "@/components/whatsapp/MessageBubble";
 import { groupMessagesByDay, formatMessageTime } from "@/components/whatsapp/whatsappInboxShared";
-import { contactTypeLabel, effectiveStage, renderTemplate, eventDateFor, hasStage } from "@/lib/chatModel";
+import { contactTypeLabel, effectiveStage, renderTemplate, eventDateFor, hasStage, displayType } from "@/lib/chatModel";
 import DateAvailability from "./DateAvailability";
 import { Avatar, conversationTitle } from "./ChatList";
 import { typeColor, stageColor } from "@/lib/chatColors";
@@ -122,7 +122,7 @@ export default function ChatThread({
           <span className="flex min-w-0 flex-col">
             <span className="truncate font-bold text-white">{conversationTitle(conversation)}</span>
             <span className="flex min-w-0 flex-wrap items-center gap-1 text-[11px]">
-              <span className={`rounded-full px-2 ${typeColor(conversation.contactType)}`}>{contactTypeLabel(conversation.contactType)}</span>
+              <span className={`rounded-full px-2 ${typeColor(displayType(conversation))}`}>{contactTypeLabel(displayType(conversation))}</span>
               {stage && <span className={`rounded-full border px-2 ${stageColor(stage).chip}`}>{stage}</span>}
               {labels.map((l) => (
                 <span key={l.id} className="rounded-full px-2 text-white" style={{ background: l.color }}>{l.name}</span>

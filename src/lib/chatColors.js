@@ -8,6 +8,7 @@
 export const TYPE_COLORS = {
   unknown: "bg-amber-500/20 text-amber-200",
   lead: "bg-blue-500/20 text-blue-200",
+  bot_lead: "bg-blue-500/20 text-blue-200",
   client: "bg-green-500/20 text-green-200",
   past_client: "bg-teal-500/20 text-teal-200",
   staff: "bg-purple-500/20 text-purple-200",
