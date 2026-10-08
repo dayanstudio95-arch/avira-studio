@@ -12,6 +12,8 @@ import { calculateNetProfit } from "@/lib/profitCalculations";
 import PaymentStatusSelector, { paymentStatusConfig, statusLabels } from "@/components/common/PaymentStatusSelector";
 import UnifiedSidePanel from "../unified/UnifiedSidePanel";
 import QuestionnaireReminderDialog from "./QuestionnaireReminderDialog";
+import EventTeamDialog from "./EventTeamDialog";
+import { missingCount as crewMissing } from "@/lib/missingTeam";
 const { StaffMember } = base44.entities;
 
 const calcProfit = (event, staffMembers) => calculateNetProfit(event, staffMembers);
@@ -43,6 +45,11 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
   const [selectedEventForDrawer, setSelectedEventForDrawer] = useState(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [questionnaireFor, setQuestionnaireFor] = useState(null); // { event, lead } — resend preview
+  const [teamFor, setTeamFor] = useState(null); // the event whose team window is open
+  const openTeam = (e, event) => {
+    e?.stopPropagation?.();
+    setTeamFor(event);
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -214,7 +221,11 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
                       <Badge variant="outline" className={`${progressStatus.color} border text-xs`}>
                         {progressStatus.label}
                       </Badge>
-                      <Badge variant="outline" className={`${isFullTeam ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'} border text-xs`}>
+                      <Badge
+                        variant="outline"
+                        onClick={isFullTeam ? undefined : (e) => openTeam(e, event)}
+                        className={`${isFullTeam ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30 cursor-pointer hover:bg-red-500/30'} border text-xs`}
+                      >
                         {isFullTeam ? <UserCheck className="w-3 h-3 mr-1 inline" /> : <AlertTriangle className="w-3 h-3 mr-1 inline" />}
                         צוות {isFullTeam ? 'מלא' : `חסר ${requiredCrew - assignedTeam.length}`}
                       </Badge>
@@ -263,12 +274,13 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
                 <TableHead className="text-slate-400 font-medium">אלבום</TableHead>
                 <TableHead className="text-slate-400 font-medium">יומן</TableHead>
                 <TableHead className="text-slate-400 font-medium">שאלון</TableHead>
+                <TableHead className="text-slate-400 font-medium">צוות</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {events.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-12">
+                  <TableCell colSpan={10} className="text-center py-12">
                     <div className="text-gray-500">
                       <Heart className="w-12 h-12 mx-auto mb-4 text-gray-600" />
                       <p className="text-lg font-medium">אין אירועים עדיין</p>
@@ -410,6 +422,26 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
                           );
                         })()}
                       </TableCell>
+                      <TableCell>
+                        {(() => {
+                          // Same rule as the events page / sidebar (src/lib/missingTeam.js).
+                          const gap = crewMissing(event);
+                          return gap > 0 ? (
+                            <button
+                              type="button"
+                              onClick={(e) => openTeam(e, event)}
+                              title="לחצו לראות מי משובץ, לשלוח בדיקת זמינות ולשבץ"
+                              className="inline-flex items-center gap-1 rounded-md border border-red-500/40 bg-red-500/20 px-2 py-0.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/35 hover:text-red-200"
+                            >
+                              <AlertTriangle className="h-3 w-3" /> חסר {gap}
+                            </button>
+                          ) : (
+                            <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500/30 border font-medium text-xs">
+                              <UserCheck className="w-3 h-3 mr-1 inline" /> מלא
+                            </Badge>
+                          );
+                        })()}
+                      </TableCell>
 
                     </TableRow>
                   );
@@ -420,6 +452,7 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
         </div>
       </CardContent>
       </Card>
+      <EventTeamDialog event={teamFor} staffMembers={staffMembers} onClose={() => setTeamFor(null)} onChanged={onRefresh} />
       <QuestionnaireReminderDialog target={questionnaireFor} onClose={() => setQuestionnaireFor(null)} />
       <UnifiedSidePanel
         isOpen={isDrawerOpen}
