@@ -79,20 +79,25 @@ export default function AvailabilityPills({ requests, staffMembers, event, team,
       <div className="flex gap-2 flex-wrap">
         {requests.map((r) => {
           const isClickable = r.status === "available" && !!event;
+          // Already on this event's team (2026-10-09) → say where, instead of "פנוי".
+          const name = staffMembers?.find((s) => s.id === r.staffMemberId)?.name || r.staffNameSnapshot;
+          const onTeam = currentTeam.find((m) => m.staffMemberName && m.staffMemberName === name);
           return (
             <Badge
               key={r.id}
               onClick={isClickable ? () => open(r) : undefined}
               className={`text-xs font-medium border ${
-                r.status === "available"
+                onTeam
+                  ? "bg-sky-500/20 text-sky-300 border-sky-500/30"
+                  : r.status === "available"
                   ? "bg-green-500/20 text-green-400 border-green-500/30"
                   : r.status === "declined"
                   ? "bg-red-500/20 text-red-400 border-red-500/30"
                   : "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
               } ${isClickable ? "cursor-pointer hover:bg-green-500/30 transition-colors" : ""}`}
-              title={isClickable ? "לחץ לשיבוץ" : undefined}
+              title={isClickable ? (onTeam ? "לחץ לשינוי התפקיד" : "לחץ לשיבוץ") : undefined}
             >
-              {r.staffNameSnapshot} — {r.status === "available" ? "✅ פנוי" : r.status === "declined" ? "❌ לא פנוי" : "⏳ ממתין"}
+              {r.staffNameSnapshot} — {onTeam ? `✔ משובץ/ת · ${eventTeamRoleLabel(onTeam.role)}` : r.status === "available" ? "✅ פנוי" : r.status === "declined" ? "❌ לא פנוי" : "⏳ ממתין"}
             </Badge>
           );
         })}

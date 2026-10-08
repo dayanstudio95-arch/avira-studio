@@ -18,6 +18,7 @@ import { sendCalendarInviteByName } from "@/lib/calendarInvites";
 import MobileStaffAssignmentSheet from "@/components/events/MobileStaffAssignmentSheet";
 import StaffAssignmentRoleList from "@/components/events/StaffAssignmentRoleList";
 import StaffAvailabilityModal from "@/components/leads/StaffAvailabilityModal";
+import AvailabilityPills from "@/components/events/AvailabilityPills";
 import AvailabilityAnswers, { useAvailabilityRequests } from "@/components/staffScheduling/AvailabilityAnswers";
 import { buildAvailabilityInbox } from "@/lib/availabilityInbox";
 
@@ -60,6 +61,28 @@ export default function StaffScheduling() {
   const openAvailability = (forEvent) => setReplacementTarget({ event: forEvent, plain: true });
   // Bumped after a send so the sheet re-reads who has been asked / answered.
   const [availabilityVersion, setAvailabilityVersion] = useState(0);
+
+  // Who was asked about the open event and what they answered (2026-10-09, the owner's
+  // request): the same pills as the lead panel, under "חסרים". Latest row per person — the
+  // table is append-only, re-asking adds a row. A ✅ pill assigns to a slot, then offers the
+  // "you're booked" message (AvailabilityPills → StaffBookingMessageDialog).
+  const selectedRequests = useMemo(() => {
+    const ev = selectedEvent;
+    if (!ev) return [];
+    const mine = (answersQ.data || [])
+      .filter((r) => r.eventId === ev.id || (ev.sourceLeadId && r.leadId === ev.sourceLeadId))
+      .sort((a, b) => new Date(b.requestedAt || 0) - new Date(a.requestedAt || 0));
+    const latest = new Map();
+    for (const r of mine) if (!latest.has(r.staffMemberId)) latest.set(r.staffMemberId, r);
+    const order = { available: 0, pending: 1, declined: 2 };
+    return [...latest.values()].sort((a, b) => (order[a.status] ?? 1) - (order[b.status] ?? 1));
+  }, [answersQ.data, selectedEvent]);
+  const afterPillAssign = (newTeam) => {
+    const id = selectedEvent.id;
+    setEvents((list) => list.map((e) => (e.id === id ? { ...e, team: newTeam } : e)));
+    setSelectedEvent((e) => (e?.id === id ? { ...e, team: newTeam } : e));
+    answersQ.refetch();
+  };
   const [sortMode, setSortMode] = useState('date');
   const [filterMissing, setFilterMissing] = useState(true);
   const [isEditingOrder, setIsEditingOrder] = useState(false);
@@ -456,6 +479,20 @@ export default function StaffScheduling() {
                   })()}
                 </div>
               </div>
+              {selectedRequests.length > 0 && (
+                <div className="mt-4 rounded-lg border border-pink-500/25 bg-pink-500/5 px-3 py-2.5">
+                  <div className="mb-2 text-xs text-gray-400">
+                    📨 בדיקות זמינות שנשלחו ({selectedRequests.length}) · לחיצה על ✅ פנוי = שיבוץ לתפקיד והודעה לאיש הצוות
+                  </div>
+                  <AvailabilityPills
+                    requests={selectedRequests}
+                    staffMembers={staffMembers}
+                    event={selectedEvent}
+                    team={selectedEvent.team || []}
+                    onAssigned={afterPillAssign}
+                  />
+                </div>
+              )}
             </CardHeader>
             <CardContent className="p-6">
               <div className="mb-6">
@@ -748,7 +785,7 @@ export default function StaffScheduling() {
         <StaffAvailabilityModal
           open={!!replacementTarget}
           onClose={() => setReplacementTarget(null)}
-          onSent={() => { setReplacementTarget(null); setAvailabilityVersion((v) => v + 1); }}
+          onSent={() => { setReplacementTarget(null); setAvailabilityVersion((v) => v + 1); answersQ.refetch(); }}
           staffMembers={staffMembers}
           eventDate={replacementTarget?.event?.date}
           venue={replacementTarget?.event?.venue}
