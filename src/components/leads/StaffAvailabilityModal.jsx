@@ -19,7 +19,7 @@ const ROLE_ICON = { photographer: Camera, videographer: Video };
 // The slot chips beside a ticked name (2026-10-07: "סלבה ערב (צלם 2), ג׳וני צלם ראשי").
 const SLOT_CHIP = { photographer1: "ראשי (1)", photographer2: "ערב (2)", videographer: "וידאו 1", videographer2: "וידאו 2" };
 // "{{role}}" for one person: the slot picked for them, else their general role.
-function roleLabelFor(staffMember, slot) {
+export function roleLabelFor(staffMember, slot) {
   if (slot && AVAILABILITY_SLOT_LABELS[slot]) return AVAILABILITY_SLOT_LABELS[slot];
   return STAFF_JOB_ROLES.find((r) => r.value === staffMember?.role)?.label || "צלם";
 }
@@ -40,7 +40,7 @@ function buildDefaultMessage({ roleLabel, eventDate, venue, coupleNames }) {
 // was saved yet or the fetch fails.
 // `replacement` picks the "מצא מחליף" wording (template_staff_replacement_check) and
 // falls back to the ordinary availability template when that one was never saved.
-async function buildMessage({ roleLabel, eventDate, venue, coupleNames, replacement = false }) {
+export async function buildMessage({ roleLabel, eventDate, venue, coupleNames, replacement = false }) {
   const dateStr = eventDate ? format(new Date(eventDate), "d/M/yyyy") : "";
   try {
     const keys = replacement

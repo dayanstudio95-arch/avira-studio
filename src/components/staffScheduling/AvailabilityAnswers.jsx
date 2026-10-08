@@ -2,7 +2,10 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
-import { Loader2, CheckCircle2, Clock, XCircle, MapPin, CalendarDays } from "lucide-react";
+import { Loader2, CheckCircle2, Clock, XCircle, MapPin, CalendarDays, Send, Lock, RotateCcw } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { buildMessage, roleLabelFor } from "@/components/leads/StaffAvailabilityModal";
+import { resendAvailabilityRequest } from "@/lib/availabilityResend";
 import { buildAvailabilityInbox } from "@/lib/availabilityInbox";
 import { israelToday, missingRoles } from "@/lib/missingTeam";
 import { eventTeamRoleLabel, AVAILABILITY_SLOT_LABELS } from "@/lib/staffRoles";
@@ -35,6 +38,7 @@ const STATE_UI = {
   no_event: { icon: CheckCircle2, cls: "text-emerald-400", text: "פנוי/ה · אין עדיין אירוע (הזוג לא חתם)" },
   dismissed: { icon: CheckCircle2, cls: "text-slate-500", text: "פנוי/ה · סומן \"לא צריך\"" },
   pending: { icon: Clock, cls: "text-amber-300", text: "עוד לא ענה" },
+  closed: { icon: Lock, cls: "text-slate-500", text: "לא ענה · האירוע נסגר (לא מחכים לתשובה)" },
   declined: { icon: XCircle, cls: "text-rose-400", text: "לא פנוי/ה" },
 };
 
@@ -55,6 +59,7 @@ export default function AvailabilityAnswers({ events, staffMembers, onEventsChan
   const [busy, setBusy] = useState(null);
   const [slotPick, setSlotPick] = useState({});
   const [booked, setBooked] = useState(null); // { staff, roleSlot, event, lead }
+  const [resend, setResend] = useState(null); // { request, staff, text } — reminder preview
   const focusRef = useRef(null);
 
   const inbox = useMemo(
@@ -95,6 +100,62 @@ export default function AvailabilityAnswers({ events, staffMembers, onEventsChan
     setBusy(row.request.id);
     try {
       await base44.entities.StaffAvailabilityRequest.update(row.request.id, { decisionDismissedAt: new Date().toISOString() });
+      refresh();
+    } catch (e) {
+      toast.error("העדכון נכשל", { description: e?.message });
+    }
+    setBusy(null);
+  };
+
+  // "שלח שוב" — a reminder with a fresh link, after a preview (nothing is sent on one click).
+  const openResend = async (group, row) => {
+    const r = row.request;
+    const staff = (staffMembers || []).find((s) => s.id === r.staffMemberId);
+    if (!staff?.phoneNumber) { toast.error("אין מספר טלפון לאיש הצוות הזה"); return; }
+    const base = await buildMessage({
+      roleLabel: roleLabelFor(staff, r.teamRole),
+      eventDate: group.date || r.eventDateSnapshot,
+      venue: group.venue,
+      coupleNames: group.couple,
+    });
+    setResend({ request: r, staff, text: `🔔 תזכורת — עוד לא קיבלנו ממך תשובה\n${base}` });
+  };
+  const sendResend = async () => {
+    if (!resend?.text.trim()) return;
+    setBusy(resend.request.id);
+    try {
+      await resendAvailabilityRequest({ request: resend.request, phone: resend.staff.phoneNumber, text: resend.text });
+      toast.success(`התזכורת נשלחה ל${resend.staff.name}`);
+      setResend(null);
+      refresh();
+    } catch (e) {
+      toast.error("השליחה נכשלה", { description: e?.message });
+    }
+    setBusy(null);
+  };
+
+  // "סגור" on an event: stop waiting — its unanswered (and undecided) rows leave
+  // "ממתינים" / "צריך החלטה". No message to anyone; "פתח מחדש" undoes it.
+  const closeGroup = async (g) => {
+    const rows = g.rows.filter((x) => ["pending", "decide", "full"].includes(x.state));
+    if (!rows.length) return;
+    if (!window.confirm(`לסגור את ${g.couple || "האירוע"}?\n\n${rows.length} אנשי צוות ייצאו מ"ממתינים" ומ"צריך החלטה". אף אחד לא מקבל הודעה.\nאם מישהו יענה אחר כך — זה יופיע רק ב"הכל".`)) return;
+    setBusy(g.key);
+    try {
+      const now = new Date().toISOString();
+      await Promise.all(rows.map((x) => base44.entities.StaffAvailabilityRequest.update(x.request.id, { decisionDismissedAt: now })));
+      toast.success("האירוע נסגר ברשימה");
+      refresh();
+    } catch (e) {
+      toast.error("העדכון נכשל", { description: e?.message });
+    }
+    setBusy(null);
+  };
+  const reopenGroup = async (g) => {
+    const rows = g.rows.filter((x) => x.state === "closed" || x.state === "dismissed");
+    setBusy(g.key);
+    try {
+      await Promise.all(rows.map((x) => base44.entities.StaffAvailabilityRequest.update(x.request.id, { decisionDismissedAt: null })));
       refresh();
     } catch (e) {
       toast.error("העדכון נכשל", { description: e?.message });
@@ -157,13 +218,36 @@ export default function AvailabilityAnswers({ events, staffMembers, onEventsChan
                     </div>
                   )}
                 </div>
-                {!g.event ? (
-                  <span className="e-chip e-chip-gray">אין אירוע עדיין</span>
-                ) : missing.length ? (
-                  <span className="e-chip e-chip-red">חסר: {missing.join(" + ")}</span>
-                ) : (
-                  <span className="e-chip e-chip-green">✅ הצוות מלא</span>
-                )}
+                <div className="flex flex-wrap items-center gap-2">
+                  {!g.event ? (
+                    <span className="e-chip e-chip-gray">אין אירוע עדיין</span>
+                  ) : missing.length ? (
+                    <span className="e-chip e-chip-red">חסר: {missing.join(" + ")}</span>
+                  ) : (
+                    <span className="e-chip e-chip-green">✅ הצוות מלא</span>
+                  )}
+                  {g.waiting + g.toDecide > 0 ? (
+                    <button
+                      type="button"
+                      disabled={busy === g.key}
+                      onClick={() => closeGroup(g)}
+                      title="לא צריך יותר תשובות לאירוע הזה (למשל הצוות כבר מלא) — יוצא מ'ממתינים' ומ'צריך החלטה'. לא נשלחת שום הודעה."
+                      className="flex h-7 items-center gap-1 rounded-lg border border-[#2A3B57] bg-white/[0.04] px-2.5 text-xs text-slate-300 hover:text-white disabled:opacity-50"
+                    >
+                      <Lock className="h-3.5 w-3.5" /> סגור
+                    </button>
+                  ) : g.closed > 0 ? (
+                    <button
+                      type="button"
+                      disabled={busy === g.key}
+                      onClick={() => reopenGroup(g)}
+                      title="מחזיר את מי שלא ענה ל'ממתינים'"
+                      className="flex h-7 items-center gap-1 rounded-lg border border-[#2A3B57] bg-white/[0.04] px-2.5 text-xs text-slate-400 hover:text-white disabled:opacity-50"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" /> פתח מחדש
+                    </button>
+                  ) : null}
+                </div>
               </div>
               <div className="divide-y divide-white/[0.05] px-3 py-1">
                 {g.rows.map((row) => {
@@ -186,6 +270,17 @@ export default function AvailabilityAnswers({ events, staffMembers, onEventsChan
                           </div>
                         </div>
                       </div>
+                      {row.state === "pending" && (
+                        <button
+                          type="button"
+                          disabled={busy === r.id}
+                          onClick={() => openResend(g, row)}
+                          title="שולח לו שוב את בדיקת הזמינות (עם קישור חדש), אחרי תצוגה מקדימה"
+                          className="flex h-8 items-center gap-1.5 rounded-lg border border-pink-500/40 bg-pink-500/10 px-3 text-xs font-medium text-pink-200 hover:bg-pink-500/20 disabled:opacity-50"
+                        >
+                          <Send className="h-3.5 w-3.5" /> שלח שוב
+                        </button>
+                      )}
                       {(row.state === "decide" || row.state === "full") && (
                         <div className="flex flex-wrap items-center gap-1.5">
                           {row.state === "decide" && row.freeSlots.length > 1 && (
@@ -226,6 +321,36 @@ export default function AvailabilityAnswers({ events, staffMembers, onEventsChan
           );
         })
       )}
+
+      <Dialog open={!!resend} onOpenChange={(o) => !o && busy !== resend?.request.id && setResend(null)}>
+        <DialogContent dir="rtl" className="max-w-md border-gray-700 bg-gray-900 text-white">
+          <DialogHeader>
+            <DialogTitle>לשלוח שוב ל{resend?.staff.name}?</DialogTitle>
+          </DialogHeader>
+          <textarea
+            value={resend?.text || ""}
+            onChange={(e) => setResend((x) => ({ ...x, text: e.target.value }))}
+            rows={7}
+            className="w-full rounded-lg border border-gray-700 bg-gray-800 p-3 text-sm text-white"
+          />
+          <p className="text-[11px] text-gray-400">
+            בסוף ההודעה יתווסף קישור חדש לתשובה. הקישור הקודם שנשלח אליו יפסיק לעבוד, כך שתמיד יש רק אחד.
+          </p>
+          <DialogFooter className="flex-row-reverse gap-2">
+            <button type="button" onClick={() => setResend(null)} disabled={busy === resend?.request.id} className="rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm text-gray-300">
+              ביטול
+            </button>
+            <button
+              type="button"
+              onClick={sendResend}
+              disabled={busy === resend?.request.id || !resend?.text.trim()}
+              className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
+            >
+              {busy === resend?.request.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} שלח בוואטסאפ
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {booked && (
         <StaffBookingMessageDialog

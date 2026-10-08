@@ -70,7 +70,7 @@ export default function StaffScheduling() {
     const ev = selectedEvent;
     if (!ev) return [];
     const mine = (answersQ.data || [])
-      .filter((r) => r.eventId === ev.id || (ev.sourceLeadId && r.leadId === ev.sourceLeadId))
+      .filter((r) => !r.revokedAt && (r.eventId === ev.id || (ev.sourceLeadId && r.leadId === ev.sourceLeadId)))
       .sort((a, b) => new Date(b.requestedAt || 0) - new Date(a.requestedAt || 0));
     const latest = new Map();
     for (const r of mine) if (!latest.has(r.staffMemberId)) latest.set(r.staffMemberId, r);

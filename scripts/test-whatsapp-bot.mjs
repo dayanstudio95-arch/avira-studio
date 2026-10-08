@@ -1979,6 +1979,17 @@ console.log('\n— PART 36: availability answers inbox —');
   check('לא צריך → dismissed, not counted', [dis.groups[0].rows[0].state, dis.toDecide].join(','), 'dismissed,0');
   const noEv = ai.buildAvailabilityInbox({ today: '2026-10-07', events: [], requests: [req({ id: 'g', eventId: null, leadId: 'L9', staffMemberId: 's8', staffNameSnapshot: 'ח', status: 'available' })] });
   check('no event yet → no_event', noEv.groups[0].rows[0].state, 'no_event');
+  // "סגור" on an event (2026-10-09): unanswered rows stop waiting; revoked (resent) rows are ignored
+  const cl = ai.buildAvailabilityInbox({ today: '2026-10-07', events: [ev], requests: [
+    req({ id: 'p1', staffMemberId: 's3', staffNameSnapshot: 'רודי', status: 'pending', decisionDismissedAt: '2026-10-07T12:00:00Z' }),
+    req({ id: 'p2', staffMemberId: 's9', staffNameSnapshot: 'ט', status: 'pending' }),
+  ] });
+  check('closed → not waiting', [cl.groups[0].rows.find((r) => r.request.id === 'p1').state, cl.groups[0].waiting, cl.groups[0].closed].join(','), 'closed,1,1');
+  const rs = ai.buildAvailabilityInbox({ today: '2026-10-07', events: [ev], requests: [
+    req({ id: 'oldlink', staffMemberId: 's3', staffNameSnapshot: 'רודי', status: 'pending', revokedAt: '2026-10-07T13:00:00Z' }),
+    req({ id: 'newlink', staffMemberId: 's3', staffNameSnapshot: 'רודי', status: 'pending', requestedAt: '2026-10-07T13:00:00Z' }),
+  ] });
+  check('resend: only the new link counts', rs.groups[0].rows.map((r) => r.request.id).join(), 'newlink');
 }
 
 // PART 37 — follow-up pulses and the date line (2026-10-07)
