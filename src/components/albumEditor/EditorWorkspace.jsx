@@ -84,7 +84,8 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
   };
 
   const onKey = (e) => {
-    const typing = /input|textarea|select/i.test(e.target.tagName);
+    const t = e.target;
+    const typing = t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable || (t.tagName === "INPUT" && !["checkbox", "radio", "button"].includes(t.type));
     const mod = e.metaKey || e.ctrlKey;
     if (mod && e.key.toLowerCase() === "z") {
       if (typing || locked) return;
@@ -180,13 +181,21 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
 
       {/* spread */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex min-h-0 flex-1 items-center gap-2 px-2 py-4" onClick={(e) => e.target === e.currentTarget && setSelectedSlot(null)}>
+        <div
+          className="flex min-h-0 flex-1 items-center gap-2 px-2 py-4"
+          onPointerDown={() => {
+            // a click on the spread takes the keyboard back from a text field → ← / → work again
+            const a = document.activeElement;
+            if (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) a.blur();
+          }}
+          onClick={(e) => e.target === e.currentTarget && setSelectedSlot(null)}
+        >
           <button type="button" onClick={() => step(1)} disabled={pageIndex >= doc.pages.length - 1} title="הכפולה הבאה (חץ ימינה →)" className="shrink-0 rounded-full p-2 text-slate-300 hover:bg-white/10 disabled:opacity-20">
             <ChevronRight className="h-7 w-7" />
           </button>
           <div className="flex min-w-0 flex-1 flex-col items-center gap-3">
             <div className="text-xs text-slate-400">
-              {pageIndex === 0 && page.title ? "כפולת פתיחה" : `כפולה ${pageIndex + 1} מתוך ${doc.pages.length}`}
+              דף {pageIndex + 1} מתוך {doc.pages.length}{pageIndex === 0 && page.title ? " (פתיחה)" : ""}
               {Object.keys(faces).length > 0 && <span className="mr-2 rounded bg-rose-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">⚠️ פנים על הקפל</span>}
             </div>
             <div className="w-full max-w-[1400px] shadow-2xl shadow-black/50">
