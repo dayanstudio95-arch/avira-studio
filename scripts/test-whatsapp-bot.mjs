@@ -2286,6 +2286,18 @@ console.log('\n— PART 43: album editor round 2 —');
   check('opening = the 2 picked photos', picked.pages[0].slots.map((s) => s.assetId).sort().join(','), 'q11,q5');
   check('picked photos not repeated later', picked.pages.slice(1).flatMap((p) => p.slots.map((s) => s.assetId)).some((x) => x === 'q11' || x === 'q5'), false);
   check('the rest are all used', picked.pages.slice(1).flatMap((p) => p.slots.map((s) => s.assetId)).filter(Boolean).length + picked.unused, 16);
+  // sketch by tags
+  const tg = {};
+  ids.slice(0, 6).forEach((a) => (tg[a.id] = ['chuppah']));
+  ids.slice(6, 10).forEach((a) => (tg[a.id] = ['bride_prep']));
+  const bt = al.autoLayoutByTags(ids, { spreads: 8, openingCount: 1, openingIds: ['q15'], tags: tg, sections: [{ id: 'bride_prep', label: 'התארגנות כלה' }, { id: 'chuppah', label: 'חופה' }] });
+  check('by tags: opening = picked', bt.pages[0].slots.map((s) => s.assetId).filter(Boolean).join(), 'q15');
+  check('by tags: sections in the chosen order', [...new Set(bt.pages.slice(1).map((p) => p.section))].join(' > '), 'התארגנות כלה > חופה > ללא תווית');
+  const mixed = bt.pages.slice(1).some((p) => new Set(p.slots.map((s) => (s.assetId ? (tg[s.assetId]?.[0] || 'none') : null)).filter(Boolean)).size > 1);
+  check('by tags: no page mixes tags', mixed, false);
+  check('by tags: every photo once', bt.pages.flatMap((p) => p.slots.map((s) => s.assetId)).filter(Boolean).length, 18);
+  const noUn = al.autoLayoutByTags(ids, { spreads: 8, openingCount: 1, openingIds: ['q15'], tags: tg, sections: [{ id: 'chuppah', label: 'חופה' }], includeUntagged: false });
+  check('by tags: untagged left out when asked', noUn.unused, 11);
   const pc = ad.setPageCount(g.doc, 1);
   check('page count never deletes spreads with photos', pc.blocked, 1);
 }

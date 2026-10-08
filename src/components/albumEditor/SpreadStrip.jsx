@@ -67,7 +67,7 @@ export default function SpreadStrip({ doc, assetsById, currentId, onSelect, onMo
                           </button>
                         )}
                         <div className="mt-0.5 flex items-center justify-between text-[10px] text-slate-400">
-                          <span title={filled ? `${filled} תמונות` : "ריק"}>דף {i + 1}{i === 0 && p.title ? " (פתיחה)" : ""}</span>
+                          <span title={filled ? `${filled} תמונות` : "ריק"} className="truncate">דף {i + 1}{i === 0 && p.title ? " (פתיחה)" : p.section ? ` · ${p.section}` : ""}</span>
                           <span className="flex gap-1 opacity-0 group-hover:opacity-100">
                             {onSplit && filled >= 2 && !p.title && (
                               <button type="button" title="פיצול לשתי כפולות" onClick={() => onSplit(p.id)} className="hover:text-white"><Scissors className="h-3 w-3" /></button>

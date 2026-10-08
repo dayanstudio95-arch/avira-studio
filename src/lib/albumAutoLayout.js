@@ -272,3 +272,44 @@ export function removeFromPage(doc, pageId, index, assetsById) {
   pages[i] = next;
   return { ...doc, pages };
 }
+
+// ---- "🏷️ סקיצה לפי תוויות" (2026-10-08) --------------------------------------------------------
+// Same opening as autoLayout (picked photos), then one SECTION per tag in the order given (the day's
+// order by default): a section's photos never share a page with another tag's, and inside a section
+// they follow shooting time. A photo with several tags goes to the first section that wants it.
+// Pages per section ∝ its photos (≥ 1), so the album lands close to `spreads` pages.
+// `sections` = [{ id, label }]; `tags` = doc.tags; untagged photos → a last section if asked.
+export function autoLayoutByTags(assets, { spreads = 30, title = null, openingCount = 2, openingIds = [], sections = [], tags = {}, includeUntagged = true } = {}) {
+  const opening = autoLayout(assets, { spreads: 2, title, openingCount, openingIds }).pages[0];
+  const taken = new Set(opening.slots.map((s) => s.assetId).filter(Boolean));
+  const groups = [];
+  for (const sec of sections) {
+    const photos = assets.filter((a) => !taken.has(a.id) && (tags[a.id] || []).includes(sec.id));
+    photos.forEach((a) => taken.add(a.id));
+    if (photos.length) groups.push({ label: sec.label, photos });
+  }
+  const untagged = assets.filter((a) => !taken.has(a.id) && !(tags[a.id] || []).length);
+  if (includeUntagged && untagged.length) {
+    untagged.forEach((a) => taken.add(a.id));
+    groups.push({ label: "ללא תווית", photos: untagged });
+  }
+  const total = groups.reduce((n, g) => n + g.photos.length, 0);
+  const perPage = total / Math.max(1, spreads - 1);
+  const pages = [opening];
+  let prev = null;
+  for (const g of groups) {
+    const n = Math.max(1, Math.round(g.photos.length / Math.max(1, perPage)));
+    const counts = distributeCounts(g.photos.length, Math.max(n, Math.ceil(g.photos.length / 10)));
+    let at = 0;
+    for (const c of counts) {
+      const page = pageFor(g.photos.slice(at, at + c), prev);
+      at += c;
+      if (!page) continue;
+      page.section = g.label;
+      pages.push(page);
+      prev = page.templateId;
+    }
+  }
+  const left = assets.filter((a) => !taken.has(a.id)).length; // tagged with a tag left out / untagged excluded
+  return { pages, unused: left, sections: groups.map((g) => ({ label: g.label, photos: g.photos.length })) };
+}

@@ -62,6 +62,7 @@ export function sanitizeClientDoc(input: any, allowedAssets: any[], studioDoc: a
       }));
       const page: any = { id, templateId, flip: p.flip === true, slots, blend: p.blend === 'fade' ? 'fade' : 'none', fadeStrength: num(p.fadeStrength, 0, 200, 100) };
       if (typeof p.foldOk === 'string') page.foldOk = p.foldOk.slice(0, 4000);
+      if (typeof p.section === 'string' && p.section) page.section = p.section.slice(0, 30);
       if (p.branding && typeof p.branding === 'object') {
         page.branding = { show: p.branding.show === true, x: num(p.branding.x, -10, 100, 3), y: num(p.branding.y, -10, 100, 72), scale: num(p.branding.scale, 0.5, 3, 1) };
       }

@@ -168,11 +168,11 @@ export default function PhotoBank({ doc, usage, onPick, onRefresh, refreshing, o
             {tagMenu && onTag && (
               <div className="flex flex-wrap gap-1 pt-1">
                 {PHOTO_TAGS.map((t) => (
-                  <button key={t.id} type="button" onClick={() => { onTag(allSelected, t.id); setTagMenu(false); }} className="rounded border border-white/15 px-1.5 py-0.5 hover:border-amber-300 hover:text-amber-200">
+                  <button key={t.id} type="button" onClick={() => { onTag(allSelected, t.id); setTagMenu(false); setSelected(new Set()); }} className="rounded border border-white/15 px-1.5 py-0.5 hover:border-amber-300 hover:text-amber-200">
                     {t.label}
                   </button>
                 ))}
-                <button type="button" onClick={() => { onTag(allSelected, null); setTagMenu(false); }} className="rounded border border-rose-300/40 px-1.5 py-0.5 text-rose-200 hover:bg-rose-500/10">הסר תגיות</button>
+                <button type="button" onClick={() => { onTag(allSelected, null); setTagMenu(false); setSelected(new Set()); }} className="rounded border border-rose-300/40 px-1.5 py-0.5 text-rose-200 hover:bg-rose-500/10">הסר תגיות</button>
               </div>
             )}
           </div>

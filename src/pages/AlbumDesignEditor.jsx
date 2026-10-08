@@ -211,7 +211,7 @@ function SaveBadge({ state, error }) {
 
 function Editor({ design, order, names, back, extraPrice }) {
   const { doc, edit, undo, redo, canUndo, canRedo, saveState, saveError, snapshot, saveNow } = useDesignDoc(design);
-  const [showAuto, setShowAuto] = useState(false);
+  const [showAuto, setShowAuto] = useState(false); // false | "time" | "tags"
   const [showExport, setShowExport] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [currentId, setCurrentId] = useState(() => doc.pages[0]?.id);
@@ -401,7 +401,15 @@ function Editor({ design, order, names, back, extraPrice }) {
           <div className="ms-auto flex items-center gap-1">
             <button type="button" onClick={undo} disabled={!canUndo} title="ביטול (⌘Z)" className="rounded p-1.5 text-slate-300 hover:bg-white/10 disabled:opacity-30"><Undo2 className="h-4 w-4" /></button>
             <button type="button" onClick={redo} disabled={!canRedo} title="חזרה (⌘⇧Z)" className="rounded p-1.5 text-slate-300 hover:bg-white/10 disabled:opacity-30"><Redo2 className="h-4 w-4" /></button>
-            <button type="button" onClick={() => setShowAuto(true)} className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-amber-200 hover:bg-white/10"><Sparkles className="h-4 w-4" /> סקיצה אוטומטית</button>
+            <button type="button" onClick={() => setShowAuto("time")} className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-amber-200 hover:bg-white/10"><Sparkles className="h-4 w-4" /> סקיצה אוטומטית</button>
+            <button
+              type="button"
+              onClick={() => (Object.keys(doc.tags || {}).length ? setShowAuto("tags") : toast.info("קודם מתייגים תמונות בבנק (⌘+לחיצה ← תגית)"))}
+              title="פרק לכל תווית — תמונות של תוויות שונות לא מתערבבות באותו דף"
+              className="rounded-md px-2 py-1 text-xs text-amber-200 hover:bg-white/10"
+            >
+              🏷️ סקיצה לפי תוויות
+            </button>
             <button type="button" onClick={resetAll} title="מוציא את כל התמונות מהכפולות (עם אישור). ⌘Z מחזיר." className="rounded-md px-2 py-1 text-xs text-rose-300 hover:bg-rose-500/10">↺ איפוס סקיצה</button>
             <button type="button" onClick={savePreset} title="שומר את סדר הפריסות של הסקיצה הזו כתבנית לאלבומים הבאים" className="rounded-md px-2 py-1 text-xs text-slate-300 hover:bg-white/10">⭐ שמור כפריסט</button>
             <button type="button" onClick={downloadCurrent} disabled={downloading} title="מוריד את הכפולה הזו בגודל הדפסה מלא — לבדיקת איכות" className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-300 hover:bg-white/10 disabled:opacity-50">
@@ -495,6 +503,7 @@ function Editor({ design, order, names, back, extraPrice }) {
       {showAuto && (
         <AutoSketchDialog
           doc={doc}
+          byTags={showAuto === "tags"}
           onClose={() => setShowAuto(false)}
           onApply={async (pages) => {
             await snapshot("manual");
