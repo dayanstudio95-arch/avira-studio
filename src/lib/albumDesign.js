@@ -167,6 +167,20 @@ export function tagAssets(doc, ids, tag) {
   return { ...doc, tags };
 }
 
+// "איפוס סקיצה" (2026-10-08): every spread empty again — same number of spreads, the opening
+// spread keeps its text (names, date, font, logo), the photo bank / tags / camera clocks stay.
+// It's an ordinary edit, so ⌘Z brings the sketch back (and the editor snapshots it first).
+export function resetSketch(doc) {
+  const pages = doc.pages.map((p, i) => {
+    if (i === 0 && p.title) {
+      const t = newPage(p.templateId);
+      return { ...t, title: { ...p.title }, branding: p.branding };
+    }
+    return newPage("p4-a");
+  });
+  return { ...doc, pages };
+}
+
 export const toggleFlip = (doc, pageId) => mapPage(doc, pageId, (p) => ({ ...p, flip: !p.flip }));
 
 export const setTitle = (doc, pageId, patch) => mapPage(doc, pageId, (p) => ({ ...p, title: { ...p.title, ...patch } }));

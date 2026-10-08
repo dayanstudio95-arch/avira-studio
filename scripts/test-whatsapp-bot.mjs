@@ -2233,6 +2233,12 @@ console.log('\n— PART 43: album editor round 2 —');
   check('tags clear', JSON.stringify(ad.tagAssets(tagged, ['a'], null).tags), JSON.stringify({ b: ['chuppah'] }));
   const withPhotos = ad.placeAsset(ad.placeAsset(ad.emptyDoc({}), 'x', 0, 'A'), 'x', 0, 'A');
   check('insert at index', ad.insertPageAt(withPhotos, 1).pages.length, 3);
+  const before = ad.setTitle(g.doc, g.doc.pages[0].id, { names: 'דניאל & סבינה' });
+  const reset = ad.resetSketch(before);
+  check('reset: no photos left', reset.pages.every((p) => p.slots.every((s) => !s.assetId)), true);
+  check('reset: same number of spreads', reset.pages.length, before.pages.length);
+  check('reset: opening text kept', reset.pages[0].title.names, 'דניאל & סבינה');
+  check('reset: bank kept', reset.assets === before.assets, true);
   const pc = ad.setPageCount(g.doc, 1);
   check('page count never deletes spreads with photos', pc.blocked, 1);
 }

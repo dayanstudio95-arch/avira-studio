@@ -6,7 +6,7 @@ import { base44 } from "@/api/base44Client";
 import { supabase } from "@/api/supabaseClient";
 import {
   emptyDoc, priceSummary, sortAssets, FONT_HREF,
-  setPageCount,
+  setPageCount, resetSketch,
 } from "@/lib/albumDesign";
 import { presetFromDoc } from "@/lib/albumAutoLayout";
 import { useStudioBranding, savePresetToSettings } from "@/lib/albumStudioSettings";
@@ -356,6 +356,15 @@ function Editor({ design, order, names, back, extraPrice }) {
     setPreparing(null);
   };
 
+  const resetAll = async () => {
+    const used = doc.pages.reduce((n, p) => n + p.slots.filter((s) => s.assetId).length, 0);
+    if (!window.confirm(`לאפס את הסקיצה?\n\nכל ${used} התמונות יוצאו מהכפולות (נשארות בבנק), ${doc.pages.length} הכפולות יישארו ריקות. טקסט הפתיחה נשמר.\n\nאפשר לחזור אחורה עם ⌘Z (או "היסטוריה").`)) return;
+    await snapshot("manual");
+    edit((d) => resetSketch(d));
+    setCurrentId(doc.pages[0]?.id);
+    toast.success("הסקיצה אופסה — ⌘Z מחזיר אותה");
+  };
+
   const saveVersion = async () => {
     const { error } = await snapshot("manual");
     error ? toast.error("שמירת הגרסה נכשלה") : toast.success("נשמרה גרסה — אפשר לחזור אליה מ'היסטוריה'");
@@ -393,6 +402,7 @@ function Editor({ design, order, names, back, extraPrice }) {
             <button type="button" onClick={undo} disabled={!canUndo} title="ביטול (⌘Z)" className="rounded p-1.5 text-slate-300 hover:bg-white/10 disabled:opacity-30"><Undo2 className="h-4 w-4" /></button>
             <button type="button" onClick={redo} disabled={!canRedo} title="חזרה (⌘⇧Z)" className="rounded p-1.5 text-slate-300 hover:bg-white/10 disabled:opacity-30"><Redo2 className="h-4 w-4" /></button>
             <button type="button" onClick={() => setShowAuto(true)} className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-amber-200 hover:bg-white/10"><Sparkles className="h-4 w-4" /> סקיצה אוטומטית</button>
+            <button type="button" onClick={resetAll} title="מוציא את כל התמונות מהכפולות (עם אישור). ⌘Z מחזיר." className="rounded-md px-2 py-1 text-xs text-rose-300 hover:bg-rose-500/10">↺ איפוס סקיצה</button>
             <button type="button" onClick={savePreset} title="שומר את סדר הפריסות של הסקיצה הזו כתבנית לאלבומים הבאים" className="rounded-md px-2 py-1 text-xs text-slate-300 hover:bg-white/10">⭐ שמור כפריסט</button>
             <button type="button" onClick={downloadCurrent} disabled={downloading} title="מוריד את הכפולה הזו בגודל הדפסה מלא — לבדיקת איכות" className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-300 hover:bg-white/10 disabled:opacity-50">
               {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} כפולה בגודל מלא
