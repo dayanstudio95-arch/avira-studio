@@ -242,11 +242,12 @@ export default function PhotoBank({ doc, usage, onPick, onRefresh, refreshing, o
 
 // Big preview OUTSIDE the bank — just to its left, over the spread area — so it never covers the
 // neighbouring photos (2026-10-08: on the bank's left column it used to hide the ones next to it).
-function HoverPreview({ asset, y, bankLeft }) {
+// `side` (the opening-photo picker): "left"/"right" = pinned to that side of `box` instead.
+export function HoverPreview({ asset, y, bankLeft, side = null, box = null }) {
   const landscape = (asset.w || 3) >= (asset.h || 2);
   const w = landscape ? 560 : 380;
   const h = Math.round((w * (asset.h || 2)) / (asset.w || 3));
-  const left = Math.max(12, bankLeft - w - 16);
+  const left = side && box ? (side === "left" ? box.left + 16 : box.right - w - 16) : Math.max(12, bankLeft - w - 16);
   const top = Math.max(12, Math.min(y - h / 2, window.innerHeight - h - 40));
   return createPortal(
     <div className="pointer-events-none fixed z-[90] overflow-hidden rounded-lg border border-white/20 bg-black shadow-2xl" style={{ left, top, width: w }}>

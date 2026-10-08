@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { X, Sparkles, ChevronUp, ChevronDown } from "lucide-react";
 import { autoLayout, applyPreset, OPENING_TEMPLATE, autoLayoutByTags } from "@/lib/albumAutoLayout";
 import { getTemplate, cellRects, textRect } from "@/lib/albumTemplates";
 import { loadPresets } from "@/lib/albumStudioSettings";
 import { sortAssets, PAGE_BASELINE } from "@/lib/albumDesign";
 import { assetSrc } from "@/lib/albumAssets";
-import { PHOTO_TAGS } from "./PhotoBank";
+import { PHOTO_TAGS, HoverPreview } from "./PhotoBank";
 
 // "✨ סקיצה אוטומטית" (2026-10-08, the owner's flow):
 //   1. how many photos on the opening page (1–3);
@@ -23,6 +23,24 @@ export default function AutoSketchDialog({ doc, onClose, onApply, byTags = false
   const [spreads, setSpreads] = useState(PAGE_BASELINE);
   const [presets, setPresets] = useState([]);
   const [presetId, setPresetId] = useState("");
+  // big preview while choosing the opening photos — on the far side of the grid from the cursor
+  const [preview, setPreview] = useState(null);
+  const hoverTimer = useRef(null);
+  const gridRef = useRef(null);
+  useEffect(() => () => clearTimeout(hoverTimer.current), []);
+  const hoverOn = (a, e) => {
+    const { clientX: x, clientY: y } = e;
+    clearTimeout(hoverTimer.current);
+    hoverTimer.current = setTimeout(() => {
+      const box = gridRef.current?.getBoundingClientRect();
+      if (!box) return;
+      setPreview({ asset: a, y, box, side: x > box.left + box.width / 2 ? "left" : "right" });
+    }, 250);
+  };
+  const hoverOff = () => {
+    clearTimeout(hoverTimer.current);
+    setPreview(null);
+  };
   useEffect(() => {
     loadPresets().then(setPresets);
   }, []);
@@ -136,11 +154,11 @@ export default function AutoSketchDialog({ doc, onClose, onApply, byTags = false
                 ))}
               </div>
             )}
-            <div className="grid max-h-[45vh] gap-1.5 overflow-y-auto rounded-lg bg-black/20 p-1.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))" }}>
+            <div ref={gridRef} onMouseLeave={hoverOff} className="grid max-h-[45vh] gap-1.5 overflow-y-auto rounded-lg bg-black/20 p-1.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))" }}>
               {shown.map((a) => {
                 const k = picked.indexOf(a.id);
                 return (
-                  <button key={a.id} type="button" onClick={() => toggle(a.id)} title={a.name} className={`relative aspect-square overflow-hidden rounded ${k >= 0 ? "ring-4 ring-amber-400" : "hover:ring-2 hover:ring-white/40"}`}>
+                  <button key={a.id} type="button" onClick={() => toggle(a.id)} onMouseEnter={(e) => hoverOn(a, e)} onMouseLeave={hoverOff} className={`relative aspect-square overflow-hidden rounded ${k >= 0 ? "ring-4 ring-amber-400" : "hover:ring-2 hover:ring-white/40"}`}>
                     <img src={assetSrc(a, 300)} referrerPolicy="no-referrer" loading="lazy" alt="" className="h-full w-full object-cover" />
                     {k >= 0 && <span className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-amber-400 text-sm font-bold text-gray-900">{k + 1}</span>}
                   </button>
@@ -183,6 +201,7 @@ export default function AutoSketchDialog({ doc, onClose, onApply, byTags = false
           </>
         )}
       </div>
+      {preview && step === 2 && <HoverPreview {...preview} />}
     </div>
   );
 }
