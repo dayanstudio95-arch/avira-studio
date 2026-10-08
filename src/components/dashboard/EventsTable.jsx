@@ -13,6 +13,7 @@ import PaymentStatusSelector, { paymentStatusConfig, statusLabels } from "@/comp
 import UnifiedSidePanel from "../unified/UnifiedSidePanel";
 import QuestionnaireReminderDialog from "./QuestionnaireReminderDialog";
 import EventTeamDialog from "./EventTeamDialog";
+import ProgressEventDialog from "./ProgressEventDialog";
 import { missingCount as crewMissing } from "@/lib/missingTeam";
 const { StaffMember } = base44.entities;
 
@@ -46,6 +47,11 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [questionnaireFor, setQuestionnaireFor] = useState(null); // { event, lead } — resend preview
   const [teamFor, setTeamFor] = useState(null); // the event whose team window is open
+  const [progressFor, setProgressFor] = useState(null); // the event whose work-status window is open
+  const openProgress = (e, event) => {
+    e?.stopPropagation?.();
+    setProgressFor(event);
+  };
   const openTeam = (e, event) => {
     e?.stopPropagation?.();
     setTeamFor(event);
@@ -218,7 +224,12 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
                     </div>
 
                     <div className="flex gap-2 flex-wrap">
-                      <Badge variant="outline" className={`${progressStatus.color} border text-xs`}>
+                      <Badge
+                        variant="outline"
+                        onClick={(e) => openProgress(e, event)}
+                        title="לחצו לסימון בסטטוס עבודה"
+                        className={`${progressStatus.color} border text-xs cursor-pointer hover:opacity-80`}
+                      >
                         {progressStatus.label}
                       </Badge>
                       <Badge
@@ -346,12 +357,16 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
                         {(() => {
                           const progressStatus = getEventProgressStatus(event);
                           return (
-                            <Badge 
-                              variant="outline"
-                              className={`${progressStatus.color} border font-medium`}
+                            <button
+                              type="button"
+                              onClick={(e) => openProgress(e, event)}
+                              title="לחצו כדי לפתוח את האירוע בסטטוס עבודה ולסמן"
+                              className="rounded-md transition-opacity hover:opacity-80"
                             >
-                              {progressStatus.label}
-                            </Badge>
+                              <Badge variant="outline" className={`${progressStatus.color} border font-medium cursor-pointer`}>
+                                {progressStatus.label} ›
+                              </Badge>
+                            </button>
                           );
                         })()}
                       </TableCell>
@@ -452,6 +467,7 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
         </div>
       </CardContent>
       </Card>
+      <ProgressEventDialog event={progressFor} staffMembers={staffMembers} onClose={() => setProgressFor(null)} onChanged={onRefresh} />
       <EventTeamDialog event={teamFor} staffMembers={staffMembers} onClose={() => setTeamFor(null)} onChanged={onRefresh} />
       <QuestionnaireReminderDialog target={questionnaireFor} onClose={() => setQuestionnaireFor(null)} />
       <UnifiedSidePanel

@@ -2,11 +2,11 @@ import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { uploadFile } from "@/api/uploadFile";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar, Camera, Video, Scissors, Filter, CalendarDays, CheckSquare } from "lucide-react";
 import ProgressEventMobileCard from "../components/progressStatus/ProgressEventMobileCard";
-import { format } from "date-fns";
+import ProgressEventRow from "../components/progressStatus/ProgressEventRow";
+import { useProgressActions } from "../components/progressStatus/useProgressActions";
 import { EVENT_TEAM_ROLES } from "@/lib/staffRoles";
 
 const HEBREW_MONTHS = [
@@ -15,7 +15,6 @@ const HEBREW_MONTHS = [
 ];
 const formatMonthYear = (date) => `${HEBREW_MONTHS[date.getMonth()]} ${date.getFullYear()}`;
 import { toast } from "sonner";
-import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 // Was previously missing "videographer2" entirely (same real bug as
 // ProgressEventMobileCard.jsx — a videographer2 team member got no status button and
@@ -51,11 +50,6 @@ export default function ProgressStatus() {
   const [filter, setFilter] = useState("all");
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [showDuplicates, setShowDuplicates] = useState(false);
-  const [pendingLinks, setPendingLinks] = useState({});
-  const [sendingEditor, setSendingEditor] = useState({});
-  const [sendingCouple, setSendingCouple] = useState({});
-  const [sendingGraphic, setSendingGraphic] = useState({});
-  const [sendingAlbumCouple, setSendingAlbumCouple] = useState({});
   const [sortOrder, setSortOrder] = useState(() => localStorage.getItem('progress_sort') || 'asc');
   const [showAlbumSettings, setShowAlbumSettings] = useState(false);
   const [showAlbumSend, setShowAlbumSend] = useState(false);
@@ -73,6 +67,15 @@ export default function ProgressStatus() {
 
   useEffect(() => { loadEvents(); }, []);
 
+  // The row's actions (mark done, links, send to editor / couple / graphic) live in a hook
+  // since 2026-10-09 so the dashboard's progress window does exactly the same.
+  const actions = useProgressActions({ setEvents, staffMembers });
+  const {
+    pendingLinks, setPendingLinks, sendingEditor, sendingCouple, sendingGraphic, sendingAlbumCouple,
+    updateField, saveLinkOnBlur, getLinkValue,
+    handleSendToEditor, handleSendToCouple, handleSendAlbumToGraphic, handleSendAlbumToCouple,
+  } = actions;
+
   const loadEvents = async () => {
     setIsLoading(true);
     try {
@@ -86,137 +89,6 @@ export default function ProgressStatus() {
       toast.error("שגיאה בטעינת האירועים");
     }
     setIsLoading(false);
-  };
-
-  const updateField = async (eventId, field, value) => {
-    try {
-      await base44.entities.Event.update(eventId, { [field]: value });
-      setEvents(prev => prev.map(e => e?.id === eventId ? { ...e, [field]: value } : e));
-    } catch {
-      toast.error("שגיאה בשמירה");
-    }
-  };
-
-  const saveLinkOnBlur = async (eventId, field) => {
-    const key = `${eventId}-${field}`;
-    const value = pendingLinks[key];
-    if (value === undefined) return;
-    await updateField(eventId, field, value);
-    setPendingLinks(prev => { const next = { ...prev }; delete next[key]; return next; });
-  };
-
-  const handleSendToEditor = async (event) => {
-    if (event?.rawSentToEditor) {
-      toast.warning('גלם כבר נשלח לעורך עבור אירוע זה');
-      return;
-    }
-    const rawLink = event?.rawLink || pendingLinks[`${event?.id}-rawLink`];
-    if (!rawLink) { toast.error('נא להזין לינק גלם לפני השליחה'); return; }
-
-    const editorMember = (event?.team || []).find(m => m?.role === 'editor');
-    if (!editorMember?.staffMemberName) { toast.error('לא הוגדר עורך לאירוע זה'); return; }
-
-    const staffRecord = staffMembers.find(s => s?.name === editorMember.staffMemberName);
-    if (!staffRecord?.phoneNumber) { toast.error('חסר טלפון לעורך ' + editorMember.staffMemberName); return; }
-
-    setSendingEditor(prev => ({ ...prev, [event.id]: true }));
-    try {
-      await base44.functions.invoke('sendToEditor', {
-        eventId: event.id,
-        coupleNames: event?.coupleNames,
-        eventDate: event?.date,
-        venue: event?.venue,
-        phoneNumber: event?.phoneNumber,
-        editorName: editorMember.staffMemberName,
-        editorPhone: staffRecord.phoneNumber,
-        rawLink,
-      });
-      setEvents(prev => prev.map(e => e?.id === event.id
-        ? { ...e, rawSentToEditor: true, rawSentAt: new Date().toISOString() }
-        : e
-      ));
-      toast.success('נשלח לעורך בהצלחה ✅');
-    } catch (err) {
-      toast.error('שגיאה בשליחה: ' + (err?.message || ''));
-    } finally {
-      setSendingEditor(prev => ({ ...prev, [event.id]: false }));
-    }
-  };
-
-  const handleSendToCouple = async (event) => {
-    const finalLink = event?.finalLink || pendingLinks[`${event?.id}-finalLink`];
-    if (!finalLink) { toast.error('נא להזין לינק סופי לפני השליחה'); return; }
-    if (!event?.phoneNumber) { toast.error('חסר טלפון זוג לאירוע'); return; }
-    // Daniel's decision R4 (2026-10-06): a second send to the couple only after asking.
-    if (event?.finalDoneManual && !await confirmDialog(`הגלריה כבר סומנה כנשלחה ל${event?.coupleNames || 'זוג'}. לשלוח שוב?`)) return;
-
-    setSendingCouple(prev => ({ ...prev, [event.id]: true }));
-    try {
-      await base44.functions.invoke('sendToCouple', {
-        eventId: event.id,
-        coupleNames: event?.coupleNames,
-        eventDate: event?.date,
-        venue: event?.venue,
-        phoneNumber: event?.phoneNumber,
-        finalLink,
-      });
-      setEvents(prev => prev.map(e => e?.id === event.id
-        ? { ...e, finalDoneManual: true }
-        : e
-      ));
-      toast.success('נשלח לזוג בהצלחה ✅');
-    } catch (err) {
-      toast.error('שגיאה בשליחה: ' + (err?.message || ''));
-    } finally {
-      setSendingCouple(prev => ({ ...prev, [event.id]: false }));
-    }
-  };
-
-  const handleSendAlbumToGraphic = async (event) => {
-    if (!event?.albumSketchLink && !pendingLinks[`${event?.id}-albumSketchLink`]) {
-      toast.error('נא להזין לינק סקיצת אלבום לפני השליחה');
-      return;
-    }
-    // save link first if pending
-    const key = `${event?.id}-albumSketchLink`;
-    if (pendingLinks[key] !== undefined) {
-      await updateField(event.id, 'albumSketchLink', pendingLinks[key]);
-      setPendingLinks(prev => { const next = { ...prev }; delete next[key]; return next; });
-    }
-    setSendingGraphic(prev => ({ ...prev, [event.id]: true }));
-    try {
-      await base44.functions.invoke('sendAlbumSketch', { eventId: event.id, target: 'graphic' });
-      setEvents(prev => prev.map(e => e?.id === event.id ? { ...e, albumSketchGraphicNotified: true } : e));
-      toast.success('נשלח לגרפיקאית בהצלחה ✅');
-    } catch (err) {
-      toast.error('שגיאה בשליחה: ' + (err?.message || ''));
-    } finally {
-      setSendingGraphic(prev => ({ ...prev, [event.id]: false }));
-    }
-  };
-
-  const handleSendAlbumToCouple = async (event) => {
-    if (!event?.albumSketchLink && !pendingLinks[`${event?.id}-albumSketchLink`]) {
-      toast.error('נא להזין לינק סקיצת אלבום לפני השליחה');
-      return;
-    }
-    const key = `${event?.id}-albumSketchLink`;
-    if (pendingLinks[key] !== undefined) {
-      await updateField(event.id, 'albumSketchLink', pendingLinks[key]);
-      setPendingLinks(prev => { const next = { ...prev }; delete next[key]; return next; });
-    }
-    // Daniel's decision R4: a second send of the album sketch to the couple only after asking.
-    if (event?.albumSketchCoupleNotified && !await confirmDialog(`סקיצת האלבום כבר נשלחה ל${event?.coupleNames || 'זוג'}. לשלוח שוב?`)) return;
-    setSendingAlbumCouple(prev => ({ ...prev, [event.id]: true }));
-    try {
-      await base44.functions.invoke('sendAlbumSketch', { eventId: event.id, target: 'couple' });
-      setEvents(prev => prev.map(e => e?.id === event.id ? { ...e, albumSketchCoupleNotified: true } : e));
-      toast.success('סקיצת האלבום נשלחה לזוג בהצלחה ✅');
-    } catch (err) {
-      toast.error('שגיאה בשליחה: ' + (err?.message || ''));
-    } finally {
-      setSendingAlbumCouple(prev => ({ ...prev, [event.id]: false }));
-    }
   };
 
   const scrollToClosestEvent = () => {
@@ -250,11 +122,6 @@ export default function ProgressStatus() {
     const candidates = document.querySelectorAll(`[id="event-row-${closest.id}"]`);
     const el = Array.from(candidates).find((node) => node.offsetParent !== null) || candidates[0];
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  };
-
-  const getLinkValue = (event, field) => {
-    const key = `${event?.id}-${field}`;
-    return pendingLinks[key] !== undefined ? pendingLinks[key] : (event?.[field] || "");
   };
 
   const openAlbumSettings = async () => {
@@ -592,206 +459,7 @@ export default function ProgressStatus() {
                 if (item.type === 'monthMore') return renderMonthMore(item);
 
                 const event = item.data;
-                const teamMembers = event?.team || [];
-                const progress = getProgress(event, teamMembers);
-                const rawDone = isRawCompleted(event);
-                const finalDone = isFinalCompleted(event);
-
-                return (
-                  <div key={event?.id} id={`event-row-${event?.id}`} className="rounded-xl border border-white/[0.07] bg-gradient-to-b from-[#0F1C36] to-[#0B1529] p-4 transition-colors hover:border-[#4F7BFF]/40">
-                    {/* Row: LTR so elements flow left→right */}
-                    <div className="flex items-start gap-3 flex-wrap" style={{ direction: "ltr" }}>
-
-                      {/* Event Info — forced RTL for Hebrew text */}
-                      <div className="flex items-center gap-3 min-w-fit" style={{ direction: "rtl" }}>
-                        <Calendar className="w-5 h-5 text-amber-400 flex-shrink-0" />
-                        <div>
-                          <p className="text-sm font-semibold text-white">{event?.coupleNames || "—"}</p>
-                          <p className="text-xs text-gray-400">
-                            {event?.date ? format(new Date(event.date), "d/M/yyyy") : "—"}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Crew Buttons with name below */}
-                      <div className="flex items-start gap-2 flex-wrap">
-                        {Object.entries(ROLE_CONFIG).map(([roleKey, config]) => {
-                          const member = teamMembers.find(m => m?.role === roleKey);
-                          if (!member) return null;
-                          const isDone = !!event?.[config.doneField];
-                          const Icon = config.icon;
-                          return (
-                            <div key={roleKey} className="flex flex-col items-center gap-0.5">
-                              <button
-                                onClick={() => updateField(event.id, config.doneField, !isDone)}
-                                className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap border transition-colors ${
-                                  isDone
-                                    ? "bg-green-500/30 text-green-300 border-green-500/50 hover:bg-green-500/40"
-                                    : "bg-red-500/20 text-red-300 border-red-500/30 hover:bg-red-500/30"
-                                }`}
-                              >
-                                <Icon className="w-3 h-3" />
-                                <span>{config.label}</span>
-                              </button>
-                              {member?.staffMemberName && (
-                                <span className="text-xs text-gray-400 max-w-[56px] truncate text-center">
-                                  {member.staffMemberName}
-                                </span>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {/* Raw Link + Status + Send to Editor */}
-                      <div className="flex items-center gap-1">
-                        <Input
-                          type="url"
-                          placeholder="לינק גלם"
-                          value={getLinkValue(event, "rawLink")}
-                          onChange={e => setPendingLinks(prev => ({ ...prev, [`${event.id}-rawLink`]: e.target.value }))}
-                          onBlur={() => saveLinkOnBlur(event.id, "rawLink")}
-                          className="h-8 text-xs bg-gray-800 border-gray-700 text-white placeholder-gray-500 w-24"
-                          dir="ltr"
-                        />
-                        <button
-                          onClick={() => updateField(event.id, "rawDoneManual", !event?.rawDoneManual)}
-                          className={`h-8 px-2 text-xs rounded border font-medium transition-colors ${
-                            rawDone
-                              ? "bg-green-500/30 text-green-300 border-green-500/50"
-                              : "bg-gray-800 text-gray-400 border-gray-600 hover:border-gray-400"
-                          }`}
-                          title="גלם — לחץ לסימון ידני"
-                        >
-                          גלם
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (event?.rawSentToEditor) {
-                              updateField(event.id, 'rawSentToEditor', false);
-                            } else {
-                              handleSendToEditor(event);
-                            }
-                          }}
-                          disabled={!!sendingEditor[event.id]}
-                          className={`h-8 px-2 text-xs rounded border font-medium transition-colors whitespace-nowrap ${
-                            event?.rawSentToEditor
-                              ? 'bg-green-500/30 text-green-300 border-green-500/50 hover:bg-red-500/20 hover:text-red-300 hover:border-red-500/40'
-                              : 'bg-blue-600/20 text-blue-300 border-blue-500/40 hover:bg-blue-600/30'
-                          }`}
-                          title={event?.rawSentToEditor ? 'לחץ לאיפוס הסטטוס' : 'שלח לעורך'}
-                        >
-                          {sendingEditor[event.id] ? '...' : event?.rawSentToEditor ? '✓ נשלח' : '→ עורך'}
-                        </button>
-                      </div>
-
-                      {/* Final Link + Status + Send to Couple */}
-                      <div className="flex items-center gap-1">
-                        <Input
-                          type="url"
-                          placeholder="לינק סופי"
-                          value={getLinkValue(event, "finalLink")}
-                          onChange={e => setPendingLinks(prev => ({ ...prev, [`${event.id}-finalLink`]: e.target.value }))}
-                          onBlur={() => saveLinkOnBlur(event.id, "finalLink")}
-                          className="h-8 text-xs bg-gray-800 border-gray-700 text-white placeholder-gray-500 w-24"
-                          dir="ltr"
-                        />
-                        <button
-                          onClick={() => updateField(event.id, "finalDoneManual", !event?.finalDoneManual)}
-                          className={`h-8 px-2 text-xs rounded border font-medium transition-colors ${
-                            finalDone
-                              ? "bg-green-500/30 text-green-300 border-green-500/50"
-                              : "bg-gray-800 text-gray-400 border-gray-600 hover:border-gray-400"
-                          }`}
-                          title="סופי — לחץ לסימון ידני"
-                        >
-                          סופי
-                        </button>
-                        <button
-                          onClick={() => handleSendToCouple(event)}
-                          disabled={!!sendingCouple[event.id]}
-                          className={`h-8 px-2 text-xs rounded border font-medium transition-colors whitespace-nowrap ${
-                            event?.finalDoneManual
-                              ? "bg-green-500/30 text-green-300 border-green-500/50"
-                              : "bg-purple-600/20 text-purple-300 border-purple-500/40 hover:bg-purple-600/30"
-                          }`}
-                          title="שלח סופי לזוג"
-                        >
-                          {sendingCouple[event.id] ? '...' : event?.finalDoneManual ? '✓ נשלח' : '→ זוג'}
-                        </button>
-                      </div>
-
-                      {/* Album Sketch — link + graphic + couple */}
-                      <div className="flex items-center gap-1">
-                        <Input
-                          type="url"
-                          placeholder="לינק אלבום"
-                          value={getLinkValue(event, "albumSketchLink")}
-                          onChange={e => setPendingLinks(prev => ({ ...prev, [`${event.id}-albumSketchLink`]: e.target.value }))}
-                          onBlur={() => saveLinkOnBlur(event.id, "albumSketchLink")}
-                          className="h-8 text-xs bg-gray-800 border-gray-700 text-white placeholder-gray-500 w-24"
-                          dir="ltr"
-                        />
-                        <button
-                          onClick={() => {
-                            if (event?.albumSketchGraphicNotified) {
-                              updateField(event.id, 'albumSketchGraphicNotified', false);
-                            } else {
-                              handleSendAlbumToGraphic(event);
-                            }
-                          }}
-                          disabled={!!sendingGraphic[event.id]}
-                          className={`h-8 px-2 text-xs rounded border font-medium transition-colors whitespace-nowrap ${
-                            event?.albumSketchGraphicNotified
-                              ? 'bg-green-500/30 text-green-300 border-green-500/50 hover:bg-red-500/20 hover:text-red-300 hover:border-red-500/40'
-                              : 'bg-orange-600/20 text-orange-300 border-orange-500/40 hover:bg-orange-600/30'
-                          }`}
-                          title={event?.albumSketchGraphicNotified ? 'לחץ לאיפוס' : 'שלח לגרפיקאית'}
-                        >
-                          {sendingGraphic[event.id] ? '...' : event?.albumSketchGraphicNotified ? '✓ גרפיקה' : '→ גרפיקה'}
-                        </button>
-                        <button
-                          onClick={() => handleSendAlbumToCouple(event)}
-                          disabled={!!sendingAlbumCouple[event.id]}
-                          className={`h-8 px-2 text-xs rounded border font-medium transition-colors whitespace-nowrap ${
-                            event?.albumSketchCoupleNotified
-                              ? 'bg-green-500/30 text-green-300 border-green-500/50'
-                              : 'bg-teal-600/20 text-teal-300 border-teal-500/40 hover:bg-teal-600/30'
-                          }`}
-                          title="שלח סקיצה לזוג"
-                        >
-                          {sendingAlbumCouple[event.id] ? '...' : event?.albumSketchCoupleNotified ? '✓ זוג' : '→ זוג'}
-                        </button>
-                      </div>
-
-                      {/* Album + Progress — pushed to end */}
-                       <div className="flex items-center gap-2 ml-auto">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => updateField(event.id, "albumStatus", event?.albumStatus === "sent" ? "pending" : "sent")}
-                          className={`h-8 px-2 text-xs font-medium rounded-md whitespace-nowrap ${
-                            event?.albumStatus === "sent"
-                              ? "bg-green-500/30 text-green-300 border border-green-500/50"
-                              : "bg-pink-500/20 text-pink-300 border border-pink-500/30"
-                          }`}
-                        >
-                          📀 אלבום
-                        </Button>
-                        <div className="w-28 h-1.5 bg-white/[0.07] rounded-full overflow-hidden">
-                          <div
-                            className={`h-full transition-all duration-300 ${progress.percentage === 100 ? "bg-[#22C987]" : progress.percentage >= 50 ? "bg-gradient-to-r from-[#06B6D4] to-[#3B82F6]" : "bg-gradient-to-r from-[#F59E0B] to-[#FACC15]"}`}
-                            style={{ width: `${progress.percentage}%` }}
-                          />
-                        </div>
-                        <span className={`text-xs font-semibold w-8 text-left ${progress.percentage === 100 ? "text-emerald-400" : progress.percentage >= 50 ? "text-sky-300" : "text-amber-300"}`}>
-                          {progress.percentage}%
-                        </span>
-                      </div>
-
-                    </div>
-                  </div>
-                );
+                return <ProgressEventRow key={event?.id} event={event} actions={actions} />;
               })}
             </div>
           );
