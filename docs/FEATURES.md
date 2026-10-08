@@ -1269,6 +1269,12 @@ batch_id, actor, created_at)`. `before` שומר בדיוק את הערכים ש
   - **איך זה נשמר:** באותה עמודה `decision_dismissed_at` שמשמשת את "לא צריך", במצב חדש בשם `closed`.
 - **קוד:** `src/lib/availabilityResend.js`, `AvailabilityAnswers.jsx`, `availabilityInbox.js` (`closed`, `g.closed`). `buildMessage` / `roleLabelFor` מיוצאים מ-`StaffAvailabilityModal.jsx`. בדיקות ב-PART 36. בלי מיגרציה ובלי פונקציה.
 
+## 12מט. חלון אישור בעיצוב המערכת במקום חלון של הדפדפן (9.10.2026)
+
+- **מה השתנה:** לפני פעולה, שאלת האישור (למשל "לסגור את דניאל ומאי?") מופיעה בחלון כהה בעיצוב המערכת, ולא בחלון האפור של הדפדפן ("האתר new.avira-studio.com אומר").
+- **מה בחלון:** כותרת, הסבר, כפתור פעולה ירוק עם שם הפעולה (למשל "סגור") ו"ביטול". Esc או לחיצה מחוץ לחלון = ביטול.
+- **קוד:** `src/components/ui/confirm-dialog.jsx`. הפונקציה `await confirmDialog({ title, message, confirmText, danger })` מחזירה true או false. `<ConfirmHost/>` מורכב פעם אחת ב-`App.jsx`. בלי ה-host היא נופלת לחלון של הדפדפן, כך שקריאה אף פעם לא נבלעת. בשימוש ב"סגור" של תשובות זמינות. בשאר המסכים עדיין יש `window.confirm` (בערך 16 קבצים), ואפשר להחליף בהדרגה.
+
 ---
 
 <a id="13"></a>

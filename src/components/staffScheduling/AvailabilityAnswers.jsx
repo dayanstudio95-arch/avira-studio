@@ -6,6 +6,7 @@ import { Loader2, CheckCircle2, Clock, XCircle, MapPin, CalendarDays, Send, Lock
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { buildMessage, roleLabelFor } from "@/components/leads/StaffAvailabilityModal";
 import { resendAvailabilityRequest } from "@/lib/availabilityResend";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { buildAvailabilityInbox } from "@/lib/availabilityInbox";
 import { israelToday, missingRoles } from "@/lib/missingTeam";
 import { eventTeamRoleLabel, AVAILABILITY_SLOT_LABELS } from "@/lib/staffRoles";
@@ -139,7 +140,12 @@ export default function AvailabilityAnswers({ events, staffMembers, onEventsChan
   const closeGroup = async (g) => {
     const rows = g.rows.filter((x) => ["pending", "decide", "full"].includes(x.state));
     if (!rows.length) return;
-    if (!window.confirm(`לסגור את ${g.couple || "האירוע"}?\n\n${rows.length} אנשי צוות ייצאו מ"ממתינים" ומ"צריך החלטה". אף אחד לא מקבל הודעה.\nאם מישהו יענה אחר כך — זה יופיע רק ב"הכל".`)) return;
+    const ok = await confirmDialog({
+      title: `לסגור את ${g.couple || "האירוע"}?`,
+      message: `${rows.length === 1 ? "איש צוות אחד ייצא" : `${rows.length} אנשי צוות ייצאו`} מ"ממתינים" ומ"צריך החלטה".\nאף אחד לא מקבל הודעה.\nאם מישהו יענה אחר כך — זה יופיע רק ב"הכל", ואפשר תמיד "פתח מחדש".`,
+      confirmText: "סגור",
+    });
+    if (!ok) return;
     setBusy(g.key);
     try {
       const now = new Date().toISOString();
