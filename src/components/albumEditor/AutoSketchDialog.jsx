@@ -5,7 +5,7 @@ import { getTemplate, cellRects, textRect } from "@/lib/albumTemplates";
 import { loadPresets } from "@/lib/albumStudioSettings";
 import { sortAssets, PAGE_BASELINE } from "@/lib/albumDesign";
 import { assetSrc } from "@/lib/albumAssets";
-import { PHOTO_TAGS, HoverPreview } from "./PhotoBank";
+import { PHOTO_TAGS } from "./PhotoBank";
 
 // "✨ סקיצה אוטומטית" (2026-10-08, the owner's flow):
 //   1. how many photos on the opening page (1–3);
@@ -23,24 +23,16 @@ export default function AutoSketchDialog({ doc, onClose, onApply, byTags = false
   const [spreads, setSpreads] = useState(PAGE_BASELINE);
   const [presets, setPresets] = useState([]);
   const [presetId, setPresetId] = useState("");
-  // big preview while choosing the opening photos — on the far side of the grid from the cursor
-  const [preview, setPreview] = useState(null);
+  // a fixed preview pane beside the grid (2026-10-08: a floating preview hid photos) — shows the
+  // photo under the mouse, otherwise the last one picked
+  const [hovered, setHovered] = useState(null);
   const hoverTimer = useRef(null);
-  const gridRef = useRef(null);
   useEffect(() => () => clearTimeout(hoverTimer.current), []);
-  const hoverOn = (a, e) => {
-    const { clientX: x, clientY: y } = e;
+  const hoverOn = (a) => {
     clearTimeout(hoverTimer.current);
-    hoverTimer.current = setTimeout(() => {
-      const box = gridRef.current?.getBoundingClientRect();
-      if (!box) return;
-      setPreview({ asset: a, y, box, side: x > box.left + box.width / 2 ? "left" : "right" });
-    }, 250);
+    hoverTimer.current = setTimeout(() => setHovered(a), 120);
   };
-  const hoverOff = () => {
-    clearTimeout(hoverTimer.current);
-    setPreview(null);
-  };
+  const hoverOff = () => clearTimeout(hoverTimer.current);
   useEffect(() => {
     loadPresets().then(setPresets);
   }, []);
@@ -88,7 +80,7 @@ export default function AutoSketchDialog({ doc, onClose, onApply, byTags = false
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className={`max-h-[92vh] w-full space-y-4 overflow-y-auto rounded-2xl border border-white/10 bg-[#0B1529] p-5 text-slate-200 ${step === 2 ? "max-w-4xl" : "max-w-md"}`} onClick={(e) => e.stopPropagation()} dir="rtl">
+      <div className={`max-h-[92vh] w-full space-y-4 overflow-y-auto rounded-2xl border border-white/10 bg-[#0B1529] p-5 text-slate-200 ${step === 2 ? "max-w-7xl" : "max-w-md"}`} onClick={(e) => e.stopPropagation()} dir="rtl">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-lg font-semibold text-white"><Sparkles className="h-5 w-5 text-amber-300" /> {byTags ? "סקיצה לפי תוויות" : "סקיצה אוטומטית"}</div>
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
@@ -154,16 +146,21 @@ export default function AutoSketchDialog({ doc, onClose, onApply, byTags = false
                 ))}
               </div>
             )}
-            <div ref={gridRef} onMouseLeave={hoverOff} className="grid max-h-[45vh] gap-1.5 overflow-y-auto rounded-lg bg-black/20 p-1.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))" }}>
-              {shown.map((a) => {
-                const k = picked.indexOf(a.id);
-                return (
-                  <button key={a.id} type="button" onClick={() => toggle(a.id)} onMouseEnter={(e) => hoverOn(a, e)} onMouseLeave={hoverOff} className={`relative aspect-square overflow-hidden rounded ${k >= 0 ? "ring-4 ring-amber-400" : "hover:ring-2 hover:ring-white/40"}`}>
-                    <img src={assetSrc(a, 300)} referrerPolicy="no-referrer" loading="lazy" alt="" className="h-full w-full object-cover" />
-                    {k >= 0 && <span className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-amber-400 text-sm font-bold text-gray-900">{k + 1}</span>}
-                  </button>
-                );
-              })}
+            <div className="flex gap-3">
+              <div onMouseLeave={hoverOff} className="max-h-[52vh] min-w-0 flex-1 self-start overflow-y-auto rounded-lg bg-black/20 p-1.5">
+                <div className="grid content-start gap-1.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))" }}>
+                {shown.map((a) => {
+                  const k = picked.indexOf(a.id);
+                  return (
+                    <button key={a.id} type="button" onClick={() => toggle(a.id)} onMouseEnter={() => hoverOn(a)} className={`relative aspect-square overflow-hidden rounded ${k >= 0 ? "ring-4 ring-amber-400" : hovered?.id === a.id ? "ring-2 ring-sky-400" : "hover:ring-2 hover:ring-white/40"}`}>
+                      <img src={assetSrc(a, 300)} referrerPolicy="no-referrer" loading="lazy" alt="" className="h-full w-full object-cover" />
+                      {k >= 0 && <span className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-amber-400 text-sm font-bold text-gray-900">{k + 1}</span>}
+                    </button>
+                  );
+                })}
+                </div>
+              </div>
+              <PreviewPane asset={hovered || sorted.find((a) => a.id === picked[picked.length - 1]) || null} pickedIndex={hovered ? picked.indexOf(hovered.id) : picked.length - 1} onToggle={toggle} />
             </div>
             {!byTags && <div className="flex flex-wrap items-end gap-3 rounded-lg bg-white/[0.04] p-3 text-sm">
               {presets.length > 0 && (
@@ -201,7 +198,6 @@ export default function AutoSketchDialog({ doc, onClose, onApply, byTags = false
           </>
         )}
       </div>
-      {preview && step === 2 && <HoverPreview {...preview} />}
     </div>
   );
 }
@@ -215,6 +211,29 @@ function OpeningThumb({ templateId }) {
         <span key={i} className="absolute bg-slate-400" style={{ left: `${r.x}%`, top: `${r.y}%`, width: `${r.w}%`, height: `${r.h}%` }} />
       ))}
       {text && <span className="absolute flex items-center justify-center text-[7px] tracking-widest text-slate-500" style={{ left: `${text.x}%`, top: `${text.y}%`, width: `${text.w}%`, height: `${text.h}%` }}>A &amp; B</span>}
+    </div>
+  );
+}
+
+// The big preview beside the grid: the photo under the mouse (or the last one picked).
+function PreviewPane({ asset, pickedIndex, onToggle }) {
+  return (
+    <div className="flex h-[52vh] w-[42%] shrink-0 flex-col overflow-hidden rounded-lg bg-black/40">
+      {asset ? (
+        <>
+          <div className="flex min-h-0 flex-1 items-center justify-center p-2">
+            <img key={asset.id} src={assetSrc(asset, 1000)} referrerPolicy="no-referrer" alt="" className="max-h-full max-w-full rounded object-contain" />
+          </div>
+          <div className="flex items-center justify-between gap-2 border-t border-white/10 px-3 py-2 text-xs">
+            <span className="truncate text-slate-400" dir="ltr">{asset.name}{asset.w ? ` · ${asset.w}×${asset.h}` : ""}</span>
+            <button type="button" onClick={() => onToggle(asset.id)} className={`shrink-0 rounded-md px-3 py-1 font-semibold ${pickedIndex >= 0 ? "border border-white/20 text-slate-200" : "bg-amber-400 text-gray-900"}`}>
+              {pickedIndex >= 0 ? `נבחרה (${pickedIndex + 1}) — הסר` : "בחר לפתיחה"}
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-slate-500">העבירו את העכבר על תמונה כדי לראות אותה כאן בגדול</div>
+      )}
     </div>
   );
 }
