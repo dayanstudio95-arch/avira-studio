@@ -2277,6 +2277,10 @@ console.log('\n— PART 43: album editor round 2 —');
   check('fonts synced: one font, Hebrew date falls back to a Hebrew font', lf.names.id + lf.date.id + '|' + lf.hebrew.id, 'josefinjosefin|bellefair');
   const lf2 = ad.titleLineFonts({ font: 'josefin', syncFonts: false, fontNames: 'greatvibes', fontHebrew: 'frank' });
   check('fonts per line', lf2.names.id + '|' + lf2.date.id + '|' + lf2.hebrew.id, 'greatvibes|josefin|frank');
+  const picked = al.autoLayout(ids, { spreads: 6, openingCount: 2, openingIds: ['q11', 'q5'] });
+  check('opening = the 2 picked photos', picked.pages[0].slots.map((s) => s.assetId).sort().join(','), 'q11,q5');
+  check('picked photos not repeated later', picked.pages.slice(1).flatMap((p) => p.slots.map((s) => s.assetId)).some((x) => x === 'q11' || x === 'q5'), false);
+  check('the rest are all used', picked.pages.slice(1).flatMap((p) => p.slots.map((s) => s.assetId)).filter(Boolean).length + picked.unused, 16);
   const pc = ad.setPageCount(g.doc, 1);
   check('page count never deletes spreads with photos', pc.blocked, 1);
 }

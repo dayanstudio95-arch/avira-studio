@@ -146,21 +146,42 @@ export const presetFromDoc = (doc, name) => ({ id: newId("pr"), name: String(nam
 // himself — usually the couple from the outdoor shoot, not the first photo of the day).
 export const OPENING_TEMPLATE = { 1: "t-c", 2: "t-a", 3: "t-d" };
 
-export function autoLayout(assets, { spreads = 30, title = null, openingCount = 2, openingEmpty = true } = {}) {
+// Photos → the cells of a fixed template, narrowest photo in the narrowest cell.
+function assignByShape(templateId, photos) {
+  const cells = cellRects(getTemplate(templateId)).map((r, j) => ({ j, r: Math.log(cellAspect(r)) })).sort((a, b) => a.r - b.r);
+  const byShape = photos.map((p) => ({ p, r: Math.log(photoAspect(p)) })).sort((a, b) => a.r - b.r);
+  const out = new Array(cells.length).fill(null);
+  cells.forEach((c, k) => {
+    out[c.j] = byShape[k]?.p || null;
+  });
+  return out;
+}
+
+// `openingIds` (2026-10-08): the photos the owner picked for the opening spread — usually the
+// couple from the outdoor shoot. They fill the opening and don't appear again later in the album.
+// Without them the opening stays empty (openingEmpty) and the album starts from the first photo.
+export function autoLayout(assets, { spreads = 30, title = null, openingCount = 2, openingEmpty = true, openingIds = null } = {}) {
   const pages = [];
   const titlePage = newPage(OPENING_TEMPLATE[openingCount] || "t-a");
   if (title) titlePage.title = { ...titlePage.title, ...title };
   const titleCount = getTemplate(titlePage.templateId).cells.length;
-  // empty opening → its frames stay empty and the album starts from the first photo
-  const used = openingEmpty ? 0 : titleCount;
-  if (!openingEmpty) {
+  let pool = assets;
+  if (openingIds?.length) {
+    const chosen = openingIds.map((id) => assets.find((a) => a.id === id)).filter(Boolean).slice(0, titleCount);
+    assignByShape(titlePage.templateId, chosen).forEach((a, i) => {
+      if (a) titlePage.slots[i] = { ...titlePage.slots[i], assetId: a.id };
+    });
+    const taken = new Set(chosen.map((a) => a.id));
+    pool = assets.filter((a) => !taken.has(a.id));
+  } else if (!openingEmpty) {
     assets.slice(0, titleCount).forEach((a, i) => {
       titlePage.slots[i] = { ...titlePage.slots[i], assetId: a.id };
     });
+    pool = assets.slice(titleCount);
   }
   pages.push(titlePage);
 
-  const rest = assets.slice(used);
+  const rest = pool;
   const counts = distributeCounts(rest.length, Math.max(1, spreads - 1));
   let at = 0;
   let prev = null;
