@@ -55,6 +55,21 @@ export const TITLE_FONTS = [
 ];
 export const FONT_HREF = `https://fonts.googleapis.com/css2?${TITLE_FONTS.map((f) => `family=${f.google}`).join("&")}&display=swap`;
 export const isHebrewFont = (id) => titleFont(id).lang === "he";
+
+// The opening text's fonts per line (2026-10-08): "סנכרון" (default) = one font for all three
+// lines; off = names / date / Hebrew date each have their own. When synced and the font has no
+// Hebrew letters, the Hebrew date falls back to Bellefair (as before).
+export function titleLineFonts(title = {}) {
+  const base = title.font || "bellefair";
+  if (title.syncFonts !== false) {
+    return { names: titleFont(base), date: titleFont(base), hebrew: isHebrewFont(base) ? titleFont(base) : titleFont("bellefair") };
+  }
+  return {
+    names: titleFont(title.fontNames || base),
+    date: titleFont(title.fontDate || base),
+    hebrew: titleFont(title.fontHebrew || (isHebrewFont(base) ? base : "bellefair")),
+  };
+}
 export const titleFont = (id) => TITLE_FONTS.find((f) => f.id === id) || TITLE_FONTS[0];
 
 let seq = 0;

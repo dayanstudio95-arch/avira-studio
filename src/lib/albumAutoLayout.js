@@ -209,12 +209,13 @@ function slotFor(asset, looks) {
 
 // `from` = { pageId, index } when the photo was dragged out of a frame (it leaves that page),
 // or null when it comes from the bank. → { doc, error }
-export function addToPage(doc, targetPageId, assetIds, assetsById, from = null) {
+export function addToPage(doc, targetPageId, assetIds, assetsById, from = null, extraLooks = {}) {
   const ti = doc.pages.findIndex((p) => p.id === targetPageId);
   if (ti < 0) return { doc };
   if (from && from.pageId === targetPageId) return { doc }; // already on this page
   const looks = {};
   for (const p of doc.pages) for (const s of p.slots) if (s.assetId) looks[s.assetId] = { filter: s.filter, adj: s.adj, shape: s.shape, heal: s.heal };
+  Object.assign(looks, extraLooks); // e.g. a cut photo: its frame is already empty
   const target = doc.pages[ti];
   const have = target.slots.filter((s) => s.assetId).map((s) => assetsById[s.assetId]).filter(Boolean);
   const adding = assetIds.map((id) => assetsById[id]).filter((a) => a && !have.some((h) => h.id === a.id));
@@ -235,4 +236,18 @@ export function addToPage(doc, targetPageId, assetIds, assetsById, from = null) 
     }
   }
   return { doc: { ...doc, pages } };
+}
+
+// Cut (⌘X) a photo out of a page → the page re-layouts for one photo less (no empty frame left).
+export function removeFromPage(doc, pageId, index, assetsById) {
+  const i = doc.pages.findIndex((p) => p.id === pageId);
+  if (i < 0) return doc;
+  const page = doc.pages[i];
+  const looks = {};
+  for (const s of page.slots) if (s.assetId) looks[s.assetId] = { filter: s.filter, adj: s.adj, shape: s.shape, heal: s.heal };
+  const left = page.slots.filter((s, k) => s.assetId && k !== index).map((s) => assetsById[s.assetId]).filter(Boolean);
+  const next = relayout(page, sortAssets(left, doc.cameraOffsets || {}), looks) || { ...page, slots: page.slots.map((s, k) => (k === index ? { ...s, assetId: null } : s)) };
+  const pages = [...doc.pages];
+  pages[i] = next;
+  return { ...doc, pages };
 }

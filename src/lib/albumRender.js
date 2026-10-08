@@ -5,7 +5,7 @@
 // Verified in Chrome on a real folder: decode ~0.2s, render + JPEG ~1.3s, ~11MB per spread.
 // canvas ctx.filter is Chrome/Edge/Firefox only — the editor is "Chrome recommended".
 import { SPREAD, getTemplate, layoutRects, textRect } from "./albumTemplates";
-import { computeCrop, filterCss, titleFont, isHebrewFont, titleNames } from "./albumDesign";
+import { computeCrop, filterCss, titleNames, titleLineFonts } from "./albumDesign";
 import { slotFilter } from "./albumAdjust";
 import { healedSource } from "./albumHeal";
 
@@ -30,18 +30,15 @@ export function pixelRect(r, W, H) {
   return { x, y, w: Math.round(((r.x + r.w) / 100) * W) - x, h: Math.round(((r.y + r.h) / 100) * H) - y };
 }
 
-const HEBREW_FALLBACK = "'Bellefair', serif";
-
 async function drawTitle(ctx, rect, title, W, H) {
-  const f = titleFont(title.font);
+  const fonts = titleLineFonts(title); // same per-line fonts as SpreadView
   const scale = title.scale || 1;
-  const hebrewFamily = isHebrewFont(title.font) ? f.family : HEBREW_FALLBACK;
   const names = titleNames(title);
   // Same sizes as SpreadView's TitleText (cqw = 1% of the spread width); dx/dy = dragged offset.
   const lines = [];
-  if (names) lines.push({ text: names, size: (1.9 * scale * W) / 100, family: f.family, weight: f.weight, spacing: 0.22, gapBefore: 0, rtl: /[\u0590-\u05FF]/.test(names) });
-  if (title.date) lines.push({ text: title.date, size: (1.15 * scale * W) / 100, family: f.family, weight: f.weight, spacing: 0.12, gapBefore: (1.1 * W) / 100 });
-  if (title.showHebrew && title.hebrewDate) lines.push({ text: title.hebrewDate, size: (0.95 * scale * W) / 100, family: hebrewFamily, weight: 300, spacing: 0, gapBefore: (0.45 * W) / 100, rtl: true });
+  if (names) lines.push({ text: names, size: (1.9 * scale * W) / 100, family: fonts.names.family, weight: fonts.names.weight, spacing: 0.22, gapBefore: 0, rtl: /[\u0590-\u05FF]/.test(names) });
+  if (title.date) lines.push({ text: title.date, size: (1.15 * scale * W) / 100, family: fonts.date.family, weight: fonts.date.weight, spacing: 0.12, gapBefore: (1.1 * W) / 100 });
+  if (title.showHebrew && title.hebrewDate) lines.push({ text: title.hebrewDate, size: (0.95 * scale * W) / 100, family: fonts.hebrew.family, weight: fonts.hebrew.weight, spacing: 0, gapBefore: (0.45 * W) / 100, rtl: true });
   if (!lines.length) return;
   await Promise.all(lines.map((l) => document.fonts.load(`${l.weight} ${Math.round(l.size)}px ${l.family}`, l.text).catch(() => null)));
   const cx = rect.x + rect.w / 2 + ((title.dx || 0) / 100) * W;

@@ -5,7 +5,7 @@ import {
   usageCounts, addPage, insertPageAt, removePage, duplicatePage, movePage, setTemplate, setTemplateAssigned, toggleFlip, setTitle,
   placeAsset, clearSlot, updateSlot, swapSlots, setPageProps, addHealPatch, tagAssets, moveSlot, pasteSlot,
 } from "@/lib/albumDesign";
-import { splitPage, placeGroup, addToPage } from "@/lib/albumAutoLayout";
+import { splitPage, placeGroup, addToPage, removeFromPage } from "@/lib/albumAutoLayout";
 import { foldFaceWarnings } from "@/lib/albumFaces";
 import SpreadView, { AdjustmentDefs } from "./SpreadView";
 import PhotoBank from "./PhotoBank";
@@ -32,6 +32,23 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
   const [splitFor, setSplitFor] = useState(null);
   const [clip, setClip] = useState(null); // { slot, cut } — copy / cut / paste of a photo
   const [moveAsk, setMoveAsk] = useState(null); // { from, to } — dropped on a full frame of another page
+  const [dragging, setDragging] = useState(false); // a photo is being dragged → show the "add to this page" zone
+  const [areaOver, setAreaOver] = useState(false);
+  useEffect(() => {
+    const start = (e) => setDragging([...(e.dataTransfer?.types || [])].some((t) => t.startsWith("application/x-avira")));
+    const end = () => {
+      setDragging(false);
+      setAreaOver(false);
+    };
+    window.addEventListener("dragstart", start);
+    window.addEventListener("dragend", end);
+    window.addEventListener("drop", end);
+    return () => {
+      window.removeEventListener("dragstart", start);
+      window.removeEventListener("dragend", end);
+      window.removeEventListener("drop", end);
+    };
+  }, []);
   const change = useCallback((fn, key) => !locked && edit(fn, key), [edit, locked]);
 
   const assetsById = useMemo(() => Object.fromEntries(doc.assets.map((a) => [a.id, a])), [doc.assets]);
@@ -131,15 +148,34 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
   function copySel(cut) {
     if (locked || !selSlot?.assetId) return toast.info("בחרו קודם תמונה בכפולה");
     setClip({ slot: { ...selSlot } });
-    if (cut) change((d) => clearSlot(d, page.id, selectedSlot));
+    if (cut) {
+      change((d) => removeFromPage(d, page.id, selectedSlot, assetsById)); // the page closes the gap
+      setSelectedSlot(null);
+    }
     toast.success(cut ? "נגזר — בחרו מסגרת (גם בדף אחר) ו-⌘V" : "הועתק — בחרו מסגרת (גם בדף אחר) ו-⌘V");
   }
+  // ⌘V: into the selected frame if it's EMPTY; otherwise the photo is ADDED to this page and the
+  // layout changes to fit one more (the owner, 2026-10-08: "a full page grows, it doesn't replace").
   function pasteSel() {
     if (locked || !clip) return;
-    const i = selectedSlot != null && selectedSlot < page.slots.length ? selectedSlot : page.slots.findIndex((x) => !x.assetId);
-    if (i < 0) return toast.info("אין מסגרת פנויה — בחרו מסגרת להדביק אליה");
-    change((d) => pasteSlot(d, page.id, i, clip.slot));
-    setSelectedSlot(i);
+    const sel = selectedSlot != null && selectedSlot < page.slots.length ? selectedSlot : null;
+    if (sel != null && !page.slots[sel]?.assetId) {
+      change((d) => pasteSlot(d, page.id, sel, clip.slot));
+      return;
+    }
+    const { assetId, filter, adj, shape, heal } = clip.slot;
+    addPhotosHere({ ids: [assetId] }, { [assetId]: { filter, adj, shape, heal } });
+  }
+
+  function addPhotosHere({ ids, from }, extraLooks = {}, targetId = page.id) {
+    const assetIds = ids || [doc.pages.find((p) => p.id === from.pageId)?.slots[from.index]?.assetId].filter(Boolean);
+    const r = addToPage(doc, targetId, assetIds, assetsById, from || null, extraLooks);
+    if (r.error) return toast.error(r.error);
+    if (r.doc === doc) return;
+    edit(() => r.doc);
+    setSelectedSlot(null);
+    const n = doc.pages.findIndex((p) => p.id === targetId) + 1;
+    toast.success(from ? `התמונה עברה לדף ${n} — הפריסה התאימה את עצמה` : `נוספה לדף ${n} — הפריסה התאימה את עצמה`);
   }
 
   // ---- a photo dragged from another page ----
@@ -220,6 +256,30 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
             if (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) a.blur();
           }}
           onClick={(e) => e.target === e.currentTarget && setSelectedSlot(null)}
+          onDragOver={(e) => {
+            if (locked || ![...e.dataTransfer.types].some((t) => t.startsWith("application/x-avira"))) return;
+            e.preventDefault();
+            setAreaOver(true);
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget)) setAreaOver(false);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            setAreaOver(false);
+            setDragging(false);
+            if (locked) return;
+            // released around the spread (not on a frame) → the photo(s) join this page
+            const group = e.dataTransfer.getData("application/x-avira-group");
+            const asset = e.dataTransfer.getData("application/x-avira-asset");
+            const slot = e.dataTransfer.getData("application/x-avira-slot");
+            if (group) addPhotosHere({ ids: JSON.parse(group) });
+            else if (asset) addPhotosHere({ ids: [asset] });
+            else if (slot) {
+              const from = JSON.parse(slot);
+              if (from.pageId !== page.id) addPhotosHere({ from });
+            }
+          }}
         >
           <button type="button" onClick={() => step(1)} disabled={pageIndex >= doc.pages.length - 1} title="הכפולה הבאה (חץ ימינה →)" className="shrink-0 rounded-full p-2 text-slate-300 hover:bg-white/10 disabled:opacity-20">
             <ChevronRight className="h-7 w-7" />
@@ -229,6 +289,11 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
               דף {pageIndex + 1} מתוך {doc.pages.length}{pageIndex === 0 && page.title ? " (פתיחה)" : ""}
               {Object.keys(faces).length > 0 && <span className="mr-2 rounded bg-rose-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">⚠️ פנים על הקפל</span>}
             </div>
+            {dragging && !locked && (
+              <div className={`w-full max-w-[1400px] rounded-lg border-2 border-dashed px-3 py-2 text-center text-xs transition ${areaOver ? "border-emerald-400 bg-emerald-500/15 text-emerald-200" : "border-white/20 text-slate-400"}`}>
+                ⬇ שחררו כאן (מחוץ למסגרות) כדי <b>להוסיף</b> לדף הזה — הפריסה תשתנה לפי כמות התמונות · על מסגרת = החלפה
+              </div>
+            )}
             <div className="w-full max-w-[1400px] shadow-2xl shadow-black/50">
               <SpreadView
                 page={page}
@@ -298,19 +363,7 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
             }}
             onSplit={locked ? null : (id) => setSplitFor(id)}
             onDragHoverPage={locked ? null : (id) => id !== page.id && goTo(id)}
-            onDropOnPage={
-              locked
-                ? null
-                : (pageId, { ids, from }) => {
-                    const assetIds = ids || [doc.pages.find((p) => p.id === from.pageId)?.slots[from.index]?.assetId].filter(Boolean);
-                    const r = addToPage(doc, pageId, assetIds, assetsById, from || null);
-                    if (r.error) return toast.error(r.error);
-                    if (r.doc === doc) return;
-                    edit(() => r.doc);
-                    const n = doc.pages.findIndex((p) => p.id === pageId) + 1;
-                    toast.success(from ? `התמונה עברה לדף ${n} — שני הדפים סודרו מחדש` : `נוספה לדף ${n} — הדף סודר מחדש`);
-                  }
-            }
+            onDropOnPage={locked ? null : (pageId, payload) => addPhotosHere(payload, {}, pageId)}
           />
         </div>
       </div>

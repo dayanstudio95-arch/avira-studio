@@ -76,6 +76,10 @@ export function sanitizeClientDoc(input: any, allowedAssets: any[], studioDoc: a
           hebrewDate: str(p.title.hebrewDate, 60),
           showHebrew: p.title.showHebrew !== false,
           font: FONT_IDS.has(p.title.font) ? p.title.font : 'bellefair',
+          syncFonts: p.title.syncFonts !== false,
+          fontNames: FONT_IDS.has(p.title.fontNames) ? p.title.fontNames : null,
+          fontDate: FONT_IDS.has(p.title.fontDate) ? p.title.fontDate : null,
+          fontHebrew: FONT_IDS.has(p.title.fontHebrew) ? p.title.fontHebrew : null,
           color: COLOR.test(String(p.title.color)) ? p.title.color : '#3a3a3a',
           scale: num(p.title.scale, 0.4, 3, 1),
         };

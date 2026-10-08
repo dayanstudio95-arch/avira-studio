@@ -85,7 +85,7 @@ export default function PagePanel({ page, selectedSlot, doc, assetsById, onTempl
                 <div className="flex gap-1.5 text-[11px]">
                   <button type="button" onClick={clipboard.copy} title="⌘C" className="flex-1 rounded border border-white/10 py-1 text-slate-300 hover:text-white">העתק</button>
                   <button type="button" onClick={clipboard.cut} title="⌘X" className="flex-1 rounded border border-white/10 py-1 text-slate-300 hover:text-white">גזור</button>
-                  <button type="button" onClick={clipboard.paste} disabled={!clipboard.has} title="⌘V" className="flex-1 rounded border border-white/10 py-1 text-slate-300 hover:text-white disabled:opacity-30">הדבק</button>
+                  <button type="button" onClick={clipboard.paste} disabled={!clipboard.has} title="⌘V — מוסיף לדף, והפריסה גדלה בתמונה" className="flex-1 rounded border border-white/10 py-1 text-slate-300 hover:text-white disabled:opacity-30">הדבק (הוסף)</button>
                 </div>
               )}
               {onEnlarge && (
@@ -164,10 +164,32 @@ export default function PagePanel({ page, selectedSlot, doc, assetsById, onTempl
             <input value={page.title.hebrewDate} onChange={(e) => onTitle({ hebrewDate: e.target.value })} placeholder="ט״ז באדר, תשפ״ה" className="h-9 flex-1 rounded-md border border-white/10 bg-[#0B1529] px-2 text-white" />
             <label className="flex items-center gap-1 text-xs text-slate-300"><input type="checkbox" checked={page.title.showHebrew} onChange={(e) => onTitle({ showHebrew: e.target.checked })} /> להציג</label>
           </div>
-          <select value={page.title.font} onChange={(e) => onTitle({ font: e.target.value })} className="h-9 w-full rounded-md border border-white/10 bg-[#0B1529] px-2 text-white">
-            <optgroup label="עברית (⭐ מומלץ)">{TITLE_FONTS.filter((f) => f.lang === "he").map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}</optgroup>
-            <optgroup label="English (⭐ recommended)">{TITLE_FONTS.filter((f) => f.lang === "en").map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}</optgroup>
-          </select>
+          <label className="flex items-center justify-between text-xs text-slate-300">
+            <span>🔗 סנכרון — פונט אחד לכל השורות</span>
+            <input
+              type="checkbox"
+              checked={page.title.syncFonts !== false}
+              onChange={(e) =>
+                onTitle(
+                  e.target.checked
+                    ? { syncFonts: true }
+                    : { syncFonts: false, fontNames: page.title.fontNames || page.title.font, fontDate: page.title.fontDate || page.title.font, fontHebrew: page.title.fontHebrew || page.title.font }
+                )
+              }
+            />
+          </label>
+          {page.title.syncFonts !== false ? (
+            <FontSelect value={page.title.font} onChange={(v) => onTitle({ font: v })} />
+          ) : (
+            <div className="space-y-1.5">
+              {[["fontNames", "שמות"], ["fontDate", "תאריך"], ["fontHebrew", "תאריך עברי"]].map(([k, label]) => (
+                <label key={k} className="flex items-center gap-2 text-[11px] text-slate-400">
+                  <span className="w-16 shrink-0">{label}</span>
+                  <FontSelect value={page.title[k] || page.title.font} onChange={(v) => onTitle({ [k]: v })} />
+                </label>
+              ))}
+            </div>
+          )}
           <div className="flex items-center gap-2">
             {COLORS.map((c) => (
               <button key={c} type="button" onClick={() => onTitle({ color: c })} title={c} className={`h-6 w-6 rounded-full border-2 ${page.title.color === c ? "border-amber-400" : "border-white/20"}`} style={{ background: c }} />
@@ -241,5 +263,14 @@ export default function PagePanel({ page, selectedSlot, doc, assetsById, onTempl
         {!isTitle && <div className="text-[11px] text-slate-500">החלפת פריסה שומרת את התמונות שכבר בכפולה, לפי הסדר.</div>}
       </section>
     </div>
+  );
+}
+
+function FontSelect({ value, onChange }) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} className="h-9 w-full rounded-md border border-white/10 bg-[#0B1529] px-2 text-white">
+      <optgroup label="עברית (⭐ מומלץ)">{TITLE_FONTS.filter((f) => f.lang === "he").map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}</optgroup>
+      <optgroup label="English (⭐ recommended)">{TITLE_FONTS.filter((f) => f.lang === "en").map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}</optgroup>
+    </select>
   );
 }

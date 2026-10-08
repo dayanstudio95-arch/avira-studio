@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getTemplate, layoutRects, textRect, cellAspect } from "@/lib/albumTemplates";
-import { computeCrop, centerFromOffset, filterCss, titleFont, isHebrewFont, effectiveDpi, titleNames, minZoom } from "@/lib/albumDesign";
+import { computeCrop, centerFromOffset, filterCss, effectiveDpi, titleNames, minZoom, titleLineFonts } from "@/lib/albumDesign";
 import { assetSrc } from "@/lib/albumAssets";
 import { slotFilter, docFilters } from "@/lib/albumAdjust";
 import { applyHealPatches } from "@/lib/albumHeal";
@@ -120,9 +120,8 @@ function useSpreadDrag(spreadRef, pos, onCommit) {
 }
 
 function TitleText({ rect, title, spreadRef, onChange }) {
-  const f = titleFont(title.font);
+  const fonts = titleLineFonts(title);
   const scale = title.scale || 1;
-  const hebrewFamily = isHebrewFont(title.font) ? f.family : "'Bellefair', serif";
   const [pos, down] = useSpreadDrag(spreadRef, { x: title.dx || 0, y: title.dy || 0 }, onChange && ((p) => onChange({ dx: Math.round(p.x * 10) / 10, dy: Math.round(p.y * 10) / 10 })));
   const names = titleNames(title);
   return (
@@ -133,13 +132,13 @@ function TitleText({ rect, title, spreadRef, onChange }) {
       style={{ left: `${rect.x + pos.x}%`, top: `${rect.y + pos.y}%`, width: `${rect.w}%`, height: `${rect.h}%`, color: title.color || "#3a3a3a" }}
     >
       {names && (
-        <div style={{ fontFamily: f.family, fontWeight: f.weight, fontSize: `${1.9 * scale}cqw`, letterSpacing: "0.22em", lineHeight: 1.2 }} dir="auto">
+        <div style={{ fontFamily: fonts.names.family, fontWeight: fonts.names.weight, fontSize: `${1.9 * scale}cqw`, letterSpacing: "0.22em", lineHeight: 1.2 }} dir="auto">
           {names}
         </div>
       )}
-      {title.date && <div style={{ fontFamily: f.family, fontWeight: f.weight, fontSize: `${1.15 * scale}cqw`, letterSpacing: "0.12em", marginTop: "1.1cqw" }}>{title.date}</div>}
+      {title.date && <div style={{ fontFamily: fonts.date.family, fontWeight: fonts.date.weight, fontSize: `${1.15 * scale}cqw`, letterSpacing: "0.12em", marginTop: "1.1cqw" }}>{title.date}</div>}
       {title.showHebrew && title.hebrewDate && (
-        <div style={{ fontFamily: hebrewFamily, fontWeight: 300, fontSize: `${0.95 * scale}cqw`, marginTop: "0.45cqw" }} dir="rtl">
+        <div style={{ fontFamily: fonts.hebrew.family, fontWeight: fonts.hebrew.weight, fontSize: `${0.95 * scale}cqw`, marginTop: "0.45cqw" }} dir="rtl">
           {title.hebrewDate}
         </div>
       )}
@@ -268,6 +267,7 @@ function Cell({ index, rect, slot, asset, pageId, mini, selected, onSelect, onDr
           const types = e.dataTransfer.types;
           if (types.includes(ASSET_MIME) || types.includes(SLOT_MIME) || types.includes(GROUP_MIME)) {
             e.preventDefault();
+            e.stopPropagation();
             const single = dragAssets?.length === 1 ? dragAssets[0] : null;
             setOver(single && shapeMismatch(single, rect) ? "bad" : "good");
           }
@@ -275,6 +275,7 @@ function Cell({ index, rect, slot, asset, pageId, mini, selected, onSelect, onDr
         onDragLeave: () => setOver(null),
         onDrop: (e) => {
           e.preventDefault();
+          e.stopPropagation(); // the area around the spread has its own drop ("add to this page")
           setOver(null);
           const group = e.dataTransfer.getData(GROUP_MIME);
           if (group) return onDropGroup?.(JSON.parse(group));

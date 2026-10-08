@@ -2271,6 +2271,12 @@ console.log('\n— PART 43: album editor round 2 —');
   const fromBank = al.addToPage(jd, pB.id, ['q12'], byId);
   check('from the bank: target +1, nothing removed', cnt(fromBank.doc.pages[1]) + '/' + cnt(fromBank.doc.pages[2]), '4/6');
   check('opening takes max 3', !!al.addToPage(jd, jd.pages[0].id, ['q12', 'q13', 'q14', 'q15'], byId).error, true);
+  const cutDoc = al.removeFromPage(jd, pB.id, 0, byId);
+  check('cut: page closes the gap (5 → 4 frames)', cutDoc.pages[2].slots.length + '/' + cutDoc.pages[2].slots.filter((s) => s.assetId).length, '4/4');
+  const lf = ad.titleLineFonts({ font: 'josefin' });
+  check('fonts synced: one font, Hebrew date falls back to a Hebrew font', lf.names.id + lf.date.id + '|' + lf.hebrew.id, 'josefinjosefin|bellefair');
+  const lf2 = ad.titleLineFonts({ font: 'josefin', syncFonts: false, fontNames: 'greatvibes', fontHebrew: 'frank' });
+  check('fonts per line', lf2.names.id + '|' + lf2.date.id + '|' + lf2.hebrew.id, 'greatvibes|josefin|frank');
   const pc = ad.setPageCount(g.doc, 1);
   check('page count never deletes spreads with photos', pc.blocked, 1);
 }
