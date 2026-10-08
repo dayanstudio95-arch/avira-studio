@@ -15,7 +15,7 @@ import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createServiceRoleClient } from '../_shared/supabaseClients.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { hashToken } from '../_shared/albumTokens.ts';
-import { sanitizeClientDoc, clientAssets, safeUploadName, MAX_PAGES } from '../_shared/albumDesignSanitize.ts';
+import { sanitizeClientDoc, clientAssets, safeUploadName, MAX_PAGES, sanitizeSource, sanitizeEnlargements } from '../_shared/albumDesignSanitize.ts';
 
 const BUCKET = 'album-files';
 const SIGNED_URL_TTL_SECONDS = 60 * 30; // 30 min — long enough to browse a full gallery
@@ -126,7 +126,7 @@ async function insertNotification(supabase: any, order: any, type: string, title
 async function loadEditableDesign(supabase: any, order: any) {
   const { data } = await supabase
     .from('album_designs')
-    .select('id, tenant_id, doc, client_edit_enabled, client_doc, client_doc_version, client_uploads, client_submitted_at, client_note')
+    .select('id, tenant_id, doc, client_edit_enabled, client_doc, client_doc_version, client_uploads, client_submitted_at, client_note, client_sources, enlargements')
     .eq('tenant_id', order.tenant_id)
     .eq('album_order_id', order.id)
     .maybeSingle();
@@ -134,7 +134,12 @@ async function loadEditableDesign(supabase: any, order: any) {
 }
 
 const MAX_CLIENT_UPLOADS = 60;
-const EDIT_ACTIONS = new Set(['getDesign', 'saveClientDoc', 'createClientPhotoUploadUrl', 'confirmClientPhotoUpload']);
+const EDIT_ACTIONS = new Set(['getDesign', 'saveClientDoc', 'createClientPhotoUploadUrl', 'confirmClientPhotoUpload', 'addClientSource', 'removeClientSource', 'setEnlargements']);
+
+async function enlargementProducts(supabase: any, tenantId: string) {
+  const { data } = await supabase.from('album_addons').select('id, name, price, category').eq('tenant_id', tenantId).in('category', ['canvas', 'glass']).eq('active', true).order('sort_order');
+  return Object.fromEntries((data || []).map((a: any) => [a.id, a]));
+}
 const MAX_DOC_BYTES = 1_500_000;
 
 async function signUploads(supabase: any, uploads: any[]) {
@@ -612,17 +617,24 @@ Deno.serve(async (req) => {
     if (action === 'getDesign') {
       const design = await loadEditableDesign(supabase, order);
       if (!design) return jsonResponse({ enabled: false });
-      const assets = clientAssets(design.doc, design.client_uploads);
+      const assets = clientAssets(design.doc, design.client_uploads, design.client_sources);
       const base = design.client_doc || design.doc || {};
+      const products = await enlargementProducts(supabase, order.tenant_id);
       const { data: addon } = await supabase
         .from('album_addons').select('price').eq('tenant_id', order.tenant_id).eq('category', 'extra_pages').eq('active', true).maybeSingle();
+      // the studio's logo / Instagram / phone for the opening spread (Settings → studio details)
+      const { data: studio } = await supabase.from('tenants').select('logo_url, instagram_url, phone').eq('id', order.tenant_id).maybeSingle();
       return jsonResponse({
         enabled: true,
+        branding: studio ? { logoUrl: studio.logo_url, instagramUrl: studio.instagram_url, phone: studio.phone } : null,
         doc: { ...base, assets },
         docVersion: design.client_doc_version,
         submittedAt: design.client_submitted_at,
         note: design.client_note,
         uploadUrls: await signUploads(supabase, design.client_uploads),
+        enlargements: design.enlargements || [],
+        enlargementProducts: Object.values(products),
+        sources: (design.client_sources || []).map((x: any) => ({ id: x.id, name: x.name, count: (x.assets || []).length })),
         extraPagePrice: Number(addon?.price) || 0,
       });
     }
@@ -632,7 +644,7 @@ Deno.serve(async (req) => {
       if (!design) return jsonResponse({ error: 'העריכה לא פתוחה כרגע' }, { status: 403 });
       if (design.client_submitted_at) return jsonResponse({ error: 'השינויים כבר נשלחו לסטודיו' }, { status: 409 });
       if (JSON.stringify(body.doc ?? {}).length > MAX_DOC_BYTES) return jsonResponse({ error: 'המסמך גדול מדי' }, { status: 413 });
-      const assets = clientAssets(design.doc, design.client_uploads);
+      const assets = clientAssets(design.doc, design.client_uploads, design.client_sources);
       const clean = sanitizeClientDoc(body.doc, assets, design.doc);
       const expected = Number(body.version) || 0;
       const { data, error } = await supabase
@@ -676,6 +688,7 @@ Deno.serve(async (req) => {
         fileKey: path,
         uploadedAt: new Date().toISOString(),
         warnings: Array.isArray(body.warnings) ? body.warnings.slice(0, 5).map((w: any) => String(w).slice(0, 40)) : [],
+        group: typeof body.group === 'string' && body.group.trim() ? body.group.trim().slice(0, 30) : null,
       };
       const { error } = await supabase.from('album_designs').update({ client_uploads: [...uploads, upload] }).eq('id', design.id);
       if (error) return jsonResponse({ error: error.message }, { status: 500 });
@@ -696,6 +709,41 @@ Deno.serve(async (req) => {
       const pages = Array.isArray(design.client_doc?.pages) ? Math.min(design.client_doc.pages.length, MAX_PAGES) : 0;
       await insertNotification(supabase, order, 'album_design_client_edits', `הזוג שלח שינויים בסקיצה: ${displayName}`, `${pages} כפולות${note ? ` · "${note.slice(0, 140)}"` : ''} — פתחו את עורך הסקיצה כדי לאשר או לדחות.`);
       return jsonResponse({ submittedAt: now });
+    }
+
+    if (action === 'addClientSource') {
+      const design = await loadEditableDesign(supabase, order);
+      if (!design) return jsonResponse({ error: 'העריכה לא פתוחה כרגע' }, { status: 403 });
+      const src = sanitizeSource(body.source);
+      if (!src) return jsonResponse({ error: 'שם או קישור לא תקינים' }, { status: 400 });
+      const list = (design.client_sources || []).filter((x: any) => x.id !== src.id);
+      if (list.length >= 6) return jsonResponse({ error: 'אפשר להוסיף עד 6 מקורות' }, { status: 400 });
+      const { error } = await supabase.from('album_designs').update({ client_sources: [...list, src] }).eq('id', design.id);
+      if (error) return jsonResponse({ error: error.message }, { status: 500 });
+      return jsonResponse({ source: { id: src.id, name: src.name, count: src.assets.length }, assets: src.assets.map((a: any) => ({ ...a, group: src.name })) });
+    }
+
+    if (action === 'removeClientSource') {
+      const design = await loadEditableDesign(supabase, order);
+      if (!design) return jsonResponse({ error: 'העריכה לא פתוחה כרגע' }, { status: 403 });
+      const list = (design.client_sources || []).filter((x: any) => x.id !== String(body.sourceId || ''));
+      const { error } = await supabase.from('album_designs').update({ client_sources: list }).eq('id', design.id);
+      if (error) return jsonResponse({ error: error.message }, { status: 500 });
+      return jsonResponse({ ok: true });
+    }
+
+    if (action === 'setEnlargements') {
+      const design = await loadEditableDesign(supabase, order);
+      if (!design) return jsonResponse({ error: 'העריכה לא פתוחה כרגע' }, { status: 403 });
+      const allowed = new Set(clientAssets(design.doc, design.client_uploads, design.client_sources).map((a: any) => a.id));
+      const products = await enlargementProducts(supabase, order.tenant_id);
+      // the studio's own marks stay as they are; the couple only replaces theirs
+      const studioMarks = (design.enlargements || []).filter((e: any) => e.by === 'studio');
+      const theirs = sanitizeEnlargements((body.enlargements || []).filter((e: any) => e?.by !== 'studio'), allowed, products, 'couple');
+      const next = [...studioMarks, ...theirs].slice(0, 20);
+      const { error } = await supabase.from('album_designs').update({ enlargements: next }).eq('id', design.id);
+      if (error) return jsonResponse({ error: error.message }, { status: 500 });
+      return jsonResponse({ enlargements: next });
     }
 
     return jsonResponse({ error: 'פעולה לא מוכרת' }, { status: 400 });

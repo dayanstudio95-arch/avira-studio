@@ -5,28 +5,28 @@ import { ArrowRight, Loader2, Undo2, Redo2, History, Check, AlertTriangle, Cloud
 import { base44 } from "@/api/base44Client";
 import { supabase } from "@/api/supabaseClient";
 import {
-  emptyDoc, usageCounts, priceSummary, sortAssets, TITLE_FONTS,
-  addPage, removePage, duplicatePage, movePage, setTemplate, toggleFlip, setTitle,
-  placeAsset, clearSlot, updateSlot, swapSlots,
+  emptyDoc, priceSummary, sortAssets, FONT_HREF,
+  setPageCount,
 } from "@/lib/albumDesign";
+import { presetFromDoc } from "@/lib/albumAutoLayout";
+import { useStudioBranding, savePresetToSettings } from "@/lib/albumStudioSettings";
 import { parseFolderId, listFolderImages, hasDriveKey } from "@/lib/googleDrive";
 import { useDesignDoc } from "@/components/albumEditor/useDesignDoc";
-import SpreadView from "@/components/albumEditor/SpreadView";
-import PhotoBank from "@/components/albumEditor/PhotoBank";
-import SpreadStrip from "@/components/albumEditor/SpreadStrip";
-import PagePanel from "@/components/albumEditor/PagePanel";
+import EditorWorkspace from "@/components/albumEditor/EditorWorkspace";
 import RevisionsDialog from "@/components/albumEditor/RevisionsDialog";
 import AutoSketchDialog from "@/components/albumEditor/AutoSketchDialog";
 import ExportDialog from "@/components/albumEditor/ExportDialog";
 import { downloadSpreadFile } from "@/lib/albumExport";
+import { uploadStudioFiles, prepareEnlargementFiles } from "@/lib/albumUploads";
+import SourcesDialog from "@/components/albumEditor/SourcesDialog";
+import EnlargementsDialog from "@/components/albumEditor/EnlargementsDialog";
 
 // Album design editor — stage 1 (2026-10-08, the owner's request: design the album sketch inside
 // AVIRA instead of SmartAlbums). Desktop only, opened from an album order ("🎨 עורך סקיצה (בטא)").
 // Photos come from the couple's Google Drive folder and are never copied; the design is one JSON
-// document in album_designs (0079). Stage 3 will export it as print-ready spreads into the
-// existing album_version flow — until then nothing here reaches the couple.
+// document in album_designs (0079). "ייצוא לזוג" turns it into print-ready spreads as a normal
+// album_version (albumExport.js); the couple can edit a draft of their own (0080, CoupleEditor).
 
-const FONT_HREF = `https://fonts.googleapis.com/css2?${TITLE_FONTS.map((f) => `family=${f.google}`).join("&")}&display=swap`;
 
 function useTitleFonts() {
   useEffect(() => {
@@ -133,6 +133,7 @@ function Setup({ orderId, names, back, onCreated }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [found, setFound] = useState(null); // { folderId, assets, skipped }
+  const [spreads, setSpreads] = useState(30);
 
   const load = async () => {
     setError("");
@@ -151,7 +152,7 @@ function Setup({ orderId, names, back, onCreated }) {
 
   const create = async () => {
     setBusy(true);
-    const doc = emptyDoc({ assets: sortAssets(found.assets), names: names.display, date: names.date });
+    const doc = emptyDoc({ assets: sortAssets(found.assets), names: names.display, date: names.date, spreads: Math.max(2, Math.min(80, Number(spreads) || 30)) });
     const { data: { user } } = await supabase.auth.getUser();
     const { data, error: err } = await supabase
       .from("album_designs")
@@ -186,6 +187,10 @@ function Setup({ orderId, names, back, onCreated }) {
         {found && (
           <div className="space-y-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm">
             <div className="text-emerald-200">נמצאו {found.assets.length} תמונות{found.skipped.length ? ` · ${found.skipped.length} קבצים לא נתמכים (רק JPG/PNG)` : ""}</div>
+            <label className="flex items-center justify-between gap-2 text-slate-200">
+              כמה כפולות באלבום (כולל הפתיחה)
+              <input type="number" min={2} max={80} value={spreads} onChange={(e) => setSpreads(e.target.value)} className="h-9 w-20 rounded-lg border border-white/10 bg-[#070F1F] px-2 text-white" />
+            </label>
             <button type="button" onClick={create} disabled={busy || !found.assets.length} className="h-10 w-full rounded-lg bg-amber-400 font-bold text-gray-900 hover:bg-amber-500 disabled:opacity-50">
               {busy ? "יוצר…" : "פתח את העורך"}
             </button>
@@ -210,16 +215,29 @@ function Editor({ design, order, names, back, extraPrice }) {
   const [showExport, setShowExport] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [currentId, setCurrentId] = useState(() => doc.pages[0]?.id);
-  const [selectedSlot, setSelectedSlot] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [skipped, setSkipped] = useState([]);
   const [showRevisions, setShowRevisions] = useState(false);
+  const [countOpen, setCountOpen] = useState(false);
+  const [countValue, setCountValue] = useState(doc.pages.length);
+  const [showSources, setShowSources] = useState(false);
+  const [uploading, setUploading] = useState(null);
+  const [enlarge, setEnlarge] = useState(null); // null | { adding: assetId|null }
+  const [enlargements, setEnlargements] = useState(design.enlargements || []);
+  const [products, setProducts] = useState([]);
+  const [preparing, setPreparing] = useState(null);
+  useEffect(() => {
+    supabase.from("album_addons").select("id, name, price, category").in("category", ["canvas", "glass"]).eq("active", true).order("sort_order").then(({ data }) => setProducts(data || []));
+  }, []);
 
   // ---- the couple (stage 4): edit switch, their submitted draft, their uploaded photos ----
   const [client, setClient] = useState({ enabled: !!design.client_edit_enabled, submittedAt: design.client_submitted_at, note: design.client_note, doc: null, uploads: [] });
   const loadClient = useCallback(async () => {
-    const { data } = await supabase.from("album_designs").select("client_edit_enabled, client_submitted_at, client_note, client_doc, client_uploads").eq("id", design.id).maybeSingle();
-    if (data) setClient({ enabled: data.client_edit_enabled, submittedAt: data.client_submitted_at, note: data.client_note, doc: data.client_doc, uploads: data.client_uploads || [] });
+    const { data } = await supabase.from("album_designs").select("client_edit_enabled, client_submitted_at, client_note, client_doc, client_uploads, enlargements").eq("id", design.id).maybeSingle();
+    if (data) {
+      setClient({ enabled: data.client_edit_enabled, submittedAt: data.client_submitted_at, note: data.client_note, doc: data.client_doc, uploads: data.client_uploads || [] });
+      setEnlargements(data.enlargements || []);
+    }
   }, [design.id]);
   useEffect(() => {
     loadClient();
@@ -239,6 +257,9 @@ function Editor({ design, order, names, back, extraPrice }) {
   const shownAssets = useMemo(() => doc.assets.map((a) => (a.source === "upload" ? { ...a, url: uploadUrls[a.id] } : a)), [doc.assets, uploadUrls]);
   const shownDoc = useMemo(() => ({ ...doc, assets: shownAssets }), [doc, shownAssets]);
 
+  // ---- studio branding on the opening spread: logo + Instagram QR + phone (Settings → studio) ----
+  const branding = useStudioBranding(order?.tenantId || design.tenant_id);
+
   const toggleClientEdit = async () => {
     const enabled = !client.enabled;
     const { error } = await supabase.from("album_designs").update({ client_edit_enabled: enabled }).eq("id", design.id);
@@ -251,7 +272,7 @@ function Editor({ design, order, names, back, extraPrice }) {
     if (!window.confirm("לקחת את הגרסה של הזוג לעורך? הגרסה הנוכחית שלך נשמרת בהיסטוריה (ואפשר ⌘Z).")) return;
     await snapshot("manual");
     const theirs = client.doc;
-    edit(() => ({ ...theirs, cameraOffsets: doc.cameraOffsets }));
+    edit(() => ({ ...theirs, cameraOffsets: doc.cameraOffsets, tags: doc.tags }));
     await supabase.from("album_designs").update({ client_submitted_at: null, client_note: null, client_doc: null }).eq("id", design.id);
     toast.success("הגרסה של הזוג נטענה. בדקו, תקנו אם צריך, ו'ייצוא לזוג' כשמוכן.");
     loadClient();
@@ -262,46 +283,9 @@ function Editor({ design, order, names, back, extraPrice }) {
     loadClient();
   };
 
-  const assetsById = useMemo(() => Object.fromEntries(shownAssets.map((a) => [a.id, a])), [shownAssets]);
-  const usage = useMemo(() => usageCounts(doc), [doc]);
   const page = doc.pages.find((p) => p.id === currentId) || doc.pages[0];
   const pageIndex = doc.pages.indexOf(page);
   const price = priceSummary(doc.pages.length, extraPrice);
-
-  const goTo = (id) => {
-    setCurrentId(id);
-    setSelectedSlot(null);
-  };
-
-  // A spread that was removed / undone away → fall back to the first.
-  useEffect(() => {
-    if (!doc.pages.some((p) => p.id === currentId)) setCurrentId(doc.pages[0]?.id);
-  }, [doc.pages, currentId]);
-
-  const onKey = useCallback(
-    (e) => {
-      const typing = /input|textarea|select/i.test(e.target.tagName);
-      const mod = e.metaKey || e.ctrlKey;
-      if (mod && e.key.toLowerCase() === "z") {
-        if (typing) return;
-        e.preventDefault();
-        e.shiftKey ? redo() : undo();
-      } else if (!typing && (e.key === "Delete" || e.key === "Backspace") && selectedSlot != null) {
-        e.preventDefault();
-        edit((d) => clearSlot(d, page.id, selectedSlot));
-      } else if (!typing && e.key === "Escape") {
-        setSelectedSlot(null);
-      } else if (!typing && (e.key === "ArrowLeft" || e.key === "ArrowRight") && !mod) {
-        const next = doc.pages[pageIndex + (e.key === "ArrowLeft" ? 1 : -1)];
-        if (next) goTo(next.id);
-      }
-    },
-    [undo, redo, edit, page?.id, selectedSlot, doc.pages, pageIndex]
-  );
-  useEffect(() => {
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onKey]);
 
   const refresh = async () => {
     setRefreshing(true);
@@ -318,21 +302,10 @@ function Editor({ design, order, names, back, extraPrice }) {
     setRefreshing(false);
   };
 
-  const pickFromBank = (assetId) => {
-    if (selectedSlot == null) {
-      // no cell chosen → first empty cell of this spread
-      const i = page.slots.findIndex((s) => !s.assetId);
-      if (i < 0) return toast.info("בחרו מסגרת בכפולה, או גררו את התמונה אליה");
-      edit((d) => placeAsset(d, page.id, i, assetId));
-      return;
-    }
-    edit((d) => placeAsset(d, page.id, selectedSlot, assetId));
-  };
-
   const downloadCurrent = async () => {
     setDownloading(true);
     try {
-      await downloadSpreadFile(page, doc, `${String(pageIndex + 1).padStart(3, "0")}.jpg`);
+      await downloadSpreadFile(page, doc, `${String(pageIndex + 1).padStart(3, "0")}.jpg`, branding.data);
       toast.success("הכפולה ירדה בגודל מלא (9449×3543, 300dpi)");
     } catch (e) {
       toast.error(e?.message || "הורדת הכפולה נכשלה");
@@ -340,16 +313,77 @@ function Editor({ design, order, names, back, extraPrice }) {
     setDownloading(false);
   };
 
+  // ---- extra photo sources (a second Drive folder / files from the computer → their own tab) ----
+  const addDriveSource = async (name, folderId, assets) => {
+    const known = new Set(doc.assets.map((a) => a.id));
+    const added = assets.filter((a) => !known.has(a.id)).map((a) => ({ ...a, group: name }));
+    edit((d) => ({ ...d, assets: [...d.assets, ...added] }));
+    toast.success(`נוספו ${added.length} תמונות בלשונית "${name}"`);
+  };
+  const addFileSource = async (name, files) => {
+    try {
+      const assets = await uploadStudioFiles(files, { tenantId: order?.tenantId || design.tenant_id, orderId: design.album_order_id, group: name, onProgress: setUploading });
+      edit((d) => ({ ...d, assets: [...d.assets, ...assets] }));
+      toast.success(`הועלו ${assets.length} תמונות בלשונית "${name}"`);
+    } catch (e) {
+      toast.error(e.message);
+    }
+    setUploading(null);
+  };
+
+  // ---- photos for enlargement (canvas / glass) ----
+  const saveEnlargements = async (next) => {
+    const { error } = await supabase.from("album_designs").update({ enlargements: next }).eq("id", design.id);
+    if (error) return toast.error("השמירה נכשלה");
+    setEnlargements(next);
+  };
+  const addEnlargement = async ({ assetId, addonId, orientation, note }) => {
+    const p = products.find((x) => x.id === addonId);
+    await saveEnlargements([...enlargements, { id: `en_${Date.now().toString(36)}`, assetId, addonId, addonName: p?.name, addonPrice: Number(p?.price) || 0, category: p?.category, orientation, note, by: "studio", fileKey: null }].slice(0, 20));
+    setEnlarge({ adding: null });
+    toast.success("סומן להגדלה");
+  };
+  const prepareEnlargements = async () => {
+    setPreparing("0");
+    try {
+      const byId = Object.fromEntries(doc.assets.map((a) => [a.id, a]));
+      const next = await prepareEnlargementFiles(enlargements, byId, { tenantId: order?.tenantId || design.tenant_id, orderId: design.album_order_id, onProgress: setPreparing });
+      await saveEnlargements(next);
+      toast.success("קבצי ההגדלה מוכנים — מופיעים בקישור של בית הדפוס");
+    } catch (e) {
+      toast.error(e.message);
+    }
+    setPreparing(null);
+  };
+
   const saveVersion = async () => {
     const { error } = await snapshot("manual");
     error ? toast.error("שמירת הגרסה נכשלה") : toast.success("נשמרה גרסה — אפשר לחזור אליה מ'היסטוריה'");
+  };
+
+  const applyCount = () => {
+    const { doc: next, blocked } = setPageCount(doc, Number(countValue) || doc.pages.length);
+    edit(() => next);
+    setCountOpen(false);
+    if (blocked) toast.warning(`${blocked} כפולות עם תמונות לא נמחקו — מחקו אותן ידנית אם צריך`);
+  };
+
+  const savePreset = async () => {
+    const name = window.prompt("שם לפריסט (סדר הפריסות של הסקיצה הזו, לשימוש באלבומים הבאים):", names.display ? `כמו ${names.display}` : "");
+    if (!name) return;
+    try {
+      await savePresetToSettings(presetFromDoc(doc, name));
+      toast.success(`הפריסט "${name}" נשמר — בוחרים אותו ב'סקיצה אוטומטית'`);
+    } catch (e) {
+      toast.error(e?.message || "שמירת הפריסט נכשלה");
+    }
   };
 
   return (
     <Shell>
       <div className="flex min-w-0 flex-1 flex-col">
         {/* top bar */}
-        <div className="flex items-center gap-4 border-b border-white/10 bg-[#0B1529] px-4 py-2">
+        <div className="flex items-center gap-3 border-b border-white/10 bg-[#0B1529] px-4 py-2">
           {back}
           <div className="min-w-0">
             <div className="truncate font-semibold text-white">🎨 {names.display || "אלבום"} <span className="text-xs font-normal text-amber-300">בטא</span></div>
@@ -359,9 +393,11 @@ function Editor({ design, order, names, back, extraPrice }) {
             <button type="button" onClick={undo} disabled={!canUndo} title="ביטול (⌘Z)" className="rounded p-1.5 text-slate-300 hover:bg-white/10 disabled:opacity-30"><Undo2 className="h-4 w-4" /></button>
             <button type="button" onClick={redo} disabled={!canRedo} title="חזרה (⌘⇧Z)" className="rounded p-1.5 text-slate-300 hover:bg-white/10 disabled:opacity-30"><Redo2 className="h-4 w-4" /></button>
             <button type="button" onClick={() => setShowAuto(true)} className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-amber-200 hover:bg-white/10"><Sparkles className="h-4 w-4" /> סקיצה אוטומטית</button>
+            <button type="button" onClick={savePreset} title="שומר את סדר הפריסות של הסקיצה הזו כתבנית לאלבומים הבאים" className="rounded-md px-2 py-1 text-xs text-slate-300 hover:bg-white/10">⭐ שמור כפריסט</button>
             <button type="button" onClick={downloadCurrent} disabled={downloading} title="מוריד את הכפולה הזו בגודל הדפסה מלא — לבדיקת איכות" className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-300 hover:bg-white/10 disabled:opacity-50">
               {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} כפולה בגודל מלא
             </button>
+            <button type="button" onClick={() => setEnlarge({ adding: null })} className="rounded-md px-2 py-1 text-xs text-slate-300 hover:bg-white/10">🖼️ הגדלות{enlargements.length ? ` (${enlargements.length})` : ""}</button>
             <button type="button" onClick={saveVersion} className="rounded-md px-2 py-1 text-xs text-slate-300 hover:bg-white/10">שמור גרסה</button>
             <button type="button" onClick={() => setShowRevisions(true)} className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-300 hover:bg-white/10"><History className="h-4 w-4" /> היסטוריה</button>
           </div>
@@ -376,8 +412,18 @@ function Editor({ design, order, names, back, extraPrice }) {
           <button type="button" onClick={() => setShowExport(true)} disabled={saveState === "conflict"} className="flex items-center gap-1.5 rounded-lg bg-amber-400 px-3 py-1.5 text-xs font-bold text-gray-900 hover:bg-amber-500 disabled:opacity-40">
             <Send className="h-4 w-4" /> ייצוא לזוג
           </button>
-          <div className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-200" title={`${price.included} כפולות כלולות במחיר האלבום`}>
-            {price.pages} כפולות · {price.extra ? <span className="text-amber-300">{price.extra} נוספות · +₪{price.extraCost.toLocaleString()}</span> : <span className="text-emerald-300">בתוך ה-{price.included} הכלולות</span>}
+          <div className="relative">
+            <button type="button" onClick={() => { setCountValue(doc.pages.length); setCountOpen((v) => !v); }} className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-slate-200 hover:border-amber-400/50" title={`${price.included} כפולות כלולות במחיר האלבום · לחיצה = לשנות את מספר הכפולות`}>
+              {price.pages} כפולות · {price.extra ? <span className="text-amber-300">{price.extra} נוספות · +₪{price.extraCost.toLocaleString()}</span> : <span className="text-emerald-300">בתוך ה-{price.included} הכלולות</span>}
+            </button>
+            {countOpen && (
+              <div className="absolute left-0 top-full z-50 mt-1 w-56 space-y-2 rounded-lg border border-white/10 bg-[#0B1529] p-3 text-xs shadow-xl">
+                <div className="text-slate-300">כמה כפולות באלבום (כולל הפתיחה)?</div>
+                <input type="number" min={1} max={80} value={countValue} onChange={(e) => setCountValue(e.target.value)} className="h-8 w-full rounded border border-white/10 bg-[#070F1F] px-2 text-white" />
+                <div className="text-[10px] text-slate-500">מוסיף כפולות ריקות בסוף, או מוחק ריקות מהסוף. כפולות עם תמונות לא נמחקות.</div>
+                <button type="button" onClick={applyCount} className="h-8 w-full rounded bg-amber-400 font-bold text-gray-900">החל</button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -397,74 +443,45 @@ function Editor({ design, order, names, back, extraPrice }) {
           </div>
         )}
 
-        <div className="flex min-h-0 flex-1">
-          {/* photo bank (right) */}
-          <div className="w-72 shrink-0 border-l border-white/10 bg-[#0B1529]">
-            <PhotoBank
-              doc={shownDoc}
-              usage={usage}
-              onPick={pickFromBank}
-              onRefresh={refresh}
-              refreshing={refreshing}
-              skipped={skipped}
-              onCameraOffset={(cam, m) => edit((d) => ({ ...d, cameraOffsets: { ...d.cameraOffsets, [cam]: m } }))}
-            />
-          </div>
-
-          {/* spread */}
-          <div className="flex min-w-0 flex-1 flex-col">
-            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6" onClick={(e) => e.target === e.currentTarget && setSelectedSlot(null)}>
-              <div className="text-xs text-slate-400">{pageIndex === 0 && page.title ? "כפולת פתיחה" : `כפולה ${pageIndex + 1} מתוך ${doc.pages.length}`}</div>
-              <div className="w-full max-w-[1400px] shadow-2xl shadow-black/50">
-                <SpreadView
-                  page={page}
-                  assetsById={assetsById}
-                  selectedSlot={selectedSlot}
-                  onSelectSlot={setSelectedSlot}
-                  onDropAsset={(i, assetId) => { edit((d) => placeAsset(d, page.id, i, assetId)); setSelectedSlot(i); }}
-                  onDropSlot={(i, from) => edit((d) => swapSlots(d, from, { pageId: page.id, index: i }))}
-                  onCropChange={(i, crop) => edit((d) => updateSlot(d, page.id, i, crop))}
-                />
-              </div>
-              <div className="text-[11px] text-slate-500">גוררים תמונה מהבנק למסגרת · גוררים בין מסגרות כדי להחליף · לחיצה על מסגרת = זום, הזזה ושחור-לבן · ←/→ מעבר בין כפולות</div>
-            </div>
-            <div className="border-t border-white/10 bg-[#0B1529]">
-              <SpreadStrip
-                doc={doc}
-                assetsById={assetsById}
-                currentId={page.id}
-                onSelect={goTo}
-                onMove={(from, to) => edit((d) => movePage(d, from, to))}
-                onAdd={() => {
-                  const next = addPage(doc, pageIndex);
-                  edit(() => next);
-                  goTo(next.pages[pageIndex + 1].id);
-                }}
-                onDuplicate={(id) => edit((d) => duplicatePage(d, id))}
-                onRemove={(id) => {
-                  if (!window.confirm("למחוק את הכפולה? (אפשר לבטל עם ⌘Z)")) return;
-                  edit((d) => removePage(d, id));
-                }}
-              />
-            </div>
-          </div>
-
-          {/* tools (left) */}
-          <div className="w-72 shrink-0 overflow-y-auto border-r border-white/10 bg-[#0B1529]">
-            <PagePanel
-              page={page}
-              doc={doc}
-              selectedSlot={selectedSlot}
-              onTemplate={(tid) => edit((d) => setTemplate(d, page.id, tid))}
-              onFlip={() => edit((d) => toggleFlip(d, page.id))}
-              onSlot={(patch) => edit((d) => updateSlot(d, page.id, selectedSlot, patch), `slot:${page.id}:${selectedSlot}:${Object.keys(patch).join()}`)}
-              onClearSlot={() => edit((d) => clearSlot(d, page.id, selectedSlot))}
-              onTitle={(patch) => edit((d) => setTitle(d, page.id, patch), `title:${page.id}:${Object.keys(patch).join()}`)}
-            />
-          </div>
-        </div>
+        <EditorWorkspace
+          doc={shownDoc}
+          edit={edit}
+          undo={undo}
+          redo={redo}
+          currentId={currentId}
+          setCurrentId={setCurrentId}
+          studio
+          branding={branding.data}
+          brandingReady={branding.ready}
+          onEnlarge={(assetId) => setEnlarge({ adding: assetId })}
+          bankProps={{
+            headerExtra: (
+              <button type="button" onClick={() => setShowSources(true)} disabled={!!uploading} className="w-full rounded-lg border border-dashed border-sky-400/50 py-1.5 text-xs text-sky-200 hover:bg-sky-400/10 disabled:opacity-50">
+                {uploading ? `מעלה ${uploading}…` : "+ מקור תמונות נוסף (Drive / מהמחשב)"}
+              </button>
+            ),
+            onRefresh: refresh,
+            refreshing,
+            skipped,
+            onCameraOffset: (cam, m) => edit((d) => ({ ...d, cameraOffsets: { ...d.cameraOffsets, [cam]: m } })),
+          }}
+        />
       </div>
 
+      {showSources && <SourcesDialog onClose={() => setShowSources(false)} onDrive={addDriveSource} onFiles={addFileSource} />}
+      {enlarge && (
+        <EnlargementsDialog
+          list={enlargements}
+          products={products}
+          assetsById={Object.fromEntries(shownAssets.map((a) => [a.id, a]))}
+          adding={enlarge.adding}
+          onAdd={addEnlargement}
+          onRemove={(id) => saveEnlargements(enlargements.filter((e) => e.id !== id))}
+          onPrepare={prepareEnlargements}
+          preparing={preparing}
+          onClose={() => setEnlarge(null)}
+        />
+      )}
       {showAuto && (
         <AutoSketchDialog
           doc={doc}
@@ -473,7 +490,7 @@ function Editor({ design, order, names, back, extraPrice }) {
             await snapshot("manual");
             edit((d) => ({ ...d, pages }));
             setShowAuto(false);
-            goTo(pages[0].id);
+            setCurrentId(pages[0].id);
             toast.success(`נוצרה סקיצה של ${pages.length} כפולות — עכשיו מתקנים (⌘Z מבטל)`);
           }}
         />
@@ -484,6 +501,7 @@ function Editor({ design, order, names, back, extraPrice }) {
           doc={doc}
           orderId={design.album_order_id}
           tenantId={order?.tenantId || design.tenant_id}
+          branding={branding.data}
           beforeExport={saveNow}
           onClose={() => setShowExport(false)}
         />

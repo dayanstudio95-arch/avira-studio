@@ -61,17 +61,110 @@ export const TITLE_TEMPLATES = [
   { id: "t-a", title: true, uses: 2, cells: [[0, 0, 25, 100], [25, 0, 25, 100]], text: [50, 0, 50, 100] },
   { id: "t-b", title: true, uses: 1, cells: [[0, 0, 50, 100], [50, 0, 25, 100]], text: [75, 0, 25, 100] },
   { id: "t-c", title: true, uses: 0, cells: [[0, 0, 50, 100]], text: [50, 0, 50, 100] },
+  // 2026-10-08 (the owner): 3 photos on the opening spread, the names don't need a whole page
+  { id: "t-d", title: true, uses: 0, cells: [[0, 0, 25, 100], [25, 0, 25, 100], [50, 0, 25, 100]], text: [75, 0, 25, 100] },
+  { id: "t-e", title: true, uses: 0, cells: [[0, 0, 25, 100], [25, 0, 50, 100]], text: [75, 0, 25, 100] },
 ];
 
-const ALL = [...PHOTO_TEMPLATES, ...TITLE_TEMPLATES];
+// ---- generated layouts (2026-10-08) -----------------------------------------------------------
+// His sketches stop at 10 photos and have 1–6 layouts per count. These add, for 1–20 photos,
+// layouts that are all-landscape, all-portrait or mixed, built from simple columns in the same
+// style (full bleed, one gutter): P = one full-height photo, L2/L3 = 2 or 3 stacked photos.
+const COL = { P: { n: 1, w: 25 }, L2: { n: 2, w: 25 }, L3: { n: 3, w: 19 } };
+
+function columnsTemplate(id, cols) {
+  const total = cols.reduce((a, c) => a + COL[c].w, 0);
+  const cells = [];
+  let x = 0;
+  cols.forEach((c, i) => {
+    const w = i === cols.length - 1 ? 100 - x : Math.round((COL[c].w / total) * 1000) / 10;
+    const k = COL[c].n;
+    for (let r = 0; r < k; r++) {
+      const y = Math.round((100 / k) * r * 10) / 10;
+      const h = r === k - 1 ? 100 - y : Math.round((100 / k) * 10) / 10;
+      cells.push([x, y, w, h]);
+    }
+    x = Math.round((x + w) * 10) / 10;
+  });
+  return { id, uses: 0, gen: true, cells };
+}
+
+function rowsTemplate(id, rows) {
+  // rows: photos per row, e.g. [3, 2] — every cell in a row has the same width
+  const cells = [];
+  rows.forEach((k, r) => {
+    const y = Math.round((100 / rows.length) * r * 10) / 10;
+    const h = r === rows.length - 1 ? 100 - y : Math.round((100 / rows.length) * 10) / 10;
+    for (let c = 0; c < k; c++) {
+      const x = Math.round((100 / k) * c * 10) / 10;
+      const w = c === k - 1 ? 100 - x : Math.round((100 / k) * 10) / 10;
+      cells.push([x, y, w, h]);
+    }
+  });
+  return { id, uses: 0, gen: true, cells };
+}
+
+function palindromes(maxCols) {
+  // column sequences that read the same from both ends (calm, symmetric spreads)
+  const types = ["P", "L2", "L3"];
+  const out = [];
+  const half = (len, acc) => {
+    if (acc.length === Math.ceil(len / 2)) {
+      const mirror = [...acc].reverse().slice(len % 2);
+      out.push([...acc, ...mirror]);
+      return;
+    }
+    for (const t of types) half(len, [...acc, t]);
+  };
+  for (let len = 2; len <= maxCols; len++) half(len, []);
+  return out;
+}
+
+function generated() {
+  const out = [];
+  // never a copy of one of his measured layouts (rounded so 25 vs 25.0 count as the same)
+  const keyOf = (cells) => JSON.stringify(cells.map((c) => c.map((v) => Math.round(v))));
+  const seen = new Set(PHOTO_TEMPLATES.map((t) => keyOf(t.cells)));
+  const add = (t) => {
+    const key = keyOf(t.cells);
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(t);
+    }
+  };
+  for (let n = 1; n <= 20; n++) {
+    // portrait-only: n full-height columns (up to 6), or two rows of narrow cells (12+)
+    if (n <= 6) add(columnsTemplate(`g${n}-p1`, Array(n).fill("P")));
+    if (n >= 12 && n % 2 === 0) add(rowsTemplate(`g${n}-p2`, [n / 2, n / 2]));
+    // landscape-only: two rows (≤ 5 a row), or three rows (≤ 7 a row)
+    if (n >= 2 && n <= 10) add(rowsTemplate(`g${n}-l1`, [Math.ceil(n / 2), Math.floor(n / 2)]));
+    if (n >= 6 && n <= 20) add(rowsTemplate(`g${n}-l2`, [Math.ceil(n / 3), Math.ceil((n - Math.ceil(n / 3)) / 2), n - Math.ceil(n / 3) - Math.ceil((n - Math.ceil(n / 3)) / 2)]));
+    // mixed: symmetric column sequences with both a full-height and a stacked column
+    let k = 0;
+    for (const cols of palindromes(8)) {
+      if (k >= 4) break;
+      const cells = cols.reduce((a, c) => a + COL[c].n, 0);
+      if (cells !== n || !cols.includes("P") || cols.every((c) => c === "P")) continue;
+      add(columnsTemplate(`g${n}-m${++k}`, cols));
+    }
+  }
+  return out;
+}
+
+export const GENERATED_TEMPLATES = generated();
+
+const ALL = [...PHOTO_TEMPLATES, ...GENERATED_TEMPLATES, ...TITLE_TEMPLATES];
 const BY_ID = Object.fromEntries(ALL.map((t) => [t.id, t]));
 
 export const getTemplate = (id) => BY_ID[id] || PHOTO_TEMPLATES[0];
 
+// His measured layouts first (most used first), then the generated ones.
 export const templatesForCount = (n, { title = false } = {}) =>
-  (title ? TITLE_TEMPLATES : PHOTO_TEMPLATES).filter((t) => t.cells.length === n);
+  title
+    ? TITLE_TEMPLATES
+    : [...PHOTO_TEMPLATES.filter((t) => t.cells.length === n).sort((a, b) => (b.uses || 0) - (a.uses || 0)), ...GENERATED_TEMPLATES.filter((t) => t.cells.length === n)];
 
-export const PHOTO_COUNTS = [...new Set(PHOTO_TEMPLATES.map((t) => t.cells.length))].sort((a, b) => a - b);
+export const PHOTO_COUNTS = [...new Set([...PHOTO_TEMPLATES, ...GENERATED_TEMPLATES].map((t) => t.cells.length))].sort((a, b) => a - b);
 
 const mirror = ([x, y, w, h]) => [100 - x - w, y, w, h];
 
@@ -96,3 +189,34 @@ function inset([x, y, w, h]) {
 
 // Width ÷ height of a cell in real centimetres (a 25%×100% cell is 20×30 cm → portrait).
 export const cellAspect = (rect) => (rect.w * SPREAD.widthCm) / (rect.h * SPREAD.heightCm);
+
+// "לרוחב" / "לאורך" / "משולב" — what kind of photos a layout is made for.
+export function templateKind(t) {
+  const a = cellRects(t).map(cellAspect);
+  if (a.every((x) => x > 1.05)) return "landscape";
+  if (a.every((x) => x < 0.95)) return "portrait";
+  return "mixed";
+}
+
+// ---- fade between photos (2026-10-08) ----------------------------------------------------------
+// page.blend = "fade": no white gutter — each photo reaches OVER its left/top neighbour by an
+// overlap band and fades in across it, so the photos melt into each other. Overlap = 3% of the
+// spread width (2.4 cm) sideways, the same 2.4 cm up/down. Cells are drawn left→right, top→bottom;
+// only a cell's left/top inner edges fade (the neighbour there is already drawn underneath).
+export const FADE_X = 3;
+export const FADE_Y = (FADE_X * SPREAD.widthCm) / SPREAD.heightCm;
+
+const mirrorRect = ([x, y, w, h]) => [100 - x - w, y, w, h];
+
+export function layoutRects(template, flip = false, blend = "none") {
+  if (blend !== "fade") return cellRects(template, flip).map((r, i) => ({ ...r, z: i, fadeL: 0, fadeT: 0 }));
+  const raw = template.cells.map((c) => (flip ? mirrorRect(c) : c));
+  const order = raw.map((c, i) => i).sort((a, b) => raw[a][0] - raw[b][0] || raw[a][1] - raw[b][1]);
+  return raw.map(([x, y, w, h], i) => {
+    const left = x > 0.01 ? FADE_X : 0;
+    const top = y > 0.01 ? FADE_Y : 0;
+    const nw = w + left;
+    const nh = h + top;
+    return { x: x - left, y: y - top, w: nw, h: nh, z: order.indexOf(i), fadeL: (left / nw) * 100, fadeT: (top / nh) * 100 };
+  });
+}

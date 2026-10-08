@@ -3,16 +3,13 @@ import { toast } from "sonner";
 import { ArrowRight, Loader2, Undo2, Redo2, Check, CloudOff, Upload, Send, Monitor } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { supabase } from "@/api/supabaseClient";
-import {
-  usageCounts, priceSummary, addPage, removePage, duplicatePage, movePage, setTemplate, toggleFlip, setTitle,
-  placeAsset, clearSlot, updateSlot, swapSlots, TITLE_FONTS,
-} from "@/lib/albumDesign";
+import { priceSummary, FONT_HREF } from "@/lib/albumDesign";
+import { brandingFor } from "@/lib/albumStudioSettings";
 import { uploadQualityWarnings } from "@/lib/albumAssets";
 import { useDesignDoc } from "./useDesignDoc";
-import SpreadView from "./SpreadView";
-import PhotoBank from "./PhotoBank";
-import SpreadStrip from "./SpreadStrip";
-import PagePanel from "./PagePanel";
+import EditorWorkspace from "./EditorWorkspace";
+import SourcesDialog from "./SourcesDialog";
+import EnlargementsDialog from "./EnlargementsDialog";
 
 // The couple edits their album from the portal link (stage 4, 2026-10-08). Same editor pieces as
 // the studio's, minus the studio-only tools (Drive folder, camera clocks, export, history).
@@ -20,7 +17,6 @@ import PagePanel from "./PagePanel";
 // database session — and it's a DRAFT: the studio's version is untouched until the studio takes
 // theirs. "שליחה לסטודיו" locks the draft and notifies the studio.
 
-const FONT_HREF = `https://fonts.googleapis.com/css2?${TITLE_FONTS.map((f) => `family=${f.google}`).join("&")}&display=swap`;
 
 const portal = (token, action, extra = {}) => base44.functions.invoke("albumPortal", { token, action, ...extra }).then((r) => r.data);
 
@@ -76,49 +72,30 @@ function Editor({ token, initial, onClose }) {
   const [urls, setUrls] = useState(initial.uploadUrls || {});
   const [submitted, setSubmitted] = useState(initial.submittedAt);
   const [currentId, setCurrentId] = useState(() => doc.pages[0]?.id);
-  const [selectedSlot, setSelectedSlot] = useState(null);
   const [uploading, setUploading] = useState(null);
   const [showSend, setShowSend] = useState(false);
   const [note, setNote] = useState("");
+  const [branding, setBranding] = useState(null);
+  const [showSources, setShowSources] = useState(false);
+  const [enlarge, setEnlarge] = useState(null);
+  const [enlargements, setEnlargements] = useState(initial.enlargements || []);
   const fileRef = useRef(null);
   const locked = Boolean(submitted);
 
+  useEffect(() => {
+    if (initial.branding) brandingFor(initial.branding).then(setBranding);
+  }, [initial.branding]);
+
   const shownAssets = useMemo(() => doc.assets.map((a) => (a.source === "upload" ? { ...a, url: urls[a.id] } : a)), [doc.assets, urls]);
   const shownDoc = useMemo(() => ({ ...doc, assets: shownAssets }), [doc, shownAssets]);
-  const assetsById = useMemo(() => Object.fromEntries(shownAssets.map((a) => [a.id, a])), [shownAssets]);
-  const usage = useMemo(() => usageCounts(doc), [doc]);
-  const page = doc.pages.find((p) => p.id === currentId) || doc.pages[0];
-  const pageIndex = doc.pages.indexOf(page);
   const price = priceSummary(doc.pages.length, initial.extraPagePrice);
-  const goTo = (id) => { setCurrentId(id); setSelectedSlot(null); };
-  const change = (fn, key) => { if (!locked) edit(fn, key); };
 
-  useEffect(() => {
-    if (!doc.pages.some((p) => p.id === currentId)) setCurrentId(doc.pages[0]?.id);
-  }, [doc.pages, currentId]);
-
-  useEffect(() => {
-    const onKey = (e) => {
-      const typing = /input|textarea|select/i.test(e.target.tagName);
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z" && !typing && !locked) {
-        e.preventDefault();
-        e.shiftKey ? redo() : undo();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [undo, redo, locked]);
-
-  const pick = (assetId) => {
-    if (locked) return;
-    const i = selectedSlot ?? page.slots.findIndex((s) => !s.assetId);
-    if (i < 0) return toast.info("בחרו מסגרת בכפולה, או גררו את התמונה אליה");
-    change((d) => placeAsset(d, page.id, i, assetId));
-  };
-
-  const onFiles = async (e) => {
+  const onFiles = (e) => {
     const files = Array.from(e.target.files || []);
     e.target.value = "";
+    return uploadFiles(files, null);
+  };
+  const uploadFiles = async (files, group) => {
     for (const [n, file] of files.entries()) {
       setUploading(`${n + 1}/${files.length}`);
       try {
@@ -141,7 +118,7 @@ function Editor({ token, initial, onClose }) {
         const { path, token: upToken } = await portal(token, "createClientPhotoUploadUrl", { fileName: file.name });
         const { error } = await supabase.storage.from("album-files").uploadToSignedUrl(path, upToken, file);
         if (error) throw error;
-        const { asset } = await portal(token, "confirmClientPhotoUpload", { path, name: file.name, w: width, h: height, warnings: warnings.map((w) => w.code) });
+        const { asset } = await portal(token, "confirmClientPhotoUpload", { path, name: file.name, w: width, h: height, warnings: warnings.map((w) => w.code), group });
         setUrls((u) => ({ ...u, [asset.id]: asset.url }));
         edit((d) => ({ ...d, assets: [...d.assets, { ...asset, url: undefined }] }));
       } catch (err) {
@@ -149,6 +126,29 @@ function Editor({ token, initial, onClose }) {
       }
     }
     setUploading(null);
+  };
+
+  const addDriveSource = async (name, folderId, assets) => {
+    const r = await portal(token, "addClientSource", { source: { name, folderId, assets } });
+    const known = new Set(doc.assets.map((a) => a.id));
+    edit((d) => ({ ...d, assets: [...d.assets, ...r.assets.filter((a) => !known.has(a.id))] }));
+    toast.success(`נוספו ${r.source.count} תמונות בלשונית "${name}"`);
+  };
+  const saveEnlargements = async (next) => {
+    try {
+      const r = await portal(token, "setEnlargements", { enlargements: next });
+      setEnlargements(r.enlargements);
+      return true;
+    } catch (e) {
+      toast.error(e.message);
+      return false;
+    }
+  };
+  const addEnlargement = async ({ assetId, addonId, orientation, note }) => {
+    if (await saveEnlargements([...enlargements, { assetId, addonId, orientation, note, by: "couple" }])) {
+      setEnlarge({ adding: null });
+      toast.success("סומן להגדלה ⭐");
+    }
   };
 
   const send = async () => {
@@ -182,6 +182,7 @@ function Editor({ token, initial, onClose }) {
         <div className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1 text-xs">
           {price.pages} כפולות · {price.extra ? <span className="text-amber-300">{price.extra} נוספות · +₪{price.extraCost.toLocaleString()}</span> : <span className="text-emerald-300">בתוך ה-{price.included} הכלולות</span>}
         </div>
+        <button type="button" onClick={() => setEnlarge({ adding: null })} className="rounded-md px-2 py-1 text-xs text-slate-300 hover:bg-white/10">🖼️ להגדלה{enlargements.length ? ` (${enlargements.length})` : ""}</button>
         {!locked && (
           <button type="button" onClick={() => setShowSend(true)} className="flex items-center gap-1.5 rounded-lg bg-amber-400 px-3 py-1.5 text-xs font-bold text-gray-900 hover:bg-amber-500"><Send className="h-4 w-4" /> שליחה לסטודיו</button>
         )}
@@ -190,70 +191,42 @@ function Editor({ token, initial, onClose }) {
         <div className="bg-emerald-500/15 px-4 py-2 text-sm text-emerald-100">💌 השינויים נשלחו לסטודיו — נעבור עליהם ונחזור אליכם עם גרסה מעודכנת. בינתיים העריכה נעולה.</div>
       )}
 
-      <div className="flex min-h-0 flex-1">
-        <div className="w-72 shrink-0 border-l border-white/10 bg-[#0B1529]">
-          <PhotoBank
-            doc={shownDoc}
-            usage={usage}
-            onPick={pick}
-            headerExtra={
-              !locked && (
-                <>
-                  <input ref={fileRef} type="file" accept="image/jpeg,image/png" multiple className="hidden" onChange={onFiles} />
-                  <button type="button" onClick={() => fileRef.current?.click()} disabled={!!uploading} className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-amber-400/50 py-2 text-xs text-amber-200 hover:bg-amber-400/10 disabled:opacity-50">
-                    {uploading ? <><Loader2 className="h-4 w-4 animate-spin" /> מעלה {uploading}…</> : <><Upload className="h-4 w-4" /> להעלות תמונה משלכם</>}
-                  </button>
-                </>
-              )
-            }
-          />
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6" onClick={(e) => e.target === e.currentTarget && setSelectedSlot(null)}>
-            <div className="text-xs text-slate-400">{pageIndex === 0 && page.title ? "כפולת פתיחה" : `כפולה ${pageIndex + 1} מתוך ${doc.pages.length}`}</div>
-            <div className="w-full max-w-[1400px] shadow-2xl shadow-black/50">
-              <SpreadView
-                page={page}
-                assetsById={assetsById}
-                mini={locked}
-                selectedSlot={selectedSlot}
-                onSelectSlot={setSelectedSlot}
-                onDropAsset={(i, id) => { change((d) => placeAsset(d, page.id, i, id)); setSelectedSlot(i); }}
-                onDropSlot={(i, from) => change((d) => swapSlots(d, from, { pageId: page.id, index: i }))}
-                onCropChange={(i, crop) => change((d) => updateSlot(d, page.id, i, crop))}
-              />
-            </div>
-            {!locked && <div className="text-[11px] text-slate-500">גוררים תמונה מהבנק למסגרת · גוררים בין מסגרות כדי להחליף · לחיצה על תמונה = זום, הזזה ושחור-לבן</div>}
-          </div>
-          <div className="border-t border-white/10 bg-[#0B1529]">
-            <SpreadStrip
-              doc={shownDoc}
-              assetsById={assetsById}
-              currentId={page.id}
-              onSelect={goTo}
-              onMove={(a, b) => change((d) => movePage(d, a, b))}
-              onAdd={() => { if (locked) return; const next = addPage(doc, pageIndex); edit(() => next); goTo(next.pages[pageIndex + 1].id); }}
-              onDuplicate={(id) => change((d) => duplicatePage(d, id))}
-              onRemove={(id) => { if (window.confirm("למחוק את הכפולה?")) change((d) => removePage(d, id)); }}
-            />
-          </div>
-        </div>
-        <div className="w-72 shrink-0 overflow-y-auto border-r border-white/10 bg-[#0B1529]">
-          {!locked && (
-            <PagePanel
-              page={page}
-              doc={doc}
-              selectedSlot={selectedSlot}
-              onTemplate={(tid) => change((d) => setTemplate(d, page.id, tid))}
-              onFlip={() => change((d) => toggleFlip(d, page.id))}
-              onSlot={(patch) => change((d) => updateSlot(d, page.id, selectedSlot, patch), `slot:${page.id}:${selectedSlot}:${Object.keys(patch).join()}`)}
-              onClearSlot={() => change((d) => clearSlot(d, page.id, selectedSlot))}
-              onTitle={(patch) => change((d) => setTitle(d, page.id, patch), `title:${page.id}:${Object.keys(patch).join()}`)}
-            />
-          )}
-        </div>
-      </div>
+      <EditorWorkspace
+        doc={shownDoc}
+        edit={edit}
+        undo={undo}
+        redo={redo}
+        locked={locked}
+        currentId={currentId}
+        setCurrentId={setCurrentId}
+        branding={branding}
+        brandingReady={Boolean(branding)}
+        onEnlarge={(assetId) => setEnlarge({ adding: assetId })}
+        bankProps={{
+          headerExtra: !locked && (
+            <>
+              <input ref={fileRef} type="file" accept="image/jpeg,image/png" multiple className="hidden" onChange={onFiles} />
+              <button type="button" onClick={() => fileRef.current?.click()} disabled={!!uploading} className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-amber-400/50 py-2 text-xs text-amber-200 hover:bg-amber-400/10 disabled:opacity-50">
+                {uploading ? <><Loader2 className="h-4 w-4 animate-spin" /> מעלה {uploading}…</> : <><Upload className="h-4 w-4" /> להעלות תמונה משלכם</>}
+              </button>
+              <button type="button" onClick={() => setShowSources(true)} className="w-full rounded-lg border border-dashed border-sky-400/50 py-1.5 text-xs text-sky-200 hover:bg-sky-400/10">+ קישור / תיקייה נוספת (למשל מגנטים)</button>
+            </>
+          ),
+        }}
+      />
 
+      {showSources && <SourcesDialog onClose={() => setShowSources(false)} onDrive={addDriveSource} onFiles={(name, files) => uploadFiles(files, name)} />}
+      {enlarge && (
+        <EnlargementsDialog
+          list={enlargements}
+          products={initial.enlargementProducts || []}
+          assetsById={Object.fromEntries(shownAssets.map((a) => [a.id, a]))}
+          adding={enlarge.adding}
+          onAdd={addEnlargement}
+          onRemove={(id) => saveEnlargements(enlargements.filter((e) => e.id !== id))}
+          onClose={() => setEnlarge(null)}
+        />
+      )}
       {showSend && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60" onClick={() => setShowSend(false)}>
           <div className="w-full max-w-md space-y-3 rounded-2xl border border-white/10 bg-[#0B1529] p-5" onClick={(e) => e.stopPropagation()}>

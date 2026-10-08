@@ -7,8 +7,8 @@
 //     portrait cell), leaning towards the layouts he used most and never the same layout twice in
 //     a row. Within a spread photos may move between cells to fit; across spreads the order holds.
 // Pure — unit-tested in scripts/test-whatsapp-bot.mjs (PART 40).
-import { PHOTO_TEMPLATES, getTemplate, cellRects, cellAspect } from "./albumTemplates";
-import { newPage } from "./albumDesign";
+import { getTemplate, cellRects, cellAspect, templatesForCount } from "./albumTemplates";
+import { newPage, newId, sortAssets } from "./albumDesign";
 
 const MAX_PER_SPREAD = 10;
 const HERO_EVERY = 5;
@@ -42,32 +42,100 @@ export function distributeCounts(total, spreads) {
 
 const photoAspect = (a) => (a?.w && a?.h ? a.w / a.h : 1.5);
 
-// Best template (+flip) for these photos, and which photo goes in which cell.
-export function pickTemplate(photos, prevTemplateId = null) {
+// Every layout (+flip) for these photos, best fit first, with which photo goes in which cell.
+// Fit = how much each photo's shape differs from its cell's shape (log aspect ratio), with a
+// small pull towards the layouts he used most and a push away from repeating the previous one.
+export function rankTemplates(photos, prevTemplateId = null) {
   const n = photos.length;
-  const candidates = PHOTO_TEMPLATES.filter((t) => t.cells.length === n);
-  if (!candidates.length) return null;
+  const candidates = templatesForCount(n);
   const byShape = photos.map((p, i) => ({ i, r: Math.log(photoAspect(p)) })).sort((a, b) => a.r - b.r);
-  let best = null;
+  const ranked = [];
   for (const t of candidates) {
     for (const flip of [false, true]) {
       const cells = cellRects(t, flip).map((r, j) => ({ j, r: Math.log(cellAspect(r)) })).sort((a, b) => a.r - b.r);
       // pair the narrowest photo with the narrowest cell, and so on
-      let cost = 0;
+      let fit = 0;
       const assign = new Array(n);
       cells.forEach((c, k) => {
-        cost += Math.abs(c.r - byShape[k].r);
+        fit += Math.abs(c.r - byShape[k].r);
         assign[c.j] = byShape[k].i;
       });
-      cost /= n;
+      fit /= n;
+      let cost = fit;
       if (t.id === prevTemplateId) cost += 0.25;
       cost -= 0.04 * Math.log(1 + (t.uses || 0));
       if (flip) cost += 0.01; // tie → unflipped
-      if (!best || cost < best.cost) best = { templateId: t.id, flip, assign, cost };
+      ranked.push({ templateId: t.id, flip, assign, cost, fit });
     }
   }
-  return best;
+  return ranked.sort((a, b) => a.cost - b.cost);
 }
+
+export const pickTemplate = (photos, prevTemplateId = null) => rankTemplates(photos, prevTemplateId)[0] || null;
+
+// A page holding exactly these photos (in the best layout for them).
+export function pageFor(photos, prevTemplateId = null) {
+  const pick = pickTemplate(photos, prevTemplateId);
+  if (!pick) return null;
+  const page = newPage(pick.templateId);
+  page.flip = pick.flip;
+  page.slots = pick.assign.map((photoIndex) => ({ assetId: photos[photoIndex].id, zoom: 1, cx: 0.5, cy: 0.5, filter: "none" }));
+  return page;
+}
+
+// "פצל" (2026-10-08): keep the first `keep` photos of a spread, move the rest to a new spread right
+// after it; both get the best layout for what they now hold.
+export function splitPage(doc, pageId, keep, assetsById) {
+  const i = doc.pages.findIndex((p) => p.id === pageId);
+  if (i < 0) return doc;
+  // in album order (shooting time), not in the order of the layout's cells
+  const onPage = doc.pages[i].slots.filter((s) => s.assetId).map((s) => assetsById[s.assetId]).filter(Boolean);
+  const photos = sortAssets(onPage, doc.cameraOffsets || {});
+  if (keep < 1 || keep >= photos.length) return doc;
+  const a = pageFor(photos.slice(0, keep));
+  const b = pageFor(photos.slice(keep));
+  if (!a || !b) return doc;
+  a.id = doc.pages[i].id; // the spread keeps its identity (selection, undo)
+  const pages = [...doc.pages];
+  pages.splice(i, 1, a, b);
+  return { ...doc, pages };
+}
+
+// Put a group of chosen photos (multi-select in the bank) on a spread: a new one after `afterIndex`,
+// or replacing the photos of an existing one. Up to 20 photos a spread; more → several spreads.
+export function placeGroup(doc, photos, { afterIndex = doc.pages.length - 1, replacePageId = null } = {}) {
+  const chunks = [];
+  for (let k = 0; k < photos.length; k += 20) chunks.push(photos.slice(k, k + 20));
+  const made = chunks.map((c) => pageFor(c)).filter(Boolean);
+  if (!made.length) return { doc, pageIds: [] };
+  const pages = [...doc.pages];
+  if (replacePageId) {
+    const i = pages.findIndex((p) => p.id === replacePageId);
+    made[0].id = replacePageId;
+    pages.splice(i, 1, ...made);
+  } else {
+    pages.splice(afterIndex + 1, 0, ...made);
+  }
+  return { doc: { ...doc, pages }, pageIds: made.map((p) => p.id) };
+}
+
+// Apply a saved layout preset (a list of templates) to the photos in album order.
+export function applyPreset(assets, preset, { title = null } = {}) {
+  const pages = [];
+  let at = 0;
+  for (const step of preset.pages) {
+    const t = getTemplate(step.templateId);
+    const page = newPage(t.id);
+    page.flip = !!step.flip;
+    if (t.title && title) page.title = { ...page.title, ...title };
+    page.slots = t.cells.map((_, k) => ({ assetId: assets[at + k]?.id || null, zoom: 1, cx: 0.5, cy: 0.5, filter: "none" }));
+    at += t.cells.length;
+    pages.push(page);
+  }
+  return { pages, unused: Math.max(0, assets.length - at) };
+}
+
+export const presetFromDoc = (doc, name) => ({ id: newId("pr"), name: String(name || "").slice(0, 60), pages: doc.pages.map((p) => ({ templateId: p.templateId, flip: !!p.flip })) });
 
 // → { pages, unused } — `unused` = photos that didn't fit (more than 10 per spread needed).
 export function autoLayout(assets, { spreads = 30, title = null } = {}) {
@@ -87,13 +155,10 @@ export function autoLayout(assets, { spreads = 30, title = null } = {}) {
   for (const n of counts) {
     const photos = rest.slice(at, at + n);
     at += n;
-    const pick = pickTemplate(photos, prev);
-    if (!pick) continue;
-    const page = newPage(pick.templateId);
-    page.flip = pick.flip;
-    page.slots = pick.assign.map((photoIndex) => ({ assetId: photos[photoIndex].id, zoom: 1, cx: 0.5, cy: 0.5, filter: "none" }));
+    const page = pageFor(photos, prev);
+    if (!page) continue;
     pages.push(page);
-    prev = pick.templateId;
+    prev = page.templateId;
   }
   return { pages, unused: Math.max(0, rest.length - at) };
 }

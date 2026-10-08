@@ -89,12 +89,37 @@ Deno.serve(async (req) => {
       weddingDate = weddingDate || eventRow?.date || null;
     }
 
+    // Photos marked for enlargement (canvas / glass) whose files the studio prepared
+    // (album_designs.enlargements[].file_key, 0081) — a separate download on the same page.
+    const enlargementFiles = async () => {
+      const { data: design } = await supabase.from('album_designs').select('enlargements').eq('tenant_id', order.tenant_id).eq('album_order_id', order.id).maybeSingle();
+      return (design?.enlargements || []).filter((e: any) => typeof e.fileKey === 'string' && e.fileKey.startsWith(`${order.tenant_id}/${order.id}/enlargements/`));
+    };
+
     if (action === 'validate') {
       await logAccess(supabase, link, 'viewed', req);
       return jsonResponse({
         coupleNames,
         weddingDate,
         ready: !!order.approved_version_id,
+        enlargementCount: (await enlargementFiles()).length,
+      });
+    }
+
+    if (action === 'listEnlargements') {
+      const list = await enlargementFiles();
+      if (!list.length) return jsonResponse({ files: [] });
+      const { data: signed, error: signError } = await supabase.storage.from(BUCKET).createSignedUrls(list.map((e: any) => e.fileKey), SIGNED_URL_TTL_SECONDS);
+      if (signError) return jsonResponse({ error: signError.message }, { status: 500 });
+      await logAccess(supabase, link, 'downloaded', req);
+      const kind: Record<string, string> = { canvas: 'canvas', glass: 'glass' };
+      return jsonResponse({
+        files: list.map((e: any, i: number) => ({
+          sequenceNumber: i + 1,
+          fileName: `${String(i + 1).padStart(2, '0')}-${kind[e.category] || 'print'}-${e.orientation === 'landscape' ? 'landscape' : 'portrait'}${extensionOf(e.fileKey)}`,
+          product: e.addonName || null,
+          signedUrl: signed[i]?.signedUrl ?? null,
+        })),
       });
     }
 

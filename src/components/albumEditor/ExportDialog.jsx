@@ -8,7 +8,7 @@ import { effectiveDpi } from "@/lib/albumDesign";
 // "📤 ייצוא לזוג" (stage 3). Builds every spread at full print size and adds it as a new version
 // of the order — the couple sees it in their existing portal link once ALL spreads are in.
 // Nothing is sent to the couple by message; the studio shares the portal link as today.
-export default function ExportDialog({ design, doc, orderId, tenantId, beforeExport, onClose, onExported }) {
+export default function ExportDialog({ design, doc, orderId, tenantId, branding = null, beforeExport, onClose, onExported }) {
   const [state, setState] = useState({ phase: "idle" });
   const cancelled = useRef(false);
 
@@ -50,6 +50,7 @@ export default function ExportDialog({ design, doc, orderId, tenantId, beforeExp
         doc,
         orderId,
         tenantId,
+        branding,
         onProgress: (p) => setState({ phase: "running", ...p }),
         isCancelled: () => cancelled.current,
       });

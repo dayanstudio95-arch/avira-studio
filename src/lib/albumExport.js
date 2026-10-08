@@ -26,7 +26,7 @@ export async function loadOriginalBitmap(asset) {
   return createImageBitmap(blob);
 }
 
-export async function exportDesignAsVersion({ design, doc, orderId, tenantId, onProgress = () => {}, isCancelled = () => false }) {
+export async function exportDesignAsVersion({ design, doc, orderId, tenantId, branding = null, onProgress = () => {}, isCancelled = () => false }) {
   const assetsById = Object.fromEntries(doc.assets.map((a) => [a.id, a]));
   const { data: last } = await supabase
     .from("album_versions")
@@ -47,7 +47,7 @@ export async function exportDesignAsVersion({ design, doc, orderId, tenantId, on
       if (isCancelled()) throw new Error("הייצוא בוטל");
       const seq = i + 1;
       onProgress({ done: i, total, step: "מוריד תמונות ובונה כפולה" });
-      const blob = await renderSpread(doc.pages[i], assetsById, cache.get, { canvas });
+      const blob = await renderSpread(doc.pages[i], assetsById, cache.get, { canvas, branding });
       onProgress({ done: i, total, step: "מעלה" });
       const path = `${tenantId}/${orderId}/${version.id}/spread-${pad(seq, 2)}-design-${pad(seq, 3)}.jpg`;
       const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, blob, { contentType: "image/jpeg", upsert: true });
@@ -88,11 +88,11 @@ export async function exportDesignAsVersion({ design, doc, orderId, tenantId, on
 }
 
 // One spread at full size, downloaded to the computer — for checking quality before sending.
-export async function downloadSpreadFile(page, doc, fileName) {
+export async function downloadSpreadFile(page, doc, fileName, branding = null) {
   const assetsById = Object.fromEntries(doc.assets.map((a) => [a.id, a]));
   const cache = bitmapCache(loadOriginalBitmap);
   try {
-    const blob = await renderSpread(page, assetsById, cache.get);
+    const blob = await renderSpread(page, assetsById, cache.get, { branding });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;

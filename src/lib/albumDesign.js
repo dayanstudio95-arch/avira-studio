@@ -25,33 +25,65 @@ export const FILTERS = [
 ];
 export const filterCss = (id) => (FILTERS.find((f) => f.id === id) || FILTERS[0]).css;
 
+// Title fonts (2026-10-08: ≥10 more, split by language with a recommendation). `he` = has Hebrew
+// glyphs. ⭐ = recommended for that language. All from Google Fonts (one stylesheet, see FONT_HREF).
 export const TITLE_FONTS = [
-  { id: "josefin", label: "Josefin (כמו בסקיצות)", family: "'Josefin Sans', sans-serif", weight: 300, google: "Josefin+Sans:wght@300" },
-  { id: "cormorant", label: "Cormorant", family: "'Cormorant Garamond', serif", weight: 400, google: "Cormorant+Garamond:wght@400" },
-  { id: "montserrat", label: "Montserrat", family: "'Montserrat', sans-serif", weight: 300, google: "Montserrat:wght@300" },
-  { id: "heebo", label: "Heebo (עברית)", family: "'Heebo', sans-serif", weight: 300, google: "Heebo:wght@300" },
-  { id: "frank", label: "Frank Ruhl (עברית)", family: "'Frank Ruhl Libre', serif", weight: 400, google: "Frank+Ruhl+Libre:wght@400" },
-  { id: "assistant", label: "Assistant (עברית)", family: "'Assistant', sans-serif", weight: 300, google: "Assistant:wght@300" },
+  // English
+  { id: "josefin", lang: "en", rec: true, label: "Josefin Sans ⭐ (כמו בסקיצות)", family: "'Josefin Sans', sans-serif", weight: 300, google: "Josefin+Sans:wght@300" },
+  { id: "cormorant", lang: "en", rec: true, label: "Cormorant Garamond ⭐", family: "'Cormorant Garamond', serif", weight: 400, google: "Cormorant+Garamond:wght@400" },
+  { id: "italiana", lang: "en", rec: true, label: "Italiana ⭐", family: "'Italiana', serif", weight: 400, google: "Italiana" },
+  { id: "montserrat", lang: "en", label: "Montserrat", family: "'Montserrat', sans-serif", weight: 300, google: "Montserrat:wght@300" },
+  { id: "playfair", lang: "en", label: "Playfair Display", family: "'Playfair Display', serif", weight: 400, google: "Playfair+Display:wght@400" },
+  { id: "bodoni", lang: "en", label: "Bodoni Moda", family: "'Bodoni Moda', serif", weight: 400, google: "Bodoni+Moda:wght@400" },
+  { id: "tenor", lang: "en", label: "Tenor Sans", family: "'Tenor Sans', sans-serif", weight: 400, google: "Tenor+Sans" },
+  { id: "marcellus", lang: "en", label: "Marcellus", family: "'Marcellus', serif", weight: 400, google: "Marcellus" },
+  { id: "raleway", lang: "en", label: "Raleway", family: "'Raleway', sans-serif", weight: 200, google: "Raleway:wght@200" },
+  { id: "greatvibes", lang: "en", label: "Great Vibes (כתב יד)", family: "'Great Vibes', cursive", weight: 400, google: "Great+Vibes" },
+  { id: "allura", lang: "en", label: "Allura (כתב יד)", family: "'Allura', cursive", weight: 400, google: "Allura" },
+  { id: "parisienne", lang: "en", label: "Parisienne (כתב יד)", family: "'Parisienne', cursive", weight: 400, google: "Parisienne" },
+  // Hebrew
+  { id: "bellefair", lang: "he", rec: true, label: "Bellefair ⭐ (עברית + אנגלית)", family: "'Bellefair', serif", weight: 400, google: "Bellefair" },
+  { id: "frank", lang: "he", rec: true, label: "Frank Ruhl Libre ⭐", family: "'Frank Ruhl Libre', serif", weight: 300, google: "Frank+Ruhl+Libre:wght@300" },
+  { id: "heebo", lang: "he", label: "Heebo", family: "'Heebo', sans-serif", weight: 300, google: "Heebo:wght@300" },
+  { id: "assistant", lang: "he", label: "Assistant", family: "'Assistant', sans-serif", weight: 300, google: "Assistant:wght@300" },
+  { id: "davidlibre", lang: "he", label: "David Libre", family: "'David Libre', serif", weight: 400, google: "David+Libre" },
+  { id: "notoserifhe", lang: "he", label: "Noto Serif Hebrew", family: "'Noto Serif Hebrew', serif", weight: 300, google: "Noto+Serif+Hebrew:wght@300" },
+  { id: "rubik", lang: "he", label: "Rubik", family: "'Rubik', sans-serif", weight: 300, google: "Rubik:wght@300" },
+  { id: "varela", lang: "he", label: "Varela Round", family: "'Varela Round', sans-serif", weight: 400, google: "Varela+Round" },
+  { id: "amatic", lang: "he", label: "Amatic SC (כתב יד)", family: "'Amatic SC', cursive", weight: 400, google: "Amatic+SC" },
+  { id: "karantina", lang: "he", label: "Karantina", family: "'Karantina', sans-serif", weight: 300, google: "Karantina:wght@300" },
 ];
+export const FONT_HREF = `https://fonts.googleapis.com/css2?${TITLE_FONTS.map((f) => `family=${f.google}`).join("&")}&display=swap`;
+export const isHebrewFont = (id) => titleFont(id).lang === "he";
 export const titleFont = (id) => TITLE_FONTS.find((f) => f.id === id) || TITLE_FONTS[0];
 
 let seq = 0;
-export const newId = (p = "pg") => `${p}_${Date.now().toString(36)}_${(seq++).toString(36)}`;
+export const newId = (p = "pg") => `${p}_${Date.now().toString(36)}_${(seq++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 const emptySlot = () => ({ assetId: null, zoom: 1, cx: 0.5, cy: 0.5, filter: "none" });
 
 export function newPage(templateId = "p4-a") {
   const t = getTemplate(templateId);
   const page = { id: newId(), templateId: t.id, flip: false, slots: t.cells.map(emptySlot) };
-  if (t.title) page.title = { names: "", date: "", hebrewDate: "", showHebrew: true, font: "josefin", color: "#3a3a3a" };
+  if (t.title) page.title = { names: "", namesEn: "", lang: "he", date: "", hebrewDate: "", showHebrew: true, font: "bellefair", color: "#3a3a3a", scale: 1, dx: 0, dy: 0 };
   return page;
 }
 
-export function emptyDoc({ assets = [], names = "", date = "" } = {}) {
-  const title = newPage("t-a");
-  title.title = { ...title.title, names, date: formatDotDate(date), hebrewDate: hebrewDateText(date) };
-  return { v: 1, assets, cameraOffsets: {}, pages: [title, newPage("p4-a")] };
+// "דניאל וסבינה" → "דניאל & סבינה" (the couple's names as written on the order / link).
+export function coupleNamesForTitle(names) {
+  return String(names || "").trim().replace(/\s+ו(?=[\u0590-\u05FF])/, " & ").replace(/\s+and\s+/i, " & ");
 }
+
+export function emptyDoc({ assets = [], names = "", date = "", spreads = 2 } = {}) {
+  const title = newPage("t-a");
+  title.title = { ...title.title, names: coupleNamesForTitle(names), date: formatDotDate(date), hebrewDate: hebrewDateText(date) };
+  const pages = [title];
+  for (let i = 1; i < Math.max(2, spreads); i++) pages.push(newPage("p4-a"));
+  return { v: 1, assets, cameraOffsets: {}, tags: {}, pages };
+}
+
+// The text actually printed on the title spread: Hebrew names, or the English version.
+export const titleNames = (title) => (title?.lang === "en" ? title.namesEn || title.names : title?.names) || "";
 
 // ---- pages ----------------------------------------------------------------------------------
 const setPages = (doc, pages) => ({ ...doc, pages });
@@ -62,6 +94,26 @@ export const addPage = (doc, afterIndex = doc.pages.length - 1, templateId = "p4
   pages.splice(afterIndex + 1, 0, newPage(templateId));
   return setPages(doc, pages);
 };
+export const insertPageAt = (doc, index, templateId = "p4-a") => {
+  const pages = [...doc.pages];
+  pages.splice(Math.max(0, Math.min(index, pages.length)), 0, newPage(templateId));
+  return setPages(doc, pages);
+};
+
+// "כמה כפולות באלבום": add empty spreads at the end, or remove EMPTY ones from the end.
+// Spreads with photos are never removed here → { doc, blocked } tells how many couldn't go.
+export function setPageCount(doc, n) {
+  const target = Math.max(1, Math.min(80, Math.round(n)));
+  let pages = [...doc.pages];
+  while (pages.length < target) pages.push(newPage("p4-a"));
+  let blocked = 0;
+  for (let i = pages.length - 1; pages.length > target && i > 0; i--) {
+    if (!pages[i].slots.some((s) => s.assetId)) pages.splice(i, 1);
+  }
+  if (pages.length > target) blocked = pages.length - target;
+  return { doc: setPages(doc, pages), blocked };
+}
+
 export const removePage = (doc, pageId) => setPages(doc, doc.pages.filter((p) => p.id !== pageId));
 export const duplicatePage = (doc, pageId) => {
   const i = doc.pages.findIndex((p) => p.id === pageId);
@@ -91,6 +143,29 @@ export const setTemplate = (doc, pageId, templateId) =>
     if (!t.title) delete next.title;
     return next;
   });
+
+// A recommended layout (rankTemplates) with its photo→cell assignment, for the spread's photos
+// in their current order (`assign[k]` = index into the filled slots).
+export const setTemplateAssigned = (doc, pageId, templateId, flip, assign) =>
+  mapPage(doc, pageId, (p) => {
+    const filled = p.slots.filter((s) => s.assetId);
+    const slots = assign.map((k) => (filled[k] ? { ...filled[k], zoom: 1, cx: 0.5, cy: 0.5 } : emptySlot()));
+    return { ...p, templateId, flip: !!flip, slots };
+  });
+
+export const setPageProps = (doc, pageId, patch) => mapPage(doc, pageId, (p) => ({ ...p, ...patch }));
+
+export const addHealPatch = (doc, pageId, i, patch) => mapSlot(doc, pageId, i, (s) => ({ ...s, heal: [...(s.heal || []), patch].slice(-200) }));
+
+// Tags in the bank: add one to several photos, or clear their tags (tag = null).
+export function tagAssets(doc, ids, tag) {
+  const tags = { ...(doc.tags || {}) };
+  for (const id of ids) {
+    if (!tag) delete tags[id];
+    else tags[id] = [...new Set([...(tags[id] || []), tag])];
+  }
+  return { ...doc, tags };
+}
 
 export const toggleFlip = (doc, pageId) => mapPage(doc, pageId, (p) => ({ ...p, flip: !p.flip }));
 
@@ -122,13 +197,19 @@ export function swapSlots(doc, a, b) {
 // Cell and image sizes in any unit; returns the drawn image size/offset in the same unit.
 // zoom 1 = "cover" (fills the cell, nothing white); cx/cy = which point of the photo (0..1) sits
 // in the middle of the cell, clamped so the photo always covers the cell.
+// Smallest zoom = the whole photo fits in the cell ("contain"); the rest of the cell stays white.
+export const minZoom = (cellW, cellH, imgW, imgH) =>
+  Math.min(cellW / imgW, cellH / imgH) / Math.max(cellW / imgW, cellH / imgH);
+
 export function computeCrop(cellW, cellH, imgW, imgH, { zoom = 1, cx = 0.5, cy = 0.5 } = {}) {
-  const scale = Math.max(cellW / imgW, cellH / imgH) * Math.max(1, zoom);
+  const z = Math.min(4, Math.max(minZoom(cellW, cellH, imgW, imgH), zoom || 1));
+  const scale = Math.max(cellW / imgW, cellH / imgH) * z;
   const drawW = imgW * scale;
   const drawH = imgH * scale;
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-  const offX = clamp(cellW / 2 - cx * drawW, cellW - drawW, 0);
-  const offY = clamp(cellH / 2 - cy * drawH, cellH - drawH, 0);
+  // photo bigger than the cell → it must cover it; smaller (zoomed out) → it stays inside it
+  const offX = clamp(cellW / 2 - cx * drawW, Math.min(0, cellW - drawW), Math.max(0, cellW - drawW));
+  const offY = clamp(cellH / 2 - cy * drawH, Math.min(0, cellH - drawH), Math.max(0, cellH - drawH));
   return { drawW, drawH, offX, offY };
 }
 

@@ -64,19 +64,22 @@ export default function AlbumPrintAccess() {
   const safeZipName = () => `${(info?.coupleNames || "album").replace(/[^\u0590-\u05FFa-zA-Z0-9\-_ ]/g, "").trim() || "album"}.zip`;
   const canStream = typeof window !== "undefined" && typeof window.showSaveFilePicker === "function";
 
-  const listFiles = async () => {
-    const res = await base44.functions.invoke("albumPrintAccess", { token, action: "listFiles" });
+  const listFiles = async (action = "listFiles") => {
+    const res = await base44.functions.invoke("albumPrintAccess", { token, action });
     return res.data?.files || [];
   };
 
-  const handleDownload = async () => {
+  // Enlargement files (canvas / glass, 2026-10-08) keep their own names (01-canvas-portrait.jpg…).
+  const handleDownload = async (kind = "spreads") => {
     setDownloading(true);
     setDownloadError("");
     setDownloadDone(false);
     try {
       // Ask where to save first — the picker needs the click's user activation.
-      const handle = canStream ? await window.showSaveFilePicker({ suggestedName: safeZipName(), types: [{ description: "ZIP", accept: { "application/zip": [".zip"] } }] }) : null;
-      const files = await listFiles();
+      const zipName = kind === "enlargements" ? safeZipName().replace(/\.zip$/, " - הגדלות.zip") : safeZipName();
+      const handle = canStream ? await window.showSaveFilePicker({ suggestedName: zipName, types: [{ description: "ZIP", accept: { "application/zip": [".zip"] } }] }) : null;
+      const files = await listFiles(kind === "enlargements" ? "listEnlargements" : "listFiles");
+      const nameOf = (f, i) => (kind === "enlargements" ? f.fileName : numberedName(f, i));
       if (!files.length) {
         setDownloadError("לא נמצאו קבצים להורדה");
         setDownloading(false);
@@ -87,8 +90,8 @@ export default function AlbumPrintAccess() {
       async function* entries() {
         for (const [i, f] of files.entries()) {
           const fileRes = await fetch(f.signedUrl);
-          if (!fileRes.ok) throw new Error(`הורדת הקובץ ${numberedName(f, i)} נכשלה`);
-          yield { name: numberedName(f, i), input: fileRes };
+          if (!fileRes.ok) throw new Error(`הורדת הקובץ ${nameOf(f, i)} נכשלה`);
+          yield { name: nameOf(f, i), input: fileRes };
           setProgress((p) => ({ ...p, done: i + 1 }));
         }
       }
@@ -104,7 +107,7 @@ export default function AlbumPrintAccess() {
         const url = URL.createObjectURL(zipBlob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = safeZipName();
+        a.download = zipName;
         document.body.appendChild(a);
         a.click();
         a.remove();
@@ -195,7 +198,7 @@ export default function AlbumPrintAccess() {
             <Button
               type="button"
               disabled={downloading}
-              onClick={handleDownload}
+              onClick={() => handleDownload("spreads")}
               className="w-full bg-yellow-400 text-gray-900 hover:bg-yellow-500 h-12 text-base font-bold flex items-center justify-center gap-2"
             >
               {downloading ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileDown className="w-5 h-5" />}
@@ -209,6 +212,14 @@ export default function AlbumPrintAccess() {
             >
               או: הורדת הקבצים אחד-אחד (001.jpg, 002.jpg…)
             </button>
+            {info.enlargementCount > 0 && (
+              <div className="space-y-2 rounded-xl border border-gray-800 p-4">
+                <p className="text-sm text-gray-300">🖼️ קבצי הגדלה (קנבס / זכוכית): {info.enlargementCount}</p>
+                <Button type="button" disabled={downloading} onClick={() => handleDownload("enlargements")} className="w-full bg-gray-800 text-white hover:bg-gray-700">
+                  הורדת קבצי ההגדלה (ZIP)
+                </Button>
+              </div>
+            )}
             {!canStream && (
               <p className="text-xs text-gray-500">לאלבום גדול מומלץ להוריד מ-Chrome או Edge, או להשתמש בהורדה אחד-אחד.</p>
             )}
