@@ -19,6 +19,7 @@ import EventMobileCards from "./EventMobileCards";
 import MobileStaffAssignmentSheet from "./MobileStaffAssignmentSheet";
 import { sendCalendarInviteByName } from "@/lib/calendarInvites";
 import { calendarSyncOutcome, settledCounts } from "@/lib/actionOutcome";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 const paymentStatusConfig = {
   "Paid": { color: "bg-green-500/20 text-green-400 border-green-500/30", icon: "✅" },
@@ -263,7 +264,7 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
 
   const handleBulkSyncToCalendar = async () => {
     if (selectedEvents.length === 0) return;
-    if (!confirm(`לסנכרן ${selectedEvents.length} אירועים ליומן גוגל?`)) return;
+    if (!await confirmDialog(`לסנכרן ${selectedEvents.length} אירועים ליומן גוגל?`)) return;
     setIsBulkSyncing(true);
     let success = 0, failed = 0;
     for (const eventId of selectedEvents) {
@@ -285,7 +286,7 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
   };
 
   const handleDeleteSelected = async () => {
-    if (!confirm(`למחוק ${selectedEvents.length} אירועים מסומנים?`)) return;
+    if (!await confirmDialog(`למחוק ${selectedEvents.length} אירועים מסומנים?`)) return;
     setIsDeletingBulk(true);
     try {
       // E2: allSettled + real counts (Promise.all reported "all deleted" or "error" for all).

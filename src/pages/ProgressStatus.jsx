@@ -15,6 +15,7 @@ const HEBREW_MONTHS = [
 ];
 const formatMonthYear = (date) => `${HEBREW_MONTHS[date.getMonth()]} ${date.getFullYear()}`;
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 // Was previously missing "videographer2" entirely (same real bug as
 // ProgressEventMobileCard.jsx — a videographer2 team member got no status button and
@@ -147,7 +148,7 @@ export default function ProgressStatus() {
     if (!finalLink) { toast.error('נא להזין לינק סופי לפני השליחה'); return; }
     if (!event?.phoneNumber) { toast.error('חסר טלפון זוג לאירוע'); return; }
     // Daniel's decision R4 (2026-10-06): a second send to the couple only after asking.
-    if (event?.finalDoneManual && !window.confirm(`הגלריה כבר סומנה כנשלחה ל${event?.coupleNames || 'זוג'}. לשלוח שוב?`)) return;
+    if (event?.finalDoneManual && !await confirmDialog(`הגלריה כבר סומנה כנשלחה ל${event?.coupleNames || 'זוג'}. לשלוח שוב?`)) return;
 
     setSendingCouple(prev => ({ ...prev, [event.id]: true }));
     try {
@@ -205,7 +206,7 @@ export default function ProgressStatus() {
       setPendingLinks(prev => { const next = { ...prev }; delete next[key]; return next; });
     }
     // Daniel's decision R4: a second send of the album sketch to the couple only after asking.
-    if (event?.albumSketchCoupleNotified && !window.confirm(`סקיצת האלבום כבר נשלחה ל${event?.coupleNames || 'זוג'}. לשלוח שוב?`)) return;
+    if (event?.albumSketchCoupleNotified && !await confirmDialog(`סקיצת האלבום כבר נשלחה ל${event?.coupleNames || 'זוג'}. לשלוח שוב?`)) return;
     setSendingAlbumCouple(prev => ({ ...prev, [event.id]: true }));
     try {
       await base44.functions.invoke('sendAlbumSketch', { eventId: event.id, target: 'couple' });

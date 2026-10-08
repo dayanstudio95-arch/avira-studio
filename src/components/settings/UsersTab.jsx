@@ -20,6 +20,7 @@ import {
 import { Users, Plus, Mail, MessageCircle, Copy, RefreshCw, Eye, EyeOff, Wand2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import CreateStudioDialog from "./CreateStudioDialog";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 function generateRandomPassword() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
@@ -224,7 +225,7 @@ export default function UsersTab() {
   };
 
   const handleDeleteUser = async (u) => {
-    const confirmed = window.confirm(
+    const confirmed = await confirmDialog(
       `למחוק לצמיתות את המשתמש "${u.fullName || u.email || "ללא שם"}"? הפעולה בלתי הפיכה — החשבון וההרשאות שלו יימחקו, וכל הקישורים אליו (איש צוות מקושר וכו') יתנתקו.`
     );
     if (!confirmed) return;

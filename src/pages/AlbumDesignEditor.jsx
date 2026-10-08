@@ -20,6 +20,7 @@ import { downloadSpreadFile } from "@/lib/albumExport";
 import { uploadStudioFiles, prepareEnlargementFiles } from "@/lib/albumUploads";
 import SourcesDialog from "@/components/albumEditor/SourcesDialog";
 import EnlargementsDialog from "@/components/albumEditor/EnlargementsDialog";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 // Album design editor — stage 1 (2026-10-08, the owner's request: design the album sketch inside
 // AVIRA instead of SmartAlbums). Desktop only, opened from an album order ("🎨 עורך סקיצה (בטא)").
@@ -269,7 +270,7 @@ function Editor({ design, order, names, back, extraPrice }) {
   };
   const acceptClient = async () => {
     if (!client.doc) return;
-    if (!window.confirm("לקחת את הגרסה של הזוג לעורך? הגרסה הנוכחית שלך נשמרת בהיסטוריה (ואפשר ⌘Z).")) return;
+    if (!await confirmDialog("לקחת את הגרסה של הזוג לעורך? הגרסה הנוכחית שלך נשמרת בהיסטוריה (ואפשר ⌘Z).")) return;
     await snapshot("manual");
     const theirs = client.doc;
     edit(() => ({ ...theirs, cameraOffsets: doc.cameraOffsets, tags: doc.tags }));
@@ -358,7 +359,7 @@ function Editor({ design, order, names, back, extraPrice }) {
 
   const resetAll = async () => {
     const used = doc.pages.reduce((n, p) => n + p.slots.filter((s) => s.assetId).length, 0);
-    if (!window.confirm(`לאפס את הסקיצה?\n\nכל ${used} התמונות יוצאו מהכפולות (נשארות בבנק), ${doc.pages.length} הכפולות יישארו ריקות. טקסט הפתיחה נשמר.\n\nאפשר לחזור אחורה עם ⌘Z (או "היסטוריה").`)) return;
+    if (!await confirmDialog(`לאפס את הסקיצה?\n\nכל ${used} התמונות יוצאו מהכפולות (נשארות בבנק), ${doc.pages.length} הכפולות יישארו ריקות. טקסט הפתיחה נשמר.\n\nאפשר לחזור אחורה עם ⌘Z (או "היסטוריה").`)) return;
     await snapshot("manual");
     edit((d) => resetSketch(d));
     setCurrentId(doc.pages[0]?.id);

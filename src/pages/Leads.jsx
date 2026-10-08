@@ -22,6 +22,7 @@ import { isAdmin } from "@/lib/permissions";
 import { leadSyncOutcome, settledCounts } from "@/lib/actionOutcome";
 import { packagePrices } from "@/lib/packagePrices";
 import { dateMatches } from "@/lib/searchDate";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 
 const statusConfig = {
@@ -278,7 +279,7 @@ export default function Leads() {
 
   const handleDelete = async (leadId) => {
     if (!canDelete) { toast.error('אין לך הרשאה למחוק לידים'); return; }
-    if (!confirm('האם למחוק ליד זה?')) return;
+    if (!await confirmDialog('האם למחוק ליד זה?')) return;
     try {
       await base44.entities.Lead.delete(leadId);
       loadLeads();
@@ -293,7 +294,7 @@ export default function Leads() {
   const handleBulkDelete = async () => {
     if (!canDelete) { toast.error('אין לך הרשאה למחוק לידים'); return; }
     if (selectedIds.size === 0) return;
-    if (!confirm(`האם למחוק ${selectedIds.size} לידים מסומנים?`)) return;
+    if (!await confirmDialog(`האם למחוק ${selectedIds.size} לידים מסומנים?`)) return;
     try {
       // E2: report the deletions that really happened (allSettled), not the selection size.
       const ids = [...selectedIds];
@@ -341,7 +342,7 @@ export default function Leads() {
     const skipNote = alreadyPaid.length
       ? `\n\n⚠️ ${alreadyPaid.length} לידים יידלגו כי כבר רשומים להם תשלומים:\n${alreadyPaid.slice(0, 5).map(l => l.coupleNames).join(', ')}`
       : '';
-    if (!confirm(
+    if (!await confirmDialog(
       `לרשום מקדמה של ₪${DEPOSIT_AMOUNT} ל-${eligible.length} לידים?${skipNote}\n\n` +
       `שים לב: זו רק רישום במערכת — לא מופקת חשבונית.`
     )) return;

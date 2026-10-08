@@ -28,6 +28,7 @@ import {
   PRODUCTION_QUESTIONNAIRE_BOOLEAN_FIELDS,
   hasAnyProductionQuestionnaireAnswer,
 } from "@/lib/productionQuestionnaireFields";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMembers, onLeadUpdated, onEventUpdated, onStaffMembersChanged }) {
   // Hard stop: if event.sourceLeadId points to a different lead, discard the event entirely
@@ -418,7 +419,7 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
       toast.error('אין מספר טלפון');
       return;
     }
-    if (!window.confirm(`לשלוח את החוזה החתום ל-${lead.coupleNames || 'הזוג'} ב-${lead.phoneNumber}?`)) return;
+    if (!await confirmDialog(`לשלוח את החוזה החתום ל-${lead.coupleNames || 'הזוג'} ב-${lead.phoneNumber}?`)) return;
     setIsSendingSignedContract(true);
     try {
       await base44.functions.invoke('sendSignedContract', { leadId: lead.id });

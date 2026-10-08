@@ -13,6 +13,7 @@ import { DEFAULT_CONTRACT_TERMS } from "@/lib/defaultContractTerms";
 import { parseWhatsAppLead } from "@/lib/whatsappLeadParser";
 import { leadSyncOutcome } from "@/lib/actionOutcome";
 import { applyLeadTemplateVariables } from "@/lib/leadMessages";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 // ששת הערכים שה-CHECK ב-0001_init.sql:106 מתיר. 'חוזה' נכתב ע"י sign-lead-public
 // בכל חתימה ציבורית — בלעדיו ה-Select נשאר ריק בעריכת ליד חתום.
@@ -273,7 +274,7 @@ export default function LeadFormDialog({ isOpen, onClose, lead, initialValues, p
 
   const sendUpdatedContract = async () => {
     if (!updatedNotice?.phone) return;
-    if (!window.confirm(`לשלוח ל-${updatedNotice.names} (${updatedNotice.phone}) את הקישור לחוזה המעודכן?`)) return;
+    if (!await confirmDialog(`לשלוח ל-${updatedNotice.names} (${updatedNotice.phone}) את הקישור לחוזה המעודכן?`)) return;
     setIsSendingUpdate(true);
     try {
       const res = await base44.functions.invoke("sendWhatsAppMessage", { to: updatedNotice.phone, message: updatedNotice.text });

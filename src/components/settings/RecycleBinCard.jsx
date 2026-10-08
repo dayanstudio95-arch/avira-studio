@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Trash2, Undo2, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 // The other half of migration 0058: the recycle bin's window.
 //
@@ -56,7 +57,7 @@ export default function RecycleBinCard() {
   }, [canManage, load]);
 
   const handleRestore = async (row) => {
-    if (!window.confirm(`לשחזר את ${TABLE_LABELS[row.table_name] || row.table_name} "${row.label}"?`)) return;
+    if (!await confirmDialog(`לשחזר את ${TABLE_LABELS[row.table_name] || row.table_name} "${row.label}"?`)) return;
     setRestoringId(row.id);
     try {
       // Fetch the payload only now — the list query deliberately leaves `data` out so

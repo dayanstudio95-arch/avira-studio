@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import SpreadReviewViewer, { SPREAD_STATUS_STYLES } from "@/components/albums/SpreadReviewViewer";
 import { WORKFLOW_STATUS_LABELS, WORKFLOW_STATUS_COLORS, PAYMENT_STATUS_LABELS, PAYMENT_STATUS_COLORS, getOrderNameColorClass } from "./AlbumOrders";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 // Wedding Albums module -- single order's full lifecycle control: upload sketch
 // versions, generate/revoke the couple's portal link, view review-round history,
@@ -584,7 +585,7 @@ export default function AlbumOrderDetail() {
     onError: (err) => toast.error(err.message || "שגיאה במחיקת הגרסה"),
   });
 
-  const handleDeleteVersion = (version) => {
+  const handleDeleteVersion = async (version) => {
     if (order.currentVersionId === version.id) {
       toast.error("לא ניתן למחוק את הגרסה המוצגת כרגע לזוג");
       return;
@@ -593,7 +594,7 @@ export default function AlbumOrderDetail() {
       toast.error("לא ניתן למחוק גרסה מאושרת");
       return;
     }
-    if (!confirm(`למחוק לצמיתות את גרסה ${version.versionNumber}? כל הקבצים, סבב/י הבדיקה וההערות של הזוג לגרסה זו יימחקו ולא ניתן יהיה לשחזר.`)) {
+    if (!await confirmDialog(`למחוק לצמיתות את גרסה ${version.versionNumber}? כל הקבצים, סבב/י הבדיקה וההערות של הזוג לגרסה זו יימחקו ולא ניתן יהיה לשחזר.`)) {
       return;
     }
     deleteVersionMutation.mutate(version);

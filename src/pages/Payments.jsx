@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import { unpaidRowsForStaff, creditByStaff, creditForExactPeriod, undoablePaymentIds, periodRange, earlierMonthDebts } from '@/lib/staffPaymentAllocation';
 import { todayInIsrael } from '@/lib/localDate';
 import PageIcon from "@/components/layout/PageIcon";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 const MONTHS_HE = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
 const StaffPayment = base44.entities.StaffPayment;
 
@@ -357,7 +358,7 @@ export default function Payments() {
     const creditOnlyNames = Object.entries(credits).filter(([n, c]) => c > 0 && !paymentsOwed[n]).map(([n]) => n);
 
     const handleUndoPayment = async (payment) => {
-        if (!window.confirm(`לבטל את התשלום של ₪${Number(payment.amount).toLocaleString()} ל${payment.staffMemberName}?\nהאירועים שנסגרו בתשלום הזה יחזרו ל"לא שולם".`)) return;
+        if (!await confirmDialog(`לבטל את התשלום של ₪${Number(payment.amount).toLocaleString()} ל${payment.staffMemberName}?\nהאירועים שנסגרו בתשלום הזה יחזרו ל"לא שולם".`)) return;
         setUndoingPaymentId(payment.id);
         try {
             const { error } = await supabase.rpc('undo_staff_payment', { p_payment_id: payment.id });

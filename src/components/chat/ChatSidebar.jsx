@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { Plus, Trash2, SlidersHorizontal, LayoutGrid, X, Bell, History, CalendarClock } from "lucide-react";
 import { BOXES } from "@/lib/chatModel";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 export const LABEL_COLORS = ["#E5484D", "#F76B15", "#C2410C", "#12A594", "#3E63DD", "#8E4EC6", "#D6409F", "#64748B"];
 
@@ -68,14 +69,14 @@ export default function ChatSidebar({ box, setBox, counts, labels, onCreateLabel
                 role="button"
                 tabIndex={0}
                 aria-label={`מחק את התווית ${l.name}`}
-                onClick={(e) => {
+                onClick={async (e) => {
                   e.stopPropagation();
-                  if (window.confirm(`למחוק את התווית "${l.name}"? היא תוסר מכל השיחות.`)) onDeleteLabel(l.id);
+                  if (await confirmDialog(`למחוק את התווית "${l.name}"? היא תוסר מכל השיחות.`)) onDeleteLabel(l.id);
                 }}
-                onKeyDown={(e) => {
+                onKeyDown={async (e) => {
                   if (e.key === "Enter") {
                     e.stopPropagation();
-                    if (window.confirm(`למחוק את התווית "${l.name}"? היא תוסר מכל השיחות.`)) onDeleteLabel(l.id);
+                    if (await confirmDialog(`למחוק את התווית "${l.name}"? היא תוסר מכל השיחות.`)) onDeleteLabel(l.id);
                   }
                 }}
                 className="text-gray-500 hover:text-red-400"

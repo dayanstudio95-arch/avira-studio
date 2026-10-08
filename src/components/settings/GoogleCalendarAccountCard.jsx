@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, Link2, Unlink, CheckCircle2, XCircle, AlertTriangle, Circle, Save } from "lucide-react";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 // One connection-status card for a single Google account slot ('primary' or
 // 'backup') of the tenant. Reused twice on GoogleCalendarSync.jsx. Mirrors
@@ -95,7 +96,7 @@ export default function GoogleCalendarAccountCard({ accountRole, account, onChan
   };
 
   const handleDisconnect = async () => {
-    if (!confirm(`לנתק את ה${roleLabel}?`)) return;
+    if (!await confirmDialog(`לנתק את ה${roleLabel}?`)) return;
     setDisconnecting(true);
     try {
       await base44.functions.invoke("googleCalendarOAuthDisconnect", { accountRole });

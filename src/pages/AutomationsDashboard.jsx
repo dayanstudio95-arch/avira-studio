@@ -16,6 +16,7 @@ import TemplateVariablesHelp from "@/components/automations/TemplateVariablesHel
 import { VARS_BY_TYPE, VARS_BY_AUDIENCE_TYPE } from "@/lib/automationTemplateVariables";
 import { sendSummary } from "@/lib/actionOutcome";
 import PageIcon from "@/components/layout/PageIcon";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 // ── Default automations to seed if none exist ──────────────────────────────
 const DEFAULTS = [
@@ -750,7 +751,7 @@ function SettingsModal({ automation, onClose, onSaved }) {
                         toast.error("לא נבחרו נמענים לשליחה");
                         return;
                       }
-                      if (!window.confirm(`בטוח? יישלח ל-${previewSelected.size} נמענים.`)) return;
+                      if (!await confirmDialog(`בטוח? יישלח ל-${previewSelected.size} נמענים.`)) return;
                       setSending(true);
                       try {
                         const mm = String(previewMonth).padStart(2, '0');
@@ -782,7 +783,7 @@ function SettingsModal({ automation, onClose, onSaved }) {
                       });
                       const n = (dry.data?.results?.[0]?.previews || []).length;
                       if (n === 0) { toast.info("אין נמענים לשליחה"); setSending(false); return; }
-                      if (!window.confirm(`בטוח? יישלח ל-${n} נמענים.`)) { setSending(false); return; }
+                      if (!await confirmDialog(`בטוח? יישלח ל-${n} נמענים.`)) { setSending(false); return; }
                       const res = await base44.functions.invoke("automationEngine", {
                         automation_id: automation.id,
                         triggered_by: "manual",

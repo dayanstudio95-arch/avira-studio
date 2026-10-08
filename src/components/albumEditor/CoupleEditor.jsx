@@ -10,6 +10,7 @@ import { useDesignDoc } from "./useDesignDoc";
 import EditorWorkspace from "./EditorWorkspace";
 import SourcesDialog from "./SourcesDialog";
 import EnlargementsDialog from "./EnlargementsDialog";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 // The couple edits their album from the portal link (stage 4, 2026-10-08). Same editor pieces as
 // the studio's, minus the studio-only tools (Drive folder, camera clocks, export, history).
@@ -114,7 +115,7 @@ function Editor({ token, initial, onClose }) {
           toast.error(`${file.name}: אפשר להעלות רק JPG או PNG`);
           continue;
         }
-        if (warnings.length && !window.confirm(`${file.name}\n\n${warnings.map((w) => "• " + w.text).join("\n")}\n\nלהעלות בכל זאת?`)) continue;
+        if (warnings.length && !await confirmDialog(`${file.name}\n\n${warnings.map((w) => "• " + w.text).join("\n")}\n\nלהעלות בכל זאת?`)) continue;
         const { path, token: upToken } = await portal(token, "createClientPhotoUploadUrl", { fileName: file.name });
         const { error } = await supabase.storage.from("album-files").uploadToSignedUrl(path, upToken, file);
         if (error) throw error;

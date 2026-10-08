@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { BookImage, Plus, Search, Link2, PenLine, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import PageIcon from "@/components/layout/PageIcon";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 const BUCKET = "album-files";
 
@@ -151,11 +152,11 @@ export default function AlbumOrders() {
     onError: (err) => toast.error(err.message || "שגיאה במחיקת ההזמנה"),
   });
 
-  const handleDeleteOrder = (e, order) => {
+  const handleDeleteOrder = async (e, order) => {
     e.preventDefault();
     e.stopPropagation();
     if (
-      !confirm(
+      !await confirmDialog(
         `למחוק לצמיתות את הזמנת האלבום של ${displayName(order)}? כל הגרסאות, הקבצים, סבבי הבדיקה, בחירות המוצר והקישורים (לזוג/למעבדת הדפסה) יימחקו ולא ניתן יהיה לשחזר.`
       )
     ) {

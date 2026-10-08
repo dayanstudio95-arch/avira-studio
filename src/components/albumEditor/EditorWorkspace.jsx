@@ -11,6 +11,7 @@ import SpreadView, { AdjustmentDefs } from "./SpreadView";
 import PhotoBank from "./PhotoBank";
 import SpreadStrip from "./SpreadStrip";
 import PagePanel from "./PagePanel";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 const BANK_W_KEY = "albumBankWidth";
 const readBankW = () => {
@@ -109,10 +110,10 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
 
   // Leaving a spread with a face on the fold needs a "yes, it's fine" (remembered per spread
   // until its photos/crops change again).
-  const goTo = (id) => {
+  const goTo = async (id) => {
     if (id === page?.id) return;
     if (Object.keys(faces).length && page.foldOk !== slotsKey) {
-      const ok = window.confirm("⚠️ בכפולה הזו יש פנים של אדם בדיוק על הקפל (אמצע האלבום) — בהדפסה הן ייחתכו בתפר.\n\nאישור = להמשיך בכל זאת · ביטול = להישאר ולתקן (להזיז / לזום / להחליף פריסה)");
+      const ok = await confirmDialog("⚠️ בכפולה הזו יש פנים של אדם בדיוק על הקפל (אמצע האלבום) — בהדפסה הן ייחתכו בתפר.\n\nאישור = להמשיך בכל זאת · ביטול = להישאר ולתקן (להזיז / לזום / להחליף פריסה)");
       if (!ok) return;
       change((d) => setPageProps(d, page.id, { foldOk: slotsKey }));
     }
@@ -240,10 +241,10 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
     }
     toast.success(`${ids.length} תמונות בכפולה חדשה — בפאנל משמאל: הפריסות שהכי מתאימות להן`);
   };
-  const dropGroup = (ids) => {
+  const dropGroup = async (ids) => {
     if (locked || !ids.length) return;
     const hasPhotos = page.slots.some((s) => s.assetId);
-    if (hasPhotos && !window.confirm(`להחליף את התמונות בכפולה הזו ב-${ids.length} התמונות שנבחרו?\n\nביטול = לשים אותן בכפולה חדשה אחרי הזו`)) return newSpreadFrom(ids);
+    if (hasPhotos && !(await confirmDialog({ title: `להחליף את התמונות בכפולה הזו ב-${ids.length} התמונות שנבחרו?`, message: "או לשים אותן בכפולה חדשה אחרי הזו.", confirmText: "החלף", cancelText: "בכפולה חדשה" }))) return newSpreadFrom(ids);
     const { doc: next, pageIds } = placeGroup(doc, photosOf(ids), { replacePageId: page.id });
     edit(() => next);
     if (pageIds[0]) setCurrentId(pageIds[0]);
@@ -411,8 +412,8 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
                   }
             }
             onDuplicate={(id) => change((d) => duplicatePage(d, id))}
-            onRemove={(id) => {
-              if (locked || !window.confirm("למחוק את הכפולה? (אפשר לבטל עם ⌘Z)")) return;
+            onRemove={async (id) => {
+              if (locked || !await confirmDialog("למחוק את הכפולה? (אפשר לבטל עם ⌘Z)")) return;
               edit((d) => removePage(d, id));
             }}
             onSplit={locked ? null : (id) => setSplitFor(id)}

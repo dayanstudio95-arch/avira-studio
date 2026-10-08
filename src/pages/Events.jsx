@@ -11,6 +11,7 @@ import EventsTableWithBulkDelete from "../components/events/EventsTableWithBulkD
 import CSVImportDialog from "../components/CSVImportDialog";
 import EventsMobileMenu from "../components/events/EventsMobileMenu";
 import EventsStatsRow from "../components/events/EventsStatsRow";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 export default function Events() {
   const [events, setEvents] = useState([]);
@@ -183,7 +184,7 @@ export default function Events() {
       // of supabase/functions/send-questionnaire-to-events/index.ts.
       const names = toSend.slice(0, 5).map(e => e.coupleNames).filter(Boolean).join(', ');
       const more = toSend.length > 5 ? ` ועוד ${toSend.length - 5}` : '';
-      if (!window.confirm(
+      if (!await confirmDialog(
         `לשלוח שאלון הכנה ל-${toSend.length} זוגות בוואטסאפ?\n\n${names}${more}\n\nההודעות נשלחות בפועל.`
       )) {
         setQuestionnaireLoading(false);

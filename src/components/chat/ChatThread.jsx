@@ -9,6 +9,7 @@ import DateAvailability from "./DateAvailability";
 import { Avatar, conversationTitle } from "./ChatList";
 import { typeColor, stageColor } from "@/lib/chatColors";
 import { displayPhone } from "@/components/whatsapp/whatsappInboxShared";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 function NoteBubble({ note, onDelete }) {
   return (
@@ -213,7 +214,7 @@ export default function ChatThread({
                   key={"n" + item.id}
                   note={item}
                   onDelete={async (n) => {
-                    if (!window.confirm("למחוק את ההערה?")) return;
+                    if (!await confirmDialog("למחוק את ההערה?")) return;
                     try { await thread.deleteNote(n.id); } catch (e) { toast.error("המחיקה נכשלה", { description: e?.message }); }
                   }}
                 />
@@ -254,7 +255,7 @@ export default function ChatThread({
                   {editing.id && (
                     <button
                       type="button"
-                      onClick={async () => { if (window.confirm("למחוק את התבנית?")) { await onDeleteTemplate(editing.id); setEditing(null); } }}
+                      onClick={async () => { if (await confirmDialog("למחוק את התבנית?")) { await onDeleteTemplate(editing.id); setEditing(null); } }}
                       className="rounded-lg border border-red-900 px-3 text-sm text-red-300"
                     >
                       מחק

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Phone, Video, Users, Check, X, Pencil, Send, MessageSquare, Eye, Plus, Loader2 } from "lucide-react";
 import { groupMeetings, GROUP_LABELS, kindLabel, startsInLabel, utcToIsraelParts, meetingMessageForCouple } from "@/lib/meetings";
 import MeetingDialog from "./MeetingDialog";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 const KIND_STYLE = {
   call: { icon: Phone, cls: "bg-blue-500/20 text-blue-200", time: "border-[#3B82F6]/40 bg-[#3B82F6]/12 text-sky-100" },
@@ -54,7 +55,7 @@ export default function MeetingsList({ onOpenConversation, onOpenLead, showAdd =
   const sendToCouple = async (m) => {
     if (!m.phone) { toast.error("אין טלפון לפגישה הזו"); return; }
     const text = meetingMessageForCouple(m);
-    if (!window.confirm(`לשלוח ל-${m.title} (${m.phone}):\n\n${text}`)) return;
+    if (!await confirmDialog(`לשלוח ל-${m.title} (${m.phone}):\n\n${text}`)) return;
     setBusy(m.id);
     try {
       const res = await base44.functions.invoke("sendWhatsAppMessage", { to: m.phone, message: text });
@@ -122,7 +123,7 @@ export default function MeetingsList({ onOpenConversation, onOpenLead, showAdd =
             <button
               type="button"
               disabled={busy === m.id}
-              onClick={() => window.confirm(`לבטל את הפגישה עם ${m.title}? לא תישלח תזכורת.`) && update(m, { status: "cancelled" }, "הפגישה בוטלה")}
+              onClick={async () => (await confirmDialog(`לבטל את הפגישה עם ${m.title}? לא תישלח תזכורת.`)) && update(m, { status: "cancelled" }, "הפגישה בוטלה")}
               className={`${btn} text-red-300`}
             >
               <X className="h-3.5 w-3.5" /> בוטל

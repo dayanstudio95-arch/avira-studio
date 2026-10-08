@@ -26,6 +26,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { BookImage, Plus, Edit, Trash2, Layers, Frame, Sparkles, Palette, Type } from "lucide-react";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 // Catalog management for the Wedding Albums module (album_products / album_covers /
 // album_addons) -- see CLAUDE.md's "Wedding Albums module" section. No seed data is
@@ -194,8 +195,8 @@ function CatalogTab({ catalogKey, canManage }) {
     }
   };
 
-  const handleDelete = (id) => {
-    if (confirm(`האם למחוק ${config.singular} זה? הזמנות קיימות ששייכות אליו לא ייפגעו (הנתונים שלהן שמורים בנפרד).`)) {
+  const handleDelete = async (id) => {
+    if (await confirmDialog(`האם למחוק ${config.singular} זה? הזמנות קיימות ששייכות אליו לא ייפגעו (הנתונים שלהן שמורים בנפרד).`)) {
       deleteMutation.mutate(id);
     }
   };

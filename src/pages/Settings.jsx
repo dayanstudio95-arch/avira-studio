@@ -43,6 +43,7 @@ import { downloadEventsBackupPdf } from "@/lib/eventsBackupPdf";
 import { toast } from "sonner";
 import { todayInIsrael } from "@/lib/localDate";
 import PageIcon from "@/components/layout/PageIcon";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 const VALID_SETTINGS_TABS = ["workspace", "users", "contract", "pricing", "team", "templates", "integrations", "notifications", "data", "audit"];
 
@@ -270,7 +271,7 @@ export default function Settings() {
   };
 
   const handleDeleteStaff = async (id) => {
-    if (!confirm("האם אתה בטוח שברצונך למחוק את איש הצוות?")) return;
+    if (!await confirmDialog("האם אתה בטוח שברצונך למחוק את איש הצוות?")) return;
     try {
       await base44.entities.StaffMember.delete(id);
       loadStaff();

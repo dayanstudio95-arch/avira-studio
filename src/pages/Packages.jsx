@@ -14,6 +14,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 export default function Packages() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -107,8 +108,8 @@ export default function Packages() {
     }
   };
 
-  const handleDelete = (id) => {
-    if (confirm("האם אתה בטוח שברצונך למחוק חבילה זו?")) {
+  const handleDelete = async (id) => {
+    if (await confirmDialog("האם אתה בטוח שברצונך למחוק חבילה זו?")) {
       deleteMutation.mutate(id);
     }
   };

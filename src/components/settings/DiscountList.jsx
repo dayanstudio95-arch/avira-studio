@@ -5,6 +5,7 @@ import { Edit, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import DiscountForm from "./DiscountForm";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 export default function DiscountList() {
   const [discounts, setDiscounts] = useState([]);
@@ -27,7 +28,7 @@ export default function DiscountList() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm("האם אתה בטוח שברצונך למחוק את ההנחה?")) return;
+    if (!await confirmDialog("האם אתה בטוח שברצונך למחוק את ההנחה?")) return;
     try {
       await base44.entities.DiscountPreset.delete(id);
       toast.success("ההנחה נמחקה בהצלחה");

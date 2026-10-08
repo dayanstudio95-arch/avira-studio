@@ -19,6 +19,7 @@ import {
   ArrowUp, ArrowDown, HelpCircle, ExternalLink, ChevronDown, X, Images, Layers,
 } from "lucide-react";
 import { toast } from "sonner";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 // Album Guide Page — studio-owner-editable, generic (one row per tenant)
 // couple-facing informational page explaining the album-ordering process,
@@ -182,8 +183,8 @@ export default function AlbumGuideSettings() {
     }
   };
 
-  const handleDeleteFaq = (id) => {
-    if (window.confirm("למחוק את השאלה?")) deleteFaqMutation.mutate(id);
+  const handleDeleteFaq = async (id) => {
+    if (await confirmDialog("למחוק את השאלה?")) deleteFaqMutation.mutate(id);
   };
 
   const moveFaq = async (index, direction) => {
@@ -415,8 +416,8 @@ export default function AlbumGuideSettings() {
     }
   };
 
-  const handleDeleteExample = (example) => {
-    if (window.confirm(`למחוק את הדוגמה "${example.title || "ללא כותרת"}" וכל תמונותיה?`)) {
+  const handleDeleteExample = async (example) => {
+    if (await confirmDialog(`למחוק את הדוגמה "${example.title || "ללא כותרת"}" וכל תמונותיה?`)) {
       deleteExampleMutation.mutate(example);
     }
   };
@@ -487,7 +488,7 @@ export default function AlbumGuideSettings() {
   };
 
   const handleDeleteExampleImage = async (image) => {
-    if (!window.confirm("למחוק את התמונה?")) return;
+    if (!await confirmDialog("למחוק את התמונה?")) return;
     try {
       const path = extractStoragePath(image.imageUrl);
       if (path) await supabase.storage.from(BUCKET).remove([path]).catch(() => {});
@@ -520,7 +521,7 @@ export default function AlbumGuideSettings() {
   const handleResortExampleImages = async (example) => {
     const images = imagesByExampleId.get(example.id) || [];
     if (images.length < 2) return;
-    if (!window.confirm("למיין מחדש את כל התמונות בדוגמה זו לפי שם הקובץ המקורי? פעולה זו תשנה את מספרי הסדר של התמונות.")) return;
+    if (!await confirmDialog("למיין מחדש את כל התמונות בדוגמה זו לפי שם הקובץ המקורי? פעולה זו תשנה את מספרי הסדר של התמונות.")) return;
     setResortingExampleId(example.id);
     try {
       const sorted = [...images].sort((a, b) =>
