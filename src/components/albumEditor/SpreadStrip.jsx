@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { Plus, Copy, Trash2, Scissors } from "lucide-react";
 import SpreadView from "./SpreadView";
@@ -8,7 +9,8 @@ import SpreadView from "./SpreadView";
 // dropped on one of its frames — that's how a photo moves between pages.
 let hoverTimer = null;
 
-export default function SpreadStrip({ doc, assetsById, currentId, onSelect, onMove, onAdd, onInsertAt, onDuplicate, onRemove, onSplit, onDragHoverPage }) {
+export default function SpreadStrip({ doc, assetsById, currentId, onSelect, onMove, onAdd, onInsertAt, onDuplicate, onRemove, onSplit, onDragHoverPage, onDropOnPage }) {
+  const [over, setOver] = useState(null);
   return (
     <div className="flex items-stretch gap-2 overflow-x-auto px-3 py-2" dir="ltr">
       <DragDropContext onDragEnd={(r) => r.destination && onMove(r.source.index, r.destination.index)}>
@@ -25,14 +27,34 @@ export default function SpreadStrip({ doc, assetsById, currentId, onSelect, onMo
                           type="button"
                           onClick={() => onSelect(p.id)}
                           onDragOver={(e) => {
-                            if (!onDragHoverPage || ![...e.dataTransfer.types].some((t) => t.startsWith("application/x-avira"))) return;
+                            if (![...e.dataTransfer.types].some((t) => t.startsWith("application/x-avira"))) return;
                             e.preventDefault();
-                            if (!hoverTimer) hoverTimer = setTimeout(() => { hoverTimer = null; onDragHoverPage(p.id); }, 550);
+                            setOver(p.id);
+                            // hold a second = open that page (to drop on a specific frame)
+                            if (onDragHoverPage && !hoverTimer) hoverTimer = setTimeout(() => { hoverTimer = null; onDragHoverPage(p.id); }, 1100);
                           }}
-                          onDragLeave={() => { clearTimeout(hoverTimer); hoverTimer = null; }}
-                          className={`block w-full overflow-hidden rounded border-2 ${p.id === currentId ? "border-amber-400" : "border-transparent hover:border-white/30"}`}
+                          onDragLeave={() => { clearTimeout(hoverTimer); hoverTimer = null; setOver(null); }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            clearTimeout(hoverTimer);
+                            hoverTimer = null;
+                            setOver(null);
+                            // drop = the photo joins this page, both pages re-layout
+                            const group = e.dataTransfer.getData("application/x-avira-group");
+                            const asset = e.dataTransfer.getData("application/x-avira-asset");
+                            const slot = e.dataTransfer.getData("application/x-avira-slot");
+                            if (group) onDropOnPage?.(p.id, { ids: JSON.parse(group) });
+                            else if (asset) onDropOnPage?.(p.id, { ids: [asset] });
+                            else if (slot) onDropOnPage?.(p.id, { from: JSON.parse(slot) });
+                          }}
+                          className={`relative block w-full overflow-hidden rounded border-2 ${over === p.id ? "border-emerald-400" : p.id === currentId ? "border-amber-400" : "border-transparent hover:border-white/30"}`}
                         >
                           <SpreadView page={p} assetsById={assetsById} mini />
+                          {over === p.id && (
+                            <span className="absolute inset-0 z-40 flex items-center justify-center bg-emerald-500/70 text-[10px] font-bold leading-tight text-white">
+                              שחרר = הוסף לדף<br />החזק = פתח את הדף
+                            </span>
+                          )}
                         </button>
                         {onInsertAt && i < doc.pages.length - 1 && (
                           <button

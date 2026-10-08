@@ -179,3 +179,60 @@ export function autoLayout(assets, { spreads = 30, title = null, openingCount = 
 export function suggestedSpreads(photoCount) {
   return Math.max(10, Math.min(60, Math.round(photoCount / 5) || 30));
 }
+
+// ---- drop a photo ON a page in the strip (2026-10-08) -------------------------------------------
+// The photo joins that page and both pages re-layout for their new number of photos: the target
+// gets the best layout for one more, the page it came from for one less. Each photo keeps its look
+// (B&W, colour adjustments, shape, heal strokes); crops reset because the frames changed.
+const MAX_ON_PAGE = 20;
+
+function relayout(page, photos, looks) {
+  if (!photos.length) {
+    return { ...page, slots: page.slots.map(() => ({ assetId: null, zoom: 1, cx: 0.5, cy: 0.5, filter: "none" })) };
+  }
+  if (page.title) {
+    const tid = OPENING_TEMPLATE[photos.length];
+    if (!tid) return null; // the opening takes 1–3 photos
+    const t = getTemplate(tid);
+    return { ...page, templateId: tid, slots: t.cells.map((_, i) => slotFor(photos[i], looks)) };
+  }
+  const made = pageFor(photos);
+  if (!made) return null;
+  return { ...page, templateId: made.templateId, flip: made.flip, slots: made.slots.map((s) => slotFor({ id: s.assetId }, looks)) };
+}
+
+function slotFor(asset, looks) {
+  if (!asset?.id) return { assetId: null, zoom: 1, cx: 0.5, cy: 0.5, filter: "none" };
+  const look = looks[asset.id] || {};
+  return { filter: "none", ...look, assetId: asset.id, zoom: 1, cx: 0.5, cy: 0.5 };
+}
+
+// `from` = { pageId, index } when the photo was dragged out of a frame (it leaves that page),
+// or null when it comes from the bank. → { doc, error }
+export function addToPage(doc, targetPageId, assetIds, assetsById, from = null) {
+  const ti = doc.pages.findIndex((p) => p.id === targetPageId);
+  if (ti < 0) return { doc };
+  if (from && from.pageId === targetPageId) return { doc }; // already on this page
+  const looks = {};
+  for (const p of doc.pages) for (const s of p.slots) if (s.assetId) looks[s.assetId] = { filter: s.filter, adj: s.adj, shape: s.shape, heal: s.heal };
+  const target = doc.pages[ti];
+  const have = target.slots.filter((s) => s.assetId).map((s) => assetsById[s.assetId]).filter(Boolean);
+  const adding = assetIds.map((id) => assetsById[id]).filter((a) => a && !have.some((h) => h.id === a.id));
+  if (!adding.length) return { doc };
+  const all = sortAssets([...have, ...adding], doc.cameraOffsets || {});
+  if (all.length > MAX_ON_PAGE) return { doc, error: `בדף יכולות להיות עד ${MAX_ON_PAGE} תמונות` };
+  const newTarget = relayout(target, all, looks);
+  if (!newTarget) return { doc, error: "בדף הפתיחה יכולות להיות 1–3 תמונות" };
+  const pages = [...doc.pages];
+  pages[ti] = newTarget;
+  if (from) {
+    const si = pages.findIndex((p) => p.id === from.pageId);
+    if (si >= 0) {
+      const src = pages[si];
+      const left = src.slots.filter((s, k) => s.assetId && k !== from.index).map((s) => assetsById[s.assetId]).filter(Boolean);
+      const newSrc = relayout(src, sortAssets(left, doc.cameraOffsets || {}), looks) || { ...src, slots: src.slots.map((s, k) => (k === from.index ? { ...s, assetId: null } : s)) };
+      pages[si] = newSrc;
+    }
+  }
+  return { doc: { ...doc, pages } };
+}

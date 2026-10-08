@@ -2255,6 +2255,22 @@ console.log('\n— PART 43: album editor round 2 —');
   const op = al.autoLayout(ids, { spreads: 6, openingCount: 3, openingEmpty: true });
   check('auto-sketch: opening with 3 empty frames', op.pages[0].templateId + ':' + op.pages[0].slots.filter((s) => s.assetId).length, 't-d:0');
   check('auto-sketch: album starts from the first photo', op.pages[1].slots.map((s) => s.assetId).includes('q0'), true);
+  // drop on a page in the strip → joins it, both pages re-layout
+  let jd = al.placeGroup(ad.emptyDoc({ spreads: 2 }), ids.slice(0, 4), { afterIndex: 0 }).doc;
+  jd = al.placeGroup(jd, ids.slice(4, 9), { afterIndex: 1 }).doc;
+  jd = { ...jd, assets: ids };
+  const pA = jd.pages[1], pB = jd.pages[2];
+  const lookIdx = pA.slots.findIndex((s) => s.assetId);
+  jd = ad.updateSlot(jd, pA.id, lookIdx, { filter: 'bw-classic' });
+  const movedId = jd.pages[1].slots[lookIdx].assetId;
+  const j = al.addToPage(jd, pB.id, [movedId], byId, { pageId: pA.id, index: lookIdx });
+  const cnt = (p) => p.slots.filter((s) => s.assetId).length;
+  check('join: target +1, source −1', cnt(j.doc.pages[1]) + '/' + cnt(j.doc.pages[2]), '3/6');
+  check('join: layouts changed to fit', j.doc.pages[1].slots.length + '/' + j.doc.pages[2].slots.length, '3/6');
+  check('join: the photo keeps its B&W', j.doc.pages[2].slots.find((s) => s.assetId === movedId).filter, 'bw-classic');
+  const fromBank = al.addToPage(jd, pB.id, ['q12'], byId);
+  check('from the bank: target +1, nothing removed', cnt(fromBank.doc.pages[1]) + '/' + cnt(fromBank.doc.pages[2]), '4/6');
+  check('opening takes max 3', !!al.addToPage(jd, jd.pages[0].id, ['q12', 'q13', 'q14', 'q15'], byId).error, true);
   const pc = ad.setPageCount(g.doc, 1);
   check('page count never deletes spreads with photos', pc.blocked, 1);
 }

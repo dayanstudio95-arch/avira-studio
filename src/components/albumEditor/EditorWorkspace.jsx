@@ -5,7 +5,7 @@ import {
   usageCounts, addPage, insertPageAt, removePage, duplicatePage, movePage, setTemplate, setTemplateAssigned, toggleFlip, setTitle,
   placeAsset, clearSlot, updateSlot, swapSlots, setPageProps, addHealPatch, tagAssets, moveSlot, pasteSlot,
 } from "@/lib/albumDesign";
-import { splitPage, placeGroup } from "@/lib/albumAutoLayout";
+import { splitPage, placeGroup, addToPage } from "@/lib/albumAutoLayout";
 import { foldFaceWarnings } from "@/lib/albumFaces";
 import SpreadView, { AdjustmentDefs } from "./SpreadView";
 import PhotoBank from "./PhotoBank";
@@ -298,6 +298,19 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
             }}
             onSplit={locked ? null : (id) => setSplitFor(id)}
             onDragHoverPage={locked ? null : (id) => id !== page.id && goTo(id)}
+            onDropOnPage={
+              locked
+                ? null
+                : (pageId, { ids, from }) => {
+                    const assetIds = ids || [doc.pages.find((p) => p.id === from.pageId)?.slots[from.index]?.assetId].filter(Boolean);
+                    const r = addToPage(doc, pageId, assetIds, assetsById, from || null);
+                    if (r.error) return toast.error(r.error);
+                    if (r.doc === doc) return;
+                    edit(() => r.doc);
+                    const n = doc.pages.findIndex((p) => p.id === pageId) + 1;
+                    toast.success(from ? `התמונה עברה לדף ${n} — שני הדפים סודרו מחדש` : `נוספה לדף ${n} — הדף סודר מחדש`);
+                  }
+            }
           />
         </div>
       </div>
