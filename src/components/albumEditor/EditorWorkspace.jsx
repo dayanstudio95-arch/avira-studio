@@ -5,7 +5,7 @@ import {
   usageCounts, addPage, insertPageAt, removePage, duplicatePage, movePage, setTemplate, setTemplateAssigned, toggleFlip, setTitle,
   placeAsset, clearSlot, updateSlot, swapSlots, setPageProps, addHealPatch, tagAssets, moveSlot, pasteSlot,
 } from "@/lib/albumDesign";
-import { splitPage, placeGroup, addToPage, removeFromPage } from "@/lib/albumAutoLayout";
+import { splitPage, placeGroup, addToPage, removeFromPage, fromIndices } from "@/lib/albumAutoLayout";
 import { foldFaceWarnings } from "@/lib/albumFaces";
 import SpreadView, { AdjustmentDefs } from "./SpreadView";
 import PhotoBank from "./PhotoBank";
@@ -26,6 +26,7 @@ const readBankW = () => {
 // uploaded photos); every change goes through `edit(fn, mergeKey)` (undo + autosave).
 export default function EditorWorkspace({ doc, edit, undo, redo, locked = false, currentId, setCurrentId, bankProps = {}, studio = false, branding = null, brandingReady = false, onEnlarge = null }) {
   const [selectedSlot, setSelectedSlot] = useState(null);
+  const [multiSel, setMultiSel] = useState([]); // ⌘+click on several photos of this spread → move them together
   const [heal, setHeal] = useState({ on: false, size: 4, offset: null });
   const [faces, setFaces] = useState({});
   const [bankW, setBankW] = useState(readBankW);
@@ -64,10 +65,32 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
   // Another spread (added, split, undone…) → no frame stays selected from the previous one.
   useEffect(() => {
     setSelectedSlot(null);
+    setMultiSel([]);
   }, [page?.id]);
   useEffect(() => {
     if (selectedSlot != null && page && selectedSlot >= page.slots.length) setSelectedSlot(null);
   }, [selectedSlot, page]);
+  // the page re-laid out (undo, a move…) → frames picked by index no longer mean the same photos
+  const slotIdsKey = page?.slots.map((s) => s.assetId || "").join();
+  useEffect(() => {
+    setMultiSel([]);
+  }, [slotIdsKey]);
+
+  // click = one frame (zoom, color…); ⌘/Ctrl/Shift+click = add / remove it from a group
+  const selectSlot = (i, e) => {
+    if (e && (e.metaKey || e.ctrlKey || e.shiftKey) && !locked) {
+      if (!page.slots[i]?.assetId) return;
+      setMultiSel((cur) => {
+        const base = cur.length ? cur : selectedSlot != null && selectedSlot !== i && page.slots[selectedSlot]?.assetId ? [selectedSlot] : [];
+        return base.includes(i) ? base.filter((k) => k !== i) : [...base, i];
+      });
+      setSelectedSlot(null);
+      return;
+    }
+    setMultiSel([]);
+    setSelectedSlot(i);
+  };
+  const groupSel = multiSel.filter((i) => page?.slots[i]?.assetId);
 
   // Faces on the fold — checked whenever this spread's photos or crops change.
   const slotsKey = JSON.stringify(page?.slots?.map((s) => [s.assetId, s.zoom, s.cx, s.cy]) || []) + page?.templateId + page?.flip + page?.blend + page?.fadeStrength;
@@ -95,6 +118,7 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
     }
     setCurrentId(id);
     setSelectedSlot(null);
+    setMultiSel([]);
     setHeal((h) => ({ ...h, on: false }));
   };
   const step = (dir) => {
@@ -116,11 +140,16 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
       if (k === "c") copySel(false);
       else if (k === "x") copySel(true);
       else pasteSel();
+    } else if (!typing && (e.key === "Delete" || e.key === "Backspace") && groupSel.length) {
+      e.preventDefault();
+      change((d) => removeFromPage(d, page.id, groupSel, assetsById)); // back to the bank, the page closes the gaps
+      setMultiSel([]);
     } else if (!typing && (e.key === "Delete" || e.key === "Backspace") && selectedSlot != null) {
       e.preventDefault();
       change((d) => clearSlot(d, page.id, selectedSlot));
     } else if (!typing && e.key === "Escape") {
       setSelectedSlot(null);
+      setMultiSel([]);
     } else if (!typing && !mod && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
       e.preventDefault();
       // same direction as the strip below (spread 1 on the left): ← = the spread to the left (previous)
@@ -146,7 +175,14 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
   // ---- copy / cut / paste a photo (⌘C ⌘X ⌘V, or the buttons in the side panel) ----
   const selSlot = selectedSlot != null ? page?.slots[selectedSlot] : null;
   function copySel(cut) {
-    if (locked || !selSlot?.assetId) return toast.info("בחרו קודם תמונה בכפולה");
+    if (locked) return;
+    if (groupSel.length) {
+      setClip({ slots: groupSel.map((i) => ({ ...page.slots[i] })) });
+      if (cut) change((d) => removeFromPage(d, page.id, groupSel, assetsById));
+      setMultiSel([]);
+      return toast.success(`${groupSel.length} תמונות ${cut ? "נגזרו" : "הועתקו"} — עברו לדף אחר ו-⌘V`);
+    }
+    if (!selSlot?.assetId) return toast.info("בחרו קודם תמונה בכפולה");
     setClip({ slot: { ...selSlot } });
     if (cut) {
       change((d) => removeFromPage(d, page.id, selectedSlot, assetsById)); // the page closes the gap
@@ -158,6 +194,10 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
   // layout changes to fit one more (the owner, 2026-10-08: "a full page grows, it doesn't replace").
   function pasteSel() {
     if (locked || !clip) return;
+    if (clip.slots) {
+      const looks = Object.fromEntries(clip.slots.map(({ assetId, filter, adj, shape, heal: h }) => [assetId, { filter, adj, shape, heal: h }]));
+      return addPhotosHere({ ids: clip.slots.map((s) => s.assetId) }, looks);
+    }
     const sel = selectedSlot != null && selectedSlot < page.slots.length ? selectedSlot : null;
     if (sel != null && !page.slots[sel]?.assetId) {
       change((d) => pasteSlot(d, page.id, sel, clip.slot));
@@ -168,18 +208,22 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
   }
 
   function addPhotosHere({ ids, from }, extraLooks = {}, targetId = page.id) {
-    const assetIds = ids || [doc.pages.find((p) => p.id === from.pageId)?.slots[from.index]?.assetId].filter(Boolean);
+    const srcSlots = from ? doc.pages.find((p) => p.id === from.pageId)?.slots || [] : [];
+    const assetIds = ids || fromIndices(from).map((k) => srcSlots[k]?.assetId).filter(Boolean);
     const r = addToPage(doc, targetId, assetIds, assetsById, from || null, extraLooks);
     if (r.error) return toast.error(r.error);
     if (r.doc === doc) return;
     edit(() => r.doc);
     setSelectedSlot(null);
+    setMultiSel([]);
     const n = doc.pages.findIndex((p) => p.id === targetId) + 1;
-    toast.success(from ? `התמונה עברה לדף ${n} — הפריסה התאימה את עצמה` : `נוספה לדף ${n} — הפריסה התאימה את עצמה`);
+    const many = assetIds.length > 1 ? `${assetIds.length} תמונות` : null;
+    toast.success(from ? `${many ? `${many} עברו` : "התמונה עברה"} לדף ${n} — שני הדפים התאימו את הפריסה` : `${many ? `${many} נוספו` : "נוספה"} לדף ${n} — הפריסה התאימה את עצמה`);
   }
 
   // ---- a photo dragged from another page ----
   const dropFromSlot = (i, from) => {
+    if (from.indices?.length > 1) return from.pageId === page.id ? null : addPhotosHere({ from }); // a group joins this page
     if (from.pageId === page.id) return change((d) => swapSlots(d, from, { pageId: page.id, index: i }));
     if (!page.slots[i]?.assetId) return change((d) => moveSlot(d, from, { pageId: page.id, index: i }));
     setMoveAsk({ from, to: { pageId: page.id, index: i } });
@@ -300,7 +344,8 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
                 assetsById={assetsById}
                 mini={locked}
                 selectedSlot={selectedSlot}
-                onSelectSlot={setSelectedSlot}
+                multiSelected={groupSel}
+                onSelectSlot={selectSlot}
                 onDropAsset={(i, assetId) => {
                   change((d) => placeAsset(d, page.id, i, assetId));
                   setSelectedSlot(i);
@@ -328,7 +373,16 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
                 faceWarnings={faces}
               />
             </div>
-            {!locked && <div className="text-[11px] text-slate-500">גוררים תמונה מהבנק · בין מסגרות = החלפה · ⌘+לחיצה בבנק = כמה תמונות · לחיצה על תמונה = זום, צבע, תיקון · ←/→ מעבר בין כפולות</div>}
+            {!locked && groupSel.length > 0 && (
+              <MultiMoveBar
+                count={groupSel.length}
+                pages={doc.pages}
+                currentIndex={pageIndex}
+                onMove={(targetId) => addPhotosHere({ from: { pageId: page.id, index: groupSel[0], indices: groupSel } }, {}, targetId)}
+                onClear={() => setMultiSel([])}
+              />
+            )}
+            {!locked && <div className="text-[11px] text-slate-500">גוררים תמונה מהבנק · בין מסגרות = החלפה · ⌘+לחיצה (בבנק או בכפולה) = כמה תמונות · לחיצה על תמונה = זום, צבע, תיקון · ←/→ מעבר בין כפולות</div>}
           </div>
           <button type="button" onClick={() => step(-1)} disabled={pageIndex <= 0} title="הכפולה הקודמת (← חץ שמאלה)" className="shrink-0 rounded-full p-2 text-slate-300 hover:bg-white/10 disabled:opacity-20">
             <ChevronLeft className="h-7 w-7" />
@@ -457,6 +511,26 @@ function MoveDialog({ onClose, onSwap, onMove }) {
         </button>
         <button type="button" onClick={onClose} className="w-full text-sm text-slate-400 hover:text-white">ביטול</button>
       </div>
+    </div>
+  );
+}
+
+// ⌘+click picked several photos on this spread → move them all to another page (both re-layout).
+function MultiMoveBar({ count, pages, currentIndex, onMove, onClear }) {
+  const [to, setTo] = useState("");
+  return (
+    <div className="flex w-full max-w-[1400px] flex-wrap items-center gap-2 rounded-lg border border-sky-400/50 bg-sky-500/15 px-3 py-2 text-xs text-sky-100">
+      <b>{count} תמונות נבחרו</b>
+      <span className="text-sky-200/80">· גררו אחת מהן לדף ברצועה למטה, או:</span>
+      <select value={to} onChange={(e) => setTo(e.target.value)} className="rounded border border-white/20 bg-[#0B1529] px-2 py-1 text-xs text-white">
+        <option value="">העבר לדף…</option>
+        {pages.map((p, i) => (i === currentIndex ? null : <option key={p.id} value={p.id}>דף {i + 1}{p.section ? ` · ${p.section}` : ""}</option>))}
+      </select>
+      <button type="button" disabled={!to} onClick={() => onMove(to)} className="rounded bg-sky-500 px-3 py-1 font-semibold text-white hover:bg-sky-400 disabled:opacity-40">
+        העבר
+      </button>
+      <span className="text-sky-200/70">· ⌘X ואז ⌘V בדף אחר · Delete = החזרה לבנק</span>
+      <button type="button" onClick={onClear} className="mr-auto rounded px-2 py-1 text-sky-200 hover:bg-white/10">✕ ביטול בחירה</button>
     </div>
   );
 }

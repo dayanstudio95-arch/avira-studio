@@ -228,8 +228,9 @@ function slotFor(asset, looks) {
   return { filter: "none", ...look, assetId: asset.id, zoom: 1, cx: 0.5, cy: 0.5 };
 }
 
-// `from` = { pageId, index } when the photo was dragged out of a frame (it leaves that page),
-// or null when it comes from the bank. → { doc, error }
+// `from` = { pageId, index } when the photo was dragged out of a frame (it leaves that page) —
+// or { pageId, indices: [...] } for several photos selected together (⌘+click) — or null when it
+// comes from the bank. Both pages re-layout for their new count. → { doc, error }
 export function addToPage(doc, targetPageId, assetIds, assetsById, from = null, extraLooks = {}) {
   const ti = doc.pages.findIndex((p) => p.id === targetPageId);
   if (ti < 0) return { doc };
@@ -251,23 +252,28 @@ export function addToPage(doc, targetPageId, assetIds, assetsById, from = null, 
     const si = pages.findIndex((p) => p.id === from.pageId);
     if (si >= 0) {
       const src = pages[si];
-      const left = src.slots.filter((s, k) => s.assetId && k !== from.index).map((s) => assetsById[s.assetId]).filter(Boolean);
-      const newSrc = relayout(src, sortAssets(left, doc.cameraOffsets || {}), looks) || { ...src, slots: src.slots.map((s, k) => (k === from.index ? { ...s, assetId: null } : s)) };
+      const out = new Set(fromIndices(from));
+      const left = src.slots.filter((s, k) => s.assetId && !out.has(k)).map((s) => assetsById[s.assetId]).filter(Boolean);
+      const newSrc = relayout(src, sortAssets(left, doc.cameraOffsets || {}), looks) || { ...src, slots: src.slots.map((s, k) => (out.has(k) ? { ...s, assetId: null } : s)) };
       pages[si] = newSrc;
     }
   }
   return { doc: { ...doc, pages } };
 }
 
-// Cut (⌘X) a photo out of a page → the page re-layouts for one photo less (no empty frame left).
+export const fromIndices = (from) => (Array.isArray(from?.indices) && from.indices.length ? from.indices : from ? [from.index] : []);
+
+// Cut (⌘X) a photo — or several (`index` may be an array) — out of a page → the page re-layouts
+// for the photos left (no empty frame left).
 export function removeFromPage(doc, pageId, index, assetsById) {
   const i = doc.pages.findIndex((p) => p.id === pageId);
   if (i < 0) return doc;
   const page = doc.pages[i];
+  const out = new Set(Array.isArray(index) ? index : [index]);
   const looks = {};
   for (const s of page.slots) if (s.assetId) looks[s.assetId] = { filter: s.filter, adj: s.adj, shape: s.shape, heal: s.heal };
-  const left = page.slots.filter((s, k) => s.assetId && k !== index).map((s) => assetsById[s.assetId]).filter(Boolean);
-  const next = relayout(page, sortAssets(left, doc.cameraOffsets || {}), looks) || { ...page, slots: page.slots.map((s, k) => (k === index ? { ...s, assetId: null } : s)) };
+  const left = page.slots.filter((s, k) => s.assetId && !out.has(k)).map((s) => assetsById[s.assetId]).filter(Boolean);
+  const next = relayout(page, sortAssets(left, doc.cameraOffsets || {}), looks) || { ...page, slots: page.slots.map((s, k) => (out.has(k) ? { ...s, assetId: null } : s)) };
   const pages = [...doc.pages];
   pages[i] = next;
   return { ...doc, pages };

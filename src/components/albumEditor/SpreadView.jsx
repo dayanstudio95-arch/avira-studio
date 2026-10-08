@@ -43,6 +43,7 @@ export default function SpreadView({
   assetsById,
   mini = false,
   selectedSlot = null,
+  multiSelected = [], // frames picked together with ⌘+click — dragged / cut / moved as one group
   onSelectSlot,
   onDropAsset,
   onDropSlot,
@@ -72,6 +73,9 @@ export default function SpreadView({
           pageId={page.id}
           mini={mini}
           selected={selectedSlot === i}
+          multi={multiSelected.includes(i)}
+          multiOrder={multiSelected.indexOf(i) + 1}
+          group={multiSelected}
           onSelect={onSelectSlot}
           onDropAsset={onDropAsset}
           onDropSlot={onDropSlot}
@@ -212,7 +216,17 @@ function cellMasks(rect, slot) {
   return { maskImage: img, WebkitMaskImage: img, maskComposite: "intersect", WebkitMaskComposite: "source-in" };
 }
 
-function Cell({ index, rect, slot, asset, pageId, mini, selected, onSelect, onDropAsset, onDropSlot, onDropGroup, onCropChange, heal, onHeal, onHealSource, faceWarning }) {
+// Drag ghost for several photos: "4 תמונות" instead of just the one under the mouse.
+function groupGhost(e, n) {
+  const g = document.createElement("div");
+  g.textContent = `${n} תמונות`;
+  g.style.cssText = "position:fixed;top:-100px;left:-100px;padding:6px 12px;border-radius:999px;background:#0ea5e9;color:#fff;font:600 13px system-ui;direction:rtl";
+  document.body.appendChild(g);
+  e.dataTransfer.setDragImage(g, 20, 14);
+  setTimeout(() => g.remove(), 0);
+}
+
+function Cell({ index, rect, slot, asset, pageId, mini, selected, multi = false, multiOrder = 0, group = [], onSelect, onDropAsset, onDropSlot, onDropGroup, onCropChange, heal, onHeal, onHealSource, faceWarning }) {
   const ref = useRef(null);
   const [over, setOver] = useState(null); // null | "good" | "bad"
   const [live, setLive] = useState(null); // crop while dragging / wheeling, committed on release
@@ -255,12 +269,15 @@ function Cell({ index, rect, slot, asset, pageId, mini, selected, onSelect, onDr
   const handlers = mini
     ? {}
     : {
-        onClick: () => onSelect?.(index),
-        draggable: Boolean(asset) && !selected,
+        onClick: (e) => onSelect?.(index, e),
+        draggable: Boolean(asset) && (!selected || multi),
         onDragStart: (e) => {
-          e.dataTransfer.setData(SLOT_MIME, JSON.stringify({ pageId, index }));
+          // dragging one of several selected photos = the whole group goes
+          const many = multi && group.length > 1;
+          e.dataTransfer.setData(SLOT_MIME, JSON.stringify(many ? { pageId, index, indices: group } : { pageId, index }));
           e.dataTransfer.effectAllowed = "move";
-          setDragAssets(asset ? [asset] : null);
+          if (many) groupGhost(e, group.length);
+          setDragAssets(asset ? (many ? group.map(() => asset) : [asset]) : null);
         },
         onDragEnd: () => setDragAssets(null),
         onDragOver: (e) => {
@@ -348,9 +365,12 @@ function Cell({ index, rect, slot, asset, pageId, mini, selected, onSelect, onDr
       {!mini && (
         <div
           className={`pointer-events-none absolute inset-0 ${
-            over === "bad" ? "bg-rose-500/25 ring-[3px] ring-inset ring-rose-500" : over === "good" ? "ring-[3px] ring-inset ring-emerald-400" : selected ? "ring-[3px] ring-inset ring-amber-400" : "group-hover/cell:ring-2 group-hover/cell:ring-inset group-hover/cell:ring-sky-400/70"
+            over === "bad" ? "bg-rose-500/25 ring-[3px] ring-inset ring-rose-500" : over === "good" ? "ring-[3px] ring-inset ring-emerald-400" : multi ? "bg-sky-400/20 ring-[4px] ring-inset ring-sky-400" : selected ? "ring-[3px] ring-inset ring-amber-400" : "group-hover/cell:ring-2 group-hover/cell:ring-inset group-hover/cell:ring-sky-400/70"
           }`}
         />
+      )}
+      {multi && !mini && (
+        <div className="pointer-events-none absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-sky-500 text-xs font-bold text-white shadow">{multiOrder}</div>
       )}
       {over === "bad" && (
         <div className="pointer-events-none absolute inset-x-1 top-1 rounded bg-rose-600 px-1.5 py-1 text-center text-[10px] font-semibold leading-tight text-white">
