@@ -736,7 +736,7 @@ export default function StaffScheduling() {
         })()}
 
         {viewMode === "answers" ? (
-          <AvailabilityAnswers events={events} staffMembers={staffMembers} onEventsChanged={() => loadData({ silent: true })} focusLeadId={focusLeadId} />
+          <AvailabilityAnswers events={events} staffMembers={staffMembers} onEventsChanged={() => loadData({ silent: true })} focusLeadId={focusLeadId} onCheckAvailability={openAvailability} />
         ) : viewMode === "list" ? renderListView() : renderCalendarView()}
 
         {/* Calendar Edit Modal */}

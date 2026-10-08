@@ -52,7 +52,7 @@ const hhmm = (iso) => {
 // "📥 תשובות זמינות" (2026-10-07, the owner's request): instead of opening notification
 // after notification, every answer in one place, grouped by event — who is already on the
 // team, who said "פנוי" and still needs a decision (assign / "לא צריך"), who hasn't answered.
-export default function AvailabilityAnswers({ events, staffMembers, onEventsChanged, focusLeadId }) {
+export default function AvailabilityAnswers({ events, staffMembers, onEventsChanged, focusLeadId, onCheckAvailability }) {
   const qc = useQueryClient();
   const q = useAvailabilityRequests();
   const pkgQ = useQuery({ queryKey: ["dashPackages"], queryFn: () => base44.entities.Package.list(), staleTime: 600000 });
@@ -225,6 +225,22 @@ export default function AvailabilityAnswers({ events, staffMembers, onEventsChan
                   )}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  {/* Ask more people about this date (2026-10-09) — the same pink "זמינות צלם"
+                      as the event panel; a couple without an event yet is asked by its lead. */}
+                  {onCheckAvailability && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onCheckAvailability(
+                          g.event || { sourceLeadId: g.leadId, date: g.date, venue: g.venue, coupleNames: g.couple, team: [] }
+                        )
+                      }
+                      title="שליחת בדיקת זמינות לאנשי צוות נוספים לתאריך הזה"
+                      className="flex h-7 items-center gap-1 rounded-lg bg-pink-600 px-2.5 text-xs font-semibold text-white hover:bg-pink-700"
+                    >
+                      <Send className="h-3.5 w-3.5" /> זמינות צלם
+                    </button>
+                  )}
                   {!g.event ? (
                     <span className="e-chip e-chip-gray">אין אירוע עדיין</span>
                   ) : missing.length ? (
