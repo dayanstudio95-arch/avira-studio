@@ -4,13 +4,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Heart, Album, UserCheck, AlertTriangle, MessageCircle, ClipboardList, RefreshCw } from "lucide-react";
+import { Heart, Album, UserCheck, AlertTriangle, MessageCircle, ClipboardList, RefreshCw, Send } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
 import { calculateNetProfit } from "@/lib/profitCalculations";
 import PaymentStatusSelector, { paymentStatusConfig, statusLabels } from "@/components/common/PaymentStatusSelector";
 import UnifiedSidePanel from "../unified/UnifiedSidePanel";
+import QuestionnaireReminderDialog from "./QuestionnaireReminderDialog";
 const { StaffMember } = base44.entities;
 
 const calcProfit = (event, staffMembers) => calculateNetProfit(event, staffMembers);
@@ -41,6 +42,7 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
   const [selectedLeadForDrawer, setSelectedLeadForDrawer] = useState(null);
   const [selectedEventForDrawer, setSelectedEventForDrawer] = useState(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [questionnaireFor, setQuestionnaireFor] = useState(null); // { event, lead } — resend preview
 
   useEffect(() => {
     const fetchData = async () => {
@@ -76,6 +78,13 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
   // lookup would otherwise report every event as unanswered for the first moment
   // after mount, flashing ~151 rows from orange to green. Null renders the same "—"
   // the יומן column uses for "not known", which is the honest state at that point.
+  // "לא מולא" is a button (2026-10-09): send the questionnaire message again, after a preview.
+  const openQuestionnaireReminder = (e, event) => {
+    e?.stopPropagation?.();
+    const lead = event.sourceLeadId ? leads.find((l) => l.id === event.sourceLeadId) : null;
+    setQuestionnaireFor({ event, lead });
+  };
+
   const isQuestionnaireFilled = (event) => {
     if (leads.length === 0) return null;
     if (!event.sourceLeadId) return false;
@@ -219,14 +228,16 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
                         return (
                           <Badge
                             variant="outline"
+                            onClick={filled ? undefined : (e) => openQuestionnaireReminder(e, event)}
+                            title={filled ? undefined : "לחצו כדי לשלוח שוב את השאלון לזוג"}
                             className={`${
                               filled
                                 ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                                : 'bg-orange-500/20 text-orange-400 border-orange-500/30'
+                                : 'bg-orange-500/20 text-orange-400 border-orange-500/30 cursor-pointer hover:bg-orange-500/30'
                             } border text-xs`}
                           >
                             <ClipboardList className="w-3 h-3 mr-1 inline" />
-                            שאלון {filled ? 'מולא' : 'לא מולא'}
+                            שאלון {filled ? 'מולא' : 'לא מולא · שלח שוב'}
                           </Badge>
                         );
                       })()}
@@ -381,16 +392,20 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
                           return (
                             <div className="flex items-center gap-1">
                               <span className={`w-2 h-2 rounded-full ${filled ? 'bg-green-400' : 'bg-orange-400'}`}></span>
-                              <Badge
-                                variant="outline"
-                                className={`${
-                                  filled
-                                    ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                                    : 'bg-orange-500/20 text-orange-400 border-orange-500/30'
-                                } border font-medium text-xs`}
-                              >
-                                {filled ? 'מולא' : 'לא מולא'}
-                              </Badge>
+                              {filled ? (
+                                <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500/30 border font-medium text-xs">
+                                  מולא
+                                </Badge>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={(e) => openQuestionnaireReminder(e, event)}
+                                  title="לחצו כדי לשלוח שוב את השאלון לזוג (עם תצוגה מקדימה)"
+                                  className="inline-flex items-center gap-1 rounded-md border border-orange-500/40 bg-orange-500/20 px-2 py-0.5 text-xs font-medium text-orange-300 transition-colors hover:bg-orange-500/35 hover:text-orange-200"
+                                >
+                                  לא מולא <Send className="h-3 w-3" />
+                                </button>
+                              )}
                             </div>
                           );
                         })()}
@@ -405,6 +420,7 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
         </div>
       </CardContent>
       </Card>
+      <QuestionnaireReminderDialog target={questionnaireFor} onClose={() => setQuestionnaireFor(null)} />
       <UnifiedSidePanel
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
