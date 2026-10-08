@@ -208,15 +208,17 @@ export const FADE_Y = (FADE_X * SPREAD.widthCm) / SPREAD.heightCm;
 
 const mirrorRect = ([x, y, w, h]) => [100 - x - w, y, w, h];
 
-export function layoutRects(template, flip = false, blend = "none") {
+// `strength` (2026-10-08): 0–200% of that overlap band — 0 = photos just touch, 200 = a wide fade.
+export function layoutRects(template, flip = false, blend = "none", strength = 100) {
   if (blend !== "fade") return cellRects(template, flip).map((r, i) => ({ ...r, z: i, fadeL: 0, fadeT: 0 }));
+  const k = Math.min(200, Math.max(0, Number.isFinite(+strength) ? +strength : 100)) / 100;
   const raw = template.cells.map((c) => (flip ? mirrorRect(c) : c));
   const order = raw.map((c, i) => i).sort((a, b) => raw[a][0] - raw[b][0] || raw[a][1] - raw[b][1]);
   return raw.map(([x, y, w, h], i) => {
-    const left = x > 0.01 ? FADE_X : 0;
-    const top = y > 0.01 ? FADE_Y : 0;
+    const left = x > 0.01 ? FADE_X * k : 0;
+    const top = y > 0.01 ? FADE_Y * k : 0;
     const nw = w + left;
     const nh = h + top;
-    return { x: x - left, y: y - top, w: nw, h: nh, z: order.indexOf(i), fadeL: (left / nw) * 100, fadeT: (top / nh) * 100 };
+    return { x: x - left, y: y - top, w: nw, h: nh, z: order.indexOf(i), fadeL: nw ? (left / nw) * 100 : 0, fadeT: nh ? (top / nh) * 100 : 0 };
   });
 }

@@ -53,7 +53,7 @@ export default function PagePanel({ page, selectedSlot, doc, assetsById, onTempl
   const isTitle = Boolean(t.title);
   const slot = selectedSlot != null ? page.slots[selectedSlot] : null;
   const asset = slot?.assetId ? assetsById?.[slot.assetId] || doc.assets.find((a) => a.id === slot.assetId) : null;
-  const rect = selectedSlot != null ? layoutRects(t, page.flip, page.blend)[selectedSlot] : null;
+  const rect = selectedSlot != null ? layoutRects(t, page.flip, page.blend, page.fadeStrength ?? 100)[selectedSlot] : null;
   const zMin = asset && rect ? minZoom(rect.w * 80, rect.h * 30, asset.w || 1, asset.h || 1) : 1;
 
   const photos = useMemo(() => page.slots.map((s) => s.assetId && (assetsById?.[s.assetId] || doc.assets.find((a) => a.id === s.assetId))).filter(Boolean), [page.slots, assetsById, doc.assets]);
@@ -228,6 +228,9 @@ export default function PagePanel({ page, selectedSlot, doc, assetsById, onTempl
             <button key={id} type="button" onClick={() => onPage({ blend: id })} className={`flex-1 rounded-md border py-1 ${(page.blend || "none") === id ? "border-amber-400 bg-amber-400/15 text-amber-100" : "border-white/10 text-slate-300"}`}>{label}</button>
           ))}
         </div>
+        {page.blend === "fade" && (
+          <Slider label="עוצמת המעבר הרך" value={page.fadeStrength ?? 100} min={0} max={200} step={5} fmt={(v) => `${v}%`} onChange={(v) => onPage({ fadeStrength: v })} />
+        )}
         {!isTitle && (
           <>
             <div className="flex flex-wrap gap-1">

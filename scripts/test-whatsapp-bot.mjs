@@ -2211,6 +2211,11 @@ console.log('\n— PART 43: album editor round 2 —');
   check('fade: first photo no fade', fr[0].fadeL, 0);
   check('fade: second fades over the first', fr[1].fadeL > 0 && fr[1].x < 50, true);
   check('fade: no white gutter', fr[0].x + fr[0].w, 50);
+  const f0 = at.layoutRects(at.getTemplate('p2-a'), false, 'fade', 0);
+  const f200 = at.layoutRects(at.getTemplate('p2-a'), false, 'fade', 200);
+  check('fade 0% = no overlap', f0[1].x, 50);
+  check('fade 200% = twice the band', Math.round((50 - f200[1].x) * 100) / 100, Math.round(2 * at.FADE_X * 100) / 100);
+  check('fade strength clamped', at.layoutRects(at.getTemplate('p2-a'), false, 'fade', 999)[1].x, f200[1].x);
   const P = { w: 4000, h: 6000 }; const L = { w: 6000, h: 4000 };
   const byId = {}; const ids = [];
   for (let i = 0; i < 18; i++) { const a = { id: 'q' + i, name: 'AVIRA-' + i + '.jpg', ...(i % 2 ? L : P) }; byId[a.id] = a; ids.push(a); }

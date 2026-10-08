@@ -57,7 +57,7 @@ export default function SpreadView({
   faceWarnings = {},
 }) {
   const t = getTemplate(page.templateId);
-  const rects = layoutRects(t, page.flip, page.blend);
+  const rects = layoutRects(t, page.flip, page.blend, page.fadeStrength ?? 100);
   const text = textRect(t, page.flip);
   const boxRef = useRef(null);
   return (

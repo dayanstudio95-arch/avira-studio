@@ -148,7 +148,7 @@ export async function renderSpread(page, assetsById, getBitmap, { canvas = docum
   ctx.fillRect(0, 0, width, height);
   ctx.imageSmoothingQuality = "high";
   const t = getTemplate(page.templateId);
-  const rects = layoutRects(t, page.flip, page.blend);
+  const rects = layoutRects(t, page.flip, page.blend, page.fadeStrength ?? 100);
   // draw order = z (left→right, top→bottom) so faded edges lie over their neighbour
   const order = rects.map((r, i) => i).sort((a, b) => rects[a].z - rects[b].z);
   for (const i of order) {

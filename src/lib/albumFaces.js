@@ -63,7 +63,7 @@ async function facesInBand(asset, bandX0, bandX1) {
 // → { [slotIndex]: true } for every photo on this spread with a face on the fold.
 export async function foldFaceWarnings(page, assetsById) {
   const t = getTemplate(page.templateId);
-  const rects = layoutRects(t, page.flip, page.blend);
+  const rects = layoutRects(t, page.flip, page.blend, page.fadeStrength ?? 100);
   const warn = {};
   await Promise.all(
     rects.map(async (r, i) => {

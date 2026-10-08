@@ -60,7 +60,7 @@ export function sanitizeClientDoc(input: any, allowedAssets: any[], studioDoc: a
           x: num(h?.x, 0, 1, 0.5), y: num(h?.y, 0, 1, 0.5), sx: num(h?.sx, -0.5, 1.5, 0.5), sy: num(h?.sy, -0.5, 1.5, 0.5), r: num(h?.r, 0.001, 0.5, 0.02),
         })),
       }));
-      const page: any = { id, templateId, flip: p.flip === true, slots, blend: p.blend === 'fade' ? 'fade' : 'none' };
+      const page: any = { id, templateId, flip: p.flip === true, slots, blend: p.blend === 'fade' ? 'fade' : 'none', fadeStrength: num(p.fadeStrength, 0, 200, 100) };
       if (typeof p.foldOk === 'string') page.foldOk = p.foldOk.slice(0, 4000);
       if (p.branding && typeof p.branding === 'object') {
         page.branding = { show: p.branding.show === true, x: num(p.branding.x, -10, 100, 3), y: num(p.branding.y, -10, 100, 72), scale: num(p.branding.scale, 0.5, 3, 1) };

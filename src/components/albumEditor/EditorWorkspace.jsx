@@ -70,7 +70,7 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
   }, [selectedSlot, page]);
 
   // Faces on the fold — checked whenever this spread's photos or crops change.
-  const slotsKey = JSON.stringify(page?.slots?.map((s) => [s.assetId, s.zoom, s.cx, s.cy]) || []) + page?.templateId + page?.flip + page?.blend;
+  const slotsKey = JSON.stringify(page?.slots?.map((s) => [s.assetId, s.zoom, s.cx, s.cy]) || []) + page?.templateId + page?.flip + page?.blend + page?.fadeStrength;
   useEffect(() => {
     setFaces({});
     if (!page) return undefined;
