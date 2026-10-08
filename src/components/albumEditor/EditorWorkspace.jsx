@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import {
   usageCounts, addPage, insertPageAt, removePage, duplicatePage, movePage, setTemplate, setTemplateAssigned, toggleFlip, setTitle,
-  placeAsset, clearSlot, updateSlot, swapSlots, setPageProps, addHealPatch, tagAssets,
+  placeAsset, clearSlot, updateSlot, swapSlots, setPageProps, addHealPatch, tagAssets, moveSlot, pasteSlot,
 } from "@/lib/albumDesign";
 import { splitPage, placeGroup } from "@/lib/albumAutoLayout";
 import { foldFaceWarnings } from "@/lib/albumFaces";
@@ -30,6 +30,8 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
   const [faces, setFaces] = useState({});
   const [bankW, setBankW] = useState(readBankW);
   const [splitFor, setSplitFor] = useState(null);
+  const [clip, setClip] = useState(null); // { slot, cut } — copy / cut / paste of a photo
+  const [moveAsk, setMoveAsk] = useState(null); // { from, to } — dropped on a full frame of another page
   const change = useCallback((fn, key) => !locked && edit(fn, key), [edit, locked]);
 
   const assetsById = useMemo(() => Object.fromEntries(doc.assets.map((a) => [a.id, a])), [doc.assets]);
@@ -91,6 +93,12 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
       if (typing || locked) return;
       e.preventDefault();
       e.shiftKey ? redo() : undo();
+    } else if (mod && !typing && ["c", "x", "v"].includes(e.key.toLowerCase())) {
+      e.preventDefault();
+      const k = e.key.toLowerCase();
+      if (k === "c") copySel(false);
+      else if (k === "x") copySel(true);
+      else pasteSel();
     } else if (!typing && (e.key === "Delete" || e.key === "Backspace") && selectedSlot != null) {
       e.preventDefault();
       change((d) => clearSlot(d, page.id, selectedSlot));
@@ -116,6 +124,29 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
     const i = sel ?? page.slots.findIndex((s) => !s.assetId);
     if (i < 0) return toast.info("בחרו מסגרת בכפולה, או גררו את התמונה אליה");
     change((d) => placeAsset(d, page.id, i, assetId));
+  };
+
+  // ---- copy / cut / paste a photo (⌘C ⌘X ⌘V, or the buttons in the side panel) ----
+  const selSlot = selectedSlot != null ? page?.slots[selectedSlot] : null;
+  function copySel(cut) {
+    if (locked || !selSlot?.assetId) return toast.info("בחרו קודם תמונה בכפולה");
+    setClip({ slot: { ...selSlot } });
+    if (cut) change((d) => clearSlot(d, page.id, selectedSlot));
+    toast.success(cut ? "נגזר — בחרו מסגרת (גם בדף אחר) ו-⌘V" : "הועתק — בחרו מסגרת (גם בדף אחר) ו-⌘V");
+  }
+  function pasteSel() {
+    if (locked || !clip) return;
+    const i = selectedSlot != null && selectedSlot < page.slots.length ? selectedSlot : page.slots.findIndex((x) => !x.assetId);
+    if (i < 0) return toast.info("אין מסגרת פנויה — בחרו מסגרת להדביק אליה");
+    change((d) => pasteSlot(d, page.id, i, clip.slot));
+    setSelectedSlot(i);
+  }
+
+  // ---- a photo dragged from another page ----
+  const dropFromSlot = (i, from) => {
+    if (from.pageId === page.id) return change((d) => swapSlots(d, from, { pageId: page.id, index: i }));
+    if (!page.slots[i]?.assetId) return change((d) => moveSlot(d, from, { pageId: page.id, index: i }));
+    setMoveAsk({ from, to: { pageId: page.id, index: i } });
   };
 
   const photosOf = (ids) => ids.map((id) => assetsById[id]).filter(Boolean);
@@ -209,7 +240,7 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
                   change((d) => placeAsset(d, page.id, i, assetId));
                   setSelectedSlot(i);
                 }}
-                onDropSlot={(i, from) => change((d) => swapSlots(d, from, { pageId: page.id, index: i }))}
+                onDropSlot={dropFromSlot}
                 onDropGroup={dropGroup}
                 onCropChange={(i, crop) => change((d) => updateSlot(d, page.id, i, crop))}
                 onTitleChange={(patch) => change((d) => setTitle(d, page.id, patch))}
@@ -266,6 +297,7 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
               edit((d) => removePage(d, id));
             }}
             onSplit={locked ? null : (id) => setSplitFor(id)}
+            onDragHoverPage={locked ? null : (id) => id !== page.id && goTo(id)}
           />
         </div>
       </div>
@@ -288,10 +320,25 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
             setHeal={setHeal}
             brandingReady={brandingReady}
             onEnlarge={onEnlarge}
+            clipboard={{ has: !!clip, copy: () => copySel(false), cut: () => copySel(true), paste: pasteSel }}
           />
         )}
       </div>
 
+      {moveAsk && (
+        <MoveDialog
+          onClose={() => setMoveAsk(null)}
+          onSwap={() => {
+            change((d) => swapSlots(d, moveAsk.from, moveAsk.to));
+            setMoveAsk(null);
+          }}
+          onMove={() => {
+            change((d) => moveSlot(d, moveAsk.from, moveAsk.to));
+            setMoveAsk(null);
+            toast.success("הועברה — התמונה שהייתה כאן חזרה לבנק");
+          }}
+        />
+      )}
       {splitPageObj && (
         <SplitDialog
           page={splitPageObj}
@@ -324,6 +371,25 @@ function SplitDialog({ page, onClose, onSplit }) {
           <span>עוברות לכפולה חדשה: <b className="text-white">{n - keep}</b></span>
         </div>
         <button type="button" onClick={() => onSplit(keep)} className="h-10 w-full rounded-lg bg-amber-400 font-bold text-gray-900 hover:bg-amber-500">פצל</button>
+      </div>
+    </div>
+  );
+}
+
+function MoveDialog({ onClose, onSwap, onMove }) {
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60" onClick={onClose}>
+      <div className="w-full max-w-sm space-y-3 rounded-2xl border border-white/10 bg-[#0B1529] p-5 text-slate-200" onClick={(e) => e.stopPropagation()} dir="rtl">
+        <div className="text-lg font-semibold text-white">במסגרת הזו כבר יש תמונה</div>
+        <button type="button" onClick={onSwap} className="w-full rounded-lg border border-white/15 p-3 text-right hover:border-amber-400/60 hover:bg-white/5">
+          <div className="font-semibold text-white">⇄ להחליף ביניהן</div>
+          <div className="text-xs text-slate-400">כל תמונה עוברת לדף של השנייה</div>
+        </button>
+        <button type="button" onClick={onMove} className="w-full rounded-lg border border-white/15 p-3 text-right hover:border-amber-400/60 hover:bg-white/5">
+          <div className="font-semibold text-white">→ להעביר לכאן</div>
+          <div className="text-xs text-slate-400">התמונה שהייתה כאן חוזרת לבנק התמונות, והמקום הישן מתרוקן</div>
+        </button>
+        <button type="button" onClick={onClose} className="w-full text-sm text-slate-400 hover:text-white">ביטול</button>
       </div>
     </div>
   );

@@ -45,7 +45,7 @@ const Slider = ({ label, value, min, max, step, onChange, fmt }) => (
   </label>
 );
 
-export default function PagePanel({ page, selectedSlot, doc, assetsById, onTemplate, onFlip, onSlot, onClearSlot, onTitle, onPage, heal, setHeal, brandingReady, onEnlarge }) {
+export default function PagePanel({ page, selectedSlot, doc, assetsById, onTemplate, onFlip, onSlot, onClearSlot, onTitle, onPage, heal, setHeal, brandingReady, onEnlarge, clipboard }) {
   const [kind, setKind] = useState("all");
   const [showAdj, setShowAdj] = useState(false);
   const t = getTemplate(page.templateId);
@@ -81,6 +81,13 @@ export default function PagePanel({ page, selectedSlot, doc, assetsById, onTempl
           {asset ? (
             <>
               <div className="truncate text-[11px] text-slate-400" dir="ltr">{asset.name}</div>
+              {clipboard && (
+                <div className="flex gap-1.5 text-[11px]">
+                  <button type="button" onClick={clipboard.copy} title="⌘C" className="flex-1 rounded border border-white/10 py-1 text-slate-300 hover:text-white">העתק</button>
+                  <button type="button" onClick={clipboard.cut} title="⌘X" className="flex-1 rounded border border-white/10 py-1 text-slate-300 hover:text-white">גזור</button>
+                  <button type="button" onClick={clipboard.paste} disabled={!clipboard.has} title="⌘V" className="flex-1 rounded border border-white/10 py-1 text-slate-300 hover:text-white disabled:opacity-30">הדבק</button>
+                </div>
+              )}
               {onEnlarge && (
                 <button type="button" onClick={() => onEnlarge(asset.id)} className="w-full rounded-md border border-amber-400/40 py-1 text-xs text-amber-200 hover:bg-amber-400/10">🖼️ סמן להגדלה (קנבס / זכוכית)</button>
               )}
@@ -133,7 +140,10 @@ export default function PagePanel({ page, selectedSlot, doc, assetsById, onTempl
               </div>
             </>
           ) : (
-            <div className="text-xs text-slate-400">גררו תמונה מהבנק, או לחצו על תמונה בבנק כדי לשים אותה כאן.</div>
+            <div className="space-y-2">
+              <div className="text-xs text-slate-400">גררו תמונה מהבנק, או לחצו על תמונה בבנק כדי לשים אותה כאן.</div>
+              {clipboard?.has && <button type="button" onClick={clipboard.paste} className="w-full rounded border border-white/10 py-1 text-[11px] text-slate-200 hover:text-white">הדבק כאן (⌘V)</button>}
+            </div>
           )}
         </section>
       )}

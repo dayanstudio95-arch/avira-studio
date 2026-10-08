@@ -4,7 +4,11 @@ import SpreadView from "./SpreadView";
 
 // All spreads in a row at the bottom. Click = open, drag = reorder, small "+" between two spreads
 // inserts a new one there, ✂ splits a crowded spread in two.
-export default function SpreadStrip({ doc, assetsById, currentId, onSelect, onMove, onAdd, onInsertAt, onDuplicate, onRemove, onSplit }) {
+// Dragging a photo over a page in the strip opens that page (after a moment), so the photo can be
+// dropped on one of its frames — that's how a photo moves between pages.
+let hoverTimer = null;
+
+export default function SpreadStrip({ doc, assetsById, currentId, onSelect, onMove, onAdd, onInsertAt, onDuplicate, onRemove, onSplit, onDragHoverPage }) {
   return (
     <div className="flex items-stretch gap-2 overflow-x-auto px-3 py-2" dir="ltr">
       <DragDropContext onDragEnd={(r) => r.destination && onMove(r.source.index, r.destination.index)}>
@@ -20,6 +24,12 @@ export default function SpreadStrip({ doc, assetsById, currentId, onSelect, onMo
                         <button
                           type="button"
                           onClick={() => onSelect(p.id)}
+                          onDragOver={(e) => {
+                            if (!onDragHoverPage || ![...e.dataTransfer.types].some((t) => t.startsWith("application/x-avira"))) return;
+                            e.preventDefault();
+                            if (!hoverTimer) hoverTimer = setTimeout(() => { hoverTimer = null; onDragHoverPage(p.id); }, 550);
+                          }}
+                          onDragLeave={() => { clearTimeout(hoverTimer); hoverTimer = null; }}
                           className={`block w-full overflow-hidden rounded border-2 ${p.id === currentId ? "border-amber-400" : "border-transparent hover:border-white/30"}`}
                         >
                           <SpreadView page={p} assetsById={assetsById} mini />

@@ -2239,6 +2239,22 @@ console.log('\n— PART 43: album editor round 2 —');
   check('reset: same number of spreads', reset.pages.length, before.pages.length);
   check('reset: opening text kept', reset.pages[0].title.names, 'דניאל & סבינה');
   check('reset: bank kept', reset.assets === before.assets, true);
+  // move / paste between pages
+  let mv = ad.placeAsset(ad.placeAsset(ad.emptyDoc({ spreads: 3 }), 'x', 0, 'A'), 'x', 0, 'A');
+  const p1 = mv.pages[1].id, p2 = mv.pages[2].id;
+  mv = ad.placeAsset(mv, p1, 0, 'A');
+  mv = ad.placeAsset(mv, p2, 0, 'B');
+  const moved = ad.moveSlot(mv, { pageId: p1, index: 0 }, { pageId: p2, index: 0 });
+  check('move: target gets the photo', moved.pages[2].slots[0].assetId, 'A');
+  check('move: source empties', moved.pages[1].slots[0].assetId, null);
+  check('move: replaced photo leaves the album (back to bank)', JSON.stringify(ad.usageCounts(moved)), JSON.stringify({ A: 1 }));
+  const sw = ad.swapSlots(mv, { pageId: p1, index: 0 }, { pageId: p2, index: 0 });
+  check('swap across pages', sw.pages[1].slots[0].assetId + sw.pages[2].slots[0].assetId, 'BA');
+  const pasted = ad.pasteSlot(mv, p2, 1, { assetId: 'A', filter: 'bw-classic', adj: { exposure: 1 }, zoom: 2 });
+  check('paste keeps the look, resets the crop', pasted.pages[2].slots[1].filter + '|' + pasted.pages[2].slots[1].zoom, 'bw-classic|1');
+  const op = al.autoLayout(ids, { spreads: 6, openingCount: 3, openingEmpty: true });
+  check('auto-sketch: opening with 3 empty frames', op.pages[0].templateId + ':' + op.pages[0].slots.filter((s) => s.assetId).length, 't-d:0');
+  check('auto-sketch: album starts from the first photo', op.pages[1].slots.map((s) => s.assetId).includes('q0'), true);
   const pc = ad.setPageCount(g.doc, 1);
   check('page count never deletes spreads with photos', pc.blocked, 1);
 }

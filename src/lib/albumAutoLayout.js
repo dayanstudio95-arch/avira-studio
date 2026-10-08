@@ -120,7 +120,7 @@ export function placeGroup(doc, photos, { afterIndex = doc.pages.length - 1, rep
 }
 
 // Apply a saved layout preset (a list of templates) to the photos in album order.
-export function applyPreset(assets, preset, { title = null } = {}) {
+export function applyPreset(assets, preset, { title = null, openingEmpty = true } = {}) {
   const pages = [];
   let at = 0;
   for (const step of preset.pages) {
@@ -128,6 +128,10 @@ export function applyPreset(assets, preset, { title = null } = {}) {
     const page = newPage(t.id);
     page.flip = !!step.flip;
     if (t.title && title) page.title = { ...page.title, ...title };
+    if (t.title && openingEmpty) {
+      pages.push(page); // the opening's frames stay empty for the owner to choose
+      continue;
+    }
     page.slots = t.cells.map((_, k) => ({ assetId: assets[at + k]?.id || null, zoom: 1, cx: 0.5, cy: 0.5, filter: "none" }));
     at += t.cells.length;
     pages.push(page);
@@ -138,17 +142,25 @@ export function applyPreset(assets, preset, { title = null } = {}) {
 export const presetFromDoc = (doc, name) => ({ id: newId("pr"), name: String(name || "").slice(0, 60), pages: doc.pages.map((p) => ({ templateId: p.templateId, flip: !!p.flip })) });
 
 // → { pages, unused } — `unused` = photos that didn't fit (more than 10 per spread needed).
-export function autoLayout(assets, { spreads = 30, title = null } = {}) {
+// Opening spread by how many photos it holds (2026-10-08: the owner picks the opening photo
+// himself — usually the couple from the outdoor shoot, not the first photo of the day).
+export const OPENING_TEMPLATE = { 1: "t-c", 2: "t-a", 3: "t-d" };
+
+export function autoLayout(assets, { spreads = 30, title = null, openingCount = 2, openingEmpty = true } = {}) {
   const pages = [];
-  const titlePage = newPage("t-a");
+  const titlePage = newPage(OPENING_TEMPLATE[openingCount] || "t-a");
   if (title) titlePage.title = { ...titlePage.title, ...title };
-  const titleCount = getTemplate("t-a").cells.length;
-  assets.slice(0, titleCount).forEach((a, i) => {
-    titlePage.slots[i] = { ...titlePage.slots[i], assetId: a.id };
-  });
+  const titleCount = getTemplate(titlePage.templateId).cells.length;
+  // empty opening → its frames stay empty and the album starts from the first photo
+  const used = openingEmpty ? 0 : titleCount;
+  if (!openingEmpty) {
+    assets.slice(0, titleCount).forEach((a, i) => {
+      titlePage.slots[i] = { ...titlePage.slots[i], assetId: a.id };
+    });
+  }
   pages.push(titlePage);
 
-  const rest = assets.slice(titleCount);
+  const rest = assets.slice(used);
   const counts = distributeCounts(rest.length, Math.max(1, spreads - 1));
   let at = 0;
   let prev = null;

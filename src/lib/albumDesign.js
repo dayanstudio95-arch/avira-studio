@@ -181,6 +181,21 @@ export function resetSketch(doc) {
   return { ...doc, pages };
 }
 
+// Drag a photo to a frame on ANOTHER page (2026-10-08): "move" = it goes there, its old frame
+// empties, and whatever was in the target frame leaves the album (back to the bank, unused);
+// "swap" = the two trade places (swapSlots).
+export function moveSlot(doc, from, to) {
+  const src = doc.pages.find((p) => p.id === from.pageId)?.slots[from.index];
+  if (!src?.assetId) return doc;
+  let next = mapSlot(doc, to.pageId, to.index, () => ({ ...src, zoom: 1, cx: 0.5, cy: 0.5 }));
+  if (from.pageId !== to.pageId || from.index !== to.index) next = mapSlot(next, from.pageId, from.index, emptySlot);
+  return next;
+}
+
+// Paste a copied/cut photo (with its look: B&W, adjustments, shape) into a frame.
+export const pasteSlot = (doc, pageId, i, slot) =>
+  mapSlot(doc, pageId, i, () => ({ ...slot, zoom: 1, cx: 0.5, cy: 0.5, heal: slot.heal || [] }));
+
 export const toggleFlip = (doc, pageId) => mapPage(doc, pageId, (p) => ({ ...p, flip: !p.flip }));
 
 export const setTitle = (doc, pageId, patch) => mapPage(doc, pageId, (p) => ({ ...p, title: { ...p.title, ...patch } }));

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { X, Sparkles } from "lucide-react";
-import { autoLayout, applyPreset } from "@/lib/albumAutoLayout";
+import { autoLayout, applyPreset, OPENING_TEMPLATE } from "@/lib/albumAutoLayout";
+import { getTemplate, cellRects, textRect } from "@/lib/albumTemplates";
 import { loadPresets } from "@/lib/albumStudioSettings";
 import { sortAssets, PAGE_BASELINE } from "@/lib/albumDesign";
 
@@ -10,6 +11,8 @@ export default function AutoSketchDialog({ doc, onClose, onApply }) {
   const [spreads, setSpreads] = useState(PAGE_BASELINE);
   const [presets, setPresets] = useState([]);
   const [presetId, setPresetId] = useState("");
+  const [step, setStep] = useState(1); // 1 = opening page, 2 = the rest
+  const [openingCount, setOpeningCount] = useState(2);
   useEffect(() => {
     loadPresets().then(setPresets);
   }, []);
@@ -18,8 +21,8 @@ export default function AutoSketchDialog({ doc, onClose, onApply }) {
   const n = preset ? preset.pages.length : Math.max(1, Math.min(80, Number(spreads) || PAGE_BASELINE));
   const preview = useMemo(() => {
     const title = doc.pages.find((p) => p.title)?.title || null;
-    return preset ? applyPreset(sorted, preset, { title }) : autoLayout(sorted, { spreads: n, title });
-  }, [sorted, n, doc.pages, preset]);
+    return preset ? applyPreset(sorted, preset, { title }) : autoLayout(sorted, { spreads: n, title, openingCount, openingEmpty: true });
+  }, [sorted, n, doc.pages, preset, openingCount]);
   const avg = sorted.length / n;
   const hasWork = doc.pages.some((p) => p.slots.some((s) => s.assetId));
 
@@ -30,8 +33,26 @@ export default function AutoSketchDialog({ doc, onClose, onApply }) {
           <div className="flex items-center gap-2 text-lg font-semibold text-white"><Sparkles className="h-5 w-5 text-amber-300" /> סקיצה אוטומטית</div>
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
         </div>
+        {step === 1 ? (
+          <>
+            <div className="text-sm text-slate-400">
+              <b className="text-white">שלב 1 מתוך 2 — דף הפתיחה.</b> כמה תמונות בדף הראשון? הוא יישאר <b className="text-white">ריק</b> — את התמונה של הזוג
+              (מצילומי החוץ) בוחרים בעצמכם, והאלבום מתחיל מהתמונה הראשונה לפי הסדר.
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {[1, 2, 3].map((k) => (
+                <button key={k} type="button" onClick={() => setOpeningCount(k)} className={`space-y-1 rounded-lg border-2 p-2 text-xs ${openingCount === k ? "border-amber-400 bg-amber-400/10" : "border-white/10 hover:border-white/30"}`}>
+                  <OpeningThumb templateId={OPENING_TEMPLATE[k]} />
+                  <div>{k} {k === 1 ? "תמונה" : "תמונות"}</div>
+                </button>
+              ))}
+            </div>
+            <button type="button" onClick={() => setStep(2)} className="h-11 w-full rounded-lg bg-amber-400 font-bold text-gray-900 hover:bg-amber-500">המשך</button>
+          </>
+        ) : (
+          <>
         <div className="text-sm text-slate-400">
-          המערכת מסדרת את כל התמונות לפי שעת הצילום, מחלקת אותן לכפולות בקצב של הסקיצות שלך (כל כמה כפולות — כפולה עם תמונות גדולות),
+          <b className="text-white">שלב 2 מתוך 2.</b> המערכת מסדרת את כל התמונות לפי שעת הצילום, מחלקת אותן לכפולות בקצב של הסקיצות שלך (כל כמה כפולות — כפולה עם תמונות גדולות),
           ובוחרת לכל כפולה את הפריסה שהכי מתאימה לצורת התמונות. אחר כך מתקנים ידנית.
         </div>
         {presets.length > 0 && (
@@ -53,10 +74,28 @@ export default function AutoSketchDialog({ doc, onClose, onApply }) {
           {preview.unused > 0 && <div className="mt-1 text-amber-300">{preview.unused} תמונות לא ייכנסו {preset ? "(הפריסט קטן מכמות התמונות)" : "(מקסימום 10 בכפולה)"} — הן יישארו בבנק</div>}
         </div>
         {hasWork && <div className="text-xs text-amber-200">⚠️ הסקיצה הנוכחית תוחלף. היא נשמרת בהיסטוריה, ואפשר גם לבטל עם ⌘Z.</div>}
-        <button type="button" onClick={() => onApply(preview.pages)} className="h-11 w-full rounded-lg bg-amber-400 font-bold text-gray-900 hover:bg-amber-500">
-          צור סקיצה
-        </button>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => setStep(1)} className="h-11 rounded-lg border border-white/15 px-4 text-sm hover:bg-white/5">חזרה</button>
+          <button type="button" onClick={() => onApply(preview.pages)} className="h-11 flex-1 rounded-lg bg-amber-400 font-bold text-gray-900 hover:bg-amber-500">
+            צור סקיצה
+          </button>
+        </div>
+          </>
+        )}
       </div>
+    </div>
+  );
+}
+
+function OpeningThumb({ templateId }) {
+  const t = getTemplate(templateId);
+  const text = textRect(t);
+  return (
+    <div className="relative w-full overflow-hidden rounded bg-white" style={{ aspectRatio: "80 / 30" }} dir="ltr">
+      {cellRects(t).map((r, i) => (
+        <span key={i} className="absolute bg-slate-400" style={{ left: `${r.x}%`, top: `${r.y}%`, width: `${r.w}%`, height: `${r.h}%` }} />
+      ))}
+      {text && <span className="absolute flex items-center justify-center text-[7px] tracking-widest text-slate-500" style={{ left: `${text.x}%`, top: `${text.y}%`, width: `${text.w}%`, height: `${text.h}%` }}>A &amp; B</span>}
     </div>
   );
 }
