@@ -97,7 +97,8 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
       setSelectedSlot(null);
     } else if (!typing && !mod && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
       e.preventDefault();
-      step(e.key === "ArrowLeft" ? 1 : -1); // Hebrew album: left = forward
+      // same direction as the strip below (spread 1 on the left): ← = the spread to the left (previous)
+      step(e.key === "ArrowLeft" ? -1 : 1);
     }
   };
   const keyRef = useRef(onKey);
@@ -180,7 +181,7 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
       {/* spread */}
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex min-h-0 flex-1 items-center gap-2 px-2 py-4" onClick={(e) => e.target === e.currentTarget && setSelectedSlot(null)}>
-          <button type="button" onClick={() => step(-1)} disabled={pageIndex <= 0} title="הכפולה הקודמת (→)" className="shrink-0 rounded-full p-2 text-slate-300 hover:bg-white/10 disabled:opacity-20">
+          <button type="button" onClick={() => step(1)} disabled={pageIndex >= doc.pages.length - 1} title="הכפולה הבאה (חץ ימינה →)" className="shrink-0 rounded-full p-2 text-slate-300 hover:bg-white/10 disabled:opacity-20">
             <ChevronRight className="h-7 w-7" />
           </button>
           <div className="flex min-w-0 flex-1 flex-col items-center gap-3">
@@ -224,7 +225,7 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
             </div>
             {!locked && <div className="text-[11px] text-slate-500">גוררים תמונה מהבנק · בין מסגרות = החלפה · ⌘+לחיצה בבנק = כמה תמונות · לחיצה על תמונה = זום, צבע, תיקון · ←/→ מעבר בין כפולות</div>}
           </div>
-          <button type="button" onClick={() => step(1)} disabled={pageIndex >= doc.pages.length - 1} title="הכפולה הבאה (←)" className="shrink-0 rounded-full p-2 text-slate-300 hover:bg-white/10 disabled:opacity-20">
+          <button type="button" onClick={() => step(-1)} disabled={pageIndex <= 0} title="הכפולה הקודמת (← חץ שמאלה)" className="shrink-0 rounded-full p-2 text-slate-300 hover:bg-white/10 disabled:opacity-20">
             <ChevronLeft className="h-7 w-7" />
           </button>
         </div>
