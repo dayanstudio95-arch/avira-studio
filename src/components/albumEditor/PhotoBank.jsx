@@ -35,6 +35,7 @@ export default function PhotoBank({ doc, usage, onPick, onRefresh, refreshing, o
   const [tagMenu, setTagMenu] = useState(false);
   const [preview, setPreview] = useState(null); // { asset, x, y }
   const hoverTimer = useRef(null);
+  const rootRef = useRef(null);
   const tags = doc.tags || {};
 
   const sorted = useMemo(() => sortAssets(doc.assets, doc.cameraOffsets), [doc.assets, doc.cameraOffsets]);
@@ -100,7 +101,7 @@ export default function PhotoBank({ doc, usage, onPick, onRefresh, refreshing, o
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div ref={rootRef} className="flex h-full min-h-0 flex-col">
       <div className="space-y-2 border-b border-white/10 p-3">
         <div className="flex items-center justify-between gap-2">
           <div className="text-sm font-semibold text-white">בנק תמונות</div>
@@ -234,17 +235,18 @@ export default function PhotoBank({ doc, usage, onPick, onRefresh, refreshing, o
         </div>
         {!shown.length && <div className="py-10 text-center text-xs text-slate-500">אין תמונות בסינון הזה</div>}
       </div>
-      {preview && <HoverPreview {...preview} />}
+      {preview && <HoverPreview {...preview} bankLeft={rootRef.current?.getBoundingClientRect().left ?? window.innerWidth} />}
     </div>
   );
 }
 
-// Big preview next to the cursor — towards the middle of the screen, never off it.
-function HoverPreview({ asset, x, y }) {
+// Big preview OUTSIDE the bank — just to its left, over the spread area — so it never covers the
+// neighbouring photos (2026-10-08: on the bank's left column it used to hide the ones next to it).
+function HoverPreview({ asset, y, bankLeft }) {
   const landscape = (asset.w || 3) >= (asset.h || 2);
   const w = landscape ? 560 : 380;
   const h = Math.round((w * (asset.h || 2)) / (asset.w || 3));
-  const left = Math.max(12, Math.min(x - w - 24, window.innerWidth - w - 12));
+  const left = Math.max(12, bankLeft - w - 16);
   const top = Math.max(12, Math.min(y - h / 2, window.innerHeight - h - 40));
   return createPortal(
     <div className="pointer-events-none fixed z-[90] overflow-hidden rounded-lg border border-white/20 bg-black shadow-2xl" style={{ left, top, width: w }}>
