@@ -17,6 +17,7 @@ import { fetchLeadPhoneIndex, LEAD_PHONE_INDEX_KEY, leadForPhone } from "@/lib/l
 import { isPostSignPending, STEPS, currentStep, SIGNED_STATUS } from "@/lib/postSignFlow";
 import { todayInIsrael } from "@/lib/localDate";
 import PostSignWizard from "@/components/postSign/PostSignWizard";
+import QuickChatDialog from "./QuickChatDialog";
 import DashTitleLink from "./DashTitleLink";
 
 // The four "what do I do today" tiles of the dashboard (2026-10-07, the owner's choice):
@@ -153,6 +154,10 @@ export function WhatsAppPulseCard() {
   const q = useDashConversations();
   const idxQ = useQuery({ queryKey: LEAD_PHONE_INDEX_KEY, queryFn: fetchLeadPhoneIndex, staleTime: 120000 });
   const p = useMemo(() => whatsappPulse(q.data || [], Date.now(), idxQ.data || null), [q.data, idxQ.data]);
+  // A name opens that conversation here; "לידים חמים" opens all of them in one window
+  // (2026-10-09). "דורש מענה" (dozens of chats) still goes to the chat app.
+  const [quick, setQuick] = useState(null); // { items, initialId, heading }
+  const hotItems = p.hot.map((h) => ({ id: h.id, title: h.title, sub: h.reason }));
   return (
     <Card className={shell}>
       <CardHeader className="dash-head pb-3">
@@ -164,17 +169,26 @@ export function WhatsAppPulseCard() {
           <span className={`e-count ${p.waitingCount ? "e-count-red" : "bg-white/5 text-slate-400"}`}>{p.waitingCount}</span>
         </button>
         {p.oldest && (
-          <button type="button" onClick={() => navigate(`/chat?c=${p.oldest.id}`)} className={`${rowBtn} text-xs text-slate-400`}>
+          <button type="button" onClick={() => setQuick({ items: [{ id: p.oldest.id, title: p.oldest.title }], initialId: p.oldest.id })} className={`${rowBtn} text-xs text-slate-400`}>
             <span className="truncate">הכי ותיק: {p.oldest.title}</span><span className="shrink-0 text-rose-400">{p.oldest.label}</span>
           </button>
         )}
-        <div className="flex items-center gap-1.5 px-2 pt-1.5 pb-0.5 text-sm font-semibold text-orange-400"><Flame className="h-4 w-4" /> לידים חמים · {p.hot.length}</div>
+        <button
+          type="button"
+          disabled={!p.hot.length}
+          onClick={() => setQuick({ items: hotItems, initialId: hotItems[0]?.id, heading: `🔥 לידים חמים (${hotItems.length})` })}
+          title="כל הלידים החמים בחלון אחד"
+          className="flex w-full items-center gap-1.5 rounded-lg px-2 pt-1.5 pb-0.5 text-sm font-semibold text-orange-400 hover:bg-white/[0.04] disabled:hover:bg-transparent"
+        >
+          <Flame className="h-4 w-4" /> לידים חמים · {p.hot.length} {p.hot.length > 0 && <ChevronLeft className="h-4 w-4 text-orange-300/70" />}
+        </button>
         {p.hot.slice(0, 3).map((h) => (
-          <button key={h.id} type="button" onClick={() => navigate(`/chat?c=${h.id}`)} className={rowBtn} title={h.reason}>
+          <button key={h.id} type="button" onClick={() => setQuick({ items: [{ id: h.id, title: h.title }], initialId: h.id })} className={rowBtn} title={h.reason}>
             <span className="truncate text-slate-100">{h.title}</span><ChevronLeft className="h-4 w-4 shrink-0 text-slate-500" />
           </button>
         ))}
       </CardContent>
+      <QuickChatDialog open={!!quick} items={quick?.items || []} initialId={quick?.initialId} heading={quick?.heading} onClose={() => setQuick(null)} />
     </Card>
   );
 }
