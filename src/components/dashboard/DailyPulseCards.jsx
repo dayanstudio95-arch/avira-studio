@@ -13,7 +13,7 @@ import { CalendarDays, MessageCircle, Flame, Hourglass, Signature, ChevronLeft, 
 import { useMeetings, MEETINGS_KEY } from "@/components/meetings/MeetingsList";
 import { kindLabel, utcToIsraelParts, todayIsrael } from "@/lib/meetings";
 import { whatsappPulse, followUpSummary } from "@/lib/dashboardPulse";
-import { fetchLeadPhoneIndex, LEAD_PHONE_INDEX_KEY } from "@/lib/leadPhoneIndex";
+import { fetchLeadPhoneIndex, LEAD_PHONE_INDEX_KEY, leadForPhone } from "@/lib/leadPhoneIndex";
 import { isPostSignPending, STEPS, currentStep, SIGNED_STATUS } from "@/lib/postSignFlow";
 import { todayInIsrael } from "@/lib/localDate";
 import PostSignWizard from "@/components/postSign/PostSignWizard";
@@ -68,6 +68,37 @@ export function MeetingsTodayCard() {
     .map((m) => ({ ...m, parts: utcToIsraelParts(m.startsAt) }))
     .filter((m) => m.parts.date === today || m.parts.date === tomorrow)
     .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
+
+  // The couple's wedding date and venue beside the name (2026-10-09): from the meeting's lead,
+  // else the lead with that phone, else what the WhatsApp chat collected.
+  const shown = list.slice(0, 6);
+  const idxQ = useQuery({ queryKey: LEAD_PHONE_INDEX_KEY, queryFn: fetchLeadPhoneIndex, staleTime: 120000, enabled: shown.length > 0 });
+  const leadIdOf = (m) => m.leadId || leadForPhone(idxQ.data, m.phone)?.id || null;
+  const leadIds = [...new Set(shown.map(leadIdOf).filter(Boolean))].sort();
+  const convIds = [...new Set(shown.map((m) => m.conversationId).filter(Boolean))].sort();
+  const infoQ = useQuery({
+    queryKey: ["dashMeetingInfo", leadIds.join(), convIds.join()],
+    enabled: leadIds.length + convIds.length > 0,
+    staleTime: 120000,
+    queryFn: async () => {
+      const [leads, convs] = await Promise.all([
+        leadIds.length ? supabase.from("leads").select("id, event_date, venue_name").in("id", leadIds) : { data: [] },
+        convIds.length ? supabase.from("whatsapp_conversations").select("id, event_date, venue").in("id", convIds) : { data: [] },
+      ]);
+      return {
+        leads: Object.fromEntries((leads.data || []).map((l) => [l.id, { date: l.event_date, venue: l.venue_name }])),
+        convs: Object.fromEntries((convs.data || []).map((c) => [c.id, { date: c.event_date, venue: c.venue }])),
+      };
+    },
+  });
+  const infoFor = (m) => {
+    const l = infoQ.data?.leads[leadIdOf(m)] || {};
+    const c = infoQ.data?.convs[m.conversationId] || {};
+    const date = String(l.date || c.date || "").slice(0, 10);
+    const venue = l.venue || c.venue || "";
+    return [date ? date.split("-").reverse().map((x) => String(Number(x))).join(".") : "", venue].filter(Boolean).join(" · ");
+  };
+
   return (
     <Card className={shell}>
       <CardHeader className="dash-head pb-3">
@@ -80,11 +111,14 @@ export function MeetingsTodayCard() {
             <span className="text-sm">אין פגישות היום ומחר</span>
           </div>
         )}
-        {list.slice(0, 6).map((m) => (
+        {shown.map((m) => (
           <div key={m.id} className="rounded-lg pb-1.5 hover:bg-white/[0.04]">
             <button type="button" onClick={() => setOpen(m)} title="פרטי הפגישה" className="flex w-full min-w-0 items-center justify-between gap-2 px-2 pt-2 pb-1 text-start text-sm">
-              <span className="min-w-0 truncate text-gray-200">
-                <span className="font-semibold text-white">{m.parts.date === today ? "" : "מחר "}{m.parts.time}</span> · {m.title}
+              <span className="min-w-0 text-gray-200">
+                <span className="block truncate">
+                  <span className="font-semibold text-white">{m.parts.date === today ? "" : "מחר "}{m.parts.time}</span> · {m.title}
+                </span>
+                {infoFor(m) && <span className="block truncate text-xs text-slate-400">💍 {infoFor(m)}</span>}
               </span>
               <span className="e-chip e-chip-blue shrink-0">{kindLabel(m.kind)}</span>
             </button>
