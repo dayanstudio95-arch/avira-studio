@@ -10,7 +10,8 @@ import { teamRoleSlotsForJobRole } from "@/lib/staffRoles";
 //   no_event  — said "פנוי", but the lead has no event yet (not signed)
 //   dismissed — said "פנוי", owner pressed "לא צריך"
 //   closed    — no answer yet, but the owner closed the event ("סגור", 2026-10-09: the team is
-//               full, stop waiting) — same decision_dismissed_at column as "לא צריך"
+//               full, stop waiting) — decision_dismissed_at, plus group_closed_at (0086) so
+//               "פתח מחדש" brings back only what "סגור" took out, never a personal "לא צריך"
 //   pending / declined — no answer yet / "לא פנוי"
 const named = (m) => !!String(m?.staffMemberName || "").trim();
 
@@ -64,8 +65,19 @@ export function buildAvailabilityInbox({ requests, events, today }) {
     rows: g.rows.sort((a, b) => ORDER[a.state] - ORDER[b.state]),
     toDecide: g.rows.filter((x) => x.state === "decide" || x.state === "full").length,
     waiting: g.rows.filter((x) => x.state === "pending").length,
-    closed: g.rows.filter((x) => x.state === "closed" || x.state === "dismissed").length,
+    closed: reopenRows(g.rows).length,
   }));
   list.sort((a, b) => a.date.localeCompare(b.date));
   return { groups: list, toDecide: list.reduce((n, g) => n + g.toDecide, 0) };
+}
+
+// What "פתח מחדש" brings back (2026-10-09): the rows "סגור" closed (group_closed_at). Events
+// closed before that column existed have no mark on any row — for them the old rule stays
+// (an unanswered row that is dismissed can only come from "סגור"; then every dismissed row).
+export function reopenRows(rows) {
+  const list = rows || [];
+  const marked = list.filter((x) => x.request?.groupClosedAt);
+  if (marked.length) return marked;
+  if (!list.some((x) => x.state === "closed")) return [];
+  return list.filter((x) => (x.state === "closed" || x.state === "dismissed") && !x.request?.groupClosedAt);
 }

@@ -2026,6 +2026,18 @@ console.log('\n— PART 36: availability answers inbox —');
     req({ id: 'newlink', staffMemberId: 's3', staffNameSnapshot: 'רודי', status: 'pending', requestedAt: '2026-10-07T13:00:00Z' }),
   ] });
   check('resend: only the new link counts', rs.groups[0].rows.map((r) => r.request.id).join(), 'newlink');
+  // "פתח מחדש" brings back only what "סגור" took out (0086, 2026-10-09)
+  const mixed = ai.buildAvailabilityInbox({ today: '2026-10-07', events: [ev], requests: [
+    req({ id: 'moshe', staffMemberId: 's3', staffNameSnapshot: 'משה', status: 'available', decisionDismissedAt: '2026-10-06T10:00:00Z' }),
+    req({ id: 'david', staffMemberId: 's4', staffNameSnapshot: 'דוד', status: 'pending', decisionDismissedAt: '2026-10-07T12:00:00Z', groupClosedAt: '2026-10-07T12:00:00Z' }),
+    req({ id: 'yossi', staffMemberId: 's5', staffNameSnapshot: 'יוסי', status: 'pending', decisionDismissedAt: '2026-10-07T12:00:00Z', groupClosedAt: '2026-10-07T12:00:00Z' }),
+  ] });
+  check('reopen: the closed ones, not a personal "לא צריך"', ai.reopenRows(mixed.groups[0].rows).map((r) => r.request.id).sort().join(), 'david,yossi');
+  const onlyPersonal = ai.buildAvailabilityInbox({ today: '2026-10-07', events: [ev], requests: [
+    req({ id: 'a1', staffMemberId: 's3', staffNameSnapshot: 'משה', status: 'available', decisionDismissedAt: '2026-10-06T10:00:00Z' }),
+  ] });
+  check('never closed → no "פתח מחדש"', onlyPersonal.groups[0].closed, 0);
+  check('closed before 0086 (no mark) → the old rule', ai.reopenRows(cl.groups[0].rows).map((r) => r.request.id).join(), 'p1');
 }
 
 // PART 37 — follow-up pulses and the date line (2026-10-07)

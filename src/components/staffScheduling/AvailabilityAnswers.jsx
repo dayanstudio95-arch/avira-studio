@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { buildMessage, roleLabelFor } from "@/components/leads/StaffAvailabilityModal";
 import { resendAvailabilityRequest } from "@/lib/availabilityResend";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
-import { buildAvailabilityInbox } from "@/lib/availabilityInbox";
+import { buildAvailabilityInbox, reopenRows } from "@/lib/availabilityInbox";
 import { israelToday, missingRoles } from "@/lib/missingTeam";
 import { eventTeamRoleLabel, AVAILABILITY_SLOT_LABELS } from "@/lib/staffRoles";
 import { assignStaffToEventSlot } from "@/lib/assignStaffToEvent";
@@ -149,7 +149,7 @@ export default function AvailabilityAnswers({ events, staffMembers, onEventsChan
     setBusy(g.key);
     try {
       const now = new Date().toISOString();
-      await Promise.all(rows.map((x) => base44.entities.StaffAvailabilityRequest.update(x.request.id, { decisionDismissedAt: now })));
+      await Promise.all(rows.map((x) => base44.entities.StaffAvailabilityRequest.update(x.request.id, { decisionDismissedAt: now, groupClosedAt: now })));
       toast.success("האירוע נסגר ברשימה");
       refresh();
     } catch (e) {
@@ -158,10 +158,15 @@ export default function AvailabilityAnswers({ events, staffMembers, onEventsChan
     setBusy(null);
   };
   const reopenGroup = async (g) => {
-    const rows = g.rows.filter((x) => x.state === "closed" || x.state === "dismissed");
+    // Only what "סגור" took out — a personal "לא צריך" stays (reopenRows, availabilityInbox.js).
+    const rows = reopenRows(g.rows);
+    if (!rows.length) return;
     setBusy(g.key);
     try {
-      await Promise.all(rows.map((x) => base44.entities.StaffAvailabilityRequest.update(x.request.id, { decisionDismissedAt: null })));
+      await Promise.all(rows.map((x) => base44.entities.StaffAvailabilityRequest.update(x.request.id, {
+        decisionDismissedAt: null,
+        ...(x.request.groupClosedAt ? { groupClosedAt: null } : {}),
+      })));
       refresh();
     } catch (e) {
       toast.error("העדכון נכשל", { description: e?.message });
@@ -263,7 +268,7 @@ export default function AvailabilityAnswers({ events, staffMembers, onEventsChan
                       type="button"
                       disabled={busy === g.key}
                       onClick={() => reopenGroup(g)}
-                      title="מחזיר את מי שלא ענה ל'ממתינים'"
+                      title="מחזיר את מי שהסגירה הוציאה. מי שסימנת אצלו 'לא צריך' נשאר כמו שהוא."
                       className="flex h-7 items-center gap-1 rounded-lg border border-[#2A3B57] bg-white/[0.04] px-2.5 text-xs text-slate-400 hover:text-white disabled:opacity-50"
                     >
                       <RotateCcw className="h-3.5 w-3.5" /> פתח מחדש
