@@ -93,6 +93,19 @@ const INQUIRY_TERMS = [
   'price', 'quote', 'available', 'availability',
 ];
 
+// (b2) Asking whether a DATE is free, or what it costs, needs no service word (2026-10-09):
+// "אני מתעניין לגבי התאריך 13/6/27, אתם פנויים?" sent to a photography studio's number is
+// a customer. Two signals still: one of these words AND a date. Deliberately a short list —
+// "עלות" / "כמה" / "הצעה" are left out because they also hide inside other words ("להעלות")
+// and other questions; a venue asking to "להעלות תמונות של הזוג … 3/6" must stay silent.
+// Built-in words switched off in the control centre are off here too. The vendor veto
+// still wins over everything.
+const AVAILABILITY_TERMS = [
+  'פנוי', 'פנויה', 'פנויים', 'זמין', 'זמינה', 'זמינות',
+  'מתעניין', 'מתעניינת', 'מעוניין', 'מעוניינת',
+  'מחיר', 'מחירון', 'מחירים', 'לקבל פרטים', 'פרטים נוספים',
+];
+
 // (c) The sender describing their OWN event. This is a third category rather than an
 // addition to either list above, because it is the one phrase that carries both halves
 // of the evidence at once: it names an event AND identifies the speaker as the person
@@ -309,6 +322,7 @@ export function detectLeadIntent(bodyText: string | null | undefined, opts: Dete
   const matchedInquiry = lists.inquiry.find((t) => text.includes(normalize(t))) || null;
   const matchedSelfEvent = lists.selfEvent.find((t) => text.includes(normalize(t))) || null;
   const matchedDate = containsDate(text);
+  const matchedAvailability = AVAILABILITY_TERMS.filter((t) => lists.inquiry.includes(t)).find((t) => text.includes(normalize(t))) || null;
 
   return {
     // Vendor terms veto, regardless of what else matched.
@@ -318,7 +332,8 @@ export function detectLeadIntent(bodyText: string | null | undefined, opts: Dete
     // the sender identifying themselves as the customer, and the vendor list carries
     // the phrasings ('יש לי זוג', 'אני מפיק'…) that let someone say it about a stranger.
     isInquiry: !matchedVendor && (
-      fromAd || !!matchedSelfEvent || (!!matchedService && (!!matchedInquiry || matchedDate))
+      fromAd || !!matchedSelfEvent || (!!matchedService && (!!matchedInquiry || matchedDate)) ||
+      (!!matchedAvailability && matchedDate)
     ),
     matchedService,
     matchedInquiry,
@@ -637,6 +652,7 @@ export function explainDecision(input: BotDecisionInput, decision: BotDecision):
       return `שירות "${i.matchedService}" + ${i.matchedInquiry ? `מחיר/זמינות "${i.matchedInquiry}"` : 'תאריך'}`;
     }
     if (i.matchedService) return `רק מילת שירות "${i.matchedService}" — חסר סימן שני (מחיר / זמינות / תאריך)`;
+    if (i.isInquiry && i.matchedDate && i.matchedInquiry) return `תאריך + שאלה על זמינות / מחיר ("${i.matchedInquiry}") — מספיק גם בלי מילת שירות`;
     if (i.matchedInquiry || i.matchedDate) {
       return `רק ${i.matchedInquiry ? `"${i.matchedInquiry}"` : 'תאריך'} — חסרה מילת שירות (חתונה / צילום…)`;
     }

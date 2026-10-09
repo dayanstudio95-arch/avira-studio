@@ -675,6 +675,29 @@ Deno.serve(async (req: Request) => {
         updates.state = 'AWAITING_DETAILS';
         updates.last_bot_message_at = nowIso;
       }
+
+      // The first message often already carries details ("מתעניינת בצילום ביום החתונה
+      // שלי 9/6/2027"). Keep them, so the bot's next question asks only for what is
+      // missing (2026-10-09: it asked Ofek for the date she had just written). Same
+      // extraction as Stage 3; a failure only means nothing is pre-filled.
+      if (updates.state === 'AWAITING_DETAILS' && bodyText) {
+        try {
+          const firstKey = await loadAnthropicKey(supabase, tenantId);
+          const first = await extractLeadDetails(bodyText, firstKey);
+          if (!first.failed) {
+            const merged = mergeDetails(
+              { coupleNames: conversation.couple_names, eventDate: conversation.event_date, venue: conversation.venue, guestCount: conversation.guest_count },
+              first.details
+            );
+            updates.couple_names = merged.coupleNames;
+            updates.event_date = merged.eventDate;
+            updates.venue = merged.venue;
+            updates.guest_count = merged.guestCount;
+          }
+        } catch (e: any) {
+          console.error('[whatsapp-webhook] first-message extraction failed:', e?.message || e);
+        }
+      }
     }
 
     // ---- Lead temperature — independent of the bot gate ---------------------
@@ -990,6 +1013,22 @@ Deno.serve(async (req: Request) => {
         (async () => {
           try {
             await sleep(delaySeconds);
+            // The greeting waited (reply delay). If the conversation moved on meanwhile —
+            // the customer kept writing and the bot already asked its questions or sent
+            // the price list, or someone answered by hand — the opener is no longer the
+            // right message. 2026-10-09: Ofek got the greeting after the price list.
+            if (greeting) {
+              const { count: since } = await supabase
+                .from('whatsapp_messages')
+                .select('id', { count: 'exact', head: true })
+                .eq('conversation_id', conversation.id)
+                .in('direction', ['outbound_bot', 'outbound_human'])
+                .gt('created_at', nowIso);
+              if ((since ?? 0) > 0) {
+                console.log('[whatsapp-webhook] greeting skipped — the conversation moved on during the delay');
+                return;
+              }
+            }
             if (text) {
               await sendBotMessage(supabase, {
                 tenantId, conversationId: conversation.id, phone, text,

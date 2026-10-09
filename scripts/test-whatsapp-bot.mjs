@@ -2260,6 +2260,21 @@ console.log('\n— PART 52: information requests —');
   check('a colleague asking for information → still silent (vendor veto)', wi52.detectLeadIntent('היי, אני צלם, אשמח לקבל מידע על חתונות אצלכם', {}).isInquiry, false);
 }
 
+// PART 53 — a date + "are you free / price" is enough without a service word (2026-10-09)
+console.log('\n— PART 53: date + availability —');
+{
+  const w53 = await loadModule('supabase/functions/_shared/whatsappIntent.ts', 'w53');
+  const yes = (t) => w53.detectLeadIntent(t, {}).isInquiry;
+  check('"מתעניין לגבי התאריך 13/6/27 אתם פנויים?" → reply', yes('היי מה קורה אני מתעניין לגבי התאריך 13/6/27 אתם פנויים?'), true);
+  check('"אשמח לבדוק זמינות ל13/6/27" → reply', yes('היי אשמח לבדוק זמינות ל13/6/27 בע״ה'), true);
+  check('"אתה עוד זמין בתאריך שלנו של ה-10 ביוני?" → reply', yes('בוקר טוב דניאל, אתה עוד זמין בתאריך שלנו של ה-10 ביוני?'), true);
+  check('a venue asking to post photos "להעלות … 3/6" → silent', yes('היי, זאת רחלי ממחלקת השיווק של האולם, אשמח שתאשרו לנו להעלות לרשתות תמונות של הזוג ספיר ושליו 3/6'), false);
+  check('"פנויים מחר בערב לשיחה?" (no date) → silent', yes('פנויים מחר בערב לשיחה?'), false);
+  check('a colleague with a date → silent', yes('היי, אני צלם, אתם פנויים ב-13/6?'), false);
+  check('"יש לי זוג … פנויים 13/6" → silent', yes('יש לי זוג, אתם פנויים 13/6?'), false);
+  check('the word switched off in the control centre → not counted', w53.detectLeadIntent('אתם פנויים ב-13/6/27?', { terms: { disabled: ['פנויים', 'פנוי'] } }).isInquiry, false);
+}
+
 // PART 51 — the chat's "🤖" buttons: send the bot's details request / price list by hand (2026-10-09)
 console.log('\n— PART 51: manual bot sends —');
 {
