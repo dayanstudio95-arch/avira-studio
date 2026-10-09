@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Send, CalendarDays, MapPin } from "lucide-react";
 import { base44 } from "@/api/base44Client";
-import { missingRoles, missingCount, assignedShooters, requiredShooters } from "@/lib/missingTeam";
+import { missingRoles, missingCount, assignedShooters, requiredShooters, combinedNotes } from "@/lib/missingTeam";
 import { formatDateWithWeekday } from "@/lib/chatModel";
 import { eventTeamRoleLabel } from "@/lib/staffRoles";
 import { sendCalendarInviteByName } from "@/lib/calendarInvites";
@@ -21,15 +21,19 @@ export default function EventTeamDialog({ event, staffMembers, onClose, onChange
   const [sameDay, setSameDay] = useState([]); // every event that day — conflict check + live team
   const [requests, setRequests] = useState([]);
   const [asking, setAsking] = useState(false);
+  const [leadNotes, setLeadNotes] = useState("");
   const pkgQ = useQuery({ queryKey: ["dashPackages"], queryFn: () => base44.entities.Package.list(), staleTime: 600000 });
 
   const load = useCallback(async () => {
     if (!event) return;
-    const [day, byEvent, byLead] = await Promise.all([
+    const [day, byEvent, byLead, lead] = await Promise.all([
       base44.entities.Event.filter({ date: event.date }).catch(() => []),
       base44.entities.StaffAvailabilityRequest.filter({ eventId: event.id }, "-requestedAt").catch(() => []),
       event.sourceLeadId ? base44.entities.StaffAvailabilityRequest.filter({ leadId: event.sourceLeadId }, "-requestedAt").catch(() => []) : [],
+      // the couple's requests ("ביקשו את דודו") are often written on the lead, not the event
+      event.sourceLeadId ? base44.entities.Lead.get(event.sourceLeadId).catch(() => null) : null,
     ]);
+    setLeadNotes(lead?.notes || "");
     setSameDay(day || []);
     // latest live request per person (re-asking adds a row; a resent one revokes the old)
     const rows = [...(byEvent || []), ...(byLead || [])]
@@ -43,6 +47,7 @@ export default function EventTeamDialog({ event, staffMembers, onClose, onChange
   useEffect(() => {
     setSameDay([]);
     setRequests([]);
+    setLeadNotes("");
     load();
   }, [load]);
 
@@ -51,6 +56,7 @@ export default function EventTeamDialog({ event, staffMembers, onClose, onChange
   const pkg = (pkgQ.data || []).find((p) => p.id === live.packageId);
   const missing = missingCount(live) > 0 ? missingRoles(live, pkg) : [];
   const others = sameDay.filter((e) => e.id !== live.id);
+  const notes = combinedNotes(live.notes, leadNotes);
   const refresh = async () => {
     await load();
     onChanged?.();
@@ -76,6 +82,14 @@ export default function EventTeamDialog({ event, staffMembers, onClose, onChange
               <span className="rounded-md border border-green-500/30 bg-green-500/20 px-2 py-0.5 text-xs font-medium text-green-300">✅ הצוות מלא</span>
             )}
           </div>
+
+          {/* The event's notes (2026-10-09) — the couple's requests, to staff accordingly. */}
+          {notes && (
+            <div className="whitespace-pre-wrap break-words rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+              <div className="mb-0.5 text-xs font-semibold text-amber-300">📝 הערות</div>
+              {notes}
+            </div>
+          )}
 
           <div className="rounded-lg border border-pink-500/25 bg-pink-500/5 p-3">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
