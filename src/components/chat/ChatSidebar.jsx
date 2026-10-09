@@ -1,15 +1,20 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Trash2, SlidersHorizontal, LayoutGrid, X, Bell, History, CalendarClock } from "lucide-react";
+import { Plus, Trash2, SlidersHorizontal, LayoutGrid, X, Bell, History, CalendarClock, ArrowUpDown } from "lucide-react";
 import { BOXES } from "@/lib/chatModel";
+import BoxOrderEditor from "./BoxOrderEditor";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 
 export const LABEL_COLORS = ["#E5484D", "#F76B15", "#C2410C", "#12A594", "#3E63DD", "#8E4EC6", "#D6409F", "#64748B"];
 
 // Desktop sidebar of "אווירה צ'אט": the boxes, the owner's labels, and the way back to
 // the full system. On a phone the same boxes come from the "עוד" tab (ChatApp.jsx).
-export default function ChatSidebar({ box, setBox, counts, labels, onCreateLabel, onDeleteLabel, onOpenNotifications, onOpenMeetings, className = "" }) {
+export default function ChatSidebar({
+  box, setBox, counts, labels, onCreateLabel, onDeleteLabel, onOpenNotifications, onOpenMeetings, className = "",
+  primaryBoxes = BOXES.filter((b) => b.primary), moreBoxes = BOXES.filter((b) => !b.primary), onSaveOrder,
+}) {
   const [adding, setAdding] = useState(false);
+  const [ordering, setOrdering] = useState(false);
   const [name, setName] = useState("");
   const [color, setColor] = useState(LABEL_COLORS[0]);
   const [busy, setBusy] = useState(false);
@@ -58,12 +63,27 @@ export default function ChatSidebar({ box, setBox, counts, labels, onCreateLabel
           <LayoutGrid className="h-3.5 w-3.5" /> למערכת
         </Link>
       </div>
+      {ordering ? (
+        <BoxOrderEditor
+          primary={primaryBoxes}
+          more={moreBoxes}
+          onCancel={() => setOrdering(false)}
+          onSave={async (order) => {
+            if (await onSaveOrder?.(order)) setOrdering(false);
+          }}
+        />
+      ) : (
       <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-3">
 
-      {BOXES.filter((b) => b.primary).map((b) => row(b.key, b.label))}
+      {onSaveOrder && (
+        <button type="button" onClick={() => setOrdering(true)} title="לסדר את התיבות לפי איך שנוח לך" className="mb-1 flex items-center gap-1.5 self-start rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-800/60 hover:text-white">
+          <ArrowUpDown className="h-3.5 w-3.5" /> סדר את התיבות
+        </button>
+      )}
+      {primaryBoxes.map((b) => row(b.key, b.label))}
 
       <div className="mt-4 px-3 pb-1 text-xs font-semibold text-gray-500">עוד</div>
-      {BOXES.filter((b) => !b.primary).map((b) => row(b.key, b.label))}
+      {moreBoxes.map((b) => row(b.key, b.label))}
 
       <div className="mt-4 px-3 pb-1 text-xs font-semibold text-gray-500">התוויות שלי</div>
       {labels.map((l) =>
@@ -159,6 +179,7 @@ export default function ChatSidebar({ box, setBox, counts, labels, onCreateLabel
         </Link>
       </div>
       </div>
+      )}
     </nav>
   );
 }

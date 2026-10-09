@@ -2238,6 +2238,18 @@ console.log('\n— PART 42: couple edits —');
   check('drive src = lh3', aa.assetSrc({ id: 'abc' }, 200), 'https://lh3.googleusercontent.com/d/abc=w200');
 }
 
+// PART 50 — the owner's own order of the chat boxes (2026-10-09)
+console.log('\n— PART 50: box order —');
+{
+  const cm50 = await loadModule('src/lib/chatModel.js', 'cm50');
+  const def = cm50.orderBoxes(null);
+  check('no saved order → the default', def.primary.map((b) => b.key).join(), cm50.BOXES.filter((b) => b.primary).map((b) => b.key).join());
+  const o = cm50.orderBoxes({ primary: ['hot', 'needs', 'lead', 'gone'], more: ['all', 'client', 'hot'] });
+  check('saved order wins; "needs" moved up; unknown key and repeats dropped', o.primary.slice(0, 3).map((b) => b.key).join() + '|' + o.more[0].key, 'hot,needs,lead|all');
+  check('boxes missing from the saved order still appear in their default place', o.primary.map((b) => b.key).includes('unknown') && o.more.map((b) => b.key).includes('archive'), true);
+  check('every box exactly once', o.primary.length + o.more.length, cm50.BOXES.length);
+}
+
 // PART 49 — the client's crew-role timeline in the chat (2026-10-09)
 console.log('\n— PART 49: client role timeline —');
 {

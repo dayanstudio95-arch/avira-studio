@@ -2,13 +2,13 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { MessageSquare, X, LayoutGrid, SlidersHorizontal, LogOut, Bell, Flame, Hourglass, Settings2, History, Users, Phone, AlertCircle, BookImage, CalendarClock } from "lucide-react";
+import { ArrowUpDown, MessageSquare, X, LayoutGrid, SlidersHorizontal, LogOut, Bell, Flame, Hourglass, Settings2, History, Users, Phone, AlertCircle, BookImage, CalendarClock } from "lucide-react";
 import { supabase } from "@/api/supabaseClient";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/SupabaseAuthContext";
 import { isAdmin } from "@/lib/permissions";
 import LeadFormDialog from "@/components/leads/LeadFormDialog";
-import { BOXES, DEFAULT_BOX, boxCounts, matchesBox, matchesSearch, sortConversations, needsReply, isHotLead } from "@/lib/chatModel";
+import { BOXES, DEFAULT_BOX, boxCounts, matchesBox, matchesSearch, sortConversations, needsReply, isHotLead, orderBoxes } from "@/lib/chatModel";
 import { isAwaitingFollowUp, followUpsSentToday } from "@/lib/followUpQueue";
 import WhatsAppFollowUpDialog from "@/components/whatsapp/WhatsAppFollowUpDialog";
 import WhatsAppFollowUpSettingsDialog from "@/components/whatsapp/WhatsAppFollowUpSettingsDialog";
@@ -19,6 +19,7 @@ import { shortCoupleNames } from "@/lib/chatModel";
 import { useChatData } from "@/components/chat/useChatData";
 import { useThread } from "@/components/chat/useThread";
 import ChatSidebar from "@/components/chat/ChatSidebar";
+import BoxOrderEditor from "@/components/chat/BoxOrderEditor";
 import ChatList, { conversationTitle, AvatarUrlContext } from "@/components/chat/ChatList";
 import ChatThread from "@/components/chat/ChatThread";
 import ContactPanel from "@/components/chat/ContactPanel";
@@ -43,7 +44,8 @@ const BOTTOM_LABEL_TABS = [
 ];
 // The tab rows above the list (2026-10-07, as in the old inbox). On a phone: two rows —
 // לא מוכר · לידים · ליד חם / לא נקראו · פולו אפ · הכל · עוד. Everything else is under "עוד".
-const PRIMARY_BOXES = BOXES.filter((b) => b.primary);
+// Once the owner arranges the boxes himself ("סדר את התיבות", 2026-10-09) the rows follow
+// his top section, three per row.
 const CHIP_ROWS = [["unknown", "lead", "hot"], ["unread", "followup", "all"]];
 const CHIP_ICONS = { followup: Hourglass, hot: Flame };
 
@@ -67,6 +69,43 @@ export default function ChatApp() {
     if (id) next.set("c", id);
     else next.delete("c");
     setParams(next, { replace: !id });
+  };
+
+  // The owner's own order of the boxes (profiles.chat_prefs.boxOrder, 2026-10-09) — per user,
+  // so the computer and the iPhone match.
+  const prefsKey = ["chatPrefs", data.user?.id];
+  const prefsQ = useQuery({
+    queryKey: prefsKey,
+    enabled: !!data.user?.id,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const { data: row, error } = await supabase.from("profiles").select("chat_prefs").eq("id", data.user.id).maybeSingle();
+      if (error) throw error;
+      return row?.chat_prefs || {};
+    },
+  });
+  const savedOrder = prefsQ.data?.boxOrder || null;
+  const ordered = useMemo(() => orderBoxes(savedOrder), [savedOrder]);
+  const chipRows = useMemo(() => {
+    if (!savedOrder) return CHIP_ROWS;
+    const keys = ordered.primary.map((b) => b.key);
+    const rows = [];
+    for (let i = 0; i < keys.length; i += 3) rows.push(keys.slice(i, i + 3));
+    return rows.length ? rows : CHIP_ROWS;
+  }, [savedOrder, ordered]);
+  const [orderOpen, setOrderOpen] = useState(false);
+  const saveBoxOrder = async (order) => {
+    try {
+      const next = { ...(prefsQ.data || {}), boxOrder: order };
+      const { error } = await supabase.from("profiles").update({ chat_prefs: next }).eq("id", data.user.id);
+      if (error) throw error;
+      qc.setQueryData(prefsKey, next);
+      toast.success("הסדר נשמר");
+      return true;
+    } catch (e) {
+      toast.error("שמירת הסדר נכשלה", { description: e?.message });
+      return false;
+    }
   };
 
   // ?box=followup (the dashboard's "שלח פולו-אפ") opens on that box.
@@ -400,19 +439,30 @@ export default function ChatApp() {
       </button>
     );
   };
-  const onMoreBox = !PRIMARY_BOXES.some((b) => b.key === box) && !q;
+  const onMoreBox = !chipRows.flat().includes(box) && !q;
   const chips = (
     <div className="space-y-1.5 md:flex md:flex-wrap md:gap-1.5 md:space-y-0">
-      {CHIP_ROWS.map((row, i) => (
+      {chipRows.map((row, i) => (
         <div key={i} className="flex gap-1.5 md:contents">
           {row.map(chip)}
-          {i === CHIP_ROWS.length - 1 && (
+          {i === chipRows.length - 1 && (
             <button
               type="button"
               onClick={() => setMoreOpen(true)}
               className={`flex min-h-[36px] flex-none items-center justify-center rounded-full border px-3 text-sm md:hidden ${onMoreBox ? "border-yellow-500 bg-yellow-400/10 text-yellow-300" : "border-gray-800 bg-gray-800/70 text-gray-400"}`}
             >
               עוד ▾
+            </button>
+          )}
+          {i === chipRows.length - 1 && data.user?.id && (
+            <button
+              type="button"
+              onClick={() => setOrderOpen(true)}
+              aria-label="סדר והוסף כפתורים"
+              title="לסדר את הכפתורים או להוסיף כפתור"
+              className="flex min-h-[36px] flex-none items-center justify-center rounded-full border border-dashed border-gray-700 px-2.5 text-gray-400 hover:text-white md:min-h-[30px]"
+            >
+              <ArrowUpDown className="h-3.5 w-3.5" />
             </button>
           )}
         </div>
@@ -477,6 +527,9 @@ export default function ChatApp() {
         }}
         onOpenNotifications={() => setNotifOpen(true)}
         onOpenMeetings={() => setMeetingsOpen(true)}
+        primaryBoxes={ordered.primary}
+        moreBoxes={ordered.more}
+        onSaveOrder={data.user?.id ? saveBoxOrder : undefined}
         onDeleteLabel={async (id) => {
           try { await data.actions.deleteLabel(id); if (box === "label:" + id) setBox(DEFAULT_BOX); toast.success("התווית נמחקה"); } catch (e) { toast.error("המחיקה נכשלה", { description: e?.message }); }
         }}
@@ -588,6 +641,31 @@ export default function ChatApp() {
         </>
       )}
 
+      {/* "סדר את התיבות" from the button next to the chips — the same editor as the sidebar */}
+      {orderOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 md:items-center" onClick={() => setOrderOpen(false)}>
+          <div
+            role="dialog"
+            aria-label="סדר את התיבות"
+            onClick={(e) => e.stopPropagation()}
+            className="flex max-h-[88dvh] w-full flex-col rounded-t-3xl border-t border-gray-800 bg-gray-950 pb-[env(safe-area-inset-bottom)] md:w-[380px] md:rounded-2xl md:border"
+          >
+            <div className="flex shrink-0 items-center justify-between px-4 pb-1 pt-3">
+              <span className="font-bold text-white">סדר את התיבות</span>
+              <button type="button" onClick={() => setOrderOpen(false)} aria-label="סגור" className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-800"><X className="h-4 w-4" /></button>
+            </div>
+            <BoxOrderEditor
+              primary={ordered.primary}
+              more={ordered.more}
+              onCancel={() => setOrderOpen(false)}
+              onSave={async (order) => {
+                if (await saveBoxOrder(order)) setOrderOpen(false);
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* "עוד" on a phone: every box, the labels, the way back to the system */}
       {moreOpen && (
         <div className="fixed inset-0 z-40 flex flex-col justify-end bg-black/60 md:hidden" onClick={() => setMoreOpen(false)}>
@@ -597,7 +675,7 @@ export default function ChatApp() {
               <button type="button" onClick={() => setMoreOpen(false)} aria-label="סגור" className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-800"><X className="h-4 w-4" /></button>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              {BOXES.map((b) => (
+              {[...ordered.primary, ...ordered.more].map((b) => (
                 <button key={b.key} type="button" onClick={() => { setBox(b.key); setSearch(""); setMoreOpen(false); }} className={`flex min-h-[48px] items-center justify-between rounded-xl px-3 text-sm ${box === b.key ? "bg-yellow-400/15 text-yellow-300" : "bg-gray-900 text-gray-200"}`}>
                   <span>{b.label}</span><span className="text-xs text-gray-500">{counts[b.key] || 0}</span>
                 </button>

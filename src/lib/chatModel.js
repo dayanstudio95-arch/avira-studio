@@ -163,6 +163,28 @@ export const BOXES = [
   { key: "archive", label: "ארכיון" },
 ];
 
+// The owner's own arrangement of the boxes (2026-10-09, profiles.chat_prefs.boxOrder):
+// { primary: [keys], more: [keys] }. Keys that no longer exist are dropped; a box added to
+// BOXES later appears in its default section, at the end — so nothing ever disappears.
+export function orderBoxes(saved) {
+  const byKey = Object.fromEntries(BOXES.map((b) => [b.key, b]));
+  const used = new Set();
+  const take = (keys) =>
+    (Array.isArray(keys) ? keys : [])
+      .filter((k) => byKey[k] && !used.has(k))
+      .map((k) => {
+        used.add(k);
+        return byKey[k];
+      });
+  const primary = take(saved?.primary);
+  const more = take(saved?.more);
+  for (const b of BOXES) {
+    if (used.has(b.key)) continue;
+    (b.primary ? primary : more).push(b);
+  }
+  return { primary, more };
+}
+
 // Opens on "לידים" (the owner, 2026-10-07 — after the bot-recognised strangers moved there).
 export const DEFAULT_BOX = "lead";
 
