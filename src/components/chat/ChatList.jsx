@@ -72,7 +72,7 @@ function timeLabel(iso) {
 
 // "יום שישי, 14.8.2026 · פנוי" under a row (2026-10-07) — the in-thread date check,
 // visible without opening the conversation.
-function RowDate({ date, map, loading, ownLeadId }) {
+function RowDate({ date, map, loading, ownLeadId, convId }) {
   if (!date) {
     return (
       <span className="mt-0.5 flex items-center gap-1.5 text-xs text-gray-500">
@@ -80,23 +80,33 @@ function RowDate({ date, map, loading, ownLeadId }) {
       </span>
     );
   }
-  const st = dateStatus(map, date, ownLeadId);
+  // Same rule as the bar inside the chat (DateAvailability.jsx).
+  const st = dateStatus(map, date, { ownLeadId, ownConvId: convId });
   return (
     <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-gray-300">
       <CalendarDays className="h-3.5 w-3.5 text-gray-500" />
       <span>{formatDateWithWeekday(date)}</span>
       {loading ? (
         <span className="text-gray-500">בודק…</span>
-      ) : st.events > 0 ? (
+      ) : st.others > 0 ? (
         <span className="flex items-center gap-1 rounded-full bg-amber-500/20 px-2 text-amber-200">
-          <CalendarX2 className="h-3 w-3" /> כבר ביומן: {st.events} {st.events === 1 ? "אירוע" : "אירועים"}
+          <CalendarX2 className="h-3 w-3" /> {st.ownEvent ? `ביומן: ${st.total} (כולל שלהם)` : `כבר ביומן: ${st.total} ${st.total === 1 ? "אירוע" : "אירועים"}`}
+        </span>
+      ) : st.ownEvent ? (
+        <span className="flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 text-emerald-200">
+          <CalendarCheck className="h-3 w-3" /> ביומן: רק שלהם
         </span>
       ) : (
         <span className="flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 text-emerald-200">
           <CalendarCheck className="h-3 w-3" /> פנוי
         </span>
       )}
-      {!loading && st.closing > 0 && <span className="text-gray-500">· {st.closing} בתהליך סגירה</span>}
+      {!loading && st.closing.length > 0 && <span className="text-gray-500">· {st.closing.length} סגרו ועוד לא ביומן</span>}
+      {!loading && st.interested.length > 0 && (
+        <span title={st.interested.map((i) => i.name).filter(Boolean).join(", ")} className="rounded-full bg-sky-500/15 px-2 text-sky-200">
+          👥 עוד {st.interested.length} {st.interested.length === 1 ? "מתעניין" : "מתעניינים"}
+        </span>
+      )}
     </span>
   );
 }
@@ -264,7 +274,7 @@ export default function ChatList({
                       <span className={`rounded-md px-1.5 text-[11px] ${long ? "bg-red-500/20 text-red-300" : "bg-gray-800 text-gray-300"}`}>{wait}</span>
                     )}
                   </span>
-                  {hasStage(c) && <RowDate date={rowDates[c.id]} map={availQ.data} loading={availQ.isLoading} ownLeadId={c.matchedLeadId} />}
+                  {hasStage(c) && <RowDate date={rowDates[c.id]} map={availQ.data} loading={availQ.isLoading} ownLeadId={c.matchedLeadId} convId={c.id} />}
                 </span>
               </button>
             </div>

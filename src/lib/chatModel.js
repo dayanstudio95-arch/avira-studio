@@ -385,16 +385,60 @@ export function formatDateWithWeekday(isoDate) {
   return `יום ${HEB_WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]}, ${d}.${m}.${y}`;
 }
 
-// One row's answer, leaving out the couple's own event / own lead (a couple whose event is
-// already in the calendar must not see "their date is taken").
-// → { events: n, closing: n }
-export function dateStatus(map, date, ownLeadId = null) {
-  const info = map?.[date];
-  if (!info) return { events: 0, closing: 0 };
-  const own = (id) => ownLeadId && id === ownLeadId;
+// The open stages of a lead — someone still deciding (for "עוד לידים על התאריך").
+export const OPEN_LEAD_STATUSES = ["חדש", "נשלחה הצעה", "פולו-אפ"];
+
+// Builds the per-date answer from raw rows (pure; lib/dateAvailability.js fetches them).
+// 2026-10-09 (the owner): "בתהליך סגירה" counted every signed lead whose event is already in
+// the calendar — each couple twice. Now `closing` = signed leads with NO event yet, and
+// `interested` = other leads still deciding on the same date (open CRM leads + lead/unknown
+// chats whose date the bot collected), one entry per couple.
+// → { "2026-11-26": { events: [{id, leadId, name, venue}], closing: [{id, name, venue}],
+//                     interested: [{key, leadId, convId, name}] } }
+// A chat linked to a CRM lead counts on the LEAD's date (the bot's date may be older), and
+// the lead's entry carries that chat (convIdByLeadId) so it opens the conversation.
+export function buildDateMap({ events = [], closing = [], leadIdsWithEvent = [], openLeads = [], convs = [], leadStatusById = {}, convIdByLeadId = {} }) {
+  const out = {};
+  const day = (v) => String(v || "").slice(0, 10);
+  const at = (d) => (out[d] ||= { events: [], closing: [], interested: [] });
+  const hasEvent = new Set([...leadIdsWithEvent, ...events.map((e) => e.source_lead_id).filter(Boolean)]);
+  for (const e of events) at(day(e.date)).events.push({ id: e.id, leadId: e.source_lead_id || null, name: e.couple_names || "", venue: e.venue || "" });
+  for (const l of closing) if (!hasEvent.has(l.id)) at(day(l.event_date)).closing.push({ id: l.id, name: l.couple_names || "", venue: l.venue_name || "" });
+  const seen = {};
+  const add = (d, item) => {
+    const k = `${d}|${item.key}`;
+    if (seen[k]) {
+      seen[k].convId ||= item.convId;
+      return;
+    }
+    seen[k] = item;
+    at(d).interested.push(item);
+  };
+  for (const l of openLeads) add(day(l.event_date), { key: l.id, leadId: l.id, convId: convIdByLeadId[l.id] || null, name: l.couple_names || "" });
+  for (const c of convs) {
+    // Linked to a known lead → that lead's own date and status decide (above).
+    if (c.matched_lead_id && leadStatusById[c.matched_lead_id]) continue;
+    if (["closed_other", "opt_out"].includes(c.ai_tag)) continue;
+    add(day(c.event_date), { key: c.matched_lead_id || `c:${c.id}`, leadId: c.matched_lead_id || null, convId: c.id, name: c.couple_names || c.display_name || "" });
+  }
+  return out;
+}
+
+// One date as seen from one conversation. The couple's own event is counted and marked
+// (the owner, 2026-10-09: "3 events, theirs included"), but only OTHER couples make the
+// date busy. → { total, others, ownEvent, otherEvents, closing, interested }
+export function dateStatus(map, date, { ownLeadId = null, ownConvId = null } = {}) {
+  const info = map?.[date] || { events: [], closing: [], interested: [] };
+  const isOwnLead = (id) => !!ownLeadId && id === ownLeadId;
+  const ownEvent = info.events.find((e) => isOwnLead(e.leadId)) || null;
+  const otherEvents = info.events.filter((e) => !isOwnLead(e.leadId));
   return {
-    events: info.eventLeadIds.filter((id) => !own(id)).length,
-    closing: info.closingLeadIds.filter((id) => !own(id)).length,
+    total: info.events.length,
+    others: otherEvents.length,
+    ownEvent,
+    otherEvents,
+    closing: info.closing.filter((l) => !isOwnLead(l.id)),
+    interested: info.interested.filter((i) => !isOwnLead(i.leadId) && !(ownConvId && i.convId === ownConvId)),
   };
 }
 

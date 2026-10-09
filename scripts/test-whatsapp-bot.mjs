@@ -1775,10 +1775,39 @@ section('the date on a row, and whether it is free');
   check('then a date in the last message', cm31.rowEventDate({ lastMessagePreview: 'מתחתנים ב 14.8.27 באולם' }, null, today), '2027-08-14');
   check('nothing → null', cm31.rowEventDate({ lastMessagePreview: 'כמה עולה?' }, null, today), null);
   check('weekday', cm31.formatDateWithWeekday('2026-08-14'), 'יום שישי, 14.8.2026');
-  const map = { '2026-08-14': { eventLeadIds: ['L1', null], closingLeadIds: ['L2', 'L1'] } };
-  check('busy: other events count', JSON.stringify(cm31.dateStatus(map, '2026-08-14')), '{"events":2,"closing":2}');
-  check("the couple's own event is not 'taken'", JSON.stringify(cm31.dateStatus(map, '2026-08-14', 'L1')), '{"events":1,"closing":1}');
-  check('free date', JSON.stringify(cm31.dateStatus(map, '2026-09-01')), '{"events":0,"closing":0}');
+  // 2026-10-09: own event counted + marked; "closing" only without an event; other leads deciding.
+  const map = cm31.buildDateMap({
+    events: [
+      { id: 'E1', date: '2026-11-26', source_lead_id: 'L1', couple_names: 'ניב ועדן' },
+      { id: 'E2', date: '2026-11-26', source_lead_id: 'L2', couple_names: 'דניאל ואביטל' },
+      { id: 'E3', date: '2026-11-26', source_lead_id: null, couple_names: 'דוד ויוליה' },
+    ],
+    closing: [
+      { id: 'L1', event_date: '2026-11-26' }, { id: 'L2', event_date: '2026-11-26' },
+      { id: 'L9', event_date: '2026-11-26', couple_names: 'בלי אירוע' },
+      { id: 'L8', event_date: '2026-11-26' },
+    ],
+    leadIdsWithEvent: ['L8'],
+    openLeads: [{ id: 'L5', event_date: '2026-11-26', couple_names: 'נועה ועידו' }],
+    convs: [
+      { id: 'C5', event_date: '2026-11-26', matched_lead_id: 'L5' },
+      { id: 'C6', event_date: '2026-11-26', couple_names: 'שירן', matched_lead_id: null },
+      { id: 'C7', event_date: '2026-11-26', matched_lead_id: 'L2' },
+      { id: 'C8', event_date: '2026-11-26', display_name: 'X', ai_tag: 'closed_other' },
+      { id: 'C1', event_date: '2026-11-26', matched_lead_id: 'L1' },
+    ],
+    leadStatusById: { L5: 'פולו-אפ', L2: 'נסגר/חתימה', L1: 'נסגר/חתימה', L6: 'פולו-אפ' },
+    convIdByLeadId: { L5: 'C5' },
+  });
+  const moved = cm31.buildDateMap({ convs: [{ id: 'C9', event_date: '2026-11-26', matched_lead_id: 'L6' }], leadStatusById: { L6: 'פולו-אפ' } });
+  check("a linked chat counts on its lead's date, not the bot's", JSON.stringify(moved), '{}');
+  const own = cm31.dateStatus(map, '2026-11-26', { ownLeadId: 'L1', ownConvId: 'C1' });
+  check('client: 3 in the calendar, theirs marked, 2 others', `${own.total}|${own.others}|${own.ownEvent?.name}`, '3|2|ניב ועדן');
+  check('"closing" = signed with no event only (not the 3 already in the calendar)', own.closing.map((l) => l.id).join(), 'L9');
+  check('interested: CRM lead + its chat once, a bot chat; signed / closed-other left out', own.interested.map((i) => `${i.name}:${i.convId || '-'}`).join('|'), 'נועה ועידו:C5|שירן:C6');
+  const asLead = cm31.dateStatus(map, '2026-11-26', { ownLeadId: 'L5', ownConvId: 'C5' });
+  check('a lead on that date: 3 others busy, does not see itself as interested', `${asLead.total}|${asLead.others}|${!!asLead.ownEvent}|${asLead.interested.map((i) => i.name).join()}`, '3|3|false|שירן');
+  check('free date', JSON.stringify(cm31.dateStatus(map, '2026-09-01')), JSON.stringify({ total: 0, others: 0, ownEvent: null, otherEvents: [], closing: [], interested: [] }));
   check('undo of "לפולו-אפ"', JSON.stringify(cm31.reverseOf({ action: 'followup_flag', conversationId: 'X', before: {}, after: { followupFlaggedAt: 't' } })), '{"kind":"conversation","id":"X","values":{"followupFlaggedAt":null,"followupDismissedAt":null}}');
 }
 

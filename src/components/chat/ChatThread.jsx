@@ -204,7 +204,7 @@ export default function ChatThread({
       </header>
 
       {hasStage(conversation) && (
-        <DateAvailability info={eventDateFor(conversation, lead, thread.timeline)} excludeLeadId={conversation.matchedLeadId} />
+        <DateAvailability info={eventDateFor(conversation, lead, thread.timeline)} excludeLeadId={conversation.matchedLeadId} conversationId={conversation.id} />
       )}
       {isSalesChat(conversation) && <AiSummaryBar conversation={conversation} />}
 
