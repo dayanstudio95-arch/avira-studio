@@ -13,8 +13,9 @@ import { roleTimeline } from "@/lib/clientTimeline";
 const ROLE_ICON = { photographer1: Camera, photographer2: Camera, videographer: Video, videographer2: Video, editor: Scissors };
 
 // The crew timeline (2026-10-09, the owner's design): צלם 1 → צלם 2 → וידאו 1 → וידאו 2 →
-// עורך, only the package's roles, each with who is booked and ✓ when marked "סיים" on the
-// work-status page. Read-only — the work-status page is where it is changed.
+// עורך, only the package's roles, each with who is booked. Red until the role is clicked
+// green on the work-status page, then green with ✓ — "what is in and what is missing" at a
+// glance. Dashed amber = nobody booked yet. Read-only — the work-status page changes it.
 function RoleTimeline({ event, pkg }) {
   if (!event) return <p className="text-xs text-gray-500">עוד אין אירוע ביומן לזוג הזה.</p>;
   const steps = roleTimeline(event, pkg);
@@ -37,12 +38,12 @@ function RoleTimeline({ event, pkg }) {
             <li key={s.role} className="relative z-10 flex min-w-0 flex-1 flex-col items-center text-center">
               <span
                 className={`flex h-7 w-7 items-center justify-center rounded-full border ${
-                  s.done ? "border-emerald-500 bg-emerald-600 text-white" : s.current ? "border-amber-400 bg-amber-400/20 text-amber-300" : "border-gray-600 bg-gray-900 text-gray-500"
+                  s.done ? "border-emerald-500 bg-emerald-600 text-white" : s.assigned ? "border-red-500 bg-red-500/20 text-red-300" : "border-dashed border-amber-500 bg-gray-900 text-amber-400"
                 }`}
               >
                 {s.done ? <Check className="h-4 w-4" /> : <Icon className="h-3.5 w-3.5" />}
               </span>
-              <span className={`mt-1 text-[11px] font-semibold ${s.done ? "text-gray-200" : s.current ? "text-amber-300" : "text-gray-400"}`}>{s.label}</span>
+              <span className={`mt-1 text-[11px] font-semibold ${s.done ? "text-emerald-300" : s.assigned ? "text-red-300" : "text-amber-300"}`}>{s.label}</span>
               <span title={s.name || "לא שובץ"} className={`w-full truncate px-0.5 text-[10px] ${s.assigned ? "text-gray-500" : "text-amber-400"}`}>{s.name || "לא שובץ"}</span>
             </li>
           );
