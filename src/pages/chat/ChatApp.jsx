@@ -564,8 +564,12 @@ export default function ChatApp() {
       {/* Contact panel: a column on a wide screen, a bottom sheet on a phone */}
       {active && panelOpen && (
         <>
-          <aside aria-label="פרטים ותיוג" className="chat-col hidden w-[320px] shrink-0 overflow-y-auto bg-gray-950 p-4 xl:block">
-            <ContactPanel {...panelProps} />
+          {/* Inner scroll area: .chat-col is overflow:hidden (rounded column), which beat
+              overflow-y-auto here — the bottom of the panel could not be reached. */}
+          <aside aria-label="פרטים ותיוג" className="chat-col hidden min-h-0 w-[320px] shrink-0 flex-col bg-gray-950 xl:flex">
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              <ContactPanel {...panelProps} />
+            </div>
           </aside>
           <div className="fixed inset-0 z-40 flex flex-col justify-end bg-black/60 xl:hidden" onClick={() => setPanelOpen(false)}>
             <div
