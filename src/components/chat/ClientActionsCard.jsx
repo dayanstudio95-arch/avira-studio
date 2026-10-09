@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { CalendarClock, FileCheck, FileDown, Loader2, Receipt, Send } from "lucide-react";
+import { CalendarClock, Check, FileCheck, FileDown, Loader2, Receipt, Send, Users, ListChecks } from "lucide-react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { base44 } from "@/api/base44Client";
 import { supabase } from "@/api/supabaseClient";
@@ -7,6 +8,73 @@ import InvoiceDialog from "@/components/invoice/InvoiceDialog";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { openSignedContract } from "@/lib/signedContract";
 import { SCHEDULE_OPTIONS, applyLeadTemplateVariables, loadScheduleTemplates } from "@/lib/leadMessages";
+import { clientTimeline, eventTeamList } from "@/lib/clientTimeline";
+import { progressPercent } from "@/lib/eventGaps";
+import { israelToday } from "@/lib/missingTeam";
+
+const shortDate = (v) => (v ? new Date(v).toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem", day: "numeric", month: "numeric", year: "2-digit" }) : "");
+
+// The couple's team on the event, and where their order stands (2026-10-09, the owner's
+// request) — read-only; the work-status page is where it is changed.
+function TeamAndTimeline({ event, lead }) {
+  const team = eventTeamList(event);
+  const steps = clientTimeline(event, lead, israelToday());
+  const pct = event ? progressPercent(event) : null;
+  return (
+    <>
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-1 text-[11px] text-gray-500"><Users className="h-3.5 w-3.5" /> הצוות באירוע</div>
+        {!event ? (
+          <p className="text-xs text-gray-500">עוד אין אירוע ביומן לזוג הזה.</p>
+        ) : team.length === 0 ? (
+          <p className="text-xs text-amber-300">עוד לא שובץ צוות.</p>
+        ) : (
+          <ul className="space-y-1">
+            {team.map((m) => (
+              <li key={m.role + m.name} className="flex items-center justify-between rounded-lg bg-gray-800/60 px-2.5 py-1.5">
+                <span className="text-gray-400">{m.icon} {m.label}</span>
+                <span className="font-semibold text-white">{m.name}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between text-[11px] text-gray-500">
+          <span className="flex items-center gap-1"><ListChecks className="h-3.5 w-3.5" /> סטטוס התקדמות</span>
+          {pct !== null && <span className="font-semibold text-gray-300">{pct}%</span>}
+        </div>
+        {pct !== null && (
+          <div className="h-1.5 overflow-hidden rounded-full bg-gray-800">
+            <div className="h-full rounded-full bg-emerald-500" style={{ width: `${pct}%` }} />
+          </div>
+        )}
+        <ol className="relative space-y-2 pt-1">
+          {steps.map((s, i) => (
+            <li key={s.key} className="relative flex gap-2.5">
+              {i < steps.length - 1 && <span className={`absolute right-[9px] top-5 h-[calc(100%-4px)] w-px ${s.done ? "bg-emerald-700" : "bg-gray-700"}`} />}
+              <span
+                className={`relative z-10 mt-0.5 flex h-[19px] w-[19px] shrink-0 items-center justify-center rounded-full border ${
+                  s.done ? "border-emerald-500 bg-emerald-600 text-white" : s.current ? "border-yellow-400 bg-yellow-400/20" : "border-gray-600 bg-gray-900"
+                }`}
+              >
+                {s.done && <Check className="h-3 w-3" />}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className={`block ${s.done ? "text-gray-300" : s.current ? "font-semibold text-yellow-300" : "text-gray-500"}`}>{s.label}</span>
+                {(s.date || s.detail) && (
+                  <span className="block text-[11px] text-gray-500">{[shortDate(s.date), s.detail].filter(Boolean).join(" · ")}</span>
+                )}
+              </span>
+            </li>
+          ))}
+        </ol>
+        {event && <Link to="/ProgressStatus" className="inline-block text-xs text-yellow-400 underline">פתח בסטטוס עבודה</Link>}
+      </div>
+    </>
+  );
+}
 
 // "פעולות ללקוח" in the chat's contact panel (2026-10-09, the owner's request): the same
 // three actions as the lead pop-up (UnifiedSidePanel), behaving exactly the same — schedule
@@ -115,6 +183,8 @@ export default function ClientActionsCard({ conversation }) {
   return (
     <section className="space-y-3 rounded-xl border border-gray-800 bg-gray-900 p-3 text-sm">
       <h3 className="text-xs font-semibold text-gray-500">פעולות ללקוח</h3>
+
+      <TeamAndTimeline event={event} lead={lead} />
 
       <div className="space-y-1.5">
         <div className="flex items-center gap-1 text-[11px] text-gray-500"><CalendarClock className="h-3.5 w-3.5" /> שלח לוז</div>
