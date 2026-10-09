@@ -398,7 +398,7 @@ export default function Dashboard() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 sm:[&>*]:h-[305px] gap-3 sm:gap-4 md:gap-5 mb-6">
-          <DashboardMissingTeamCard events={events} />
+          <DashboardMissingTeamCard events={events} staffMembers={staffMembers} onChanged={() => loadEvents({ silent: true })} />
           <DashboardWorkStatusCard events={events} onRefresh={loadEvents} />
           <DashboardUnpaidCard events={events} onRefresh={loadEvents} />
           <RecentLeadsCard />

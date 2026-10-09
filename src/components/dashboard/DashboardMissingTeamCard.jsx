@@ -1,14 +1,17 @@
-import React from "react";
+import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { format } from "date-fns";
 import { Users } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import EventTeamDialog from "./EventTeamDialog";
 import { isMissingTeam, israelToday, assignedShooters, requiredShooters, eventDay, missingRoles } from "@/lib/missingTeam";
 
-export default function DashboardMissingTeamCard({ events }) {
-  const navigate = useNavigate();
+// A row opens the event's team window right here (2026-10-09, the owner's request) — who is
+// booked and what is missing, availability check, direct assignment, the other weddings that
+// day — instead of jumping to the staff scheduling page.
+export default function DashboardMissingTeamCard({ events, staffMembers = [], onChanged }) {
+  const [openEvent, setOpenEvent] = useState(null);
   // The shared rule (src/lib/missingTeam.js) — same number as the sidebar and the staff page.
   const today = israelToday();
   // Packages say how many photographers / videographers each event needs (missingRoles).
@@ -43,7 +46,8 @@ export default function DashboardMissingTeamCard({ events }) {
                 <div
                   key={event.id}
                   className="e-row flex items-center justify-between gap-2 px-2 py-3 cursor-pointer rounded-lg hover:bg-white/[0.03] transition-colors"
-                  onClick={() => navigate(`/StaffScheduling?eventId=${event.id}`)}
+                  onClick={() => setOpenEvent(event)}
+                  title="לחצו לראות את הצוות, לשלוח בדיקת זמינות ולשבץ"
                 >
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-white truncate">{event.coupleNames}</p>
@@ -61,6 +65,7 @@ export default function DashboardMissingTeamCard({ events }) {
           </div>
         )}
       </CardContent>
+      <EventTeamDialog event={openEvent} staffMembers={staffMembers} onClose={() => setOpenEvent(null)} onChanged={onChanged} />
     </Card>
   );
 }

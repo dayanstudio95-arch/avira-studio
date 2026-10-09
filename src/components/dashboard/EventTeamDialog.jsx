@@ -5,6 +5,7 @@ import { Send, CalendarDays, MapPin } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { missingRoles, missingCount, assignedShooters, requiredShooters } from "@/lib/missingTeam";
 import { formatDateWithWeekday } from "@/lib/chatModel";
+import { eventTeamRoleLabel } from "@/lib/staffRoles";
 import { sendCalendarInviteByName } from "@/lib/calendarInvites";
 import StaffAssignmentRoleList from "@/components/events/StaffAssignmentRoleList";
 import AvailabilityPills from "@/components/events/AvailabilityPills";
@@ -14,6 +15,8 @@ import StaffAvailabilityModal from "@/components/leads/StaffAvailabilityModal";
 // team as it stands (who is in which role, which slots are empty), a "בדיקת זמינות" send,
 // the answers so far (✅ = assign), and direct assignment to a role — the same pieces the
 // staff scheduling page uses, so nothing behaves differently here.
+const ROLE_ORDER = ["photographer1", "photographer2", "videographer", "videographer2", "editor"];
+
 export default function EventTeamDialog({ event, staffMembers, onClose, onChanged }) {
   const [sameDay, setSameDay] = useState([]); // every event that day — conflict check + live team
   const [requests, setRequests] = useState([]);
@@ -47,6 +50,7 @@ export default function EventTeamDialog({ event, staffMembers, onClose, onChange
   const live = sameDay.find((e) => e.id === event.id) || event;
   const pkg = (pkgQ.data || []).find((p) => p.id === live.packageId);
   const missing = missingCount(live) > 0 ? missingRoles(live, pkg) : [];
+  const others = sameDay.filter((e) => e.id !== live.id);
   const refresh = async () => {
     await load();
     onChanged?.();
@@ -104,6 +108,35 @@ export default function EventTeamDialog({ event, staffMembers, onClose, onChange
               sendCalendarInviteByName={sendCalendarInviteByName}
             />
           </div>
+
+          {/* Other weddings that day (2026-10-09): who is already booked there, so nobody is
+              asked or assigned twice — the picker above marks them "כבר משובץ" as well. */}
+          {others.length > 0 && (
+            <div className="border-t border-white/10 pt-3">
+              <div className="mb-2 text-sm font-semibold">עוד אירועים באותו יום ({formatDateWithWeekday(String(live.date).slice(0, 10))})</div>
+              <div className="space-y-2">
+                {others.map((o) => {
+                  const crew = (o.team || [])
+                    .filter((m) => String(m?.staffMemberName || "").trim())
+                    .sort((a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role));
+                  const gap = missingCount(o);
+                  return (
+                    <div key={o.id} className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+                      <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-sm font-medium">{o.coupleNames}{o.venue ? ` · ${o.venue}` : ""}</span>
+                        <span className={`text-xs ${gap > 0 ? "text-red-300" : "text-green-300"}`}>{gap > 0 ? `חסר ${gap}` : "צוות מלא"}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {crew.length ? crew.map((m, i) => (
+                          <span key={i} className="rounded-md bg-white/[0.06] px-2 py-0.5 text-xs text-slate-200">{eventTeamRoleLabel(m.role)}: {m.staffMemberName}</span>
+                        )) : <span className="text-xs text-slate-500">אף אחד עוד לא משובץ</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
