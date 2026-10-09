@@ -20,7 +20,7 @@ import { unpaidRowsForStaff, creditByStaff, creditForExactPeriod, undoablePaymen
 import { todayInIsrael } from '@/lib/localDate';
 import PageIcon from "@/components/layout/PageIcon";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
-import { yearOptions } from "@/lib/yearOptions";
+import YearPicker from "@/components/common/YearPicker";
 const MONTHS_HE = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
 const StaffPayment = base44.entities.StaffPayment;
 
@@ -429,16 +429,7 @@ export default function Payments() {
                         </div>
                         <div className="flex items-center gap-2 w-full md:w-auto">
                             <CalendarDays className="w-5 h-5 text-gray-400 flex-shrink-0" />
-                            <Select value={selectedYear.toString()} onValueChange={(val) => setSelectedYear(parseInt(val))}>
-                                <SelectTrigger className="flex-1 md:w-32 bg-gray-900/50 border-gray-700 text-white">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent className="bg-gray-900 border-gray-700 text-white">
-                                    {yearOptions({ dates: events.map((e) => e.date), selected: selectedYear }).map((y) => (
-                                      <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <YearPicker value={selectedYear} onChange={setSelectedYear} dates={events.map((e) => e.date)} triggerClassName="flex-1 md:w-32 bg-gray-900/50 border-gray-700 text-white" />
                             
                             <Select value={selectedMonth} onValueChange={setSelectedMonth}>
                                 <SelectTrigger className="flex-1 md:w-32 bg-gray-900/50 border-gray-700 text-white">

@@ -4,7 +4,6 @@ import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, X, CalendarDays } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
 
 import EventsTable from "../components/dashboard/EventsTable";
@@ -21,7 +20,7 @@ import { yearGaps, GAP_TYPES } from "@/lib/eventGaps";
 import { GAP_TONE } from "../components/dashboard/EventsTable";
 import { calculateNetProfit } from "../lib/profitCalculations";
 import { calculateEventFinancials } from "../lib/financialCalculations";
-import { yearOptions } from "@/lib/yearOptions";
+import YearPicker from "@/components/common/YearPicker";
 
 export default function Dashboard() {
   const [events, setEvents] = useState([]);
@@ -361,16 +360,7 @@ export default function Dashboard() {
           <div className="flex items-center gap-2 w-full md:w-auto">
             <div className="flex items-center gap-2 flex-1 md:flex-none">
               <CalendarDays className="w-4 h-4 text-gray-400 flex-shrink-0" />
-              <Select value={selectedYear.toString()} onValueChange={(val) => setSelectedYear(parseInt(val))}>
-                <SelectTrigger className="w-full sm:w-36 rounded-lg bg-[#0B1529] border-[#2A3B57] text-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-gray-900 border-gray-700 text-white">
-                  {yearOptions({ dates: events.map((e) => e.date), selected: selectedYear }).map((y) => (
-                    <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <YearPicker value={selectedYear} onChange={setSelectedYear} dates={events.map((e) => e.date)} triggerClassName="w-full sm:w-36 rounded-lg bg-[#0B1529] border-[#2A3B57] text-white" />
             </div>
           </div>
         </div>

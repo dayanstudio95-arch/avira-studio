@@ -15,7 +15,7 @@ const HEBREW_MONTHS = [
 ];
 const formatMonthYear = (date) => `${HEBREW_MONTHS[date.getMonth()]} ${date.getFullYear()}`;
 import { toast } from "sonner";
-import { yearOptions } from "@/lib/yearOptions";
+import YearPicker from "@/components/common/YearPicker";
 
 // Was previously missing "videographer2" entirely (same real bug as
 // ProgressEventMobileCard.jsx — a videographer2 team member got no status button and
@@ -287,16 +287,7 @@ export default function ProgressStatus() {
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
               <CalendarDays className="w-4 h-4 text-gray-400" />
-              <Select value={selectedYear.toString()} onValueChange={v => setSelectedYear(parseInt(v))}>
-                <SelectTrigger className="w-28 rounded-xl bg-[#0B1529] border-[#2A3B57] text-white h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-gray-900 border-gray-700 text-white">
-                  {yearOptions({ dates: events.map((e) => e?.date), selected: selectedYear }).map(y => (
-                    <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <YearPicker value={selectedYear} onChange={setSelectedYear} dates={events.map((e) => e?.date)} triggerClassName="w-28 rounded-xl bg-[#0B1529] border-[#2A3B57] text-white h-9" />
             </div>
             <div className="flex items-center gap-2">
               <Filter className="w-4 h-4 text-gray-400" />
@@ -551,9 +542,7 @@ export default function ProgressStatus() {
               </div>
               <div>
                 <label className="block text-gray-400 text-sm mb-1">שנה</label>
-                <select className="bg-gray-800 border border-gray-600 text-white rounded-lg px-2 py-1" value={albumSendYear} onChange={e => setAlbumSendYear(Number(e.target.value))}>
-                  {yearOptions({ dates: events.map((e) => e?.date), selected: albumSendYear }).map(y => <option key={y} value={y}>{y}</option>)}
-                </select>
+                <YearPicker value={albumSendYear} onChange={setAlbumSendYear} dates={events.map((e) => e?.date)} triggerClassName="w-24 h-9 rounded-lg bg-gray-800 border-gray-600 text-white" />
               </div>
               <Button size="sm" className="bg-gray-700 border-gray-600 text-gray-100 hover:bg-gray-600" style={{background:"#374151",color:"#d1d5db",border:"1px solid #4b5563"}} onClick={() => loadAlbumEvents(albumSendMonth, albumSendYear)} disabled={albumSendLoading}>
                 {albumSendLoading ? 'טוען...' : 'טען אירועים'}

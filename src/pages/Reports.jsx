@@ -11,7 +11,7 @@ import { Download, TrendingUp, Calendar, BarChart3 } from "lucide-react";
 import ReportsChart from "../components/reports/ReportsChart";
 import MonthlyChart from "../components/reports/MonthlyChart";
 import ReportsTable from "../components/reports/ReportsTable";
-import { yearOptions } from "@/lib/yearOptions";
+import YearPicker from "@/components/common/YearPicker";
 
 const MONTHS = [
   { value: 0, label: "ינואר" },
@@ -127,17 +127,7 @@ export default function Reports() {
               <p className="text-slate-400">ניתוח ביצועי העסק שלך</p>
             </div>
           </div>
-          <Select value={selectedYear.toString()} onValueChange={(val) => setSelectedYear(parseInt(val))}>
-            <SelectTrigger className="w-40 h-11 rounded-xl bg-[#0B1529] border-[#2A3B57] text-white">
-              <Calendar className="h-4 w-4 text-slate-400 shrink-0" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-gray-900 border-gray-700 text-white">
-              {yearOptions({ dates: events.map((e) => e.date), selected: selectedYear }).map((y) => (
-                <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <YearPicker value={selectedYear} onChange={setSelectedYear} dates={events.map((e) => e.date)} triggerClassName="w-40 h-11 rounded-xl bg-[#0B1529] border-[#2A3B57] text-white" icon={<Calendar className="h-4 w-4 text-slate-400 shrink-0" />} />
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">

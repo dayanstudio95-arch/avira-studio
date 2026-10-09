@@ -12,7 +12,7 @@ import CSVImportDialog from "../components/CSVImportDialog";
 import EventsMobileMenu from "../components/events/EventsMobileMenu";
 import EventsStatsRow from "../components/events/EventsStatsRow";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
-import { yearOptions } from "@/lib/yearOptions";
+import YearPicker from "@/components/common/YearPicker";
 
 export default function Events() {
   const [events, setEvents] = useState([]);
@@ -379,16 +379,7 @@ export default function Events() {
           <div className="flex items-center gap-2 w-full md:w-auto md:mr-auto">
             <div className="flex items-center gap-2 flex-shrink-0">
               <CalendarDays className="w-4 h-4 text-slate-400" />
-              <Select value={selectedYear.toString()} onValueChange={(val) => setSelectedYear(parseInt(val))}>
-                <SelectTrigger className="w-[5.5rem] md:w-32 h-11 rounded-xl bg-[#0B1529] border-[#2A3B57] text-white text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-gray-900 border-gray-700 text-white">
-                  {yearOptions({ dates: events.map((e) => e.date), selected: selectedYear }).map((y) => (
-                    <SelectItem key={y} value={String(y)}>{y}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <YearPicker value={selectedYear} onChange={setSelectedYear} dates={events.map((e) => e.date)} triggerClassName="w-[5.5rem] md:w-32 h-11 rounded-xl bg-[#0B1529] border-[#2A3B57] text-white text-sm" />
             </div>
             <Select value={sortOrder} onValueChange={v => { setSortOrder(v); localStorage.setItem('events_sort', v); }}>
               <SelectTrigger className="flex-1 min-w-0 md:w-64 h-11 rounded-xl bg-[#0B1529] border-[#2A3B57] text-white text-sm">

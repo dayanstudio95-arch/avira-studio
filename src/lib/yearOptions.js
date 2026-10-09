@@ -2,8 +2,8 @@
 // the list short"). Every page used to hard-code 2025–2030, so from 2031 the current year
 // wasn't even in its own picker. Now: last year, this year and 4 ahead (6 years — the same
 // short list as before), plus any year that already has events, plus the one selected —
-// never past LAST_YEAR. Pure — tested in scripts/test-whatsapp-bot.mjs PART 45.
-export const FIRST_YEAR = 2020;
+// never outside FIRST_YEAR–LAST_YEAR (2025–2050). Pure — tested in scripts/test-whatsapp-bot.mjs PART 45.
+export const FIRST_YEAR = 2025; // the system's first year (the owner, 2026-10-09)
 export const LAST_YEAR = 2050;
 
 export function yearOptions({ dates = [], selected = null, before = 1, after = 4, now = new Date() } = {}) {

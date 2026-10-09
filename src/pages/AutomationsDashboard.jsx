@@ -17,7 +17,7 @@ import { VARS_BY_TYPE, VARS_BY_AUDIENCE_TYPE } from "@/lib/automationTemplateVar
 import { sendSummary } from "@/lib/actionOutcome";
 import PageIcon from "@/components/layout/PageIcon";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
-import { yearOptions } from "@/lib/yearOptions";
+import YearPicker from "@/components/common/YearPicker";
 
 // ── Default automations to seed if none exist ──────────────────────────────
 const DEFAULTS = [
@@ -722,15 +722,7 @@ function SettingsModal({ automation, onClose, onSaved }) {
                   </div>
                   <div>
                     <label className="text-gray-400 text-xs block mb-1">שנה</label>
-                    <select
-                      value={previewYear}
-                      onChange={e => setPreviewYear(Number(e.target.value))}
-                      className="bg-gray-700 border border-gray-600 text-white rounded-lg px-2 py-1.5 text-sm"
-                    >
-                      {yearOptions({ before: 0, after: 5, selected: previewYear }).map(y => (
-                        <option key={y} value={y}>{y}</option>
-                      ))}
-                    </select>
+                    <YearPicker value={previewYear} onChange={setPreviewYear} before={0} after={5} triggerClassName="w-24 h-9 rounded-lg bg-gray-700 border-gray-600 text-white text-sm" />
                   </div>
                 </>
               )}
