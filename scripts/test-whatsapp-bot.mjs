@@ -2250,6 +2250,21 @@ console.log('\n— PART 42: couple edits —');
   check('drive src = lh3', aa.assetSrc({ id: 'abc' }, 200), 'https://lh3.googleusercontent.com/d/abc=w200');
 }
 
+// PART 51 — the chat's "🤖" buttons: send the bot's details request / price list by hand (2026-10-09)
+console.log('\n— PART 51: manual bot sends —');
+{
+  const bs = await loadModule('supabase/functions/_shared/whatsappBotSend.ts', 'bs51');
+  const st = { greetingText: 'היי! כדי לשלוח הצעה, מה השמות, התאריך, האולם ומספר המוזמנים?', greetingTextAd: 'היי מהמודעה!', pricelistUrl: 'https://x/p.jpg', pricelistText: 'המחירון שלנו' };
+  const g = bs.planManualBotSend('greeting', st, { state: 'NEW', source: null });
+  check('details request: the greeting text, NEW → AWAITING_DETAILS', g.sends.map((x) => x.type + ':' + x.text).join() + '|' + g.nextState, 'text:' + st.greetingText + '|AWAITING_DETAILS');
+  check('from an ad → the ad greeting', bs.planManualBotSend('greeting', st, { state: 'NEW', source: 'facebook_ad' }).sends[0].text, 'היי מהמודעה!');
+  check('already past the greeting → state kept', bs.planManualBotSend('greeting', st, { state: 'PRICELIST_SENT' }).nextState, null);
+  const p = bs.planManualBotSend('pricelist', st, { state: 'NEW' });
+  check('price list: image with the text as caption → PRICELIST_SENT', p.sends.map((x) => x.type).join() + '|' + p.sends[0].caption + '|' + p.nextState, 'file|המחירון שלנו|PRICELIST_SENT');
+  check('no greeting configured → a clear error, nothing to send', bs.planManualBotSend('greeting', { ...st, greetingText: '' }, {}).error, 'אין הודעת פתיחה בהגדרות הבוט');
+  check('no price list configured → a clear error', bs.planManualBotSend('pricelist', { ...st, pricelistUrl: '', pricelistText: '' }, {}).error, 'אין מחירון בהגדרות הבוט');
+}
+
 // PART 50 — the owner's own order of the chat boxes (2026-10-09)
 console.log('\n— PART 50: box order —');
 {

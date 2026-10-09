@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ChevronRight, Pin, PinOff, Archive, ArchiveRestore, Tag, Send, Loader2, BellOff, Trash2, Plus, X, CalendarPlus, Sparkles } from "lucide-react";
+import { ChevronRight, Pin, PinOff, Archive, ArchiveRestore, Tag, Send, Loader2, BellOff, Trash2, Plus, X, CalendarPlus, Sparkles, Bot } from "lucide-react";
 import { toast } from "sonner";
 import MessageBubble from "@/components/whatsapp/MessageBubble";
 import { groupMessagesByDay, formatMessageDateTime } from "@/components/whatsapp/whatsappInboxShared";
@@ -11,6 +11,7 @@ import { typeColor, stageColor } from "@/lib/chatColors";
 import { displayPhone } from "@/components/whatsapp/whatsappInboxShared";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import AiAssistPanel from "./AiAssistPanel";
+import BotSendPanel from "./BotSendPanel";
 import AiSummaryBar from "./AiSummaryBar";
 import ReturnReminderButton from "./ReturnReminderButton";
 import { aiTagInfo } from "@/lib/aiAssist";
@@ -45,6 +46,7 @@ export default function ChatThread({
   const [busy, setBusy] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showAi, setShowAi] = useState(false);
+  const [showBot, setShowBot] = useState(false);
   const [editing, setEditing] = useState(null); // {id?, name, body}
   const scrollRef = useRef(null);
   const textRef = useRef(null);
@@ -55,6 +57,7 @@ export default function ChatThread({
     setText(drafts.current[conversation.id] || "");
     setShowTemplates(false);
     setShowAi(false);
+    setShowBot(false);
     setMode("msg");
   }, [conversation.id]);
   useEffect(() => {
@@ -243,6 +246,7 @@ export default function ChatThread({
       </div>
 
       <div className="relative border-t border-gray-800 bg-gray-900/80 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 md:px-4">
+        {showBot && !isNote && <BotSendPanel conversation={conversation} onClose={() => setShowBot(false)} />}
         {showAi && !isNote && (
           <AiAssistPanel
             conversation={conversation}
@@ -315,17 +319,28 @@ export default function ChatThread({
           <button type="button" role="tab" aria-selected={!isNote} onClick={() => setMode("msg")} className={`rounded-full px-3 py-1 text-xs ${!isNote ? "bg-emerald-900/70 text-emerald-100" : "text-gray-400"}`}>הודעת וואטסאפ</button>
           <button type="button" role="tab" aria-selected={isNote} onClick={() => setMode("note")} className={`rounded-full px-3 py-1 text-xs ${isNote ? "bg-yellow-900/60 text-yellow-200" : "text-gray-400"}`}>הערה פנימית</button>
         </div>
-        <div className="flex items-end gap-2">
-          <button type="button" onClick={() => { setShowTemplates((v) => !v); setShowAi(false); }} aria-label="תשובות מהירות" title="תשובות מהירות" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gray-800 text-xl font-bold text-yellow-400">/</button>
+        <div className="flex items-end gap-1.5 md:gap-2">
+          <button type="button" onClick={() => { setShowTemplates((v) => !v); setShowAi(false); setShowBot(false); }} aria-label="תשובות מהירות" title="תשובות מהירות" className="flex h-10 w-10 md:h-11 md:w-11 shrink-0 items-center justify-center rounded-full bg-gray-800 text-xl font-bold text-yellow-400">/</button>
           {!isNote && isSalesChat(conversation) && (
             <button
               type="button"
-              onClick={() => { setShowAi((v) => !v); setShowTemplates(false); }}
+              onClick={() => { setShowAi((v) => !v); setShowTemplates(false); setShowBot(false); }}
               aria-label="עוזר מכירות"
               title="הצע תשובה / שפר ניסוח"
-              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${showAi ? "bg-violet-600 text-white" : "bg-gray-800 text-violet-300 hover:text-violet-100"}`}
+              className={`flex h-10 w-10 md:h-11 md:w-11 shrink-0 items-center justify-center rounded-full ${showAi ? "bg-violet-600 text-white" : "bg-gray-800 text-violet-300 hover:text-violet-100"}`}
             >
               <Sparkles className="h-5 w-5" />
+            </button>
+          )}
+          {!isNote && isSalesChat(conversation) && (
+            <button
+              type="button"
+              onClick={() => { setShowBot((v) => !v); setShowTemplates(false); setShowAi(false); }}
+              aria-label="שליחה בשם הבוט"
+              title="שלח את בקשת הפרטים או את המחירון של הבוט"
+              className={`flex h-10 w-10 md:h-11 md:w-11 shrink-0 items-center justify-center rounded-full ${showBot ? "bg-emerald-600 text-white" : "bg-gray-800 text-emerald-300 hover:text-emerald-100"}`}
+            >
+              <Bot className="h-5 w-5" />
             </button>
           )}
           <textarea
@@ -335,7 +350,8 @@ export default function ChatThread({
             onKeyDown={onKeyDown}
             rows={1}
             aria-label={isNote ? "הערה פנימית" : "הודעה"}
-            placeholder={isNote ? "הערה שרק אתה רואה — לא נשלחת" : "הודעה (הקלד / לתבניות)"}
+            placeholder={isNote ? "הערה פנימית — לא נשלחת" : "הודעה"}
+            title={isNote ? undefined : "הקלד / לתבניות"}
             className={`max-h-40 min-h-[44px] min-w-0 flex-1 resize-none rounded-3xl px-4 py-2.5 text-base outline-none md:text-sm ${
               isNote ? "border border-dashed border-yellow-700 bg-yellow-950/40 text-yellow-100 placeholder:text-yellow-700" : "border border-gray-700 bg-gray-800 text-white placeholder:text-gray-500"
             }`}

@@ -489,17 +489,20 @@ export function composeSends(
 
 export async function executeSends(
   supabase: any,
-  { tenantId, conversationId, phone, sends, kind }: {
+  { tenantId, conversationId, phone, sends, kind, manual = false }: {
     tenantId: string; conversationId: string; phone: string;
     sends: DeferredSendItem[]; kind: BotSendKind;
+    // Sent from the chat's "🤖" buttons (2026-10-09) — only changes the failure wording.
+    manual?: boolean;
   }
 ): Promise<BotSendOutcome> {
+  const tag = manual ? '' : ' (דחויה)';
   let delivered = false;
   for (const item of sends) {
     if (item.type === 'file') {
       const r = await sendWhatsAppFileByUrl(supabase, phone, item.url, 'pricelist.jpg', item.caption ?? undefined, tenantId);
       if (!r.success) {
-        await notifyFailure(supabase, tenantId, phone, 'שליחת המחירון (דחויה) נכשלה');
+        await notifyFailure(supabase, tenantId, phone, `שליחת המחירון${tag} נכשלה`);
         return { sent: delivered, error: r.error };
       }
       await recordBotMessage(supabase, {
@@ -514,7 +517,7 @@ export async function executeSends(
           supabase, tenantId, phone,
           delivered
             ? 'תמונת המחירון נשלחה אבל הטקסט עם הקישורים לא — כדאי לשלוח אותו ידנית'
-            : 'לא הצלחנו לשלוח הודעה אוטומטית (דחויה)'
+            : `לא הצלחנו לשלוח הודעה אוטומטית${tag}`
         );
         return { sent: delivered, error: r.error };
       }
@@ -560,4 +563,29 @@ export async function enqueueDeferredSend(
     return { ok: false, error: error.message };
   }
   return { ok: true };
+}
+
+// ---------------------------------------------------------------------------------
+// The chat's "🤖" buttons (2026-10-09, the owner's request): send the bot's first message
+// (the one that asks for the event details) or the price list (image + text) by hand —
+// exactly what the bot would send, recorded as the bot's message so the flow goes on from
+// there. Pure: what to send and where the conversation moves. whatsapp-send-bot-message
+// does the sending.
+export type ManualBotKind = 'greeting' | 'pricelist';
+export function planManualBotSend(
+  kind: ManualBotKind,
+  settings: Pick<BotSettings, 'greetingText' | 'greetingTextAd' | 'pricelistUrl' | 'pricelistText'>,
+  conversation: { state?: string | null; source?: string | null },
+): { sends: DeferredSendItem[]; nextState: string | null; error: string | null } {
+  if (kind === 'greeting') {
+    const text = (conversation.source === 'facebook_ad' && settings.greetingTextAd?.trim()) ? settings.greetingTextAd : settings.greetingText;
+    const sends = composeSends('greeting', { text });
+    if (!sends.length) return { sends, nextState: null, error: 'אין הודעת פתיחה בהגדרות הבוט' };
+    // From here the bot collects the details as usual. A conversation already past the
+    // greeting keeps its state.
+    return { sends, nextState: !conversation.state || conversation.state === 'NEW' ? 'AWAITING_DETAILS' : null, error: null };
+  }
+  const sends = composeSends('pricelist', { pricelistUrl: settings.pricelistUrl, pricelistText: settings.pricelistText });
+  if (!sends.length) return { sends, nextState: null, error: 'אין מחירון בהגדרות הבוט' };
+  return { sends, nextState: 'PRICELIST_SENT', error: null };
 }
