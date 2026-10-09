@@ -84,3 +84,14 @@ export function notificationDayGroup(iso, now = new Date()) {
   const d = day(iso);
   return d === today ? "today" : d === yesterday ? "yesterday" : "earlier";
 }
+
+// A staff availability answer in the bell (2026-10-09, the owner's request): green when the
+// person is free, red when not. The answer is in the title the server writes
+// ("<name> פנוי/ה — <couple>" / "<name> לא פנוי/ה — <couple>").
+export function availabilityAnswer(n) {
+  if (n?.type !== "staff_availability_response") return null;
+  const t = String(n.title || "");
+  if (t.includes("לא פנוי")) return "declined";
+  if (t.includes("פנוי")) return "available";
+  return null;
+}

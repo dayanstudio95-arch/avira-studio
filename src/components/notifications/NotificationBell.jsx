@@ -7,7 +7,7 @@ import { Bell, CheckCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { useNotifications } from "./NotificationsContext";
-import { NOTIFICATION_TABS, notificationTab, notificationEmoji, notificationDayGroup } from "@/lib/notificationCategories";
+import { NOTIFICATION_TABS, notificationTab, notificationEmoji, notificationDayGroup, availabilityAnswer } from "@/lib/notificationCategories";
 
 // In-app notifications bell — the one place in the app that reports things nobody
 // asked to see. Started as contract-signed only (migration
@@ -164,16 +164,22 @@ export default function NotificationBell() {
                 <div className="sticky top-0 z-10 bg-gray-900/95 px-3 pb-1 pt-2 text-[11px] font-semibold text-gray-400 backdrop-blur">{DAY_LABELS[sec.key]}</div>
                 {sec.items.map((n) => {
                   const failed = isFailure(n.type);
+                  const answer = availabilityAnswer(n); // "available" → green, "declined" → red
+                  const tone = answer === "available"
+                    ? "border-r-[3px] border-emerald-500 bg-emerald-500/10"
+                    : answer === "declined"
+                    ? "border-r-[3px] border-red-500 bg-red-500/10"
+                    : !n.isRead ? "bg-blue-500/10" : "";
                   return (
                     <button
                       key={n.id}
                       onClick={() => handleClick(n)}
-                      className={`flex w-full items-start gap-2 px-3 py-2 text-right transition-colors hover:bg-gray-800/60 ${!n.isRead ? "bg-blue-500/10" : ""}`}
+                      className={`flex w-full items-start gap-2 px-3 py-2 text-right transition-colors hover:bg-gray-800/60 ${tone}`}
                     >
                       <span className="mt-0.5 w-5 shrink-0 text-center text-sm">{notificationEmoji(n.type)}</span>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline justify-between gap-2">
-                          <p className={`truncate text-sm ${failed ? "text-red-300" : !n.isRead ? "font-semibold text-white" : "text-gray-300"}`}>{n.title}</p>
+                          <p className={`truncate text-sm ${failed || answer === "declined" ? "text-red-300" : answer === "available" ? "text-emerald-300" : !n.isRead ? "font-semibold text-white" : "text-gray-300"} ${!n.isRead ? "font-semibold" : ""}`}>{n.title}</p>
                           <span className="shrink-0 text-[10px] text-gray-500 tabular-nums">{timeOf(createdOf(n), sec.key)}</span>
                         </div>
                         {n.body && <p className="mt-0.5 line-clamp-1 text-xs text-gray-500">{n.body}</p>}

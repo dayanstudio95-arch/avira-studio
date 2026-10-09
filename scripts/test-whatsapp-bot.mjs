@@ -2209,6 +2209,16 @@ console.log('\n— PART 42: couple edits —');
   check('drive src = lh3', aa.assetSrc({ id: 'abc' }, 200), 'https://lh3.googleusercontent.com/d/abc=w200');
 }
 
+// PART 46 — availability answers coloured in the bell (2026-10-09)
+console.log('\n— PART 46: availability answer colour —');
+{
+  const nc = await loadModule('src/lib/notificationCategories.js', 'nc46');
+  const t = (title) => nc.availabilityAnswer({ type: 'staff_availability_response', title });
+  check('free → green', t('סלבה פנוי/ה — עדי וטל'), 'available');
+  check('not free → red', t('רודי לא פנוי/ה — שיר ורועי'), 'declined');
+  check('other notifications untouched', nc.availabilityAnswer({ type: 'contract_signed', title: 'פנוי' }), null);
+}
+
 // PART 45 — year pickers up to 2050 (2026-10-09)
 console.log('\n— PART 45: year options —');
 {
