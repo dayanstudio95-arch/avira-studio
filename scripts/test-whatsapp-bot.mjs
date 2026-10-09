@@ -2260,6 +2260,22 @@ console.log('\n— PART 52: information requests —');
   check('a colleague asking for information → still silent (vendor veto)', wi52.detectLeadIntent('היי, אני צלם, אשמח לקבל מידע על חתונות אצלכם', {}).isInquiry, false);
 }
 
+// PART 54 — the search box on "סטטוס עבודה" (2026-10-09)
+console.log('\n— PART 54: work-status search —');
+{
+  const ps = await loadModule('src/lib/progressSearch.js', 'ps54');
+  const ev = { date: '2026-06-24', coupleNames: 'עמית ושלומי', venue: 'גן הדר', team: [{ role: 'photographer1', staffMemberName: 'דניאל' }, { role: 'editor', staffMemberName: 'דרור' }] };
+  const now = new Date('2026-10-09T10:00:00');
+  const m = (q) => ps.matchesProgressSearch(ev, q, now);
+  check('couple name', m('שלומי'), true);
+  check('venue', m('גן הדר'), true);
+  check('a team member', m('דרור'), true);
+  check('two words from different fields', m('עמית דרור'), true);
+  check('full date / day+month', m('24/6/2026') + '|' + m('24.6'), 'true|true');
+  check('no match', m('אופק'), false);
+  check('empty search matches all', m('  '), true);
+}
+
 // PART 53 — a date + "are you free / price" is enough without a service word (2026-10-09)
 console.log('\n— PART 53: date + availability —');
 {

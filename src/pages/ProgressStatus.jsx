@@ -3,7 +3,8 @@ import { base44 } from "@/api/base44Client";
 import { uploadFile } from "@/api/uploadFile";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar, Camera, Video, Scissors, Filter, CalendarDays, CheckSquare } from "lucide-react";
+import { Calendar, Camera, Video, Scissors, Filter, CalendarDays, CheckSquare, Search, X } from "lucide-react";
+import { matchesProgressSearch } from "@/lib/progressSearch";
 import ProgressEventMobileCard from "../components/progressStatus/ProgressEventMobileCard";
 import ProgressEventRow from "../components/progressStatus/ProgressEventRow";
 import { useProgressActions } from "../components/progressStatus/useProgressActions";
@@ -49,6 +50,9 @@ export default function ProgressStatus() {
   const [staffMembers, setStaffMembers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState("all");
+  // The search box (2026-10-09): names, venue, team member or a date — across every year.
+  const [search, setSearch] = useState("");
+  const searching = search.trim().length > 0;
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [showDuplicates, setShowDuplicates] = useState(false);
   const [sortOrder, setSortOrder] = useState(() => localStorage.getItem('progress_sort') || 'asc');
@@ -186,8 +190,13 @@ export default function ProgressStatus() {
   };
 
   const filteredEvents = events.filter(event => {
-    const year = new Date(event?.date || "").getFullYear();
-    if (year !== selectedYear) return false;
+    // A search looks in every year (the owner doesn't always know which year a couple is).
+    if (searching) {
+      if (!matchesProgressSearch(event, search)) return false;
+    } else {
+      const year = new Date(event?.date || "").getFullYear();
+      if (year !== selectedYear) return false;
+    }
     if (filter === "all") return true;
     const progress = getProgress(event, event?.team || []);
     if (filter === "completed")  return progress.percentage === 100;
@@ -216,7 +225,8 @@ export default function ProgressStatus() {
       const pct = (e) => getProgress(e, e?.team || []).percentage;
       const done = g.events.filter((e) => pct(e) === 100).length;
       const complete = done === g.events.length;
-      const mode = monthMode[g.label] || (filter !== "all" ? "all" : complete ? "closed" : "open");
+      // While searching every match is shown, finished ones included.
+      const mode = searching ? "all" : monthMode[g.label] || (filter !== "all" ? "all" : complete ? "closed" : "open");
       const visible = mode === "closed" ? [] : mode === "all" ? g.events : g.events.filter((e) => pct(e) < 100);
       items.push({ type: "monthHeader", id: `header-${g.label}`, label: g.label, done, total: g.events.length, complete, mode });
       for (const e of visible) items.push({ type: "event", id: e?.id, data: e });
@@ -323,6 +333,30 @@ export default function ProgressStatus() {
               address, and "הגדרות תזכורת אלבומים" saved a text nothing reads. The working album
               reminder is in the automations dashboard. */}
           </div>
+        </div>
+
+        {/* Search (2026-10-09): couple, venue, team member or a date — in every year. */}
+        <div className="relative mb-5">
+          <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+          <input
+            type="text"
+            inputMode="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="חיפוש לפי שם הזוג, אולם, איש צוות או תאריך (24/6/2026)…"
+            aria-label="חיפוש אירוע"
+            className="h-11 w-full rounded-xl border border-[#2A3B57] bg-[#0B1529] pe-10 ps-10 text-sm text-white placeholder:text-slate-500 outline-none focus:border-sky-500"
+          />
+          {searching && (
+            <button type="button" onClick={() => setSearch("")} aria-label="נקה חיפוש" className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white">
+              <X className="h-4 w-4" />
+            </button>
+          )}
+          {searching && (
+            <div className="mt-2 text-xs text-slate-400">
+              {filteredEvents.length ? `נמצאו ${filteredEvents.length} ${filteredEvents.length === 1 ? "אירוע" : "אירועים"}, בכל השנים` : "לא נמצא אירוע שמתאים לחיפוש"}
+            </div>
+          )}
         </div>
 
         {/* Design E: four counts for the selected year (the same rule as the status filter). */}
