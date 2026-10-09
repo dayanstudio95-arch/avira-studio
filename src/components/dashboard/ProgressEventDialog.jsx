@@ -17,7 +17,11 @@ export default function ProgressEventDialog({ event, staffMembers, onClose, onCh
     if (!event) return;
     setEvents([event]);
     // the newest copy, in case the dashboard's is a few minutes old
-    base44.entities.Event.get(event.id).then((fresh) => fresh && setEvents([fresh])).catch(() => {});
+    let alive = true; // a late answer for a window already closed / replaced is dropped
+    base44.entities.Event.get(event.id).then((fresh) => alive && fresh && setEvents([fresh])).catch(() => {});
+    return () => {
+      alive = false;
+    };
   }, [event]);
 
   if (!event) return null;

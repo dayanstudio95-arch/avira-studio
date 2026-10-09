@@ -533,7 +533,7 @@ export default function ProgressStatus() {
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" dir="rtl">
           <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <h2 className="text-xl font-bold text-white mb-4">שליחת תזכורת אלבומים</h2>
-            <div className="flex gap-3 mb-4 items-end">
+            <div className="flex flex-wrap gap-3 mb-4 items-end">
               <div>
                 <label className="block text-gray-400 text-sm mb-1">חודש</label>
                 <select className="bg-gray-800 border border-gray-600 text-white rounded-lg px-2 py-1" value={albumSendMonth} onChange={e => setAlbumSendMonth(Number(e.target.value))}>

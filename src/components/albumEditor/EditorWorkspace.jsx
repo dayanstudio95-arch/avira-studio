@@ -160,7 +160,12 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
   const keyRef = useRef(onKey);
   keyRef.current = onKey;
   useEffect(() => {
-    const h = (e) => keyRef.current(e);
+    // While a confirm is open the editor's shortcuts are off (QA 2026-10-09): window.confirm
+    // used to block keys; the in-app confirm doesn't, and Delete / ⌘Z / arrows acted behind it.
+    const h = (e) => {
+      if (document.querySelector("[data-confirm-dialog]")) return;
+      keyRef.current(e);
+    };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, []);

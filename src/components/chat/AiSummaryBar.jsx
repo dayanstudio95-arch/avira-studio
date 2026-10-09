@@ -11,14 +11,17 @@ export default function AiSummaryBar({ conversation }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [fresh, setFresh] = useState(null);
-  const summary = fresh?.id === conversation.id ? fresh.summary : conversation.aiSummary;
-  const stale = !fresh || fresh.id !== conversation.id ? summaryIsStale(conversation) : false;
+  // The just-made summary is shown until the conversation row (realtime) carries one as new;
+  // "רענן" follows the conversation's own timestamps, so a new message brings it back.
+  const useFresh = fresh?.id === conversation.id && (!conversation.aiSummaryAt || new Date(fresh.at) > new Date(conversation.aiSummaryAt));
+  const summary = useFresh ? fresh.summary : conversation.aiSummary;
+  const stale = useFresh ? summaryIsStale({ ...conversation, aiSummaryAt: fresh.at }) : summaryIsStale(conversation);
 
   const load = async (force) => {
     setBusy(true);
     try {
       const res = await base44.functions.invoke("whatsappAiAssist", { action: "summary", conversationId: conversation.id, force });
-      setFresh({ id: conversation.id, summary: res.data.summary });
+      setFresh({ id: conversation.id, summary: res.data.summary, at: new Date().toISOString() });
       setOpen(true);
     } catch (e) {
       toast.error("הסיכום לא הצליח", { description: e?.message });

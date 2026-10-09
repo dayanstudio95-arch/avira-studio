@@ -6,6 +6,8 @@ import { CONTACT_TYPES, STAGES, contactTypeLabel, effectiveStage, hasStage } fro
 import { Avatar, conversationTitle } from "./ChatList";
 import { typeColor, stageColor } from "@/lib/chatColors";
 import StaffChatSection from "./staff/StaffChatSection";
+import { useAuth } from "@/lib/SupabaseAuthContext";
+import { isAdmin } from "@/lib/permissions";
 
 const chip = (on, color) =>
   `min-h-[36px] rounded-full px-3 text-sm transition-colors ${
@@ -42,6 +44,8 @@ export default function ContactPanel({
   onSetType, onSetStage, onToggleLabel, onCreateLead, onToggleBot, onToggleOptOut, onArchive, onPin, onScheduleMeeting,
 }) {
   const c = conversation;
+  const { user } = useAuth();
+  const canSeeStaff = isAdmin(user);
   const stage = effectiveStage(c, lead);
   const staged = hasStage(c);
   const linked = !!(c.matchedLeadId && lead);
@@ -78,7 +82,8 @@ export default function ContactPanel({
       </section>
 
       {/* A crew member: slots, cost, area, availability check and history (2026-10-09). */}
-      {c.contactType === "staff" && <StaffChatSection conversation={c} />}
+      {/* Staff data is admin-only (RLS) — a lead coordinator would see a wrong "not found". */}
+      {c.contactType === "staff" && canSeeStaff && <StaffChatSection conversation={c} />}
 
       {staged && (
         <section className="space-y-2">
@@ -137,7 +142,7 @@ export default function ContactPanel({
           </button>
         )
       )}
-      {["client", "past_client"].includes(c.contactType) && <ClientActionsCard conversation={c} />}
+      {["client", "past_client"].includes(c.contactType) && <ClientActionsCard key={c.id} conversation={c} />}
       {onScheduleMeeting && (
         <button type="button" onClick={onScheduleMeeting} className="w-full rounded-xl border border-gray-700 bg-gray-900 py-3 text-sm font-semibold text-gray-100 hover:border-yellow-500">
           📅 קבע פגישה / שיחה

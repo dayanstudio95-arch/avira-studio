@@ -206,7 +206,7 @@ export default function ChatThread({
       {hasStage(conversation) && (
         <DateAvailability info={eventDateFor(conversation, lead, thread.timeline)} excludeLeadId={conversation.matchedLeadId} conversationId={conversation.id} />
       )}
-      {isSalesChat(conversation) && <AiSummaryBar conversation={conversation} />}
+      {isSalesChat(conversation) && <AiSummaryBar key={conversation.id} conversation={conversation} />}
 
       {conversation.optedOutAt && (
         <div className="flex items-center gap-2 border-b border-red-900/50 bg-red-950/40 px-4 py-2 text-xs text-red-200">

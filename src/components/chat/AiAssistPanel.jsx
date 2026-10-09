@@ -58,7 +58,7 @@ export default function AiAssistPanel({ conversation, draft, onUse, onClose }) {
   };
 
   return (
-    <div className="absolute bottom-full right-2 z-20 mb-2 w-[min(440px,calc(100vw-1rem))] rounded-2xl border border-violet-800/70 bg-gray-900 p-2.5 shadow-2xl">
+    <div className="absolute bottom-full right-2 z-20 mb-2 w-[min(440px,calc(100%-1rem))] rounded-2xl border border-violet-800/70 bg-gray-900 p-2.5 shadow-2xl">
       <div className="mb-2 flex items-center justify-between px-1">
         <span className="flex items-center gap-1.5 text-sm font-semibold text-violet-200"><Sparkles className="h-4 w-4" /> עוזר מכירות</span>
         <button type="button" onClick={onClose} aria-label="סגור" className="text-gray-500 hover:text-white"><X className="h-4 w-4" /></button>

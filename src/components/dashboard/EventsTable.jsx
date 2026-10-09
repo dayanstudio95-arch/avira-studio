@@ -254,14 +254,14 @@ export default function EventsTable({ events, isLoading, onRefresh, gaps = null 
                         variant="outline"
                         onClick={(e) => openProgress(e, event)}
                         title="לחצו לסימון בסטטוס עבודה"
-                        className={`${progressStatus.color} border text-xs cursor-pointer hover:opacity-80`}
+                        className={`${progressStatus.color} border text-xs cursor-pointer hover:opacity-80 min-h-[36px] px-2.5`}
                       >
                         {progressStatus.label}
                       </Badge>
                       <Badge
                         variant="outline"
                         onClick={isFullTeam ? undefined : (e) => openTeam(e, event)}
-                        className={`${isFullTeam ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30 cursor-pointer hover:bg-red-500/30'} border text-xs`}
+                        className={`${isFullTeam ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30 cursor-pointer hover:bg-red-500/30 min-h-[36px] px-2.5'} border text-xs`}
                       >
                         {isFullTeam ? <UserCheck className="w-3 h-3 mr-1 inline" /> : <AlertTriangle className="w-3 h-3 mr-1 inline" />}
                         צוות {isFullTeam ? 'מלא' : `חסר ${requiredCrew - assignedTeam.length}`}
@@ -281,7 +281,7 @@ export default function EventsTable({ events, isLoading, onRefresh, gaps = null 
                             className={`${
                               filled
                                 ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                                : 'bg-orange-500/20 text-orange-400 border-orange-500/30 cursor-pointer hover:bg-orange-500/30'
+                                : 'bg-orange-500/20 text-orange-400 border-orange-500/30 cursor-pointer hover:bg-orange-500/30 min-h-[36px] px-2.5'
                             } border text-xs`}
                           >
                             <ClipboardList className="w-3 h-3 mr-1 inline" />

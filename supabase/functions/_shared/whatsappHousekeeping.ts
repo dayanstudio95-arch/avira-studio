@@ -108,6 +108,11 @@ async function sendReturnReminders(supabase: any, tenantId: string, push?: PushF
     .eq('tenant_id', tenantId)
     .lte('return_at', nowIso)
     .is('return_notified_at', null)
+    // Only people still being sold to (QA 2026-10-09): a couple who signed (→ לקוח), an
+    // archived chat or one that asked to stop gets no "חזור אליהם".
+    .in('contact_type', ['lead', 'unknown'])
+    .is('archived_at', null)
+    .is('opted_out_at', null)
     .limit(RETURN_BATCH);
   let n = 0;
   for (const c of due || []) {

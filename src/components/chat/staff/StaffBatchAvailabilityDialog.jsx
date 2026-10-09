@@ -7,7 +7,7 @@ import { base44 } from "@/api/base44Client";
 import { generateRawToken, hashToken } from "@/lib/albumTokens";
 import { israelToday, eventDay, combinedNotes } from "@/lib/missingTeam";
 import { formatDateWithWeekday } from "@/lib/chatModel";
-import { SLOT_OPTIONS, eventsMissingSlot, batchAvailabilityMessage } from "@/lib/staffAvailabilityBatch";
+import { slotOption, SLOT_OPTIONS, eventsMissingSlot, batchAvailabilityMessage } from "@/lib/staffAvailabilityBatch";
 
 const LINK_MARK = "{{link}}";
 
@@ -22,6 +22,7 @@ export default function StaffBatchAvailabilityDialog({ staff, onClose }) {
   const [picked, setPicked] = useState({});
   const [text, setText] = useState("");
   const [edited, setEdited] = useState(false);
+  const [editedFor, setEditedFor] = useState(""); // which events the hand-edited text was written for
   const [sending, setSending] = useState(false);
 
   const eventsQ = useQuery({ queryKey: ["staffBatchEvents"], queryFn: () => base44.entities.Event.filter({ date: { $gte: israelToday() } }, "date", 1000), staleTime: 30000 });
@@ -58,7 +59,9 @@ export default function StaffBatchAvailabilityDialog({ staff, onClose }) {
           eventId: e.id,
           staffMemberId: staff.id,
           staffNameSnapshot: staff.name,
-          role: staff.role,
+          // The slot decides the job (QA 2026-10-09): a photographer asked for "וידאו 1" is a
+          // videographer request, and editors never break the photo/video CHECK.
+          role: slotOption(slot)?.jobRole || staff.role,
           teamRole: slot,
           eventDateSnapshot: eventDay(e),
           venueSnapshot: e.venue || null,
@@ -127,7 +130,10 @@ export default function StaffBatchAvailabilityDialog({ staff, onClose }) {
         {chosen.length > 0 && (
           <div className="space-y-1.5">
             <div className="text-xs text-gray-400">תצוגה מקדימה (אפשר לערוך) — {LINK_MARK} יוחלף בקישור האישי שלו</div>
-            <textarea value={text} onChange={(e) => { setText(e.target.value); setEdited(true); }} rows={Math.min(14, 6 + chosen.length)} className="w-full rounded-lg border border-gray-700 bg-gray-800 p-3 text-sm text-white" />
+            <textarea value={text} onChange={(e) => { setText(e.target.value); if (!edited) setEditedFor(chosen.map((x) => x.id).join()); setEdited(true); }} rows={Math.min(14, 6 + chosen.length)} className="w-full rounded-lg border border-gray-700 bg-gray-800 p-3 text-sm text-white" />
+            {edited && editedFor !== chosen.map((x) => x.id).join() && (
+              <div className="rounded-md bg-amber-950/50 px-2 py-1 text-xs text-amber-200">רשימת האירועים השתנתה אחרי שערכת את הנוסח — ההודעה לא כוללת את השינוי. לחץ "חזרה לנוסח האוטומטי" כדי לעדכן.</div>
+            )}
             {edited && <button type="button" onClick={() => setEdited(false)} className="text-xs text-sky-300 hover:underline">חזרה לנוסח האוטומטי</button>}
           </div>
         )}

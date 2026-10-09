@@ -95,6 +95,14 @@ export default function ChatApp() {
   }, [savedOrder, ordered]);
   const [orderOpen, setOrderOpen] = useState(false);
   const saveBoxOrder = async (order) => {
+    if (!prefsQ.isSuccess) {
+      toast.error("ההגדרות עוד נטענות — נסו שוב בעוד רגע");
+      return false;
+    }
+    if (!order.primary.length) {
+      toast.error('השאירו לפחות תיבה אחת ב"למעלה"');
+      return false;
+    }
     try {
       const next = { ...(prefsQ.data || {}), boxOrder: order };
       const { error } = await supabase.from("profiles").update({ chat_prefs: next }).eq("id", data.user.id);

@@ -63,7 +63,9 @@ export default function AiSalesAssistCard() {
       .map((p) => ({
         name: String(p.name).trim(),
         list: num(p.list),
-        steps: String(Array.isArray(p.steps) ? p.steps.join(",") : p.steps || "").split(/[,\s←]+/).map(num).filter(Boolean),
+        // "13,000, 12,500" — drop thousands commas first, then split (QA 2026-10-09: it used to
+        // read 13 / 12 / 500).
+        steps: String(Array.isArray(p.steps) ? p.steps.join(" ") : p.steps || "").replace(/(\d),(\d{3})(?!\d)/g, "$1$2").split(/[,;\s←]+/).map(num).filter(Boolean),
         thuFri: num(p.thuFri),
         winter: num(p.winter),
         none: !!p.none,
@@ -71,6 +73,12 @@ export default function AiSalesAssistCard() {
     const bad = packages.find((p) => p.steps.some((n) => n >= p.list) || (p.winter && p.winter >= p.list) || (p.thuFri && p.thuFri >= p.list));
     if (bad) {
       toast.error(`ב"${bad.name}" יש מחיר הנחה שאינו נמוך מהמחירון`);
+      return;
+    }
+    // A typo like "1,250" for 12,500 must not become an allowed price.
+    const tooLow = packages.find((p) => [...p.steps, p.winter, p.thuFri].some((n) => n && n < p.list / 2));
+    if (tooLow) {
+      toast.error(`ב"${tooLow.name}" יש מחיר הנחה נמוך מחצי מהמחירון — כנראה טעות הקלדה`);
       return;
     }
     const values = {

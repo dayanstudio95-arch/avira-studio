@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Loader2, Send, CheckCircle2, XCircle, Clock } from "lucide-react";
@@ -62,9 +62,12 @@ export default function StaffAvailabilityHistoryDialog({ staff, onClose }) {
     qc.invalidateQueries({ queryKey: ["staffHistoryEvents"] });
   };
 
+  // The request's own slot / job decides (QA 2026-10-09): a photographer who answered a
+  // "וידאו 1" request is offered the video slots, not צלם 1/2.
   const slotsFor = (r) => {
-    const mine = (staff.teamSlots || []).filter((s) => SLOT_OPTIONS.some((o) => o.value === s && o.jobRole === staff.role));
-    const all = SLOT_OPTIONS.filter((o) => o.jobRole === staff.role).map((o) => o.value);
+    const jobRole = SLOT_OPTIONS.find((o) => o.value === r.request.teamRole)?.jobRole || r.request.role || staff.role;
+    const mine = (staff.teamSlots || []).filter((s) => SLOT_OPTIONS.some((o) => o.value === s && o.jobRole === jobRole));
+    const all = SLOT_OPTIONS.filter((o) => o.jobRole === jobRole).map((o) => o.value);
     const order = [r.request.teamRole, ...mine, ...all].filter((v, i, a) => v && a.indexOf(v) === i && all.includes(v));
     return order;
   };
@@ -170,6 +173,9 @@ function BookingStep({ staff, items, onDone }) {
   const [combined, setCombined] = useState("");
   const [each, setEach] = useState([]);
   const [sending, setSending] = useState(false);
+  // Messages already sent in this window (QA 2026-10-09): a retry after a failure in the
+  // middle must not send the first ones again.
+  const sentRef = useRef(new Set());
 
   useEffect(() => {
     let alive = true;
@@ -190,10 +196,15 @@ function BookingStep({ staff, items, onDone }) {
     setSending(true);
     try {
       const messages = mode === "one" ? [combined] : each;
+      let sentNow = 0;
       for (const [i, message] of messages.entries()) {
-        if (i > 0) await pauseBetweenSends();
+        const key = `${mode}:${i}`;
+        if (sentRef.current.has(key)) continue;
+        if (sentNow > 0) await pauseBetweenSends();
         const res = await base44.functions.invoke("sendStaffScheduleMessage", { staffId: staff.id, message });
         if (res.data?.error) throw new Error(res.data.error);
+        sentRef.current.add(key);
+        sentNow++;
         const covered = mode === "one" ? items : [items[i]];
         for (const it of covered) await base44.entities.StaffAvailabilityRequest.update(it.request.id, { bookingNotifiedAt: new Date().toISOString() }).catch(() => {});
       }

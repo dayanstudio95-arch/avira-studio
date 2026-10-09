@@ -40,6 +40,7 @@ export async function fetchDateAvailability(dates) {
     matchedIds.length ? supabase.from("leads").select("id, status").in("id", matchedIds) : { data: [] },
     openIds.length ? supabase.from("whatsapp_conversations").select("id, matched_lead_id").in("matched_lead_id", openIds) : { data: [] },
   ]);
+  for (const r of [withEvent, statuses, openChats]) if (r.error) throw r.error;
   raw.leadIdsWithEvent = (withEvent.data || []).map((e) => e.source_lead_id);
   raw.leadStatusById = Object.fromEntries((statuses.data || []).map((l) => [l.id, l.status]));
   raw.convIdByLeadId = Object.fromEntries((openChats.data || []).map((c) => [c.matched_lead_id, c.id]));

@@ -143,9 +143,20 @@ export default function Dashboard() {
 
   // "חורים השנה" (2026-10-09): events of the selected year with something open — rules in
   // src/lib/eventGaps.js. The questionnaire flag lives on the lead (one light query).
+  // Only the leads of the events on screen, in chunks (QA 2026-10-09: an unfiltered query
+  // stops at 1000 rows, and leads past it would silently lose their questionnaire hole).
+  const questLeadIds = useMemo(() => Array.from(new Set(events.map((e) => e.sourceLeadId).filter(Boolean))).sort(), [events]);
   const questLeadsQ = useQuery({
-    queryKey: ["dashQuestionnaireLeads"],
-    queryFn: () => base44.entities.Lead.filter({}, undefined, undefined, "id, production_form_filled_at"),
+    queryKey: ["dashQuestionnaireLeads", questLeadIds.join()],
+    enabled: questLeadIds.length > 0,
+    queryFn: async () => {
+      const out = [];
+      for (let i = 0; i < questLeadIds.length; i += 100) {
+        const chunk = questLeadIds.slice(i, i + 100);
+        out.push(...(await base44.entities.Lead.filter({ id: { $in: chunk } }, undefined, undefined, "id, production_form_filled_at")));
+      }
+      return out;
+    },
     staleTime: 120000,
   });
   const gapsMap = useMemo(() => {

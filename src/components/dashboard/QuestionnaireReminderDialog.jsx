@@ -23,6 +23,10 @@ export default function QuestionnaireReminderDialog({ target, onClose }) {
   const [sending, setSending] = useState(false);
   const phone = lead?.phoneNumber || event?.phoneNumber || "";
   const names = lead?.coupleNames || event?.coupleNames || "";
+  // The questionnaire link is per lead (QA 2026-10-09): without a lead id it would be a dead
+  // "/questionnaire" link — so it is built from the event's lead too, and sending is blocked
+  // when neither exists.
+  const leadId = lead?.id || event?.sourceLeadId || null;
 
   useEffect(() => {
     if (!target) return;
@@ -33,7 +37,7 @@ export default function QuestionnaireReminderDialog({ target, onClose }) {
       .catch(() => DEFAULT_TEMPLATE)
       .then((tpl) => {
         if (!alive) return;
-        setText(applyLeadTemplateVariables(tpl, { ...lead, coupleNames: names }, { eventDate: event?.date, venue: event?.venue }));
+        setText(applyLeadTemplateVariables(tpl, { ...lead, id: leadId, coupleNames: names }, { eventDate: event?.date, venue: event?.venue }));
         setLoading(false);
       });
     return () => {
@@ -42,7 +46,7 @@ export default function QuestionnaireReminderDialog({ target, onClose }) {
   }, [target]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const send = async () => {
-    if (!phone || !text.trim()) return;
+    if (!phone || !text.trim() || !leadId) return;
     setSending(true);
     try {
       const res = await base44.functions.invoke("sendWhatsAppMessage", { to: phone, message: text });
@@ -76,6 +80,7 @@ export default function QuestionnaireReminderDialog({ target, onClose }) {
               className="w-full rounded-lg border border-gray-700 bg-gray-800 p-3 text-sm leading-relaxed text-white"
             />
             <p className="text-[11px] text-gray-500">הנוסח מהתבנית "שאלון הפקה" בהגדרות ← תבניות הודעה.</p>
+            {!leadId && <p className="rounded-md bg-red-950/50 px-2 py-1 text-xs text-red-200">לאירוע הזה אין ליד מקושר, אז אין קישור לשאלון — אי אפשר לשלוח מכאן.</p>}
           </>
         )}
         <DialogFooter className="flex-row-reverse gap-2">
@@ -85,7 +90,7 @@ export default function QuestionnaireReminderDialog({ target, onClose }) {
           <button
             type="button"
             onClick={send}
-            disabled={sending || loading || !phone || !text.trim()}
+            disabled={sending || loading || !phone || !text.trim() || !leadId}
             className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
           >
             {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} שלח בוואטסאפ

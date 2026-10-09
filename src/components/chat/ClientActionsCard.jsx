@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { CalendarClock, Camera, Check, FileCheck, FileDown, ListChecks, Loader2, Receipt, Scissors, Send, Video } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -82,20 +82,25 @@ async function findLead(conversation) {
 
 export default function ClientActionsCard({ conversation }) {
   const [state, setState] = useState({ loading: true, lead: null, event: null, pkg: null });
-  const [templates, setTemplates] = useState({});
+  const [templates, setTemplates] = useState(null); // null = still loading
   const [sending, setSending] = useState(null); // 'summer' | 'winter' | 'friday' | 'contract'
   const [invoiceType, setInvoiceType] = useState(null); // 'sole_prop' | 'company'
 
+  // QA 2026-10-09: switching chats fast let a slow lookup for the previous chat land in this
+  // card — and its buttons would then send to the wrong couple. Only the newest request wins.
+  const requestRef = useRef(0);
   const load = async () => {
+    const req = ++requestRef.current;
+    const current = () => req === requestRef.current;
     try {
       const lead = await findLead(conversation);
       const events = lead ? await base44.entities.Event.filter({ sourceLeadId: lead.id }).catch(() => []) : [];
       const event = events?.[0] || null;
       const packageId = event?.packageId || lead?.packageId;
       const pkg = packageId ? await base44.entities.Package.get(packageId).catch(() => null) : null;
-      setState({ loading: false, lead, event, pkg });
+      if (current()) setState({ loading: false, lead, event, pkg });
     } catch {
-      setState({ loading: false, lead: null, event: null, pkg: null });
+      if (current()) setState({ loading: false, lead: null, event: null, pkg: null });
     }
   };
 
@@ -126,7 +131,7 @@ export default function ClientActionsCard({ conversation }) {
       toast.error("אין מספר טלפון");
       return;
     }
-    const raw = templates[opt.key];
+    const raw = templates?.[opt.key];
     if (!raw?.trim()) {
       toast.error(`יש להגדיר קודם את תבנית "${opt.label}" בהגדרות → תבניות הודעה`);
       return;
@@ -163,7 +168,12 @@ export default function ClientActionsCard({ conversation }) {
 
   return (
     <section className="space-y-3 rounded-xl border border-gray-800 bg-gray-900 p-3 text-sm">
-      <h3 className="text-xs font-semibold text-gray-500">פעולות ללקוח</h3>
+      <h3 className="flex items-baseline justify-between gap-2 text-xs font-semibold text-gray-500">
+        <span>פעולות ללקוח</span>
+        <span className="min-w-0 truncate font-normal text-gray-400" title={`${lead.coupleNames || ""} · ${lead.phoneNumber || ""}`}>
+          {lead.coupleNames} · <span dir="ltr">{lead.phoneNumber || "אין טלפון"}</span>
+        </span>
+      </h3>
 
       <RoleTimeline event={event} pkg={state.pkg} />
 
@@ -171,7 +181,7 @@ export default function ClientActionsCard({ conversation }) {
         <div className="flex items-center gap-1 text-[11px] text-gray-500"><CalendarClock className="h-3.5 w-3.5" /> שלח לוז</div>
         <div className="grid grid-cols-3 gap-1.5">
           {SCHEDULE_OPTIONS.map((opt) => (
-            <button key={opt.key} type="button" onClick={() => sendSchedule(opt)} disabled={sending === opt.key} className={`${btn} ${SCHEDULE_CLS[opt.key]}`}>
+            <button key={opt.key} type="button" onClick={() => sendSchedule(opt)} disabled={sending === opt.key || templates === null} className={`${btn} ${SCHEDULE_CLS[opt.key]}`}>
               {sending === opt.key ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
               {opt.label}
             </button>

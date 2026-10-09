@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Send, CalendarDays, MapPin } from "lucide-react";
@@ -24,8 +24,12 @@ export default function EventTeamDialog({ event, staffMembers, onClose, onChange
   const [leadNotes, setLeadNotes] = useState("");
   const pkgQ = useQuery({ queryKey: ["dashPackages"], queryFn: () => base44.entities.Package.list(), staleTime: 600000 });
 
+  // Only the newest load may write (QA 2026-10-09): closing A and opening B quickly let A's
+  // late answers land in B's window — and "✅ פנוי" would then book A's person on B.
+  const loadSeq = useRef(0);
   const load = useCallback(async () => {
     if (!event) return;
+    const seq = ++loadSeq.current;
     const [day, byEvent, byLead, lead] = await Promise.all([
       base44.entities.Event.filter({ date: event.date }).catch(() => []),
       base44.entities.StaffAvailabilityRequest.filter({ eventId: event.id }, "-requestedAt").catch(() => []),
@@ -33,6 +37,7 @@ export default function EventTeamDialog({ event, staffMembers, onClose, onChange
       // the couple's requests ("ביקשו את דודו") are often written on the lead, not the event
       event.sourceLeadId ? base44.entities.Lead.get(event.sourceLeadId).catch(() => null) : null,
     ]);
+    if (seq !== loadSeq.current) return;
     setLeadNotes(lead?.notes || "");
     setSameDay(day || []);
     // latest live request per person (re-asking adds a row; a resent one revokes the old)

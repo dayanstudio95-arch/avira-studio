@@ -52,7 +52,8 @@ export function ConfirmHost() {
         <DialogPrimitive.Overlay className="fixed inset-0 z-[2147483000] bg-black/70" />
         <DialogPrimitive.Content
           dir="rtl"
-          className="fixed left-1/2 top-1/2 z-[2147483001] w-[calc(100%-32px)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-[#2A3B57] bg-[#0F1B33] p-6 text-white shadow-2xl"
+          data-confirm-dialog=""
+          className="fixed left-1/2 top-1/2 z-[2147483001] max-h-[85vh] w-[calc(100%-32px)] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-[#2A3B57] bg-[#0F1B33] p-6 text-white shadow-2xl"
         >
           <DialogPrimitive.Title className="text-right text-lg font-semibold">{cur?.title || "לאשר?"}</DialogPrimitive.Title>
           {cur?.message ? (
