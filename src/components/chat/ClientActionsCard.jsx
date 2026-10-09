@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { CalendarClock, Check, FileCheck, FileDown, Loader2, Receipt, Send, Users, ListChecks } from "lucide-react";
+import { CalendarClock, Camera, Check, FileCheck, FileDown, ListChecks, Loader2, Receipt, Scissors, Send, Video } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { base44 } from "@/api/base44Client";
@@ -8,71 +8,48 @@ import InvoiceDialog from "@/components/invoice/InvoiceDialog";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { openSignedContract } from "@/lib/signedContract";
 import { SCHEDULE_OPTIONS, applyLeadTemplateVariables, loadScheduleTemplates } from "@/lib/leadMessages";
-import { clientTimeline, eventTeamList } from "@/lib/clientTimeline";
-import { progressPercent } from "@/lib/eventGaps";
-import { israelToday } from "@/lib/missingTeam";
+import { roleTimeline } from "@/lib/clientTimeline";
 
-const shortDate = (v) => (v ? new Date(v).toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem", day: "numeric", month: "numeric", year: "2-digit" }) : "");
+const ROLE_ICON = { photographer1: Camera, photographer2: Camera, videographer: Video, videographer2: Video, editor: Scissors };
 
-// The couple's team on the event, and where their order stands (2026-10-09, the owner's
-// request) — read-only; the work-status page is where it is changed.
-function TeamAndTimeline({ event, lead }) {
-  const team = eventTeamList(event);
-  const steps = clientTimeline(event, lead, israelToday());
-  const pct = event ? progressPercent(event) : null;
+// The crew timeline (2026-10-09, the owner's design): צלם 1 → צלם 2 → וידאו 1 → וידאו 2 →
+// עורך, only the package's roles, each with who is booked and ✓ when marked "סיים" on the
+// work-status page. Read-only — the work-status page is where it is changed.
+function RoleTimeline({ event, pkg }) {
+  if (!event) return <p className="text-xs text-gray-500">עוד אין אירוע ביומן לזוג הזה.</p>;
+  const steps = roleTimeline(event, pkg);
+  if (!steps.length) return <p className="text-xs text-amber-300">אין תפקידים לאירוע הזה.</p>;
+  const done = steps.filter((s) => s.done).length;
   return (
-    <>
-      <div className="space-y-1.5">
-        <div className="flex items-center gap-1 text-[11px] text-gray-500"><Users className="h-3.5 w-3.5" /> הצוות באירוע</div>
-        {!event ? (
-          <p className="text-xs text-gray-500">עוד אין אירוע ביומן לזוג הזה.</p>
-        ) : team.length === 0 ? (
-          <p className="text-xs text-amber-300">עוד לא שובץ צוות.</p>
-        ) : (
-          <ul className="space-y-1">
-            {team.map((m) => (
-              <li key={m.role + m.name} className="flex items-center justify-between rounded-lg bg-gray-800/60 px-2.5 py-1.5">
-                <span className="text-gray-400">{m.icon} {m.label}</span>
-                <span className="font-semibold text-white">{m.name}</span>
-              </li>
-            ))}
-          </ul>
-        )}
+    <div className="space-y-2">
+      <div className="flex items-center justify-between text-[11px] text-gray-500">
+        <span className="flex items-center gap-1"><ListChecks className="h-3.5 w-3.5" /> סטטוס התקדמות{pkg?.name ? ` · ${pkg.name}` : ""}</span>
+        <span className="font-semibold text-gray-300">{done} מתוך {steps.length}</span>
       </div>
-
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between text-[11px] text-gray-500">
-          <span className="flex items-center gap-1"><ListChecks className="h-3.5 w-3.5" /> סטטוס התקדמות</span>
-          {pct !== null && <span className="font-semibold text-gray-300">{pct}%</span>}
-        </div>
-        {pct !== null && (
-          <div className="h-1.5 overflow-hidden rounded-full bg-gray-800">
-            <div className="h-full rounded-full bg-emerald-500" style={{ width: `${pct}%` }} />
-          </div>
-        )}
-        <ol className="relative space-y-2 pt-1">
-          {steps.map((s, i) => (
-            <li key={s.key} className="relative flex gap-2.5">
-              {i < steps.length - 1 && <span className={`absolute right-[9px] top-5 h-[calc(100%-4px)] w-px ${s.done ? "bg-emerald-700" : "bg-gray-700"}`} />}
+      <div className="h-1.5 overflow-hidden rounded-full bg-gray-800">
+        <div className="h-full rounded-full bg-emerald-500" style={{ width: `${(done / steps.length) * 100}%` }} />
+      </div>
+      <ol className="relative flex items-start justify-between pt-1">
+        <span className="absolute left-5 right-5 top-[17px] h-px bg-gray-700" aria-hidden="true" />
+        {steps.map((s) => {
+          const Icon = ROLE_ICON[s.role] || Camera;
+          return (
+            <li key={s.role} className="relative z-10 flex min-w-0 flex-1 flex-col items-center text-center">
               <span
-                className={`relative z-10 mt-0.5 flex h-[19px] w-[19px] shrink-0 items-center justify-center rounded-full border ${
-                  s.done ? "border-emerald-500 bg-emerald-600 text-white" : s.current ? "border-yellow-400 bg-yellow-400/20" : "border-gray-600 bg-gray-900"
+                className={`flex h-7 w-7 items-center justify-center rounded-full border ${
+                  s.done ? "border-emerald-500 bg-emerald-600 text-white" : s.current ? "border-amber-400 bg-amber-400/20 text-amber-300" : "border-gray-600 bg-gray-900 text-gray-500"
                 }`}
               >
-                {s.done && <Check className="h-3 w-3" />}
+                {s.done ? <Check className="h-4 w-4" /> : <Icon className="h-3.5 w-3.5" />}
               </span>
-              <span className="min-w-0 flex-1">
-                <span className={`block ${s.done ? "text-gray-300" : s.current ? "font-semibold text-yellow-300" : "text-gray-500"}`}>{s.label}</span>
-                {(s.date || s.detail) && (
-                  <span className="block text-[11px] text-gray-500">{[shortDate(s.date), s.detail].filter(Boolean).join(" · ")}</span>
-                )}
-              </span>
+              <span className={`mt-1 text-[11px] font-semibold ${s.done ? "text-gray-200" : s.current ? "text-amber-300" : "text-gray-400"}`}>{s.label}</span>
+              <span title={s.name || "לא שובץ"} className={`w-full truncate px-0.5 text-[10px] ${s.assigned ? "text-gray-500" : "text-amber-400"}`}>{s.name || "לא שובץ"}</span>
             </li>
-          ))}
-        </ol>
-        {event && <Link to="/ProgressStatus" className="inline-block text-xs text-yellow-400 underline">פתח בסטטוס עבודה</Link>}
-      </div>
-    </>
+          );
+        })}
+      </ol>
+      <Link to="/ProgressStatus" className="inline-block text-xs text-yellow-400 underline">פתח בסטטוס עבודה</Link>
+    </div>
   );
 }
 
@@ -103,7 +80,7 @@ async function findLead(conversation) {
 }
 
 export default function ClientActionsCard({ conversation }) {
-  const [state, setState] = useState({ loading: true, lead: null, event: null });
+  const [state, setState] = useState({ loading: true, lead: null, event: null, pkg: null });
   const [templates, setTemplates] = useState({});
   const [sending, setSending] = useState(null); // 'summer' | 'winter' | 'friday' | 'contract'
   const [invoiceType, setInvoiceType] = useState(null); // 'sole_prop' | 'company'
@@ -112,14 +89,17 @@ export default function ClientActionsCard({ conversation }) {
     try {
       const lead = await findLead(conversation);
       const events = lead ? await base44.entities.Event.filter({ sourceLeadId: lead.id }).catch(() => []) : [];
-      setState({ loading: false, lead, event: events?.[0] || null });
+      const event = events?.[0] || null;
+      const packageId = event?.packageId || lead?.packageId;
+      const pkg = packageId ? await base44.entities.Package.get(packageId).catch(() => null) : null;
+      setState({ loading: false, lead, event, pkg });
     } catch {
-      setState({ loading: false, lead: null, event: null });
+      setState({ loading: false, lead: null, event: null, pkg: null });
     }
   };
 
   useEffect(() => {
-    setState({ loading: true, lead: null, event: null });
+    setState({ loading: true, lead: null, event: null, pkg: null });
     load();
     loadScheduleTemplates().then(setTemplates).catch(() => setTemplates({}));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -184,7 +164,7 @@ export default function ClientActionsCard({ conversation }) {
     <section className="space-y-3 rounded-xl border border-gray-800 bg-gray-900 p-3 text-sm">
       <h3 className="text-xs font-semibold text-gray-500">פעולות ללקוח</h3>
 
-      <TeamAndTimeline event={event} lead={lead} />
+      <RoleTimeline event={event} pkg={state.pkg} />
 
       <div className="space-y-1.5">
         <div className="flex items-center gap-1 text-[11px] text-gray-500"><CalendarClock className="h-3.5 w-3.5" /> שלח לוז</div>

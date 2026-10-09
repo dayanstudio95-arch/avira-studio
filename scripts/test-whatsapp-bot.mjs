@@ -2209,33 +2209,28 @@ console.log('\n— PART 42: couple edits —');
   check('drive src = lh3', aa.assetSrc({ id: 'abc' }, 200), 'https://lh3.googleusercontent.com/d/abc=w200');
 }
 
-// PART 49 — the client's timeline + team in the chat (2026-10-09)
-console.log('\n— PART 49: client timeline —');
+// PART 49 — the client's crew-role timeline in the chat (2026-10-09)
+console.log('\n— PART 49: client role timeline —');
 {
   const ct = await loadModule('src/lib/clientTimeline.js', 'ct49');
+  const row = (tl) => tl.map((s) => `${s.label}:${s.name || '-'}:${s.done ? 'v' : s.current ? '>' : '.'}`).join('|');
   const ev = {
-    date: '2026-10-01',
     team: [
       { role: 'photographer1', staffMemberName: 'דניאל' },
-      { role: 'videographer', staffMemberName: 'משה' },
-      { role: 'photographer2', staffMemberName: 'אין צלם 2' },
-      { role: 'editor', staffMemberName: 'רון' },
+      { role: 'photographer2', staffMemberName: 'משה' },
+      { role: 'videographer', staffMemberName: 'רון' },
+      { role: 'editor', staffMemberName: 'יוסי' },
     ],
-    photographer1Done: true, video1Done: false, rawSentToEditor: true, rawSentAt: '2026-10-03T10:00:00Z',
+    photographer1Done: true,
   };
-  const lead = { signedAt: '2026-05-01T10:00:00Z', productionFormFilledAt: null };
-  const team = ct.eventTeamList(ev);
-  check('team: role order, "אין" dropped, done flags', team.map((m) => `${m.label}:${m.name}:${m.done}`).join('|'), 'צלם 1:דניאל:true|צלם וידאו:משה:false|עורך:רון:false');
-  const tl = ct.clientTimeline({ ...ev, questionnaireSentAt: '2026-09-01T00:00:00Z' }, lead, '2026-10-09');
-  check('steps in order', tl.map((s) => s.key).join(), 'signed,questionnaire,event,shoot,raw,edit,final');
-  check('questionnaire sent not filled → current, with detail', tl[1].done + '|' + tl[1].current + '|' + tl[1].detail, 'false|true|נשלח, עוד לא מולא');
-  check('event in the past → done', tl[2].done, true);
-  check('shooters 1/2', tl[3].detail + '|' + tl[3].done, '1/2|false');
-  check('raw not ready, sent to editor shown', tl[4].done + '|' + tl[4].detail, 'false|נשלח לעורך');
-  check('only one current step', tl.filter((s) => s.current).length, 1);
-  check('no editor → no edit step; album only with a sketch', ct.clientTimeline({ date: '2026-10-01', team: [] , albumSketchLink: 'x' }, lead, '2026-10-09').map((s) => s.key).join(), 'signed,questionnaire,event,raw,final,album');
-  check('no event yet → the three lead steps', ct.clientTimeline(null, lead, '2026-10-09').map((s) => s.key).join(), 'signed,questionnaire,event');
-  check('event today → not done, "היום"', ct.clientTimeline({ date: '2026-10-09' }, lead, '2026-10-09')[2].detail, 'היום');
+  const pkg2 = { photographers: 2, videographers: 1 };
+  check('package 2+1: no video 2; צלם 1 done, צלם 2 next', row(ct.roleTimeline(ev, pkg2)), 'צלם 1:דניאל:v|צלם 2:משה:>|וידאו 1:רון:.|עורך:יוסי:.');
+  check('package 2+2, video 2 not booked → shown unassigned', row(ct.roleTimeline(ev, { photographers: 2, videographers: 2 })), 'צלם 1:דניאל:v|צלם 2:משה:>|וידאו 1:רון:.|וידאו 2:-:.|עורך:יוסי:.');
+  check('"אין צלם 2" → role left out', row(ct.roleTimeline({ ...ev, team: [ev.team[0], { role: 'photographer2', staffMemberName: 'אין צלם 2' }] }, pkg2)), 'צלם 1:דניאל:v|וידאו 1:-:.');
+  check('a done flag without a person does not count', ct.roleTimeline({ team: [], photographer1Done: true }, { photographers: 1, videographers: 0 })[0].done, false);
+  check('booked beyond the package still shown', row(ct.roleTimeline({ team: [{ role: 'videographer2', staffMemberName: 'אבי' }] }, { photographers: 1, videographers: 0 })), 'צלם 1:-:.|וידאו 2:אבי:>');
+  check('all done → no current', ct.roleTimeline({ ...ev, photographer2Done: true, video1Done: true, editorDone: true }, pkg2).some((s) => s.current), false);
+  check('no event → empty', ct.roleTimeline(null, pkg2).length, 0);
 }
 
 // PART 48 — AI sales help: price rules, parsing (2026-10-09)
