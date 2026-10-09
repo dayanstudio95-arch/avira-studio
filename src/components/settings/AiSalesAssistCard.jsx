@@ -118,12 +118,12 @@ export default function AiSalesAssistCard() {
             לא הצלחנו לטעון את ברירות המחדל מהשרת. שדה ריק = העוזר משתמש בכללים ובמחירים המובנים.
           </div>
         )}
-        <div className="flex items-center justify-between rounded-lg border border-gray-700 bg-gray-900/50 p-3">
-          <div>
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-700 bg-gray-900/50 p-3">
+          <div className="min-w-0">
             <div className="font-semibold text-white">העוזר פעיל</div>
             <div className="text-xs text-gray-400">כבוי = הכפתורים בשיחה מחזירים הודעה במקום הצעה. התיוג האוטומטי של ההודעות ממשיך.</div>
           </div>
-          <Switch checked={enabled} onCheckedChange={setEnabled} />
+          <Switch checked={enabled} onCheckedChange={setEnabled} className="shrink-0" />
         </div>
 
         <div className="grid gap-3 rounded-lg border border-gray-700 bg-gray-900/50 p-3 sm:grid-cols-3">

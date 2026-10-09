@@ -149,7 +149,7 @@ export default function ChatThread({
         {/* On a phone these two get their own line under the name (2026-10-07: squeezed in one
             row they covered the couple's name and tags). */}
         {((onToggleFollowUp && hasStage(conversation)) || needsReplyNow || (isHot && onClearHot) || followUpOutcome(conversation)) && (
-        <div className="order-last flex w-full gap-2 ps-12 md:order-none md:w-auto md:ps-0">
+        <div className="order-last flex w-full flex-wrap gap-1.5 ps-12 md:order-none md:w-auto md:flex-nowrap md:gap-2 md:ps-0">
         {onToggleFollowUp && hasStage(conversation) && (
           <button
             type="button"

@@ -454,13 +454,14 @@ export default function ChatApp() {
               עוד ▾
             </button>
           )}
+          {/* Computer only — on a phone the chips are tight; there it is under "עוד". */}
           {i === chipRows.length - 1 && data.user?.id && (
             <button
               type="button"
               onClick={() => setOrderOpen(true)}
               aria-label="סדר והוסף כפתורים"
               title="לסדר את הכפתורים או להוסיף כפתור"
-              className="flex min-h-[36px] flex-none items-center justify-center rounded-full border border-dashed border-gray-700 px-2.5 text-gray-400 hover:text-white md:min-h-[30px]"
+              className="hidden flex-none items-center justify-center rounded-full border border-dashed border-gray-700 px-2.5 text-gray-400 hover:text-white md:flex md:min-h-[30px]"
             >
               <ArrowUpDown className="h-3.5 w-3.5" />
             </button>
@@ -688,6 +689,11 @@ export default function ChatApp() {
               ))}
             </div>
             <div className="mt-4 space-y-1 border-t border-gray-800 pt-3">
+              {data.user?.id && (
+                <button type="button" onClick={() => { setMoreOpen(false); setOrderOpen(true); }} className="flex min-h-[44px] w-full items-center gap-3 rounded-xl px-3 text-gray-300">
+                  <ArrowUpDown className="h-5 w-5" /> סדר את התיבות והכפתורים
+                </button>
+              )}
               <Link to="/BotControlCenter" className="flex min-h-[44px] items-center gap-3 rounded-xl px-3 text-gray-300"><SlidersHorizontal className="h-5 w-5" /> מרכז שליטה לבוט</Link>
               <button type="button" onClick={() => { setMoreOpen(false); setMeetingsOpen(true); }} className="flex min-h-[44px] w-full items-center gap-3 rounded-xl px-3 text-yellow-300"><CalendarClock className="h-5 w-5" /> פגישות</button>
               <Link to="/" className="flex min-h-[44px] items-center gap-3 rounded-xl px-3 text-gray-300"><LayoutGrid className="h-5 w-5" /> למערכת המלאה</Link>
