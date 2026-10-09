@@ -15,6 +15,15 @@ import QuestionnaireReminderDialog from "./QuestionnaireReminderDialog";
 import EventTeamDialog from "./EventTeamDialog";
 import ProgressEventDialog from "./ProgressEventDialog";
 import { missingCount as crewMissing } from "@/lib/missingTeam";
+import { GAP_TYPES } from "@/lib/eventGaps";
+import { Link } from "react-router-dom";
+
+export const GAP_TONE = {
+  red: "border-red-500/40 bg-red-500/15 text-red-300",
+  blue: "border-sky-500/40 bg-sky-500/15 text-sky-300",
+  amber: "border-amber-500/40 bg-amber-500/15 text-amber-300",
+  orange: "border-orange-500/40 bg-orange-500/15 text-orange-300",
+};
 const { StaffMember } = base44.entities;
 
 const calcProfit = (event, staffMembers) => calculateNetProfit(event, staffMembers);
@@ -39,7 +48,10 @@ const calcProfit = (event, staffMembers) => calculateNetProfit(event, staffMembe
 // What replaces it is the one thing that column could not tell him: whether the couple
 // has answered the production questionnaire.
 
-export default function EventsTable({ events, isLoading, onRefresh }) {
+// `gaps` (2026-10-09, "חורים השנה"): { [eventId]: hole keys } — when given, the cell that put
+// the event on the list is outlined, the other status cells fade, and a "למה ברשימה" column
+// names the holes (src/lib/eventGaps.js).
+export default function EventsTable({ events, isLoading, onRefresh, gaps = null }) {
   const [staffMembers, setStaffMembers] = useState([]);
   const [leads, setLeads] = useState([]);
   const [selectedLeadForDrawer, setSelectedLeadForDrawer] = useState(null);
@@ -48,6 +60,18 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
   const [questionnaireFor, setQuestionnaireFor] = useState(null); // { event, lead } — resend preview
   const [teamFor, setTeamFor] = useState(null); // the event whose team window is open
   const [progressFor, setProgressFor] = useState(null); // the event whose work-status window is open
+  const gapCls = (event, key) => {
+    if (!gaps) return undefined;
+    return (gaps[event.id] || []).includes(key) ? "bg-red-500/[0.06] shadow-[inset_0_0_0_1.5px_rgba(248,113,113,0.55)]" : "opacity-40";
+  };
+  const gapChips = (event) => (
+    <div className="flex flex-wrap gap-1">
+      {(gaps?.[event.id] || []).map((k) => {
+        const t = GAP_TYPES.find((g) => g.key === k);
+        return <span key={k} className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${GAP_TONE[t?.tone] || GAP_TONE.red}`}>{t?.label || k}</span>;
+      })}
+    </div>
+  );
   const openProgress = (e, event) => {
     e?.stopPropagation?.();
     setProgressFor(event);
@@ -198,6 +222,7 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
               return (
                 <Card key={event.id} className="bg-gray-800/50 border-gray-700">
                   <CardContent className="p-3 space-y-2">
+                    {gaps && gapChips(event)}
                     <div className="flex justify-between items-start">
                       <div onClick={() => openUnifiedPanelForEvent(event)} className="cursor-pointer">
                         <div className="font-bold text-white text-base hover:text-yellow-400 transition-colors">{event.coupleNames}</div>
@@ -286,12 +311,13 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
                 <TableHead className="text-slate-400 font-medium">יומן</TableHead>
                 <TableHead className="text-slate-400 font-medium">שאלון</TableHead>
                 <TableHead className="text-slate-400 font-medium">צוות</TableHead>
+                {gaps && <TableHead className="text-slate-400 font-medium">למה ברשימה</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {events.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-12">
+                  <TableCell colSpan={gaps ? 11 : 10} className="text-center py-12">
                     <div className="text-gray-500">
                       <Heart className="w-12 h-12 mx-auto mb-4 text-gray-600" />
                       <p className="text-lg font-medium">אין אירועים עדיין</p>
@@ -346,14 +372,14 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
                           ₪{Math.round(calcProfit(event, staffMembers)).toLocaleString()}
                         </span>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className={gapCls(event, "payment")}>
                         <PaymentStatusSelector
                           eventId={event.id}
                           currentStatus={clientPaymentStatus}
                           onStatusChange={onRefresh}
                         />
                       </TableCell>
-                      <TableCell>
+                      <TableCell className={gapCls(event, "progress")}>
                         {(() => {
                           const progressStatus = getEventProgressStatus(event);
                           return (
@@ -370,7 +396,7 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
                           );
                         })()}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className={gapCls(event, "album")}>
                         <Button
                           variant="ghost"
                           size="sm"
@@ -400,7 +426,7 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
                           </div>
                         </Button>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className={gapCls(event, "calendar")}>
                         {event.googleCalendarEventId ? (
                           <div className="flex items-center gap-1">
                             <span className="w-2 h-2 bg-green-400 rounded-full"></span>
@@ -408,11 +434,15 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
                               סונכרן
                             </Badge>
                           </div>
+                        ) : gaps?.[event.id]?.includes("calendar") ? (
+                          <Link to="/GoogleCalendarSync" onClick={(e) => e.stopPropagation()} title="לדף יומן Google לסנכרון" className="rounded-md border border-sky-500/40 bg-sky-500/15 px-2 py-0.5 text-xs font-medium text-sky-300 hover:bg-sky-500/30">
+                            לא סונכרן ›
+                          </Link>
                         ) : (
                           <span className="text-gray-500 text-xs">—</span>
                         )}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className={gapCls(event, "questionnaire")}>
                         {(() => {
                           const filled = isQuestionnaireFilled(event);
                           if (filled === null) return <span className="text-gray-500 text-xs">—</span>;
@@ -437,7 +467,7 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
                           );
                         })()}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className={gapCls(event, "team")}>
                         {(() => {
                           // Same rule as the events page / sidebar (src/lib/missingTeam.js).
                           const gap = crewMissing(event);
@@ -457,6 +487,7 @@ export default function EventsTable({ events, isLoading, onRefresh }) {
                           );
                         })()}
                       </TableCell>
+                      {gaps && <TableCell>{gapChips(event)}</TableCell>}
 
                     </TableRow>
                   );

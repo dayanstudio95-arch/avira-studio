@@ -2202,6 +2202,32 @@ console.log('\n— PART 42: couple edits —');
   check('drive src = lh3', aa.assetSrc({ id: 'abc' }, 200), 'https://lh3.googleusercontent.com/d/abc=w200');
 }
 
+// PART 44 — dashboard "חורים השנה" (2026-10-09)
+console.log('\n— PART 44: year gaps —');
+{
+  const eg = await loadModule('src/lib/eventGaps.js', 'eg44');
+  const today = '2026-10-09';
+  const full = [{ role: 'photographer1', staffMemberName: 'a' }, { role: 'photographer2', staffMemberName: 'b' }, { role: 'videographer', staffMemberName: 'c' }];
+  const ok = { id: 'ok', date: '2026-11-20', requiredCrew: 3, team: full, googleCalendarEventId: 'g' };
+  check('all good → no holes', eg.eventGaps(ok, { today, questionnaireFilled: true }).join(), '');
+  check('missing team + calendar (upcoming)', eg.eventGaps({ ...ok, team: full.slice(0, 2), googleCalendarEventId: null }, { today }).join(), 'team,calendar');
+  check('past: no team / calendar hole', eg.eventGaps({ ...ok, date: '2026-08-01', team: [], googleCalendarEventId: null, clientPaymentStatus: 'Paid' }, { today }).join(), '');
+  check('past not paid (partial too)', eg.eventGaps({ ...ok, date: '2026-08-01', clientPaymentStatus: 'Partially Paid' }, { today }).join(), 'payment');
+  check('today: not yet a payment hole', eg.eventGaps({ ...ok, date: today }, { today, questionnaireFilled: true }).join(), '');
+  check('in progress counts, waiting / done do not', [
+    eg.eventGaps({ ...ok, date: '2026-08-01', clientPaymentStatus: 'Paid', photographer1Done: true }, { today }).join(),
+    eg.eventGaps({ ...ok, date: '2026-08-01', clientPaymentStatus: 'Paid' }, { today }).join(),
+    eg.eventGaps({ ...ok, date: '2026-08-01', clientPaymentStatus: 'Paid', photographer1Done: true, photographer2Done: true, video1Done: true, rawDoneManual: true, finalDoneManual: true }, { today }).join(),
+  ].join('|'), 'progress||');
+  check('questionnaire: within 30 days only', [
+    eg.eventGaps({ ...ok, date: '2026-10-30' }, { today, questionnaireFilled: false }).join(),
+    eg.eventGaps({ ...ok, date: '2026-12-30' }, { today, questionnaireFilled: false }).join(),
+    eg.eventGaps({ ...ok, date: '2026-10-30' }, { today, questionnaireFilled: null }).join(),
+  ].join('|'), 'questionnaire||');
+  const yg = eg.yearGaps([ok, { ...ok, id: 'x', team: [] }, { ...ok, id: 'y', date: '2027-01-05', team: [] }], { today, year: 2026 });
+  check('year gaps: only that year, only with holes', Object.keys(yg).join(), 'x');
+}
+
 // PART 43 — album editor round 2: adjustments, fade, split, groups, presets, tags (2026-10-08)
 console.log('\n— PART 43: album editor round 2 —');
 {

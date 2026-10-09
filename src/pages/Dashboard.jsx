@@ -16,6 +16,9 @@ import TodayEventsCard from "../components/dashboard/TodayEventsCard";
 import FinanceCard from "../components/dashboard/FinanceCard";
 import { MeetingsTodayCard, WhatsAppPulseCard, FollowUpCard, PostSignCard } from "../components/dashboard/DailyPulseCards";
 import { israelToday, eventDay } from "@/lib/missingTeam";
+import { useQuery } from "@tanstack/react-query";
+import { yearGaps, GAP_TYPES } from "@/lib/eventGaps";
+import { GAP_TONE } from "../components/dashboard/EventsTable";
 import { calculateNetProfit } from "../lib/profitCalculations";
 import { calculateEventFinancials } from "../lib/financialCalculations";
 
@@ -26,6 +29,7 @@ export default function Dashboard() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [timeFilter, setTimeFilter] = useState("thisMonth");
+  const [gapFilter, setGapFilter] = useState(null); // one hole type inside "חורים השנה", null = all
 
   useEffect(() => {
     loadEvents();
@@ -137,6 +141,27 @@ export default function Dashboard() {
     return events.reduce((sum, e) => (eventDay(e) < today && e.clientPaymentStatus !== "Paid" ? sum + (e.totalAmountGross || 0) : sum), 0);
   }, [events]);
 
+  // "חורים השנה" (2026-10-09): events of the selected year with something open — rules in
+  // src/lib/eventGaps.js. The questionnaire flag lives on the lead (one light query).
+  const questLeadsQ = useQuery({
+    queryKey: ["dashQuestionnaireLeads"],
+    queryFn: () => base44.entities.Lead.filter({}, undefined, undefined, "id, production_form_filled_at"),
+    staleTime: 120000,
+  });
+  const gapsMap = useMemo(() => {
+    const filled = questLeadsQ.data ? new Map(questLeadsQ.data.map((l) => [l.id, !!(l.productionFormFilledAt || l.production_form_filled_at)])) : null;
+    return yearGaps(events, {
+      today: israelToday(),
+      year: selectedYear,
+      questionnaireFilledFor: (e) => (filled && e.sourceLeadId ? filled.get(e.sourceLeadId) ?? null : null),
+    });
+  }, [events, selectedYear, questLeadsQ.data]);
+  const gapCounts = useMemo(() => {
+    const c = {};
+    for (const keys of Object.values(gapsMap)) for (const k of keys) c[k] = (c[k] || 0) + 1;
+    return c;
+  }, [gapsMap]);
+
   // Filter events based on search term, year, and time filter
   const filteredEvents = useMemo(() => {
     const now = new Date();
@@ -164,6 +189,9 @@ export default function Dashboard() {
         return eventDate >= startOfMonth && eventDate <= endOfMonth;
       } else if (timeFilter === "nextMonth") {
         return eventDate >= startOfNextMonth && eventDate <= endOfNextMonth;
+      } else if (timeFilter === "gaps") {
+        const g = gapsMap[event.id];
+        return !!g && (!gapFilter || g.includes(gapFilter));
       }
       
       return true; // "all"
@@ -183,7 +211,7 @@ export default function Dashboard() {
       
       return coupleMatch || dateMatch;
     });
-  }, [events, searchTerm, selectedYear, timeFilter]);
+  }, [events, searchTerm, selectedYear, timeFilter, gapsMap, gapFilter]);
 
   // Calculate counts for each filter
   const filterCounts = useMemo(() => {
@@ -280,7 +308,34 @@ export default function Dashboard() {
           >
             החודש הבא ({filterCounts.nextMonth})
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => { setTimeFilter("gaps"); setGapFilter(null); }}
+            title="אירועי השנה שיש בהם משהו פתוח: צוות, יומן, התקדמות, תשלום, שאלון"
+            className={timeFilter === "gaps" ? "rounded-lg border-red-400/80 bg-red-500/20 text-red-200 hover:bg-red-500/30 text-xs font-semibold" : "rounded-lg border-red-500/40 bg-[#0B1529] text-red-300 hover:bg-red-500/10 hover:text-red-200 text-xs"}
+          >
+            ⚠ חורים השנה ({Object.keys(gapsMap).length})
+          </Button>
         </div>
+        {timeFilter === "gaps" && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-slate-400">סינון:</span>
+            {GAP_TYPES.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setGapFilter((f) => (f === t.key ? null : t.key))}
+                className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-opacity ${GAP_TONE[t.tone]} ${gapFilter && gapFilter !== t.key ? "opacity-40" : ""} ${gapFilter === t.key ? "ring-1 ring-white/50" : ""}`}
+              >
+                {t.label} · {gapCounts[t.key] || 0}
+              </button>
+            ))}
+            {gapFilter && (
+              <button type="button" onClick={() => setGapFilter(null)} className="text-xs text-slate-400 hover:text-white">הצג הכל</button>
+            )}
+          </div>
+        )}
       </div>
       {searchTerm && (
         <p className="text-sm text-gray-400 mt-2">
@@ -354,7 +409,7 @@ export default function Dashboard() {
         <div className="hidden md:block">{searchAndFilterBar}</div>
 
         {/* Events Table */}
-        <EventsTable events={filteredEvents} isLoading={isLoading} onRefresh={loadEvents} />
+        <EventsTable events={filteredEvents} isLoading={isLoading} onRefresh={loadEvents} gaps={timeFilter === "gaps" ? gapsMap : null} />
       </div>
     </div>
   );
