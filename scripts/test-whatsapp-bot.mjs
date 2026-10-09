@@ -1076,6 +1076,13 @@ section('term warnings on the screen');
 // =================================================================================
 
 const ws = await loadModule('supabase/functions/_shared/whatsappStatus.ts', 'wstatus');
+// 2026-10-09: the 24h-on-one-tick alert skips the team (the owner's private number too)
+{
+  const staff = new Set(['0500000101']);
+  check('stuck alert: staff number skipped', ws.isStaffChat('972500000101@c.us', 'client', staff), true);
+  check('stuck alert: staff contact type skipped', ws.isStaffChat('972500000000@c.us', 'staff', new Set()), true);
+  check('stuck alert: a client still alerts', ws.isStaffChat('972521234567@c.us', 'client', staff), false);
+}
 const { resolveChatIdForSend } = await loadModule('supabase/functions/_shared/whatsapp.ts', 'wsend');
 const { fetchWithRetry } = await loadModule('supabase/functions/_shared/retry.ts', 'wretry');
 

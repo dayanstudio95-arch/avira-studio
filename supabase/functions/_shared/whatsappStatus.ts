@@ -16,7 +16,19 @@
 // Pure
 // ---------------------------------------------------------------------------------
 
+import { chatIdToLocalPhone, normalizeIsraeliPhone } from './phone.ts';
+
 export const FAILURE_STATUSES = ['failed', 'suspended', 'noAccount', 'notInGroup', 'yellowCard'];
+
+// The "24h on one tick" alert is for clients and leads (the gallery case). A message to
+// someone on the team — the owner's own private number included, he is a staff member
+// too — is not alerted (the owner, 2026-10-09: 7 of 8 alerts in 3 days were his own
+// "תזכורת לאירוע מחר"). `staffPhones` = normalized local numbers of the team.
+export function isStaffChat(chatId: unknown, contactType: unknown, staffPhones: Set<string>): boolean {
+  if (contactType === 'staff') return true;
+  const p = typeof chatId === 'string' ? chatIdToLocalPhone(chatId) : null;
+  return !!p && staffPhones.has(p);
+}
 
 // sent < delivered < read; any failure is terminal. 0 = not a status we know.
 export function statusRank(status: unknown): number {
@@ -118,7 +130,7 @@ async function conversationFor(supabase: any, tenantId: string, chatId: string |
   if (!chatId) return null;
   const { data } = await supabase
     .from('whatsapp_conversations')
-    .select('id, display_name, couple_names, phone, matched_lead_id')
+    .select('id, display_name, couple_names, phone, matched_lead_id, contact_type')
     .eq('tenant_id', tenantId)
     .eq('chat_id', chatId)
     .limit(1);
@@ -213,6 +225,9 @@ export async function alertStuckMessages(supabase: any, tenantId: string, onAler
     console.error('[whatsappStatus] stuck lookup failed:', error.message);
     return 0;
   }
+  if (!rows?.length) return 0;
+  const { data: staff } = await supabase.from('staff_members').select('phone_number').eq('tenant_id', tenantId);
+  const staffPhones = new Set<string>((staff || []).map((s: any) => normalizeIsraeliPhone(s.phone_number)).filter(Boolean));
   let alerted = 0;
   for (const r of rows || []) {
     // Mark first: a crash after this line costs one missed alert, never a repeated one.
@@ -222,6 +237,7 @@ export async function alertStuckMessages(supabase: any, tenantId: string, onAler
       .eq('id_message', r.id_message);
     if (isGroupChat(r.chat_id)) continue;
     const conv = await conversationFor(supabase, tenantId, r.chat_id);
+    if (isStaffChat(r.chat_id, conv?.contact_type, staffPhones)) continue; // marked above, never alerted
     const who = conv?.couple_names || conv?.display_name || conv?.phone || r.chat_id || '';
     const preview = await messagePreview(supabase, tenantId, r.id_message);
     const title = `הודעה לא נמסרה 24 שעות: ${who}`;
