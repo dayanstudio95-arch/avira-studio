@@ -43,6 +43,14 @@ export function getProgress(event) {
   return { label: "ממתין", pct: 0, color: "e-chip-red" };
 }
 
+// The name under each role (2026-10-09), as on the work-status page: who is on that slot.
+const FIELD_ROLE = Object.fromEntries(Object.entries(ROLE_DONE_FIELDS).map(([role, field]) => [field, role]));
+function nameFor(event, field) {
+  const role = FIELD_ROLE[field];
+  if (!role) return "";
+  return String((event.team || []).find((m) => m?.role === role)?.staffMemberName || "").trim();
+}
+
 function getRelevantFields(event) {
   const fields = [];
   const seenFields = new Set();
@@ -99,13 +107,14 @@ function EventWorkRow({ event, onUpdated }) {
       </div>
 
       {expanded && (
-        <div className="px-3 pb-3 pt-1 flex flex-wrap gap-2">
+        <div className="px-3 pb-3 pt-1 flex flex-wrap items-start gap-2">
           {relevantFields.map((field) => {
             const isDone = !!(localEvent[field]);
             const isSaving = saving === field;
+            const name = nameFor(localEvent, field);
             return (
+              <div key={field} className="flex flex-col items-center gap-0.5">
               <button
-                key={field}
                 onClick={() => toggleField(field)}
                 disabled={isSaving}
                 className={`text-xs px-2 py-1 rounded-md border transition-colors font-medium disabled:opacity-50 ${
@@ -117,6 +126,8 @@ function EventWorkRow({ event, onUpdated }) {
                 {isSaving ? "..." : (isDone ? "✓ " : "")}
                 {FIELD_LABELS[field] || field}
               </button>
+              {name && <span className="max-w-[72px] truncate text-center text-[11px] text-slate-400" title={name}>{name}</span>}
+              </div>
             );
           })}
         </div>
