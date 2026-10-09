@@ -2209,6 +2209,43 @@ console.log('\n— PART 42: couple edits —');
   check('drive src = lh3', aa.assetSrc({ id: 'abc' }, 200), 'https://lh3.googleusercontent.com/d/abc=w200');
 }
 
+// PART 47 — staff availability from the chat (2026-10-09)
+console.log('\n— PART 47: staff availability batch —');
+{
+  const sb = await loadModule('src/lib/staffAvailabilityBatch.js', 'sab47');
+  const today = '2026-10-09';
+  const ev = (id, date, team, extra = {}) => ({ id, date, team, requiredCrew: 3, venue: 'אולם ' + id, coupleNames: 'זוג ' + id, ...extra });
+  const events = [
+    ev('a', '2026-11-01', [{ role: 'photographer1', staffMemberName: 'ג׳וני' }]),
+    ev('b', '2026-11-02', [{ role: 'photographer1', staffMemberName: 'ג׳וני' }, { role: 'photographer2', staffMemberName: 'סלבה' }]),
+    ev('c', '2026-11-03', [], { requiredCrew: 1 }),
+    ev('d', '2026-11-04', [{ role: 'videographer', staffMemberName: 'איילון' }]),
+    ev('e', '2026-11-04', []),
+    ev('old', '2026-09-01', []),
+  ];
+  const list = sb.eventsMissingSlot({ events, slot: 'photographer2', today, staffName: 'איילון' });
+  check('missing צלם 2: needed and empty, upcoming, not his own', list.map((x) => x.event.id).join(), 'a,e');
+  check('busy that day flagged', list.find((x) => x.event.id === 'e').busyThatDay, true);
+  check('one-photographer package never needs צלם 2', sb.slotNeeded(events[2], 'photographer2', null), false);
+  const msg = sb.batchAvailabilityMessage({ name: 'איילון כהן', slot: 'photographer2', events: [events[0], events[4]], link: 'https://x/l' });
+  check('batch message: greeting, slot, every event, link', [msg.startsWith('היי איילון!'), msg.includes('צלם ערב'), msg.includes('אולם a') && msg.includes('אולם e'), msg.endsWith('https://x/l')].join(), 'true,true,true,true');
+  const combo = sb.combinedBookingMessage({ name: 'איילון', items: [{ event: events[0], slot: 'photographer2' }] });
+  check('combined booking message', combo.includes('שובצת לאירועים') && combo.includes('צלם 2 · ערב'), true);
+  const h = sb.availabilityHistory({
+    staffName: 'איילון',
+    eventsById: { a: events[0], d: events[3] },
+    requests: [
+      { id: 'r1', eventId: 'a', status: 'available', requestedAt: '2026-10-08' },
+      { id: 'r0', eventId: 'a', status: 'declined', requestedAt: '2026-10-01' },
+      { id: 'r2', eventId: 'd', status: 'available', requestedAt: '2026-10-08', assignedAt: '2026-10-09' },
+      { id: 'r3', eventId: 'zz', status: 'pending', requestedAt: '2026-10-08', eventDateSnapshot: '2026-12-01' },
+      { id: 'r4', eventId: 'a', status: 'pending', requestedAt: '2026-10-09', revokedAt: '2026-10-09' },
+    ],
+  });
+  check('history: latest per event, revoked ignored', h.map((x) => x.request.id + ':' + x.state).join(), 'r1:available,r2:assigned,r3:pending');
+  check('assigned but not told → unnotified', h.find((x) => x.request.id === 'r2').unnotified, true);
+}
+
 // PART 46 — availability answers coloured in the bell (2026-10-09)
 console.log('\n— PART 46: availability answer colour —');
 {

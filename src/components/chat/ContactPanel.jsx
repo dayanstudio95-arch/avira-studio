@@ -4,6 +4,7 @@ import { Switch } from "@/components/ui/switch";
 import { CONTACT_TYPES, STAGES, contactTypeLabel, effectiveStage, hasStage } from "@/lib/chatModel";
 import { Avatar, conversationTitle } from "./ChatList";
 import { typeColor, stageColor } from "@/lib/chatColors";
+import StaffChatSection from "./staff/StaffChatSection";
 
 const chip = (on, color) =>
   `min-h-[36px] rounded-full px-3 text-sm transition-colors ${
@@ -74,6 +75,9 @@ export default function ContactPanel({
         </div>
         <p className="text-[11px] text-gray-500">כל סוג חוץ מ"לא מוכר" משתיק את הבוט בשיחה.</p>
       </section>
+
+      {/* A crew member: slots, cost, area, availability check and history (2026-10-09). */}
+      {c.contactType === "staff" && <StaffChatSection conversation={c} />}
 
       {staged && (
         <section className="space-y-2">

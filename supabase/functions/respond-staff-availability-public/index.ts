@@ -21,6 +21,51 @@ const ROLE_LABELS: Record<string, string> = {
   videographer: 'צלם/ת וידאו',
 };
 
+// One link for several events (2026-10-09, migration 0082): staff_availability_batches.
+// The batch token is the only credential, hashed and looked up on every call, revoked_at
+// checked every time; a request can be answered only through the batch it belongs to.
+const SLOT_LABELS: Record<string, string> = {
+  photographer1: 'צלם ראשי (צלם 1)',
+  photographer2: 'צלם ערב (צלם 2)',
+  videographer: 'צלם וידאו יום מלא (וידאו 1)',
+  videographer2: 'צלם וידאו ערב (וידאו 2)',
+};
+
+async function resolveBatchByToken(supabase: any, token: string) {
+  if (!token || typeof token !== 'string') return { error: 'טוקן חסר', status: 400 };
+  const tokenHash = await hashToken(token);
+  const { data: batch, error } = await supabase
+    .from('staff_availability_batches')
+    .select('*')
+    .eq('token_hash', tokenHash)
+    .maybeSingle();
+  if (error) return { error: error.message, status: 500 };
+  if (!batch) return { error: 'קישור לא תקין', status: 404 };
+  if (batch.revoked_at) return { error: 'הקישור בוטל', status: 403 };
+  return { batch };
+}
+
+async function batchContext(supabase: any, batch: any) {
+  const { data: rows, error } = await supabase
+    .from('staff_availability_requests')
+    .select('id, staff_name_snapshot, role, team_role, event_date_snapshot, venue_snapshot, couple_names_snapshot, status, responded_at')
+    .eq('batch_id', batch.id)
+    .is('revoked_at', null)
+    .order('event_date_snapshot', { ascending: true });
+  if (error) throw new Error(error.message);
+  return {
+    staffName: rows?.[0]?.staff_name_snapshot || '',
+    roleLabel: SLOT_LABELS[batch.team_role] || ROLE_LABELS[rows?.[0]?.role] || '',
+    items: (rows || []).map((r: any) => ({
+      id: r.id,
+      eventDate: r.event_date_snapshot,
+      venue: r.venue_snapshot,
+      coupleNames: r.couple_names_snapshot,
+      status: r.status,
+    })),
+  };
+}
+
 async function resolveRequestByToken(supabase: any, token: string) {
   if (!token || typeof token !== 'string') return { error: 'טוקן חסר', status: 400 };
   const tokenHash = await hashToken(token);
@@ -78,8 +123,41 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { token, action, response } = body ?? {};
+    const { token, action, response, batchToken, requestId } = body ?? {};
     const supabase = createServiceRoleClient();
+
+    if (action === 'validateBatch' || action === 'respondBatch') {
+      const rb = await resolveBatchByToken(supabase, batchToken);
+      if (rb.error) return jsonResponse({ error: rb.error }, { status: rb.status });
+      const batch = rb.batch;
+      if (action === 'validateBatch') return jsonResponse(await batchContext(supabase, batch));
+
+      if (response !== 'available' && response !== 'declined') {
+        return jsonResponse({ error: 'תגובה לא תקינה' }, { status: 400 });
+      }
+      const { data: request, error: reqErr } = await supabase
+        .from('staff_availability_requests')
+        .select('*')
+        .eq('id', requestId)
+        .eq('batch_id', batch.id)
+        .is('revoked_at', null)
+        .maybeSingle();
+      if (reqErr) return jsonResponse({ error: reqErr.message }, { status: 500 });
+      if (!request) return jsonResponse({ error: 'האירוע לא נמצא בקישור הזה' }, { status: 404 });
+      // Idempotent per event, like the single link: an answer is never overwritten.
+      if (request.status === 'pending') {
+        const { data: updated, error: updateError } = await supabase
+          .from('staff_availability_requests')
+          .update({ status: response, responded_at: new Date().toISOString() })
+          .eq('id', request.id)
+          .eq('status', 'pending')
+          .select()
+          .maybeSingle();
+        if (updateError) return jsonResponse({ error: updateError.message }, { status: 500 });
+        if (updated) await insertNotification(supabase, updated, response);
+      }
+      return jsonResponse(await batchContext(supabase, batch));
+    }
 
     const resolved = await resolveRequestByToken(supabase, token);
     if (resolved.error) return jsonResponse({ error: resolved.error }, { status: resolved.status });

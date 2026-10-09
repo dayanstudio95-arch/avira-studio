@@ -74,6 +74,7 @@ const AlbumGuideSettings = lazy(() => import('./pages/AlbumGuideSettings'));
 // Two-way staff availability confirmation -- public, no-login response page opened
 // from the WhatsApp link StaffAvailabilityModal.jsx sends.
 const StaffAvailabilityResponse = lazy(() => import('./pages/StaffAvailabilityResponse'));
+const StaffAvailabilityBatchResponse = lazy(() => import('./pages/StaffAvailabilityBatchResponse'));
 const AlbumGuide = lazy(() => import('./pages/AlbumGuide'));
 
 // Public, no-login privacy policy -- required by Google Cloud Console before the
@@ -304,6 +305,7 @@ function App() {
               {/* Two-way staff availability confirmation -- public, no-login page opened
                   from the WhatsApp link StaffAvailabilityModal.jsx sends. Token-validated
                   server-side on every request via respond-staff-availability-public. */}
+              <Route path="/staff-availability/b/:token" element={<StaffAvailabilityBatchResponse />} />
               <Route path="/staff-availability/:token" element={<StaffAvailabilityResponse />} />
 
               {/* Privacy policy -- public, no-login, static. The URL pasted into Google
