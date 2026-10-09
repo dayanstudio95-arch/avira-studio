@@ -11,6 +11,7 @@ import { Download, TrendingUp, Calendar, BarChart3 } from "lucide-react";
 import ReportsChart from "../components/reports/ReportsChart";
 import MonthlyChart from "../components/reports/MonthlyChart";
 import ReportsTable from "../components/reports/ReportsTable";
+import { yearOptions } from "@/lib/yearOptions";
 
 const MONTHS = [
   { value: 0, label: "ינואר" },
@@ -132,12 +133,9 @@ export default function Reports() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-gray-900 border-gray-700 text-white">
-              <SelectItem value="2025">2025</SelectItem>
-              <SelectItem value="2026">2026</SelectItem>
-              <SelectItem value="2027">2027</SelectItem>
-              <SelectItem value="2028">2028</SelectItem>
-              <SelectItem value="2029">2029</SelectItem>
-              <SelectItem value="2030">2030</SelectItem>
+              {yearOptions({ dates: events.map((e) => e.date), selected: selectedYear }).map((y) => (
+                <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>

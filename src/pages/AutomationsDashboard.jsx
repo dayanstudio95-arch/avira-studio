@@ -17,6 +17,7 @@ import { VARS_BY_TYPE, VARS_BY_AUDIENCE_TYPE } from "@/lib/automationTemplateVar
 import { sendSummary } from "@/lib/actionOutcome";
 import PageIcon from "@/components/layout/PageIcon";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { yearOptions } from "@/lib/yearOptions";
 
 // ── Default automations to seed if none exist ──────────────────────────────
 const DEFAULTS = [
@@ -726,7 +727,7 @@ function SettingsModal({ automation, onClose, onSaved }) {
                       onChange={e => setPreviewYear(Number(e.target.value))}
                       className="bg-gray-700 border border-gray-600 text-white rounded-lg px-2 py-1.5 text-sm"
                     >
-                      {Array.from({length: 16}, (_, i) => now.getFullYear() + i).map(y => (
+                      {yearOptions({ before: 0, after: 5, selected: previewYear }).map(y => (
                         <option key={y} value={y}>{y}</option>
                       ))}
                     </select>

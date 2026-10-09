@@ -2202,6 +2202,18 @@ console.log('\n— PART 42: couple edits —');
   check('drive src = lh3', aa.assetSrc({ id: 'abc' }, 200), 'https://lh3.googleusercontent.com/d/abc=w200');
 }
 
+// PART 45 — year pickers up to 2050 (2026-10-09)
+console.log('\n— PART 45: year options —');
+{
+  const yo = await loadModule('src/lib/yearOptions.js', 'yo45');
+  const at = (y) => new Date(`${y}-06-01T12:00:00Z`);
+  check('2026: same short list as before', yo.yearOptions({ now: at(2026) }).join(), '2025,2026,2027,2028,2029,2030');
+  check('2031: moves forward by itself', yo.yearOptions({ now: at(2031) }).join(), '2030,2031,2032,2033,2034,2035');
+  check('years with events are added', yo.yearOptions({ now: at(2026), dates: ['2023-05-01', '2033-01-02'] }).join(), '2023,2025,2026,2027,2028,2029,2030,2033');
+  check('never past 2050', yo.yearOptions({ now: at(2048) }).join(), '2047,2048,2049,2050');
+  check('the selected year is always there', yo.yearOptions({ now: at(2026), selected: 2040 }).includes(2040), true);
+}
+
 // PART 44 — dashboard "חורים השנה" (2026-10-09)
 console.log('\n— PART 44: year gaps —');
 {

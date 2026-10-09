@@ -12,6 +12,7 @@ import CSVImportDialog from "../components/CSVImportDialog";
 import EventsMobileMenu from "../components/events/EventsMobileMenu";
 import EventsStatsRow from "../components/events/EventsStatsRow";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { yearOptions } from "@/lib/yearOptions";
 
 export default function Events() {
   const [events, setEvents] = useState([]);
@@ -383,12 +384,9 @@ export default function Events() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-gray-900 border-gray-700 text-white">
-                  <SelectItem value="2025">2025</SelectItem>
-                  <SelectItem value="2026">2026</SelectItem>
-                  <SelectItem value="2027">2027</SelectItem>
-                  <SelectItem value="2028">2028</SelectItem>
-                  <SelectItem value="2029">2029</SelectItem>
-                  <SelectItem value="2030">2030</SelectItem>
+                  {yearOptions({ dates: events.map((e) => e.date), selected: selectedYear }).map((y) => (
+                    <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

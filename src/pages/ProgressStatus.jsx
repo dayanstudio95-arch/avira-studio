@@ -15,6 +15,7 @@ const HEBREW_MONTHS = [
 ];
 const formatMonthYear = (date) => `${HEBREW_MONTHS[date.getMonth()]} ${date.getFullYear()}`;
 import { toast } from "sonner";
+import { yearOptions } from "@/lib/yearOptions";
 
 // Was previously missing "videographer2" entirely (same real bug as
 // ProgressEventMobileCard.jsx — a videographer2 team member got no status button and
@@ -291,7 +292,7 @@ export default function ProgressStatus() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-gray-900 border-gray-700 text-white">
-                  {[2025, 2026, 2027, 2028, 2029, 2030].map(y => (
+                  {yearOptions({ dates: events.map((e) => e?.date), selected: selectedYear }).map(y => (
                     <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
                   ))}
                 </SelectContent>
@@ -551,7 +552,7 @@ export default function ProgressStatus() {
               <div>
                 <label className="block text-gray-400 text-sm mb-1">שנה</label>
                 <select className="bg-gray-800 border border-gray-600 text-white rounded-lg px-2 py-1" value={albumSendYear} onChange={e => setAlbumSendYear(Number(e.target.value))}>
-                  {[2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
+                  {yearOptions({ dates: events.map((e) => e?.date), selected: albumSendYear }).map(y => <option key={y} value={y}>{y}</option>)}
                 </select>
               </div>
               <Button size="sm" className="bg-gray-700 border-gray-600 text-gray-100 hover:bg-gray-600" style={{background:"#374151",color:"#d1d5db",border:"1px solid #4b5563"}} onClick={() => loadAlbumEvents(albumSendMonth, albumSendYear)} disabled={albumSendLoading}>

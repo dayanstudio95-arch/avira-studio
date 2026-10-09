@@ -20,6 +20,7 @@ import { unpaidRowsForStaff, creditByStaff, creditForExactPeriod, undoablePaymen
 import { todayInIsrael } from '@/lib/localDate';
 import PageIcon from "@/components/layout/PageIcon";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { yearOptions } from "@/lib/yearOptions";
 const MONTHS_HE = ['ינואר','פברואר','מרץ','אפריל','מאי','יוני','יולי','אוגוסט','ספטמבר','אוקטובר','נובמבר','דצמבר'];
 const StaffPayment = base44.entities.StaffPayment;
 
@@ -433,12 +434,9 @@ export default function Payments() {
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent className="bg-gray-900 border-gray-700 text-white">
-                                    <SelectItem value="2025">2025</SelectItem>
-                                    <SelectItem value="2026">2026</SelectItem>
-                                    <SelectItem value="2027">2027</SelectItem>
-                                    <SelectItem value="2028">2028</SelectItem>
-                                    <SelectItem value="2029">2029</SelectItem>
-                                    <SelectItem value="2030">2030</SelectItem>
+                                    {yearOptions({ dates: events.map((e) => e.date), selected: selectedYear }).map((y) => (
+                                      <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
                             
