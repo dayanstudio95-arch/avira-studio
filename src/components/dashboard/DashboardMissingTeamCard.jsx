@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import EventTeamDialog from "./EventTeamDialog";
 import { isMissingTeam, israelToday, assignedShooters, requiredShooters, eventDay, missingRoles } from "@/lib/missingTeam";
+import DashTitleLink from "./DashTitleLink";
 
 // A row opens the event's team window right here (2026-10-09, the owner's request) — who is
 // booked and what is missing, availability check, direct assignment, the other weddings that
@@ -24,7 +25,7 @@ export default function DashboardMissingTeamCard({ events, staffMembers = [], on
   return (
     <Card className="dash-card flex flex-col h-full overflow-hidden">
       <CardHeader className="dash-head pb-3 flex-shrink-0">
-        <CardTitle className="text-white flex items-center gap-2 text-base font-semibold">
+        <CardTitle className="text-white flex items-center gap-2 text-base font-semibold"><DashTitleLink to="/StaffScheduling">
           <Users className="w-5 h-5 text-orange-400" />
           חסר צוות
           {missingTeamEvents.length > 0 && (
@@ -32,7 +33,7 @@ export default function DashboardMissingTeamCard({ events, staffMembers = [], on
               {missingTeamEvents.length}
             </span>
           )}
-        </CardTitle>
+        </DashTitleLink></CardTitle>
       </CardHeader>
       <CardContent className="e-scroll px-3 py-1 overflow-y-auto flex-grow min-h-0" >
         {missingTeamEvents.length === 0 ? (

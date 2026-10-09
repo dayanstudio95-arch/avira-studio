@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users } from "lucide-react";
 import { format } from "date-fns";
 import UnifiedSidePanel from "@/components/unified/UnifiedSidePanel";
+import DashTitleLink from "./DashTitleLink";
 
 const statusColors = {
   "חדש": "e-chip-blue",
@@ -30,10 +31,10 @@ export default function RecentLeadsCard() {
     <>
       <Card className="dash-card h-full flex flex-col overflow-hidden">
         <CardHeader className="dash-head pb-3">
-          <CardTitle className="text-white flex items-center gap-2 text-base font-semibold">
+          <CardTitle className="text-white flex items-center gap-2 text-base font-semibold"><DashTitleLink to="/Leads">
             <Users className="w-5 h-5 text-sky-400" />
             לידים אחרונים
-          </CardTitle>
+          </DashTitleLink></CardTitle>
         </CardHeader>
         <CardContent className="e-scroll px-3 py-1 min-h-0 flex-1 overflow-y-auto">
           {leads.length === 0 ? (

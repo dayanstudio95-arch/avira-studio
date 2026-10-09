@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LineChart } from "lucide-react";
 import { eventDay, israelToday } from "@/lib/missingTeam";
+import DashTitleLink from "./DashTitleLink";
 
 // All the money in one tile (2026-10-07): today / this month / this year, gross and net,
 // and what is still open to collect.
@@ -62,9 +63,9 @@ export default function FinanceCard({ stats, year, pendingCollection, events = [
   return (
     <Card className="dash-card fin-card h-full flex flex-col">
       <CardHeader className="dash-head pb-3">
-        <CardTitle className="text-white flex items-center gap-2 text-base font-semibold">
+        <CardTitle className="text-white flex items-center gap-2 text-base font-semibold"><DashTitleLink to="/Reports">
           <LineChart className="w-5 h-5 text-emerald-400" /> פיננסי · {year}
-        </CardTitle>
+        </DashTitleLink></CardTitle>
       </CardHeader>
       <CardContent className="px-5 pb-3 pt-0.5">
         {row("היום", stats.today, series.last14, "#10B981")}

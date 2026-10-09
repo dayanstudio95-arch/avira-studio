@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { CreditCard, MessageCircle } from "lucide-react";
 import PaymentStatusSelector from "@/components/common/PaymentStatusSelector";
 import PaymentRequestDialog from "@/components/dashboard/PaymentRequestDialog";
+import DashTitleLink from "./DashTitleLink";
 
 export default function DashboardUnpaidCard({ events, onRefresh }) {
   const now = new Date();
@@ -16,7 +17,7 @@ export default function DashboardUnpaidCard({ events, onRefresh }) {
   return (
     <Card className="dash-card flex flex-col h-full overflow-hidden">
       <CardHeader className="dash-head pb-3 flex-shrink-0">
-        <CardTitle className="text-white flex items-center gap-2 text-base font-semibold">
+        <CardTitle className="text-white flex items-center gap-2 text-base font-semibold"><DashTitleLink to="/Events">
           <CreditCard className="w-5 h-5 text-rose-400" />
           לא משולם
           {unpaidEvents.length > 0 && (
@@ -24,7 +25,7 @@ export default function DashboardUnpaidCard({ events, onRefresh }) {
               {unpaidEvents.length}
             </span>
           )}
-        </CardTitle>
+        </DashTitleLink></CardTitle>
       </CardHeader>
       <CardContent className="e-scroll px-3 py-1 overflow-y-auto flex-grow min-h-0" >
         {unpaidEvents.length === 0 ? (

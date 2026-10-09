@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { format } from "date-fns";
 import { Clapperboard, ChevronDown, ChevronUp } from "lucide-react";
 import { base44 } from "@/api/base44Client";
+import DashTitleLink from "./DashTitleLink";
 
 // same fields as ProgressStatus
 const ROLE_DONE_FIELDS = {
@@ -148,7 +149,7 @@ export default function DashboardWorkStatusCard({ events, onRefresh }) {
   return (
     <Card className="dash-card flex flex-col h-full overflow-hidden">
       <CardHeader className="dash-head pb-3 flex-shrink-0">
-        <CardTitle className="text-white flex items-center gap-2 text-base font-semibold">
+        <CardTitle className="text-white flex items-center gap-2 text-base font-semibold"><DashTitleLink to="/ProgressStatus">
           <Clapperboard className="w-5 h-5 text-amber-400" />
           סטטוס עבודה
           {incompleteEvents.length > 0 && (
@@ -156,7 +157,7 @@ export default function DashboardWorkStatusCard({ events, onRefresh }) {
               {incompleteEvents.length}
             </span>
           )}
-        </CardTitle>
+        </DashTitleLink></CardTitle>
       </CardHeader>
       <CardContent className="e-scroll px-3 py-1 overflow-y-auto flex-grow min-h-0" >
         {incompleteEvents.length === 0 ? (

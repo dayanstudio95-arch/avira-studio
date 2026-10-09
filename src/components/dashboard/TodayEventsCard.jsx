@@ -5,6 +5,7 @@ import { CalendarDays, MapPin, Home, Phone, StickyNote } from "lucide-react";
 import { eventTeamRoleLabel } from "@/lib/staffRoles";
 import { israelToday, eventDay, combinedNotes, missingRoles } from "@/lib/missingTeam";
 import { formatDateWithWeekday } from "@/lib/chatModel";
+import DashTitleLink from "./DashTitleLink";
 
 // "אירועים היום" (design E, 2026-10-07 — the owner's reference image): the photo fills the
 // card under a dark overlay. On it, today's events — or "אין אירועים היום · הבא: <day>" and
@@ -51,8 +52,10 @@ export default function TodayEventsCard({ events }) {
       <div className="absolute inset-0 bg-[#0A1430]/25" />
       <div className="absolute inset-0 bg-gradient-to-b from-[#071026]/75 via-transparent to-[#071026]/40" />
       <div className="relative mx-5 flex items-center gap-2 border-b border-white/10 py-4">
-        <CalendarDays className="h-5 w-5 text-amber-400" />
-        <span className="text-base font-semibold text-white">אירועים היום</span>
+        <DashTitleLink to="/Events">
+          <CalendarDays className="h-5 w-5 text-amber-400" />
+          <span className="text-base font-semibold text-white">אירועים היום</span>
+        </DashTitleLink>
         <span className="text-xs text-slate-300">{formatDateWithWeekday(today)}</span>
       </div>
       <div className="relative flex flex-1 flex-col justify-center gap-3 px-4 py-4">

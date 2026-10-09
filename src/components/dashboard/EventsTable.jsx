@@ -17,6 +17,7 @@ import ProgressEventDialog from "./ProgressEventDialog";
 import { missingCount as crewMissing } from "@/lib/missingTeam";
 import { GAP_TYPES } from "@/lib/eventGaps";
 import { Link } from "react-router-dom";
+import DashTitleLink from "./DashTitleLink";
 
 export const GAP_TONE = {
   red: "border-red-500/40 bg-red-500/15 text-red-300",
@@ -184,10 +185,10 @@ export default function EventsTable({ events, isLoading, onRefresh, gaps = null 
     <Card className="dash-card">
       <CardHeader className="dash-head">
         <div className="flex justify-between items-center">
-          <CardTitle className="text-lg font-bold text-white flex items-center gap-2">
+          <CardTitle className="text-lg font-bold text-white flex items-center gap-2"><DashTitleLink to="/Events">
             <Heart className="w-5 h-5 text-amber-400" />
             אירועים אחרונים
-          </CardTitle>
+          </DashTitleLink></CardTitle>
           <Button 
             variant="outline" 
             size="sm"

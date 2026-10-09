@@ -1,18 +1,23 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { Check, X } from "lucide-react";
+import MeetingDialog from "@/components/meetings/MeetingDialog";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { base44 } from "@/api/base44Client";
 import { supabase } from "@/api/supabaseClient";
 import { rowToRecord } from "@/api/entities";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CalendarDays, MessageCircle, Flame, Hourglass, Signature, ChevronLeft, Target, FileText } from "lucide-react";
-import { useMeetings } from "@/components/meetings/MeetingsList";
+import { useMeetings, MEETINGS_KEY } from "@/components/meetings/MeetingsList";
 import { kindLabel, utcToIsraelParts, todayIsrael } from "@/lib/meetings";
 import { whatsappPulse, followUpSummary } from "@/lib/dashboardPulse";
 import { fetchLeadPhoneIndex, LEAD_PHONE_INDEX_KEY } from "@/lib/leadPhoneIndex";
 import { isPostSignPending, STEPS, currentStep, SIGNED_STATUS } from "@/lib/postSignFlow";
 import { todayInIsrael } from "@/lib/localDate";
 import PostSignWizard from "@/components/postSign/PostSignWizard";
+import DashTitleLink from "./DashTitleLink";
 
 // The four "what do I do today" tiles of the dashboard (2026-10-07, the owner's choice):
 // meetings today/tomorrow, WhatsApp waiting + hot leads, follow-ups, signed couples still in
@@ -37,9 +42,25 @@ function useDashConversations() {
   });
 }
 
+// A meeting opens its window right here (2026-10-09), with ✓ בוצע / ✕ בוטל beside it; the
+// title goes to the /Meetings page.
 export function MeetingsTodayCard() {
-  const navigate = useNavigate();
+  const qc = useQueryClient();
   const q = useMeetings();
+  const [open, setOpen] = useState(null);
+  const [busy, setBusy] = useState(null);
+  const setStatus = async (m, status) => {
+    if (status === "cancelled" && !(await confirmDialog({ title: `לבטל את הפגישה עם ${m.title}?`, message: "לא תישלח תזכורת.", confirmText: "בטל פגישה", danger: true }))) return;
+    setBusy(m.id);
+    try {
+      await base44.entities.SalesMeeting.update(m.id, { status, updatedAt: new Date().toISOString() });
+      toast.success(status === "done" ? "הפגישה סומנה כבוצעה" : "הפגישה בוטלה");
+      qc.invalidateQueries({ queryKey: MEETINGS_KEY });
+    } catch (e) {
+      toast.error("העדכון נכשל", { description: e?.message });
+    }
+    setBusy(null);
+  };
   const today = todayIsrael();
   const tomorrow = new Date(Date.parse(today + "T12:00:00Z") + 86400000).toISOString().slice(0, 10);
   const list = (q.data || [])
@@ -50,7 +71,7 @@ export function MeetingsTodayCard() {
   return (
     <Card className={shell}>
       <CardHeader className="dash-head pb-3">
-        <CardTitle className={head}><CalendarDays className="w-5 h-5 text-amber-400" /> פגישות היום ומחר</CardTitle>
+        <CardTitle className={head}><DashTitleLink to="/Meetings"><CalendarDays className="w-5 h-5 text-amber-400" /> פגישות היום ומחר</DashTitleLink></CardTitle>
       </CardHeader>
       <CardContent className="e-scroll p-3 min-h-0 flex-1 overflow-y-auto">
         {list.length === 0 && (
@@ -60,14 +81,35 @@ export function MeetingsTodayCard() {
           </div>
         )}
         {list.slice(0, 6).map((m) => (
-          <button key={m.id} type="button" onClick={() => navigate("/Meetings")} className={rowBtn}>
-            <span className="min-w-0 truncate text-gray-200">
-              <span className="font-semibold text-white">{m.parts.date === today ? "" : "מחר "}{m.parts.time}</span> · {m.title}
-            </span>
-            <span className="e-chip e-chip-blue shrink-0">{kindLabel(m.kind)}</span>
-          </button>
+          <div key={m.id} className="rounded-lg pb-1.5 hover:bg-white/[0.04]">
+            <button type="button" onClick={() => setOpen(m)} title="פרטי הפגישה" className="flex w-full min-w-0 items-center justify-between gap-2 px-2 pt-2 pb-1 text-start text-sm">
+              <span className="min-w-0 truncate text-gray-200">
+                <span className="font-semibold text-white">{m.parts.date === today ? "" : "מחר "}{m.parts.time}</span> · {m.title}
+              </span>
+              <span className="e-chip e-chip-blue shrink-0">{kindLabel(m.kind)}</span>
+            </button>
+            <div className="flex justify-end gap-1.5 px-2">
+            <button type="button" disabled={busy === m.id} onClick={() => setStatus(m, "done")} title="בוצע" aria-label="בוצע" className="flex h-7 shrink-0 items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-2 text-xs font-medium text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-40">
+              <Check className="h-3.5 w-3.5" /> בוצע
+            </button>
+            <button type="button" disabled={busy === m.id} onClick={() => setStatus(m, "cancelled")} title="ביטול" aria-label="ביטול" className="flex h-7 shrink-0 items-center gap-1 rounded-lg border border-red-500/40 bg-red-500/15 px-2 text-xs font-medium text-red-300 hover:bg-red-500/30 disabled:opacity-40">
+              <X className="h-3.5 w-3.5" /> ביטול
+            </button>
+            </div>
+          </div>
         ))}
       </CardContent>
+      {open && (
+        <MeetingDialog
+          isOpen
+          meeting={open}
+          onClose={() => setOpen(null)}
+          onSaved={() => {
+            setOpen(null);
+            qc.invalidateQueries({ queryKey: MEETINGS_KEY });
+          }}
+        />
+      )}
     </Card>
   );
 }
@@ -80,7 +122,7 @@ export function WhatsAppPulseCard() {
   return (
     <Card className={shell}>
       <CardHeader className="dash-head pb-3">
-        <CardTitle className={head}><MessageCircle className="w-5 h-5 text-emerald-400" /> וואטסאפ</CardTitle>
+        <CardTitle className={head}><DashTitleLink to="/chat"><MessageCircle className="w-5 h-5 text-emerald-400" /> וואטסאפ</DashTitleLink></CardTitle>
       </CardHeader>
       <CardContent className="e-scroll p-3 space-y-0.5 min-h-0 flex-1 overflow-y-auto">
         <button type="button" onClick={() => navigate("/chat")} className={rowBtn}>
@@ -115,7 +157,7 @@ export function FollowUpCard() {
   return (
     <Card className={shell}>
       <CardHeader className="dash-head pb-3">
-        <CardTitle className={head}><Hourglass className="w-5 h-5 text-amber-400" /> פולו-אפ</CardTitle>
+        <CardTitle className={head}><DashTitleLink to="/chat?box=followup"><Hourglass className="w-5 h-5 text-amber-400" /> פולו-אפ</DashTitleLink></CardTitle>
       </CardHeader>
       <CardContent className="e-scroll p-3 space-y-1 min-h-0 flex-1 flex flex-col overflow-y-auto">
         <button type="button" onClick={() => navigate("/chat?box=followup")} className={rowBtn}>
@@ -159,7 +201,7 @@ export function PostSignCard() {
   return (
     <Card className={shell}>
       <CardHeader className="dash-head pb-3">
-        <CardTitle className={head}><Signature className="w-5 h-5 text-emerald-400" /> חתמו · בתהליך</CardTitle>
+        <CardTitle className={head}><DashTitleLink to="/Leads"><Signature className="w-5 h-5 text-emerald-400" /> חתמו · בתהליך</DashTitleLink></CardTitle>
       </CardHeader>
       <CardContent className="e-scroll p-3 min-h-0 flex-1 flex flex-col overflow-y-auto">
         {list.length === 0 && <p className="py-6 text-center text-sm text-slate-400">אין זוגות בתהליך ✅</p>}
