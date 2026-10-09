@@ -87,6 +87,9 @@ const INQUIRY_TERMS = [
   'פנוי', 'פנויה', 'פנויים', 'זמין', 'זמינה', 'זמינות', 'תפוס',
   'מתעניין', 'מתעניינת', 'מעוניין', 'מעוניינת',
   'לשמוע פרטים', 'פרטים נוספים',
+  // 2026-10-09: "אשמח לקבל מידע לגבי צלם לחתונה" got no answer — asking for information
+  // is asking. Still needs a service word next to it ("חתונה", "צילום"…).
+  'מידע', 'לקבל פרטים',
   'price', 'quote', 'available', 'availability',
 ];
 

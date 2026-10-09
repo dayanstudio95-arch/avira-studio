@@ -2250,6 +2250,16 @@ console.log('\n— PART 42: couple edits —');
   check('drive src = lh3', aa.assetSrc({ id: 'abc' }, 200), 'https://lh3.googleusercontent.com/d/abc=w200');
 }
 
+// PART 52 — "מידע" / "לקבל פרטים" count as asking (2026-10-09)
+console.log('\n— PART 52: information requests —');
+{
+  const wi52 = await loadModule('supabase/functions/_shared/whatsappIntent.ts', 'wi52');
+  check('"אשמח לקבל מידע לגבי צלם לחתונה" → reply', wi52.detectLeadIntent('אשמח לקבל מידע לגבי צלם לחתונה בבקשה', {}).isInquiry, true);
+  check('"אפשר לקבל פרטים על צילום חתונה?" → reply', wi52.detectLeadIntent('אפשר לקבל פרטים על צילום חתונה?', {}).isInquiry, true);
+  check('"מידע" alone, no service word → silent', wi52.detectLeadIntent('אשמח לקבל מידע', {}).isInquiry, false);
+  check('a colleague asking for information → still silent (vendor veto)', wi52.detectLeadIntent('היי, אני צלם, אשמח לקבל מידע על חתונות אצלכם', {}).isInquiry, false);
+}
+
 // PART 51 — the chat's "🤖" buttons: send the bot's details request / price list by hand (2026-10-09)
 console.log('\n— PART 51: manual bot sends —');
 {
