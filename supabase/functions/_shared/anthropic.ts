@@ -32,6 +32,7 @@ export async function callClaude({
   tools,
   apiKey,
   temperature,
+  maxTokens,
 }: {
   system: string;
   messages: ClaudeMessage[];
@@ -44,7 +45,9 @@ export async function callClaude({
   // reading task, not a writing one, and the same message must not resolve to different
   // dates on two runs.
   temperature?: number;
-}): Promise<{ content: ClaudeContentBlock[]; stop_reason: string }> {
+  // Longer answers (two drafted replies) need more room than the 1024 default.
+  maxTokens?: number;
+}): Promise<{ content: ClaudeContentBlock[]; stop_reason: string; usage?: { input_tokens: number; output_tokens: number } }> {
   const resolvedKey = apiKey || PLATFORM_ANTHROPIC_API_KEY;
   if (!resolvedKey) {
     throw new Error('לא הוגדר מפתח Anthropic API — ניתן להזין מפתח אישי בהגדרות > אינטגרציות, או להריץ: supabase secrets set ANTHROPIC_API_KEY=...');
@@ -59,7 +62,7 @@ export async function callClaude({
     },
     body: JSON.stringify({
       model: Deno.env.get('ANTHROPIC_MODEL') || DEFAULT_MODEL,
-      max_tokens: 1024,
+      max_tokens: maxTokens || 1024,
       system,
       messages,
       ...(tools ? { tools } : {}),

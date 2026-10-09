@@ -2209,6 +2209,75 @@ console.log('\n— PART 42: couple edits —');
   check('drive src = lh3', aa.assetSrc({ id: 'abc' }, 200), 'https://lh3.googleusercontent.com/d/abc=w200');
 }
 
+// PART 48 — AI sales help: price rules, parsing (2026-10-09)
+console.log('\n— PART 48: AI sales rules —');
+{
+  const ar = await loadModule('supabase/functions/_shared/aiSalesRules.ts', 'ar48');
+  const p2 = ar.DEFAULT_PRICE_RULES.packages.find((p) => p.name === 'חבילה 2');
+  const p1 = ar.DEFAULT_PRICE_RULES.packages.find((p) => p.name === 'חבילה 1');
+  const p3 = ar.DEFAULT_PRICE_RULES.packages.find((p) => p.name === 'חבילה 3');
+  const p4 = ar.DEFAULT_PRICE_RULES.packages.find((p) => p.name === 'חבילה 4');
+  check('פרימיום, regular day (Tue 6.4.27): 13,000 then 12,500', ar.allowedOffers(p2, '2027-04-06').join(), '13000,12500');
+  check('פרימיום, Thursday (8.4.27): only 13,000', ar.allowedOffers(p2, '2027-04-08').join(), '13000');
+  check('פרימיום, Friday (9.4.27): only 13,000', ar.allowedOffers(p2, '2027-04-09').join(), '13000');
+  check('פרימיום, winter Thursday (4.2.27): winter wins → down to 12,000', ar.allowedOffers(p2, '2027-02-04').join(), '13000,12500,12000');
+  check('פרימיום, unknown date = regular', ar.allowedOffers(p2, null).join(), '13000,12500');
+  check('חבילה 1: 9,000; winter 8,500', ar.allowedOffers(p1, '2027-05-04').join() + '|' + ar.allowedOffers(p1, '2027-01-12').join(), '9000|9000,8500');
+  check('חבילה 3: 14,500; winter 14,000', ar.allowedOffers(p3, '2027-05-04').join() + '|' + ar.allowedOffers(p3, '2027-01-12').join(), '14500|14500,14000');
+  check('חבילה 4: never', ar.allowedOffers(p4, '2027-01-12').length, 0);
+  check('rules text names the floor, no-discount and henna', (() => { const t = ar.priceRulesText(ar.DEFAULT_PRICE_RULES, '2027-04-06'); return t.includes('13,000 ← 12,500') && t.includes('חבילה 4: 11,000 ₪ — בלי הנחה') && t.includes('חינה'); })(), true);
+  check('bad saved rules → the defaults', ar.parsePriceRules('not json').packages.length, ar.DEFAULT_PRICE_RULES.packages.length);
+  const sug = ar.parseSuggestions('```json\n{"suggestions":[{"label":"קצר","text":"היי 😊"},{"label":"חם","text":"  "}],"note":"x"}\n```');
+  check('suggestions: fenced JSON read, empty dropped', sug.suggestions.length + '|' + sug.note, '1|x');
+  check('suggestions: prose → none', ar.parseSuggestions('sorry').suggestions.length, 0);
+  check('improve: text', ar.parseImproved('{"text":"יאללה, נעזור לכם"}'), 'יאללה, נעזור לכם');
+  const sm = ar.parseSummary('{"budget":"10K","offers":[{"price":12000,"date":"30.9"},{"price":"x"}],"status":"מחכים"}');
+  check('summary: offers kept, junk dropped', sm.offers.map((o) => o.price).join() + '|' + sm.budget, '12000|10K');
+  check('tag: known / unknown', ar.parseTag('Needs_Time') + '|' + ar.parseTag('angry'), 'needs_time|null');
+  check('cost: 3k in + 400 out ≈ 5.5 agorot', ar.costIls(3000, 400), 0.0555);
+  const now = new Date('2026-10-09T10:00:00Z');
+  check('needs_time → reminder in 3 days', ar.returnUpdateForTag('needs_time', {}, now)?.return_at, '2026-10-12T10:00:00.000Z');
+  check('needs_time again while one waits → leave it', ar.returnUpdateForTag('needs_time', { return_at: '2026-10-11T00:00:00Z' }, now), null);
+  check('they came back (ready) → pending reminder dropped', ar.returnUpdateForTag('ready', { return_at: '2026-10-11T00:00:00Z' }, now)?.return_at, null);
+  check('already fired + needs_time again → a new one', !!ar.returnUpdateForTag('needs_time', { return_at: '2026-10-01T00:00:00Z', return_notified_at: '2026-10-01T00:00:00Z' }, now)?.return_at, true);
+  check('no tag → nothing', ar.returnUpdateForTag(null, { return_at: 'x' }, now), null);
+  check('hebrewDate: Thursday', ar.hebrewDate('2027-04-08'), 'יום חמישי 8.4.2027');
+  const ex = ar.pickStyleExamples(['👍', 'https://x.co ראו את העבודות שלנו כאן בבקשה', 'היי עדי ואור, נשמח לבוא לקראתכם ❤️', 'היי עדי ואור, נשמח לבוא לקראתכם ❤️', 'א'.repeat(600)]);
+  check('style examples: short / links / repeats / essays dropped', ex.length, 1);
+  check('month start (Israel) for 9.10.2026', ar.israelMonthStartIso(now), '2026-09-30T21:00:00.000Z');
+  const temp = await loadModule('supabase/functions/_shared/whatsappLeadTemperature.ts', 'temp48');
+  check('one call: temperature + tag', JSON.stringify(temp.parseReplyLabel('{"temperature":"warm","reason":"יקר","tag":"discount"}')), JSON.stringify({ temperature: 'warm', reason: 'יקר', tag: 'discount' }));
+  check('unknown tag → null, rating kept', temp.parseReplyLabel('{"temperature":"cold","tag":"angry"}').tag + '|' + temp.parseReplyLabel('{"temperature":"cold","tag":"angry"}').temperature, 'null|cold');
+  const wi = await loadModule('supabase/functions/_shared/whatsappIntent.ts', 'tag48');
+  const tb = { isInbound: true, isGroup: false, state: 'HANDED_OFF', contactType: 'lead', typeMessage: 'textMessage' };
+  check('tag: a lead writes → yes (even when already hot)', wi.shouldTagReply(tb), true);
+  check('tag: bot collecting details → no', wi.shouldTagReply({ ...tb, state: 'AWAITING_DETAILS' }), false);
+  check('tag: client / staff / group / ours / voice → no',
+    [wi.shouldTagReply({ ...tb, contactType: 'client' }), wi.shouldTagReply({ ...tb, contactType: 'staff' }), wi.shouldTagReply({ ...tb, isGroup: true }), wi.shouldTagReply({ ...tb, isInbound: false }), wi.shouldTagReply({ ...tb, typeMessage: 'audioMessage' })].some(Boolean), false);
+  const dg = await loadModule('supabase/functions/_shared/whatsappDigest.ts', 'dg48');
+  const wk = dg.composeWeekly({ newLeads: 9, hot: 2, tags: { discount: 3, needs_time: 1, other: 5 }, signed: 2, avgSignedPrice: 12750, returnDue: 1 });
+  check('weekly: tags, average price, reminders', wk.includes('ביקשו הנחה 3 · צריכים זמן 1') && wk.includes('ממוצע 12,750 ₪') && wk.includes('ממתינים לחזרה שלך: 1') && !wk.includes('other'), true);
+  check('weekly: no deals → no average', dg.composeWeekly({ newLeads: 0, hot: 0, tags: {}, signed: 0, avgSignedPrice: null, returnDue: 0 }).includes('ממוצע'), false);
+  const aa = await loadModule('src/lib/aiAssist.js', 'aa48');
+  const nowMs = Date.parse('2026-10-09T10:00:00Z');
+  const conv = { contactType: 'lead', returnAt: '2026-10-09T07:00:00Z', lastInboundAt: '2026-10-06T10:00:00Z', lastMessageAt: '2026-10-06T10:00:00Z' };
+  check('return due → yes', aa.isReturnDue(conv, nowMs), true);
+  check('…but marked טופל after it → no', aa.isReturnDue({ ...conv, handledAt: '2026-10-09T08:00:00Z' }, nowMs), false);
+  check('…or we wrote to them after it → no', aa.isReturnDue({ ...conv, lastMessageAt: '2026-10-09T09:00:00Z' }, nowMs), false);
+  check('not yet → no', aa.isReturnDue({ ...conv, returnAt: '2026-10-10T07:00:00Z' }, nowMs), false);
+  check('chip: due / tomorrow', aa.returnChip(conv, nowMs) + '|' + aa.returnChip({ ...conv, returnAt: '2026-10-10T07:00:00Z' }, nowMs), '⏰ לחזור עכשיו|⏰ לחזור מחר');
+  check('manual reminder = 10:00 Israel (summer, UTC+3)', aa.returnAtFor(3, new Date(nowMs)), '2026-10-12T07:00:00.000Z');
+  check('manual reminder = 10:00 Israel (winter, UTC+2)', aa.returnAtFor(1, new Date('2026-12-01T10:00:00Z')), '2026-12-02T08:00:00.000Z');
+  check('offers line', aa.offersLine({ offers: [{ price: 13000, date: '30.9' }, { price: 12500 }] }), '13,000 ₪ (30.9) → 12,500 ₪');
+  check('summary stale after a new message', aa.summaryIsStale({ aiSummaryAt: '2026-10-09T09:00:00Z', lastInboundAt: '2026-10-09T09:30:00Z' }) + '|' + aa.summaryIsStale({ aiSummaryAt: '2026-10-09T10:00:00Z', lastInboundAt: '2026-10-09T09:30:00Z' }), 'true|false');
+  const cm48 = await loadModule('src/lib/chatModel.js', 'cm48');
+  const due = { ...conv, returnAt: '2020-01-01T07:00:00Z', lastInboundAt: '2019-12-30T10:00:00Z', lastMessageAt: '2019-12-31T10:00:00Z' };
+  check('due reminder → "דורש מענה" with its own label', cm48.needsReply(due) + '|' + cm48.waitingLabel(due), 'true|⏰ לחזור אליהם');
+  check('…not "long wait" red', cm48.isLongWait(due), false);
+  check('…staff never', cm48.needsReply({ ...due, contactType: 'staff' }), false);
+  check('box ⏰ לחזור / tag box', cm48.matchesBox(due, 'return') + '|' + cm48.matchesBox({ ...due, aiTag: 'discount' }, 'tag:discount') + '|' + cm48.matchesBox({ ...due, aiTag: 'discount', contactType: 'client' }, 'tag:discount'), 'true|true|false');
+}
+
 // PART 47 — staff availability from the chat (2026-10-09)
 console.log('\n— PART 47: staff availability batch —');
 {

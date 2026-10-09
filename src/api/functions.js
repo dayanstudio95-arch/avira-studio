@@ -64,6 +64,7 @@ const FUNCTION_MAP = {
   shareEventInfoWithTeam: 'share-event-info-with-team',
   whatsappManager: 'whatsapp-manager',
   whatsappBotSimulate: 'whatsapp-bot-simulate',
+  whatsappAiAssist: 'whatsapp-ai-assist',
   pushTest: 'push-test',
   monthlyCrewSchedule: 'monthly-crew-schedule',
   sendQuestionnaireReminders: 'send-questionnaire-reminders',

@@ -50,3 +50,37 @@ export function composeDigest(stats: DigestStats, dateLabel: string): string {
   }
   return lines.join('\n');
 }
+
+// ---- Weekly section (AI sales help, 2026-10-09) ----------------------------------------
+// Added under the daily digest on Sundays. Counts only — no AI call.
+export interface WeeklyStats {
+  newLeads: number;                  // new conversations from unknown numbers / leads, 7 days
+  hot: number;                       // rated hot in 7 days
+  tags: Record<string, number>;      // ai_tag of conversations tagged in 7 days
+  signed: number;                    // leads signed in 7 days
+  avgSignedPrice: number | null;     // their average final_price
+  returnDue: number;                 // "לחזור אליהם" reminders still open
+}
+
+export const WEEKLY_TAG_LABELS: Record<string, string> = {
+  discount: 'ביקשו הנחה',
+  wants_call: 'רוצים שיחה',
+  needs_time: 'צריכים זמן',
+  closed_other: 'סגרו עם אחר',
+  opt_out: 'ביקשו הסרה',
+  question: 'שאלות',
+  ready: 'מוכנים לסגור',
+};
+
+export function composeWeekly(w: WeeklyStats): string {
+  const lines = ['', '📅 סיכום שבועי (7 ימים):'];
+  lines.push(`• לידים חדשים: ${w.newLeads}`);
+  lines.push(`• לידים חמים: ${w.hot}`);
+  const tagParts = Object.entries(WEEKLY_TAG_LABELS)
+    .filter(([k]) => (w.tags[k] || 0) > 0)
+    .map(([k, label]) => `${label} ${w.tags[k]}`);
+  if (tagParts.length) lines.push(`• לפי נושא: ${tagParts.join(' · ')}`);
+  lines.push(`• עסקאות שנחתמו: ${w.signed}${w.signed && w.avgSignedPrice ? ` · ממוצע ${Math.round(w.avgSignedPrice).toLocaleString('en-US')} ₪` : ''}`);
+  if (w.returnDue > 0) lines.push(`• ⏰ ממתינים לחזרה שלך: ${w.returnDue}`);
+  return lines.join('\n');
+}

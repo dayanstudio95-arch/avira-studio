@@ -9,6 +9,7 @@
 //   תוויות — free labels, many.
 
 import { isAwaitingFollowUp } from "./followUpQueue";
+import { isReturnDue } from "./aiAssist";
 
 export const CONTACT_TYPES = [
   { key: "unknown", label: "לא מוכר" },
@@ -79,7 +80,7 @@ const NO_REPLY_TYPES = ["group", "staff", "vendor", "irrelevant"];
 // They wrote last and nobody (you or the bot) has answered since — unless the owner
 // marked it "טופל" after their last message (handledAt, 0070). Writing again brings it
 // back by itself.
-export function needsReply(c) {
+function waitingOnUs(c) {
   if (!c || c.archivedAt || NO_REPLY_TYPES.includes(c.contactType)) return false;
   const inbound = t(c.lastInboundAt);
   if (inbound === null) return false;
@@ -92,9 +93,15 @@ export function needsReply(c) {
   return true;
 }
 
+// …or a "⏰ לחזור אליהם" reminder came due (AI sales help, 2026-10-09).
+export function needsReply(c) {
+  if (waitingOnUs(c)) return true;
+  return !!c && !c.archivedAt && !NO_REPLY_TYPES.includes(c.contactType) && isReturnDue(c);
+}
+
 // "מחכה 18 דק׳" / "מחכה 3 ש׳" / "מחכה 2 ימים" — null when not waiting.
 export function waitingLabel(c, now = Date.now()) {
-  if (!needsReply(c)) return null;
+  if (!waitingOnUs(c)) return needsReply(c) ? "⏰ לחזור אליהם" : null;
   const mins = Math.max(0, Math.floor((now - t(c.lastInboundAt)) / 60000));
   if (mins < 1) return "מחכה עכשיו";
   if (mins < 60) return `מחכה ${mins} דק׳`;
@@ -106,7 +113,7 @@ export function waitingLabel(c, now = Date.now()) {
 
 // Waiting more than two hours — drawn in red.
 export function isLongWait(c, now = Date.now()) {
-  return needsReply(c) && now - t(c.lastInboundAt) > 2 * 3600 * 1000;
+  return waitingOnUs(c) && now - t(c.lastInboundAt) > 2 * 3600 * 1000;
 }
 
 export function lastActivity(c) {
@@ -141,6 +148,12 @@ export const BOXES = [
   { key: "followup_noreply", label: "פולו-אפ · לא ענו" },
   { key: "followup_replied", label: "ענו אחרי פולו-אפ" },
   { key: "pricelist_sent", label: "נשלח מחירון" },
+  // AI sales help (2026-10-09): the reminder and the reply topics.
+  { key: "return", label: "⏰ לחזור אליהם" },
+  { key: "tag:discount", label: "💸 ביקשו הנחה" },
+  { key: "tag:wants_call", label: "📞 רוצים שיחה" },
+  { key: "tag:needs_time", label: "⏳ צריכים זמן" },
+  { key: "tag:ready", label: "✅ מוכנים לסגור" },
   { key: "client", label: "לקוחות" },
   { key: "staff", label: "צוות" },
   { key: "vendor", label: "ספקים" },
@@ -191,8 +204,10 @@ export function matchesBox(c, box, ctx = {}) {
     case "followup_noreply": return followUpOutcome(c) === "sent" && !["group", "staff"].includes(type);
     case "followup_replied": return followUpOutcome(c) === "replied" && !["group", "staff"].includes(type);
     case "pricelist_sent": return c.state === "PRICELIST_SENT" && !["group", "staff"].includes(type);
+    case "return": return !!c.returnAt && (isReturnDue(c) || new Date(c.returnAt).getTime() > Date.now());
     default:
       if (box.startsWith("label:")) return (ctx.labelsByConv?.[c.id] || []).includes(box.slice(6));
+      if (box.startsWith("tag:")) return c.aiTag === box.slice(4) && !isClosedDeal(c, c.matchedLeadId ? ctx.leadsById?.[c.matchedLeadId] : null);
       return type === box;
   }
 }

@@ -4,7 +4,9 @@
 //   1. Drain deferred sends — what the bot would have said during quiet hours, held in
 //      whatsapp_deferred_sends until the window ended.
 //   2. Nudge, once, a conversation that went quiet mid-flow.
-//   3. Send the daily digest to the studio's alert number at the configured hour.
+//   3. Send the daily digest to the studio's alert number at the configured hour
+//      (on Sundays with a weekly section underneath — AI sales help, 2026-10-09).
+//   4. "מתי לחזור אליהם": a lead who said they need time is due → bell + push, once.
 //
 // Why here and not a new cron job: the only scheduler this project can rely on is
 // `automation-engine-hourly` (confirmed live). A new job would mean a new secret pasted
@@ -21,7 +23,7 @@ import {
   loadQuietHoursSettings, isInQuietHoursNow, getJerusalemNowHHMM, getJerusalemTodayDateStr,
 } from './automationGuards.ts';
 import { IN_FLOW_STATES } from './whatsappIntent.ts';
-import { composeDigest, type DigestStats } from './whatsappDigest.ts';
+import { composeDigest, composeWeekly, type DigestStats, type WeeklyStats } from './whatsappDigest.ts';
 import { sendStudioAlert } from './whatsappStudioAlerts.ts';
 
 const DRAIN_BATCH = 20;     // per tenant per tick — the engine has a ~400s wall clock
@@ -35,10 +37,15 @@ export interface HousekeepingResult {
   cancelled: number;
   nudged: number;
   digestSent: boolean;
+  returnReminders?: number;
   errors: number;
 }
 
-export async function runWhatsAppHousekeeping(supabase: any, tenantId: string): Promise<HousekeepingResult> {
+// `push` is injected by automation-engine (webPush pulls a Deno-only package the test
+// bundle cannot load) — the same pattern as alertStuckMessages.
+type PushFn = (p: { title: string; body: string; conversationId?: string; url?: string; tag?: string }) => Promise<unknown>;
+
+export async function runWhatsAppHousekeeping(supabase: any, tenantId: string, push?: PushFn): Promise<HousekeepingResult> {
   const r: HousekeepingResult = { drained: 0, cancelled: 0, nudged: 0, digestSent: false, errors: 0 };
 
   const settings = await loadBotSettings(supabase, tenantId);
@@ -78,7 +85,50 @@ export async function runWhatsAppHousekeeping(supabase: any, tenantId: string): 
     console.error('[whatsappHousekeeping] digest failed:', e?.message || e);
   }
 
+  // Not a send to anyone outside the studio — runs whatever the bot switch says.
+  try {
+    r.returnReminders = await sendReturnReminders(supabase, tenantId, push);
+  } catch (e: any) {
+    r.errors++;
+    console.error('[whatsappHousekeeping] return reminders failed:', e?.message || e);
+  }
+
   return r;
+}
+
+// ---------------------------------------------------------------------------------
+// 4. "מתי לחזור אליהם" — return_at reached
+// ---------------------------------------------------------------------------------
+const RETURN_BATCH = 30;
+async function sendReturnReminders(supabase: any, tenantId: string, push?: PushFn): Promise<number> {
+  const nowIso = new Date().toISOString();
+  const { data: due } = await supabase
+    .from('whatsapp_conversations')
+    .select('id, couple_names, display_name, phone, ai_tag, matched_lead_id')
+    .eq('tenant_id', tenantId)
+    .lte('return_at', nowIso)
+    .is('return_notified_at', null)
+    .limit(RETURN_BATCH);
+  let n = 0;
+  for (const c of due || []) {
+    // Claim first, so two overlapping ticks never remind twice.
+    const { data: claimed } = await supabase
+      .from('whatsapp_conversations')
+      .update({ return_notified_at: nowIso })
+      .eq('id', c.id)
+      .is('return_notified_at', null)
+      .select('id');
+    if (!claimed?.length) continue;
+    const name = c.couple_names || c.display_name || c.phone || 'ליד';
+    const title = `⏰ לחזור אל ${name}`;
+    const body = c.ai_tag === 'needs_time' ? 'ביקשו זמן לחשוב — זה הזמן לבדוק מה איתם' : 'הגיע הזמן שקבעת לחזור אליהם';
+    await supabase.from('notifications').insert({
+      tenant_id: tenantId, type: 'whatsapp_return_reminder', title, body, related_lead_id: c.matched_lead_id || null,
+    });
+    if (push) await push({ title, body, conversationId: c.id, url: `/chat?c=${c.id}`, tag: `return-${c.id}` }).catch(() => {});
+    n++;
+  }
+  return n;
 }
 
 // ---------------------------------------------------------------------------------
@@ -231,7 +281,15 @@ async function sendDailyDigest(supabase: any, tenantId: string, settings: BotSet
   if (marker?.value === today) return false;
 
   const stats = await gatherDigestStats(supabase, tenantId, settings);
-  const text = composeDigest(stats, today.split('-').reverse().join('/'));
+  let text = composeDigest(stats, today.split('-').reverse().join('/'));
+  // Sundays: the week underneath. A failure there must not cost the daily digest.
+  if (new Date(`${today}T12:00:00Z`).getUTCDay() === 0) {
+    try {
+      text += '\n' + composeWeekly(await gatherWeeklyStats(supabase, tenantId));
+    } catch (e: any) {
+      console.error('[whatsappHousekeeping] weekly stats failed:', e?.message || e);
+    }
+  }
 
   const result = await sendStudioAlert(supabase, tenantId, text);
   if (result.skipped === 'no_phone') return false;
@@ -317,5 +375,32 @@ async function gatherDigestStats(supabase: any, tenantId: string, settings: BotS
     deferredPending: deferredPending ?? 0,
     inboundMessages: inboundMessages ?? 0,
     botEnabled: settings.enabled,
+  };
+}
+
+async function gatherWeeklyStats(supabase: any, tenantId: string): Promise<WeeklyStats> {
+  const weekAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+  const conv = () => supabase.from('whatsapp_conversations').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId);
+  const [{ count: newLeads }, { count: hot }, { count: returnDue }] = await Promise.all([
+    conv().in('contact_type', ['unknown', 'lead']).gte('created_at', weekAgo),
+    conv().eq('lead_temperature', 'hot').gte('lead_temperature_at', weekAgo),
+    conv().not('return_at', 'is', null).is('return_notified_at', null),
+  ]);
+  const { data: tagged } = await supabase
+    .from('whatsapp_conversations').select('ai_tag')
+    .eq('tenant_id', tenantId).gte('ai_tag_at', weekAgo).not('ai_tag', 'is', null).limit(1000);
+  const tags: Record<string, number> = {};
+  for (const t of tagged || []) tags[t.ai_tag] = (tags[t.ai_tag] || 0) + 1;
+  const { data: signedRows } = await supabase
+    .from('leads').select('final_price')
+    .eq('tenant_id', tenantId).gte('signed_at', weekAgo).limit(500);
+  const prices = (signedRows || []).map((l: any) => Number(l.final_price)).filter((n: number) => n > 0);
+  return {
+    newLeads: newLeads ?? 0,
+    hot: hot ?? 0,
+    tags,
+    signed: (signedRows || []).length,
+    avgSignedPrice: prices.length ? prices.reduce((a: number, b: number) => a + b, 0) / prices.length : null,
+    returnDue: returnDue ?? 0,
   };
 }

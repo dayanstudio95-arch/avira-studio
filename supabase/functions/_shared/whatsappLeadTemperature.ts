@@ -18,6 +18,7 @@
 // (cold) is not lexical.
 
 import { callClaude } from './anthropic.ts';
+import { parseTag, type AiTag } from './aiSalesRules.ts';
 
 export type LeadTemperature = 'hot' | 'warm' | 'cold';
 
@@ -28,10 +29,17 @@ export interface TemperatureResult {
 
 export const EMPTY_TEMPERATURE: TemperatureResult = { temperature: null, reason: null };
 
+// The same call also labels WHAT the reply is about (2026-10-09, AI sales help) — one
+// request, so tagging costs nothing extra on top of the rating that already ran.
+export interface ReplyLabel extends TemperatureResult {
+  tag: AiTag | null;
+  usage: { input_tokens: number; output_tokens: number } | null;
+}
+
 const SYSTEM_PROMPT = `אתה עוזר לסטודיו צילום אירועים לדרג עד כמה לקוח קרוב לסגור, לפי מה שכתב אחרי שקיבל מחירון.
 
 החזר JSON בלבד, בלי טקסט לפניו או אחריו:
-{"temperature": "hot" | "warm" | "cold", "reason": "משפט קצר אחד בעברית"}
+{"temperature": "hot" | "warm" | "cold", "reason": "משפט קצר אחד בעברית", "tag": "..."}
 
 הדירוגים:
 - "hot" — מבקש לסגור, לקבוע פגישה או שיחת טלפון, שואל על מקדמה/תשלום/חוזה, מאשר תאריך, או מביע התלהבות ברורה עם כוונה להתקדם. דוגמאות: "אנחנו בפנים", "מתי אפשר להיפגש?", "איך סוגרים?", "אפשר לדבר בטלפון?", "מה הלאה?", "רוצים את חבילת הפרימיום".
@@ -39,7 +47,17 @@ const SYSTEM_PROMPT = `אתה עוזר לסטודיו צילום אירועים 
 - "cold" — מנומס וסוגר: "תודה, נחשוב", "יקר לנו", "מצאנו מישהו אחר", "לא רלוונטי", או תודה בלבד בלי שאלה.
 
 reason — משפט קצר שמסביר על סמך מה דירגת, כדי שאדם יוכל לקרוא ולהחליט אם טעית. אל תצטט את כל ההודעה.
-אם ההודעה לא קשורה בכלל (הודעה שנשלחה בטעות, סתם אימוג'י) — החזר "cold".`;
+אם ההודעה לא קשורה בכלל (הודעה שנשלחה בטעות, סתם אימוג'י) — החזר "cold".
+
+tag — על מה ההודעה, ערך אחד:
+- "discount" — מבקשים הנחה / אומרים שיקר / שואלים אם אפשר פחות
+- "wants_call" — מבקשים לדבר בטלפון או להיפגש
+- "needs_time" — צריכים לחשוב, להתייעץ, לבדוק עם ההורים, "נחזור אליכם"
+- "closed_other" — סגרו עם מישהו אחר / כבר לא רלוונטי
+- "opt_out" — מבקשים להסיר אותם / לא לשלוח עוד הודעות
+- "question" — שאלה על החבילה, מה כלול, תוספות, לוגיסטיקה
+- "ready" — רוצים לסגור / לקבל הסכם / לשלם מקדמה
+- "other" — כל דבר אחר`;
 
 const VALID: LeadTemperature[] = ['hot', 'warm', 'cold'];
 
@@ -82,11 +100,17 @@ export function parseTemperatureResponse(text: string): TemperatureResult {
 // `replyText` is the customer's own message only. Never include the price list we sent —
 // it is full of enthusiastic sales copy and a model reading it back would rate our own
 // marketing as the customer's excitement.
+export function parseReplyLabel(text: string): Omit<ReplyLabel, 'usage'> {
+  const rating = parseTemperatureResponse(text);
+  const raw = extractJson(text);
+  return { ...rating, tag: parseTag(raw?.tag) };
+}
+
 export async function classifyReply(
   replyText: string | null | undefined,
   apiKey: string | null
-): Promise<TemperatureResult> {
-  if (!replyText || !replyText.trim()) return { ...EMPTY_TEMPERATURE };
+): Promise<ReplyLabel> {
+  if (!replyText || !replyText.trim()) return { ...EMPTY_TEMPERATURE, tag: null, usage: null };
 
   try {
     const res = await callClaude({
@@ -101,12 +125,12 @@ export async function classifyReply(
       .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
       .map((b) => b.text)
       .join('\n');
-    return parseTemperatureResponse(text);
+    return { ...parseReplyLabel(text), usage: res.usage ?? null };
   } catch (e: any) {
     // Rating is a nice-to-have on top of a conversation that is already safely stored.
     // A failure here must never propagate: it would turn a labelling problem into a
     // 500, and Green API would redeliver the customer's message for 24 hours.
     console.error('[whatsappLeadTemperature] classification failed:', e?.message || e);
-    return { ...EMPTY_TEMPERATURE };
+    return { ...EMPTY_TEMPERATURE, tag: null, usage: null };
   }
 }

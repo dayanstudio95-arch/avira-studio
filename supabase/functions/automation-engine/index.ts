@@ -1358,7 +1358,7 @@ Deno.serve(async (req) => {
       // isolated, so a failure here cannot take the automations down with it.
       let whatsapp = null;
       try {
-        whatsapp = await runWhatsAppHousekeeping(supabase, t.id);
+        whatsapp = await runWhatsAppHousekeeping(supabase, t.id, (p) => sendPush(supabase, t.id, 'lead', p));
       } catch (e: any) {
         console.error('[automationEngine] whatsapp housekeeping failed for tenant', t.id, e?.message || e);
       }

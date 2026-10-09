@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useMemo, useState } from "react";
+import { aiTagInfo, returnChip } from "@/lib/aiAssist";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Pin, Check, BellOff, X, Flame, CalendarDays, CalendarCheck, CalendarX2, Megaphone, Tag } from "lucide-react";
 import {
-  contactTypeLabel, effectiveStage, waitingLabel, isLongWait, CONTACT_TYPES, STAGES, isHotLead,
+  contactTypeLabel, effectiveStage, waitingLabel, isLongWait, CONTACT_TYPES, STAGES, isHotLead, isClosedDeal,
   rowEventDate, formatDateWithWeekday, dateStatus, hasStage, displayType, chatTitle,
 } from "@/lib/chatModel";
 import { typeColor, stageColor } from "@/lib/chatColors";
@@ -248,6 +249,14 @@ export default function ChatList({
                       </span>
                     )}
                     <FollowUpChip conversation={c} />
+                    {aiTagInfo(c.aiTag) && !isClosedDeal(c, lead) && (
+                      <span title="תיוג אוטומטי של ההודעה האחרונה" className={`rounded-full px-2 text-[11px] ${aiTagInfo(c.aiTag).cls}`}>
+                        {aiTagInfo(c.aiTag).icon} {aiTagInfo(c.aiTag).label}
+                      </span>
+                    )}
+                    {returnChip(c) && !wait && (
+                      <span className="rounded-md bg-amber-500/15 px-1.5 text-[11px] text-amber-200">{returnChip(c)}</span>
+                    )}
                     {convLabels.map((l) => (
                       <span key={l.id} className="rounded-md px-1.5 text-[11px] text-white" style={{ background: l.color }}>{l.name}</span>
                     ))}

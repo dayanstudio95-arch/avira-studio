@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { DollarSign, Save, Users, Edit, Trash2, Plus, Upload, Download, FileText, Plug, MessageCircle, Building2, History, Bell, ShieldCheck, Loader2, Settings as SettingsIcon } from "lucide-react";
+import { DollarSign, Save, Users, Edit, Trash2, Plus, Upload, Download, FileText, Plug, MessageCircle, Building2, History, Bell, ShieldCheck, Loader2, Sparkles, Settings as SettingsIcon } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/lib/SupabaseAuthContext";
@@ -36,6 +36,7 @@ import QuietHoursCard from "../components/settings/QuietHoursCard";
 import FinancialDefaultsCard from "../components/settings/FinancialDefaultsCard";
 import DataBackupCard from "../components/settings/DataBackupCard";
 import RecycleBinCard from "../components/settings/RecycleBinCard";
+import AiSalesAssistCard from "../components/settings/AiSalesAssistCard";
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 import { DEFAULT_CONTRACT_TERMS } from "@/lib/defaultContractTerms";
@@ -45,7 +46,7 @@ import { todayInIsrael } from "@/lib/localDate";
 import PageIcon from "@/components/layout/PageIcon";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 
-const VALID_SETTINGS_TABS = ["workspace", "users", "contract", "pricing", "team", "templates", "integrations", "notifications", "data", "audit"];
+const VALID_SETTINGS_TABS = ["workspace", "users", "contract", "pricing", "team", "templates", "ai", "integrations", "notifications", "data", "audit"];
 
 export default function Settings() {
   const { user } = useAuth();
@@ -386,6 +387,10 @@ export default function Settings() {
               <MessageCircle className="w-4 h-4 ml-1" />
               תבניות הודעה
             </TabsTrigger>
+            <TabsTrigger value="ai" className="data-[state=active]:bg-yellow-400 data-[state=active]:text-gray-900 text-gray-300">
+              <Sparkles className="w-4 h-4 ml-1" />
+              עוזר מכירות AI
+            </TabsTrigger>
             <TabsTrigger value="integrations" className="data-[state=active]:bg-yellow-400 data-[state=active]:text-gray-900 text-gray-300">
               <Plug className="w-4 h-4 ml-1" />
               חיבורים
@@ -706,6 +711,10 @@ export default function Settings() {
           </TabsContent>
 
           {/* חיבורים */}
+          <TabsContent value="ai">
+            <AiSalesAssistCard />
+          </TabsContent>
+
           <TabsContent value="integrations">
             <div className="space-y-6">
               <IntegrationsTab />

@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ChevronRight, Pin, PinOff, Archive, ArchiveRestore, Tag, Send, Loader2, BellOff, Trash2, Plus, X, CalendarPlus } from "lucide-react";
+import { ChevronRight, Pin, PinOff, Archive, ArchiveRestore, Tag, Send, Loader2, BellOff, Trash2, Plus, X, CalendarPlus, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import MessageBubble from "@/components/whatsapp/MessageBubble";
 import { groupMessagesByDay, formatMessageDateTime } from "@/components/whatsapp/whatsappInboxShared";
@@ -10,6 +10,13 @@ import { Avatar, conversationTitle } from "./ChatList";
 import { typeColor, stageColor } from "@/lib/chatColors";
 import { displayPhone } from "@/components/whatsapp/whatsappInboxShared";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import AiAssistPanel from "./AiAssistPanel";
+import AiSummaryBar from "./AiSummaryBar";
+import ReturnReminderButton from "./ReturnReminderButton";
+import { aiTagInfo } from "@/lib/aiAssist";
+
+// AI sales help (2026-10-09) is for people being sold to: strangers and leads.
+const isSalesChat = (c) => ["unknown", "lead"].includes(c?.contactType || "unknown");
 
 function NoteBubble({ note, onDelete }) {
   return (
@@ -37,6 +44,7 @@ export default function ChatThread({
   const [mode, setMode] = useState("msg"); // 'msg' | 'note'
   const [busy, setBusy] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showAi, setShowAi] = useState(false);
   const [editing, setEditing] = useState(null); // {id?, name, body}
   const scrollRef = useRef(null);
   const textRef = useRef(null);
@@ -46,6 +54,7 @@ export default function ChatThread({
   useEffect(() => {
     setText(drafts.current[conversation.id] || "");
     setShowTemplates(false);
+    setShowAi(false);
     setMode("msg");
   }, [conversation.id]);
   useEffect(() => {
@@ -125,6 +134,11 @@ export default function ChatThread({
             <span className="flex min-w-0 flex-wrap items-center gap-1 text-[11px]">
               <span className={`rounded-full px-2 ${typeColor(displayType(conversation))}`}>{contactTypeLabel(displayType(conversation))}</span>
               {stage && <span className={`rounded-full border px-2 ${stageColor(stage).chip}`}>{stage}</span>}
+              {isSalesChat(conversation) && aiTagInfo(conversation.aiTag) && (
+                <span title="תיוג אוטומטי של ההודעה האחרונה" className={`rounded-full px-2 ${aiTagInfo(conversation.aiTag).cls}`}>
+                  {aiTagInfo(conversation.aiTag).icon} {aiTagInfo(conversation.aiTag).label}
+                </span>
+              )}
               {labels.map((l) => (
                 <span key={l.id} className="rounded-full px-2 text-white" style={{ background: l.color }}>{l.name}</span>
               ))}
@@ -178,6 +192,7 @@ export default function ChatThread({
         <button type="button" onClick={onArchive} aria-label={conversation.archivedAt ? "החזר מהארכיון" : "העבר לארכיון"} title={conversation.archivedAt ? "החזר מהארכיון" : "ארכיון (חוזר לבד כשכותבים שוב)"} className="hidden h-10 w-10 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white md:flex">
           {conversation.archivedAt ? <ArchiveRestore className="h-5 w-5" /> : <Archive className="h-5 w-5" />}
         </button>
+        {hasStage(conversation) && <ReturnReminderButton conversation={conversation} />}
         {onScheduleMeeting && (
           <button type="button" onClick={onScheduleMeeting} aria-label="קבע פגישה" title="קבע פגישה / שיחה" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-800 text-gray-200 hover:text-yellow-300">
             <CalendarPlus className="h-5 w-5" />
@@ -191,6 +206,7 @@ export default function ChatThread({
       {hasStage(conversation) && (
         <DateAvailability info={eventDateFor(conversation, lead, thread.timeline)} excludeLeadId={conversation.matchedLeadId} />
       )}
+      {isSalesChat(conversation) && <AiSummaryBar conversation={conversation} />}
 
       {conversation.optedOutAt && (
         <div className="flex items-center gap-2 border-b border-red-900/50 bg-red-950/40 px-4 py-2 text-xs text-red-200">
@@ -227,6 +243,18 @@ export default function ChatThread({
       </div>
 
       <div className="relative border-t border-gray-800 bg-gray-900/80 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 md:px-4">
+        {showAi && !isNote && (
+          <AiAssistPanel
+            conversation={conversation}
+            draft={text}
+            onClose={() => setShowAi(false)}
+            onUse={(t) => {
+              setText(t);
+              setShowAi(false);
+              setTimeout(() => textRef.current?.focus(), 0);
+            }}
+          />
+        )}
         {showTemplates && (
           <div className="absolute bottom-full right-2 z-20 mb-2 w-[min(380px,calc(100vw-1rem))] rounded-2xl border border-gray-700 bg-gray-900 p-2 shadow-2xl">
             <div className="flex items-center justify-between px-2 py-1">
@@ -288,7 +316,18 @@ export default function ChatThread({
           <button type="button" role="tab" aria-selected={isNote} onClick={() => setMode("note")} className={`rounded-full px-3 py-1 text-xs ${isNote ? "bg-yellow-900/60 text-yellow-200" : "text-gray-400"}`}>הערה פנימית</button>
         </div>
         <div className="flex items-end gap-2">
-          <button type="button" onClick={() => setShowTemplates((v) => !v)} aria-label="תשובות מהירות" title="תשובות מהירות" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gray-800 text-xl font-bold text-yellow-400">/</button>
+          <button type="button" onClick={() => { setShowTemplates((v) => !v); setShowAi(false); }} aria-label="תשובות מהירות" title="תשובות מהירות" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gray-800 text-xl font-bold text-yellow-400">/</button>
+          {!isNote && isSalesChat(conversation) && (
+            <button
+              type="button"
+              onClick={() => { setShowAi((v) => !v); setShowTemplates(false); }}
+              aria-label="עוזר מכירות"
+              title="הצע תשובה / שפר ניסוח"
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${showAi ? "bg-violet-600 text-white" : "bg-gray-800 text-violet-300 hover:text-violet-100"}`}
+            >
+              <Sparkles className="h-5 w-5" />
+            </button>
+          )}
           <textarea
             ref={textRef}
             value={text}

@@ -61,7 +61,8 @@ import { normalizeIsraeliPhone, chatIdToLocalPhone, isGroupChatId } from '../_sh
 import {
   loadQuietHoursSettings, isInQuietHoursNow, nextQuietHoursEnd, type QuietHoursSettings,
 } from '../_shared/automationGuards.ts';
-import { decideBotReply, decideBotFollowUp, shouldRateReply, BOT_BUDGET_EXCLUDED_KINDS } from '../_shared/whatsappIntent.ts';
+import { decideBotReply, decideBotFollowUp, shouldRateReply, shouldTagReply, BOT_BUDGET_EXCLUDED_KINDS } from '../_shared/whatsappIntent.ts';
+import { returnUpdateForTag, costIls } from '../_shared/aiSalesRules.ts';
 import {
   loadBotSettings, isUnderHourlyQuota, sendBotMessage, sendPricelist, sleep,
   composeSends, enqueueDeferredSend, renderQuestion, type DeferredSendItem, type BotSettings,
@@ -353,7 +354,7 @@ Deno.serve(async (req: Request) => {
     // ---- Conversation (create or fetch) -------------------------------------
     const { data: existingRows, error: convSelectError } = await supabase
       .from('whatsapp_conversations')
-      .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature, source, hot_alert_sent_at, matched_lead_id, contact_type_manual_at, archived_at, opted_out_at')
+      .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature, source, hot_alert_sent_at, matched_lead_id, contact_type_manual_at, archived_at, opted_out_at, return_at, return_notified_at')
       .eq('tenant_id', tenantId)
       .eq('chat_id', chatId)
       .limit(1);
@@ -377,7 +378,7 @@ Deno.serve(async (req: Request) => {
           matched_event_id: match.eventId,
           display_name: displayName,
         })
-        .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature, source, hot_alert_sent_at, matched_lead_id, contact_type_manual_at, archived_at, opted_out_at')
+        .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature, source, hot_alert_sent_at, matched_lead_id, contact_type_manual_at, archived_at, opted_out_at, return_at, return_notified_at')
         .single();
 
       if (insertConvError) {
@@ -386,7 +387,7 @@ Deno.serve(async (req: Request) => {
           // the other one created.
           const { data: raced } = await supabase
             .from('whatsapp_conversations')
-            .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature, source, hot_alert_sent_at, matched_lead_id, contact_type_manual_at, archived_at, opted_out_at')
+            .select('id, contact_type, bot_enabled, display_name, state, bot_would_reply_at, couple_names, event_date, venue, guest_count, lead_temperature, source, hot_alert_sent_at, matched_lead_id, contact_type_manual_at, archived_at, opted_out_at, return_at, return_notified_at')
             .eq('tenant_id', tenantId)
             .eq('chat_id', chatId)
             .limit(1);
@@ -684,19 +685,28 @@ Deno.serve(async (req: Request) => {
     // NOT depend on the bot being on in the conversation (it used to, and the bot is muted
     // the moment the owner touches a chat, so almost nothing was ever rated; see
     // shouldRateReply). Re-rated on each reply until it reaches 'hot', then left alone.
-    if (
-      shouldRateReply({
-        isInbound,
-        isGroup,
-        state: conversation.state,
-        contactType: effectiveContactType,
-        typeMessage,
-        currentTemperature: conversation.lead_temperature,
-      })
-    ) {
+    const rateIt = shouldRateReply({
+      isInbound,
+      isGroup,
+      state: conversation.state,
+      contactType: effectiveContactType,
+      typeMessage,
+      currentTemperature: conversation.lead_temperature,
+    });
+    // The same call also tags what the reply is about (AI sales help, 2026-10-09) — on a
+    // wider set of replies than the rating: a hot lead still asks for a discount.
+    const tagIt = shouldTagReply({
+      isInbound,
+      isGroup,
+      state: conversation.state,
+      contactType: effectiveContactType,
+      typeMessage,
+    });
+    if (rateIt || tagIt) {
       const ratingKey = await loadAnthropicKey(supabase, tenantId);
       const rating = await classifyReply(bodyText, ratingKey);
-      if (rating.temperature) {
+      // Already hot = the rating has done its job; only the tag is new information.
+      if (rateIt && rating.temperature) {
         updates.lead_temperature = rating.temperature;
         updates.lead_temperature_reason = rating.reason;
         updates.lead_temperature_at = nowIso;
@@ -706,6 +716,24 @@ Deno.serve(async (req: Request) => {
           updates.hot_alert_sent_at = nowIso;
           hotAlert = { reason: rating.reason, replyText: bodyText };
         }
+      }
+      if (rating.tag) {
+        updates.ai_tag = rating.tag;
+        updates.ai_tag_at = nowIso;
+        const ret = returnUpdateForTag(rating.tag, conversation);
+        if (ret) Object.assign(updates, ret);
+      }
+      // Counted in the monthly AI meter (Settings). Best-effort: a failed insert must not
+      // cost the conversation its update.
+      if (rating.usage) {
+        const { error: usageError } = await supabase.from('ai_usage').insert({
+          tenant_id: tenantId,
+          kind: 'tag',
+          input_tokens: rating.usage.input_tokens || 0,
+          output_tokens: rating.usage.output_tokens || 0,
+          cost_ils: costIls(rating.usage.input_tokens || 0, rating.usage.output_tokens || 0),
+        });
+        if (usageError) console.error('[whatsapp-webhook] ai_usage insert failed:', usageError.message);
       }
       // A failed or unparseable rating leaves the columns untouched rather than writing
       // null over a previous good one — classifyReply already swallowed the error.

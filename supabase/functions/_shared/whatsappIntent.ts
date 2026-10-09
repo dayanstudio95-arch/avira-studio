@@ -471,6 +471,25 @@ export function shouldRateReply(input: {
   return input.currentTemperature !== 'hot';
 }
 
+// AI sales help (2026-10-09): which replies get a topic tag (discount / wants a call /
+// needs time …). Wider than shouldRateReply — a lead keeps talking long after the price
+// list, and a hot lead still asks for a discount — but never while the bot is collecting
+// the event details (those answers are a date and a venue, not a sales signal), and never
+// for clients, staff or groups.
+export function shouldTagReply(input: {
+  isInbound: boolean;
+  isGroup: boolean;
+  state: string | null | undefined;
+  contactType: string;
+  typeMessage: string | null;
+}): boolean {
+  if (!input.isInbound || input.isGroup) return false;
+  if (input.contactType !== 'unknown' && input.contactType !== 'lead') return false;
+  if (!input.typeMessage || !TEXT_MESSAGE_TYPES.includes(input.typeMessage)) return false;
+  return !IN_FLOW_STATES_FOR_TAGS.includes(input.state || '');
+}
+const IN_FLOW_STATES_FOR_TAGS = ['AWAITING_DETAILS', 'PARTIAL_DETAILS'];
+
 // ---------------------------------------------------------------------------------
 // Stage 3: the follow-up gate.
 //

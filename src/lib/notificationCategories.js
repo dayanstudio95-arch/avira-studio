@@ -9,6 +9,7 @@
 // Keyed by notification.type as written by the Edge Functions / triggers:
 //   contract_signed              0026_notifications_trigger.sql
 //   whatsapp_hot_lead            _shared/whatsappStudioAlerts.ts
+//   whatsapp_return_reminder     _shared/whatsappHousekeeping.ts ("מתי לחזור אליהם")
 //   album_*                      album-portal/index.ts
 //   staff_availability_response  respond-staff-availability-public/index.ts
 // A new type is one line here and it appears in the menu; nothing else to touch.
@@ -21,6 +22,7 @@ export const NAV_ROUTE_BY_NOTIFICATION_TYPE = {
   album_design_client_edits: "/AlbumOrders",
   staff_availability_response: "/StaffScheduling",
   meeting_reminder: "/Meetings",
+  whatsapp_return_reminder: "/chat",
 };
 
 export function navRouteForNotification(type) {
@@ -71,7 +73,7 @@ export function notificationEmoji(type) {
   if (t.endsWith("_failed")) return "⚠️";
   if (t === "whatsapp_hot_lead") return "🔥";
   if (t === "whatsapp_opt_out") return "🚫";
-  if (t === "meeting_reminder") return "⏰";
+  if (t === "meeting_reminder" || t === "whatsapp_return_reminder") return "⏰";
   return NOTIFICATION_TABS.find((x) => x.key === notificationTab(t))?.icon || "🔔";
 }
 
