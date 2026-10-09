@@ -126,10 +126,13 @@ export default function ChatApp() {
   }, []);
 
   useEffect(() => {
+    const prevTitle = document.title;
     document.title = "אווירה צ'אט";
     // Notifications only (it caches nothing). Registered on every open so a tap on a
     // notification always finds it.
     registerChatServiceWorker();
+    // back to the full system → its own title again (2026-10-09)
+    return () => { document.title = prevTitle; };
   }, []);
 
   // The number on the home-screen icon: conversations with unread messages.

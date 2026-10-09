@@ -47,11 +47,18 @@ export default function ChatSidebar({ box, setBox, counts, labels, onCreateLabel
   };
 
   return (
-    <nav aria-label="תיבות" className={`flex flex-col gap-0.5 overflow-y-auto border-l border-gray-800 bg-gray-950 p-3 ${className}`}>
-      <div className="flex items-center gap-2 px-2 pb-3">
+    // The column itself is overflow:hidden (the rounded card style, index.css .chat-col), so
+    // the boxes scroll in an inner area under a fixed header (2026-10-09: the list was cut off
+    // and its bottom links unreachable). The header's button goes back to the full system.
+    <nav aria-label="תיבות" className={`flex flex-col border-l border-gray-800 bg-gray-950 ${className}`}>
+      <div className="flex shrink-0 items-center gap-2 px-4 pb-3 pt-3">
         <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-yellow-400 text-lg font-bold text-gray-900">א</span>
-        <span className="text-[15px] font-bold text-white">אווירה צ'אט</span>
+        <span className="min-w-0 flex-1 whitespace-nowrap text-[15px] font-bold text-white">אווירה צ'אט</span>
+        <Link to="/" title="חזרה למערכת המלאה" className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-gray-700 px-2 py-1 text-xs text-gray-300 hover:border-yellow-500 hover:text-white">
+          <LayoutGrid className="h-3.5 w-3.5" /> למערכת
+        </Link>
       </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-3">
 
       {BOXES.filter((b) => b.primary).map((b) => row(b.key, b.label))}
 
@@ -150,6 +157,7 @@ export default function ChatSidebar({ box, setBox, counts, labels, onCreateLabel
         <Link to="/WhatsAppInbox" className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-500 hover:bg-gray-800/60 hover:text-white">
           <History className="h-4 w-4" /> מסך השיחות הישן (גיבוי)
         </Link>
+      </div>
       </div>
     </nav>
   );
