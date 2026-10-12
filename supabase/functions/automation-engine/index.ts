@@ -323,7 +323,10 @@ async function runMonthlyStaffSummary(supabase: any, tenantId: string, automatio
 }
 
 async function runDailyEventBrief(supabase: any, tenantId: string, automation: any, runId: string, opts: any = {}) {
-  const { testPhone, dryRun, selectedStaffIds, quietHours } = opts;
+  // allowResendToday (2026-10-12): the owner changed the team after the morning's brief and
+  // sends tomorrow's reminder again by hand — the preview shows who already got it today,
+  // and ticking them is his choice to send again (same as the monthly summary).
+  const { testPhone, dryRun, selectedStaffIds, quietHours, allowResendToday } = opts;
 
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
@@ -471,11 +474,12 @@ async function runDailyEventBrief(supabase: any, tenantId: string, automation: a
     }
 
     if (dryRun) {
-      logs.push({ staffId: member.id, name: member.name, phone, finalMessage, eventsCount: memberEvents.length, status: 'preview' });
+      const alreadyAt = phone ? await sentTodayAt(supabase, automation.id, phone.trim()) : null;
+      logs.push({ staffId: member.id, name: member.name, phone, finalMessage, eventsCount: memberEvents.length, status: 'preview', sentTodayAt: alreadyAt });
       continue;
     }
 
-    const guardSkipReason = await checkSendGuards(supabase, automation, quietHours, phone.trim());
+    const guardSkipReason = await checkSendGuards(supabase, automation, quietHours, phone.trim(), { allowResendToday: !!allowResendToday });
     if (guardSkipReason) {
       await supabase.from('automation_message_logs').insert({ ...logEntry, status: 'skipped', error: guardSkipReason });
       skipped++;
@@ -1203,7 +1207,7 @@ async function executeAutomation(supabase: any, tenantId: string, automation: an
     const quietHours = await loadQuietHoursSettings(supabase, tenantId);
 
     if (automation.type === 'monthly_staff_summary') result = await runMonthlyStaffSummary(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds, quietHours, allowResendToday });
-    if (automation.type === 'daily_event_brief') result = await runDailyEventBrief(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds, quietHours });
+    if (automation.type === 'daily_event_brief') result = await runDailyEventBrief(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds, quietHours, allowResendToday });
     if (automation.type === 'questionnaire_reminder') result = await runQuestionnaireReminder(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds });
     if (automation.type === 'payment_reminder') result = await runPaymentReminder(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds });
     if (automation.type === 'album_reminder') result = await runAlbumReminder(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedEventIds, quietHours });
