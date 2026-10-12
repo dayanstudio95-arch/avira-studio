@@ -81,6 +81,7 @@ export default function ChatApp() {
   const ordered = useMemo(() => orderBoxes(savedOrder), [savedOrder]);
   const [orderOpen, setOrderOpen] = useState(false);
   const [homeTypesOpen, setHomeTypesOpen] = useState(false);
+  const [rowMenu, setRowMenu] = useState(null); // the chat whose long-press menu is open
   // Any key of chat_prefs, merged into what is saved (box order, home types…).
   const savePrefs = async (patch, doneText) => {
     if (!prefsQ.isSuccess) {
@@ -187,11 +188,6 @@ export default function ChatApp() {
     return () => { document.title = prevTitle; };
   }, []);
 
-  // The number on the home-screen icon: conversations with unread messages.
-  const unreadConversations = Object.values(data.unread).filter((n) => n > 0).length;
-  useEffect(() => {
-    setBadge(unreadConversations);
-  }, [unreadConversations]);
 
   const labelsById = useMemo(() => Object.fromEntries(data.labels.map((l) => [l.id, l])), [data.labels]);
   // Which contact types "שיחות" shows (2026-10-12): the owner's choice, saved per user —
@@ -499,6 +495,11 @@ export default function ChatApp() {
      
   }, [data.conversations, data.unread, data.followUpAfterDays, data.leadsById]);
   const mineTotal = mineCounts.needs + mineCounts.hot + mineCounts.followup + mineCounts.return;
+  // The number on the home-screen icon (2026-10-13, the owner's choice): how many people are
+  // waiting for an answer — not unread chats, which also counts what needs nothing.
+  useEffect(() => {
+    setBadge(mineCounts.needs);
+  }, [mineCounts.needs]);
   const mineRow = box === "all" && !q && mineTotal > 0 && (
     <button
       type="button"
@@ -612,6 +613,9 @@ export default function ChatApp() {
           mobileChips={chips}
           topBar={<>{meetingBanner}{mineRow}{followUpBar}</>}
           sectionOf={box === "mine" && !q ? (c) => mineLabels[mineSection(c, ctx)] || null : undefined}
+          onSwipeHandled={(c) => run(data.actions.setHandled([c], true), () => '✓ טופל · יחזור כשיכתבו שוב')}
+          onSwipeArchive={(c) => run(data.actions.setArchived([c], !c.archivedAt), () => (c.archivedAt ? "הוחזר מהארכיון" : "הועבר לארכיון · יחזור לבד כשיכתבו שוב"))}
+          onRowMenu={(c) => setRowMenu(c)}
           compact
         />
         {!selectMode && (
@@ -696,6 +700,37 @@ export default function ChatApp() {
             </div>
           </div>
         </>
+      )}
+
+      {/* Long-press / right-click on a row (2026-10-13, like WhatsApp) */}
+      {rowMenu && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 md:items-center" onClick={() => setRowMenu(null)}>
+          <div role="menu" aria-label="פעולות לשיחה" onClick={(e) => e.stopPropagation()} className="w-full rounded-t-3xl border-t border-gray-800 bg-gray-950 p-3 pb-[max(1rem,env(safe-area-inset-bottom))] md:w-[320px] md:rounded-2xl md:border">
+            <div className="truncate px-2 pb-2 text-sm font-semibold text-white">{conversationTitle(rowMenu)}</div>
+            {[
+              { label: rowMenu.pinnedAt ? "בטל נעיצה" : "📌 נעץ למעלה", act: () => run(data.actions.setPinned([rowMenu], !rowMenu.pinnedAt), () => (rowMenu.pinnedAt ? "בוטלה הנעיצה" : "ננעץ למעלה")) },
+              needsReply(rowMenu) && { label: "✓ טופל", act: () => run(data.actions.setHandled([rowMenu], true), () => '✓ טופל · יחזור כשיכתבו שוב') },
+              ["unknown", "lead", "client", "past_client"].includes(rowMenu.contactType || "unknown") && {
+                label: isAwaitingFollowUp(rowMenu, data.followUpAfterDays || 0) ? "הוצא מפולו-אפ" : "⏳ לפולו-אפ",
+                act: () => {
+                  const on = !isAwaitingFollowUp(rowMenu, data.followUpAfterDays || 0);
+                  return run(data.actions.setFollowUpFlag([rowMenu], on), () => (on ? "נוסף לתור הפולו-אפ" : "הוסר מתור הפולו-אפ"));
+                },
+              },
+              { label: rowMenu.archivedAt ? "החזר מהארכיון" : "🗄 ארכיון", act: () => run(data.actions.setArchived([rowMenu], !rowMenu.archivedAt), () => (rowMenu.archivedAt ? "הוחזר מהארכיון" : "הועבר לארכיון")) },
+            ].filter(Boolean).map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                role="menuitem"
+                onClick={() => { setRowMenu(null); item.act(); }}
+                className="flex min-h-[48px] w-full items-center rounded-xl px-3 text-start text-base text-gray-200 hover:bg-gray-800/70 md:min-h-[40px] md:text-sm"
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
 
       {homeTypesOpen && (

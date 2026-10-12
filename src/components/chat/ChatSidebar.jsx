@@ -15,6 +15,9 @@ export default function ChatSidebar({
 }) {
   const [adding, setAdding] = useState(false);
   const [ordering, setOrdering] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(() => {
+    try { return localStorage.getItem("chat_sidebar_more") === "1"; } catch { return false; }
+  });
   const [name, setName] = useState("");
   const [color, setColor] = useState(LABEL_COLORS[0]);
   const [busy, setBusy] = useState(false);
@@ -88,9 +91,21 @@ export default function ChatSidebar({
         )}
       </div>
       {primaryBoxes.map((b) => row(b.key, b.label))}
+      {/* 2026-10-13: the computer like the phone — שיחות, the filters, "מה מחכה לי"; every
+          other box folds under "עוד" (closed by default, remembered on this computer). */}
+      {!primaryBoxes.some((b) => b.key === "mine") && row("mine", "מה מחכה לי")}
 
-      <div className="mt-4 px-3 pb-1 text-xs font-semibold text-gray-500">עוד</div>
-      {moreBoxes.map((b) => row(b.key, b.label))}
+      <button
+        type="button"
+        onClick={() => setMoreOpen((v) => { try { localStorage.setItem("chat_sidebar_more", v ? "0" : "1"); } catch { /* private mode */ } return !v; })}
+        aria-expanded={moreOpen}
+        className="mt-4 flex items-center justify-between rounded-lg px-3 py-1.5 text-xs font-semibold text-gray-500 hover:bg-gray-800/60 hover:text-white"
+      >
+        <span>עוד ({moreBoxes.filter((b) => b.key !== "mine").length})</span>
+        <span>{moreOpen ? "▾" : "▸"}</span>
+      </button>
+      {(moreOpen || moreBoxes.some((b) => b.key === box && b.key !== "mine")) &&
+        moreBoxes.filter((b) => b.key !== "mine").map((b) => row(b.key, b.label))}
 
       <div className="mt-4 px-3 pb-1 text-xs font-semibold text-gray-500">התוויות שלי</div>
       {labels.map((l) =>

@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useMemo, useState } from "react";
 import { aiTagInfo, returnChip } from "@/lib/aiAssist";
+import SwipeRow from "./SwipeRow";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Pin, Check, BellOff, X, Flame, CalendarDays } from "lucide-react";
 import { CONTACT_TYPES, STAGES, isHotLead, isClosedDeal,
-  rowEventDate, dateStatus, hasStage, previewText, chatTitle,
+  rowEventDate, dateStatus, hasStage, previewText, needsReply, waitingLabel, isLongWait, chatTitle,
 } from "@/lib/chatModel";
 import { fetchDateAvailability, fetchMessageDates } from "@/lib/dateAvailability";
 
@@ -89,7 +90,7 @@ function RowDateLine({ date, map, loading, ownLeadId, convId }) {
 export default function ChatList({
   title, conversations, activeId, onOpen, unread, labelsById, labelsByConv, leadsById,
   search, setSearch, searchHits, selectMode, setSelectMode, selected, setSelected,
-  labels, onBulk, mobileChips, compact, topBar, sectionOf,
+  labels, onBulk, mobileChips, compact, topBar, sectionOf, onSwipeHandled, onSwipeArchive, onRowMenu,
 }) {
   const [menu, setMenu] = useState(null); // 'type' | 'stage' | 'label' | null
   const selectedIds = Object.keys(selected).filter((k) => selected[k]);
@@ -173,6 +174,9 @@ export default function ChatList({
           const ret = !tag ? returnChip(c) : null;
           const convLabels = (labelsByConv[c.id] || []).map((id) => labelsById[id]).filter(Boolean);
           const section = sectionOf ? sectionOf(c) : null;
+          // How long they have waited — only in "מה מחכה לי" (2026-10-13), red after two hours.
+          const wait = sectionOf && needsReply(c) ? waitingLabel(c) : null;
+          const longWait = !!wait && isLongWait(c);
           const prevSection = sectionOf && idx > 0 ? sectionOf(conversations[idx - 1]) : null;
           return (
             <React.Fragment key={c.id}>
@@ -182,6 +186,12 @@ export default function ChatList({
             {/* 2026-10-12, WhatsApp-like rows (the owner: "it should feel like WhatsApp"):
                 picture, name, time; last message + green unread count; one quiet line with
                 the date (free / taken) and at most one tag. Everything else is in the chat. */}
+            <SwipeRow
+              enabled={!selectMode}
+              onSwipeRight={onSwipeHandled ? () => onSwipeHandled(c) : undefined}
+              onSwipeLeft={onSwipeArchive ? () => onSwipeArchive(c) : undefined}
+              onLongPress={onRowMenu && !selectMode ? () => onRowMenu(c) : undefined}
+            >
             <div className={`flex items-center gap-3 border-b border-gray-800/60 px-3.5 py-2.5 ${on ? "chat-row-on" : checked ? "bg-yellow-500/10" : "hover:bg-gray-800/40"}`}>
               {selectMode && (
                 <button
@@ -213,6 +223,9 @@ export default function ChatList({
                       <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500 px-1.5 text-[11px] font-bold text-gray-950">{n}</span>
                     )}
                   </span>
+                  {wait && (
+                    <span className={`mt-0.5 self-start rounded-md px-1.5 text-[11px] ${longWait ? "bg-red-500/20 font-semibold text-red-300" : "bg-gray-800 text-gray-300"}`}>{wait}</span>
+                  )}
                   {(hasStage(c) && rowDates[c.id]) || tag || ret ? (
                     <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-gray-500">
                       {hasStage(c) && rowDates[c.id] && <RowDateLine date={rowDates[c.id]} map={availQ.data} loading={availQ.isLoading} ownLeadId={c.matchedLeadId} convId={c.id} />}
@@ -223,6 +236,7 @@ export default function ChatList({
                 </span>
               </button>
             </div>
+            </SwipeRow>
             </React.Fragment>
           );
         })}
