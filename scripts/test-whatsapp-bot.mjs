@@ -2261,6 +2261,21 @@ console.log('\n— PART 52: information requests —');
   check('a colleague asking for information → still silent (vendor veto)', wi52.detectLeadIntent('היי, אני צלם, אשמח לקבל מידע על חתונות אצלכם', {}).isInquiry, false);
 }
 
+// PART 56 — the automation cards keep their places (2026-10-12)
+console.log('\n— PART 56: automation order —');
+{
+  const ao = await loadModule('src/lib/automationOrder.js', 'ao56');
+  const rows = [
+    { id: '1', type: 'album_reminder', created_date: '2026-09-01' },
+    { id: '2', type: 'custom', created_date: '2026-09-03' },
+    { id: '3', type: 'monthly_staff_summary', created_date: '2026-09-05' },
+    { id: '4', type: 'custom', created_date: '2026-09-02' },
+    { id: '5', type: 'questionnaire_send', created_date: '2026-09-04' },
+  ];
+  check('team first, then couples, then custom by creation', ao.sortAutomations(rows).map((r) => r.id).join(), '3,5,1,4,2');
+  check('the same order whatever order the database returns', ao.sortAutomations([...rows].reverse()).map((r) => r.id).join(), '3,5,1,4,2');
+}
+
 // PART 55 — the WhatsApp-like home: which types, and "מה מחכה לי" (2026-10-12)
 console.log('\n— PART 55: chat home —');
 {

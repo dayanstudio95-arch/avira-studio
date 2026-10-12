@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { sortAutomations } from "@/lib/automationOrder";
 import { useSearchParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 const { Automation, AutomationRun, StaffMember, Event, Lead } = base44.entities;
@@ -1115,7 +1116,7 @@ export default function AutomationsDashboard() {
           toast.success(`נוצרו ${created.length} אוטומציות חדשות`);
         }
       }
-      setAutomations(data);
+      setAutomations(sortAutomations(data));
     } catch (e) {
       toast.error("שגיאה בטעינת אוטומציות");
     }
