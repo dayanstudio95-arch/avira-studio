@@ -1,16 +1,11 @@
 import React, { createContext, useContext, useMemo, useState } from "react";
 import { aiTagInfo, returnChip } from "@/lib/aiAssist";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Pin, Check, BellOff, X, Flame, CalendarDays, CalendarCheck, CalendarX2, Megaphone, Tag } from "lucide-react";
-import {
-  contactTypeLabel, effectiveStage, waitingLabel, isLongWait, CONTACT_TYPES, STAGES, isHotLead, isClosedDeal,
-  rowEventDate, formatDateWithWeekday, dateStatus, hasStage, displayType, chatTitle,
+import { Search, Pin, Check, BellOff, X, Flame, CalendarDays } from "lucide-react";
+import { CONTACT_TYPES, STAGES, isHotLead, isClosedDeal,
+  rowEventDate, dateStatus, hasStage, previewText, chatTitle,
 } from "@/lib/chatModel";
-import { typeColor, stageColor } from "@/lib/chatColors";
 import { fetchDateAvailability, fetchMessageDates } from "@/lib/dateAvailability";
-import { displayPhone } from "@/components/whatsapp/whatsappInboxShared";
-import { isManuallyFlagged } from "@/lib/followUpQueue";
-import FollowUpChip from "./FollowUpChip";
 
 const AVATAR_COLORS = ["#3E63DD", "#C2410C", "#7C3AED", "#0E7490", "#B45309", "#15803D", "#BE185D", "#475569"];
 function avatarColor(id) {
@@ -70,43 +65,22 @@ function timeLabel(iso) {
   return d.toLocaleDateString("he-IL", { day: "numeric", month: "numeric", year: "2-digit" });
 }
 
-// "יום שישי, 14.8.2026 · פנוי" under a row (2026-10-07) — the in-thread date check,
-// visible without opening the conversation.
-function RowDate({ date, map, loading, ownLeadId, convId }) {
-  if (!date) {
-    return (
-      <span className="mt-0.5 flex items-center gap-1.5 text-xs text-gray-500">
-        <CalendarDays className="h-3.5 w-3.5" /> תאריך עוד לא ידוע
-      </span>
-    );
-  }
-  // Same rule as the bar inside the chat (DateAvailability.jsx).
+// The date on a WhatsApp-like row (2026-10-12): "2.6.2027 · פנוי" in one short line.
+function RowDateLine({ date, map, loading, ownLeadId, convId }) {
+  const [y, m, d] = String(date).slice(0, 10).split("-").map(Number);
   const st = dateStatus(map, date, { ownLeadId, ownConvId: convId });
+  let status = null;
+  if (!loading) {
+    if (st.others > 0) status = <span className="text-amber-300">תפוס: {st.others}</span>;
+    else status = <span className="text-emerald-400">פנוי</span>;
+  }
   return (
-    <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-gray-300">
-      <CalendarDays className="h-3.5 w-3.5 text-gray-500" />
-      <span>{formatDateWithWeekday(date)}</span>
-      {loading ? (
-        <span className="text-gray-500">בודק…</span>
-      ) : st.others > 0 ? (
-        <span className="flex items-center gap-1 rounded-full bg-amber-500/20 px-2 text-amber-200">
-          <CalendarX2 className="h-3 w-3" /> {st.ownEvent ? `ביומן: ${st.total} (כולל שלהם)` : `כבר ביומן: ${st.total} ${st.total === 1 ? "אירוע" : "אירועים"}`}
-        </span>
-      ) : st.ownEvent ? (
-        <span className="flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 text-emerald-200">
-          <CalendarCheck className="h-3 w-3" /> ביומן: רק שלהם
-        </span>
-      ) : (
-        <span className="flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 text-emerald-200">
-          <CalendarCheck className="h-3 w-3" /> פנוי
-        </span>
-      )}
-      {!loading && st.closing.length > 0 && <span className="text-gray-500">· {st.closing.length} סגרו ועוד לא ביומן</span>}
-      {!loading && st.interested.length > 0 && (
-        <span title={st.interested.map((i) => i.name).filter(Boolean).join(", ")} className="rounded-full bg-sky-500/15 px-2 text-sky-200">
-          👥 עוד {st.interested.length} {st.interested.length === 1 ? "מתעניין" : "מתעניינים"}
-        </span>
-      )}
+    <span className="flex shrink-0 items-center gap-1">
+      <CalendarDays className="h-3 w-3" />
+      {d}.{m}.{y}
+      {status && <span>·</span>}
+      {status}
+      {!loading && st.interested.length > 0 && <span className="text-sky-300">· 👥{st.interested.length}</span>}
     </span>
   );
 }
@@ -115,7 +89,7 @@ function RowDate({ date, map, loading, ownLeadId, convId }) {
 export default function ChatList({
   title, conversations, activeId, onOpen, unread, labelsById, labelsByConv, leadsById,
   search, setSearch, searchHits, selectMode, setSelectMode, selected, setSelected,
-  labels, onBulk, mobileChips, compact, topBar,
+  labels, onBulk, mobileChips, compact, topBar, sectionOf,
 }) {
   const [menu, setMenu] = useState(null); // 'type' | 'stage' | 'label' | null
   const selectedIds = Object.keys(selected).filter((k) => selected[k]);
@@ -187,97 +161,69 @@ export default function ChatList({
       {topBar}
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        {conversations.map((c) => {
+        {conversations.map((c, idx) => {
           const on = c.id === activeId;
           const checked = !!selected[c.id];
           const n = unread[c.id] || 0;
           const lead = c.matchedLeadId ? leadsById[c.matchedLeadId] : null;
-          const stage = effectiveStage(c, lead);
-          const wait = waitingLabel(c);
-          const long = isLongWait(c);
           const hit = searchHits?.[c.id];
+          const preview = hit ? hit : previewText(c.lastMessagePreview);
+          const hot = isHotLead(c, lead);
+          const tag = aiTagInfo(c.aiTag) && !isClosedDeal(c, lead) ? aiTagInfo(c.aiTag) : null;
+          const ret = !tag ? returnChip(c) : null;
           const convLabels = (labelsByConv[c.id] || []).map((id) => labelsById[id]).filter(Boolean);
-          const preview = hit ? hit : c.lastMessagePreview || "";
+          const section = sectionOf ? sectionOf(c) : null;
+          const prevSection = sectionOf && idx > 0 ? sectionOf(conversations[idx - 1]) : null;
           return (
-            <div
-              key={c.id}
-              className={`flex items-start gap-2.5 border-b border-gray-800/70 px-3.5 py-3 ${on ? "chat-row-on" : checked ? "bg-yellow-500/10" : "hover:bg-gray-800/40"}`}
-            >
+            <React.Fragment key={c.id}>
+            {section && section !== prevSection && (
+              <div className="sticky top-0 z-10 border-b border-gray-800 bg-gray-950/95 px-4 py-1.5 text-xs font-semibold text-gray-300 backdrop-blur">{section}</div>
+            )}
+            {/* 2026-10-12, WhatsApp-like rows (the owner: "it should feel like WhatsApp"):
+                picture, name, time; last message + green unread count; one quiet line with
+                the date (free / taken) and at most one tag. Everything else is in the chat. */}
+            <div className={`flex items-center gap-3 border-b border-gray-800/60 px-3.5 py-2.5 ${on ? "chat-row-on" : checked ? "bg-yellow-500/10" : "hover:bg-gray-800/40"}`}>
               {selectMode && (
                 <button
                   type="button"
                   onClick={() => toggle(c.id)}
                   aria-pressed={checked}
                   aria-label={`סמן את ${conversationTitle(c)}`}
-                  className={`mt-2.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${checked ? "bg-yellow-400 text-gray-900" : "border-2 border-gray-600"}`}
+                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${checked ? "bg-yellow-400 text-gray-900" : "border-2 border-gray-600"}`}
                 >
                   {checked && <Check className="h-4 w-4" />}
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => onOpen(c)}
-                className="flex min-w-0 flex-1 gap-3 text-start"
-              >
-                <Avatar conversation={c} size={compact ? 50 : 44} />
-                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <button type="button" onClick={() => onOpen(c)} className="flex min-w-0 flex-1 items-center gap-3 text-start">
+                <Avatar conversation={c} size={compact ? 50 : 46} />
+                <span className="flex min-w-0 flex-1 flex-col">
                   <span className="flex items-center gap-1.5">
                     {c.pinnedAt && <Pin className="h-3.5 w-3.5 shrink-0 text-gray-500" aria-label="נעוץ" />}
-                    <span className="truncate font-semibold text-white">{conversationTitle(c)}</span>
-                    {isHotLead(c, lead) && <Flame className="h-4 w-4 shrink-0 text-orange-400" aria-label="ליד חם" />}
-                    <span className={`ms-auto shrink-0 text-xs ${n ? "font-semibold text-yellow-400" : "text-gray-500"}`}>{timeLabel(c.lastMessageAt)}</span>
+                    <span className="truncate text-[15px] font-semibold text-white">{conversationTitle(c)}</span>
+                    {hot && <Flame className="h-4 w-4 shrink-0 text-orange-400" aria-label="ליד חם" />}
+                    {convLabels.map((l) => (
+                      <span key={l.id} title={l.name} className="h-2 w-2 shrink-0 rounded-full" style={{ background: l.color }} />
+                    ))}
+                    <span className={`ms-auto shrink-0 text-xs ${n ? "font-semibold text-emerald-400" : "text-gray-500"}`}>{timeLabel(c.lastMessageAt)}</span>
                   </span>
-                  {displayPhone(c) && displayPhone(c) !== conversationTitle(c) && (
-                    <span dir="ltr" className="text-end text-xs text-gray-500">{displayPhone(c)}</span>
-                  )}
-                  {isHotLead(c, lead) && c.leadTemperatureReason && (
-                    <span className="truncate text-xs text-red-300">חם: {c.leadTemperatureReason}</span>
-                  )}
-                  <span className="flex items-center gap-1.5">
+                  <span className="mt-0.5 flex items-center gap-1.5">
                     {c.optedOutAt && <BellOff className="h-3.5 w-3.5 shrink-0 text-red-400" aria-label="ביקש/ה הסרה" />}
                     <span className={`min-w-0 flex-1 truncate text-sm ${hit ? "text-yellow-200" : "text-gray-400"}`}>{preview}</span>
                     {n > 0 && (
-                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-yellow-400 px-1.5 text-[11px] font-bold text-gray-900">{n}</span>
+                      <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500 px-1.5 text-[11px] font-bold text-gray-950">{n}</span>
                     )}
                   </span>
-                  <span className="mt-0.5 flex flex-wrap gap-1">
-                    <span className={`rounded-full px-2 text-[11px] ${typeColor(displayType(c))}`}>{contactTypeLabel(displayType(c))}</span>
-                    {stage && (
-                      <span className={`flex items-center gap-1 rounded-full border px-2 text-[11px] ${stageColor(stage).chip}`}>
-                        <span className={`h-1.5 w-1.5 rounded-full ${stageColor(stage).dot}`} />
-                        {stage}
-                      </span>
-                    )}
-                    {c.source === "facebook_ad" && (
-                      <span title={c.sourceAdTitle || undefined} className="flex items-center gap-1 rounded-full bg-violet-500/20 px-2 text-[11px] text-violet-200">
-                        <Megaphone className="h-3 w-3" /> מודעה
-                      </span>
-                    )}
-                    {isManuallyFlagged(c) && (
-                      <span className="flex items-center gap-1 rounded-full bg-orange-500/20 px-2 text-[11px] text-orange-200">
-                        <Tag className="h-3 w-3" /> בפולו-אפ
-                      </span>
-                    )}
-                    <FollowUpChip conversation={c} />
-                    {aiTagInfo(c.aiTag) && !isClosedDeal(c, lead) && (
-                      <span title="תיוג אוטומטי של ההודעה האחרונה" className={`rounded-full px-2 text-[11px] ${aiTagInfo(c.aiTag).cls}`}>
-                        {aiTagInfo(c.aiTag).icon} {aiTagInfo(c.aiTag).label}
-                      </span>
-                    )}
-                    {returnChip(c) && !wait && (
-                      <span className="rounded-md bg-amber-500/15 px-1.5 text-[11px] text-amber-200">{returnChip(c)}</span>
-                    )}
-                    {convLabels.map((l) => (
-                      <span key={l.id} className="rounded-md px-1.5 text-[11px] text-white" style={{ background: l.color }}>{l.name}</span>
-                    ))}
-                    {wait && (
-                      <span className={`rounded-md px-1.5 text-[11px] ${long ? "bg-red-500/20 text-red-300" : "bg-gray-800 text-gray-300"}`}>{wait}</span>
-                    )}
-                  </span>
-                  {hasStage(c) && <RowDate date={rowDates[c.id]} map={availQ.data} loading={availQ.isLoading} ownLeadId={c.matchedLeadId} convId={c.id} />}
+                  {(hasStage(c) && rowDates[c.id]) || tag || ret ? (
+                    <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-gray-500">
+                      {hasStage(c) && rowDates[c.id] && <RowDateLine date={rowDates[c.id]} map={availQ.data} loading={availQ.isLoading} ownLeadId={c.matchedLeadId} convId={c.id} />}
+                      {tag && <span className={`shrink-0 rounded-full px-1.5 ${tag.cls}`}>{tag.icon} {tag.label}</span>}
+                      {ret && <span className="shrink-0 rounded-full bg-amber-500/15 px-1.5 text-amber-200">{ret}</span>}
+                    </span>
+                  ) : null}
                 </span>
               </button>
             </div>
+            </React.Fragment>
           );
         })}
         {conversations.length === 0 && <p className="px-4 py-10 text-center text-sm text-gray-500">אין שיחות כאן</p>}

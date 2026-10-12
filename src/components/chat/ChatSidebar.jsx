@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Trash2, SlidersHorizontal, LayoutGrid, X, Bell, History, CalendarClock, ArrowUpDown } from "lucide-react";
+import { Plus, Trash2, SlidersHorizontal, LayoutGrid, X, Bell, History, CalendarClock, ArrowUpDown, Eye } from "lucide-react";
 import { BOXES } from "@/lib/chatModel";
 import BoxOrderEditor from "./BoxOrderEditor";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
@@ -11,7 +11,7 @@ export const LABEL_COLORS = ["#E5484D", "#F76B15", "#C2410C", "#12A594", "#3E63D
 // the full system. On a phone the same boxes come from the "עוד" tab (ChatApp.jsx).
 export default function ChatSidebar({
   box, setBox, counts, labels, onCreateLabel, onDeleteLabel, onOpenNotifications, onOpenMeetings, className = "",
-  primaryBoxes = BOXES.filter((b) => b.primary), moreBoxes = BOXES.filter((b) => !b.primary), onSaveOrder,
+  primaryBoxes = BOXES.filter((b) => b.primary), moreBoxes = BOXES.filter((b) => !b.primary), onSaveOrder, onOpenHomeTypes,
 }) {
   const [adding, setAdding] = useState(false);
   const [ordering, setOrdering] = useState(false);
@@ -75,11 +75,18 @@ export default function ChatSidebar({
       ) : (
       <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-3">
 
-      {onSaveOrder && (
-        <button type="button" onClick={() => setOrdering(true)} title="לסדר את התיבות לפי איך שנוח לך" className="mb-1 flex items-center gap-1.5 self-start rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-800/60 hover:text-white">
-          <ArrowUpDown className="h-3.5 w-3.5" /> סדר את התיבות
-        </button>
-      )}
+      <div className="mb-1 flex flex-wrap gap-1">
+        {onSaveOrder && (
+          <button type="button" onClick={() => setOrdering(true)} title="לסדר את התיבות לפי איך שנוח לך" className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-800/60 hover:text-white">
+            <ArrowUpDown className="h-3.5 w-3.5" /> סדר
+          </button>
+        )}
+        {onOpenHomeTypes && (
+          <button type="button" onClick={onOpenHomeTypes} title='אילו שיחות מופיעות ב"שיחות"' className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-800/60 hover:text-white">
+            <Eye className="h-3.5 w-3.5" /> מה מופיע בשיחות
+          </button>
+        )}
+      </div>
       {primaryBoxes.map((b) => row(b.key, b.label))}
 
       <div className="mt-4 px-3 pb-1 text-xs font-semibold text-gray-500">עוד</div>

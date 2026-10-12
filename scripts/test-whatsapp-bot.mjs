@@ -1247,7 +1247,7 @@ section('boxes');
   ];
   const ctx = { unread: { a: 2 }, labelsByConv: { f: ['L9'] }, followUpAfterDays: 0 };
   const counts = cm.boxCounts(list, ctx, ['L9']);
-  check('"all" = leads and strangers only, no archive (2026-10-07)', counts.all, 2);
+  check('"שיחות" = every type but groups, no archive (2026-10-12, like WhatsApp)', counts.all, 4);
   check('archive box', counts.archive, 1);
   check('archived chats are in no other box', cm.matchesBox(list[3], 'client', ctx), false);
   check('clients include past clients', counts.client, 1);
@@ -1711,14 +1711,15 @@ section('boxes from the old inbox');
     { id: 'a', contactType: 'unknown', archivedAt: '2026-10-01T00:00:00Z' },
   ];
   const n = (box) => list.filter((c) => cm31.matchesBox(c, box, {})).map((c) => c.id).join(',');
-  check('opens on "לידים" (owner, 2026-10-07)', cm31.DEFAULT_BOX, 'lead');
+  check('opens on "שיחות" (owner, 2026-10-12)', cm31.DEFAULT_BOX, 'all');
   check('לא מוכר: strangers only, not archived', n('unknown'), 'u');
   check('לידים: leads only (strangers have their own box now)', n('lead'), 'l,p');
-  check('הכל: leads + strangers, no clients/groups/staff', n('all'), 'u,l,p');
+  check('שיחות: every type but groups (default), no archive', n('all'), 'u,l,p,c,s');
+  check('…the owner can add groups / drop staff (homeTypes)', list.filter((c) => cm31.matchesBox(c, 'all', { homeTypes: ['unknown', 'lead', 'group'] })).map((c) => c.id).join(','), 'u,l,p,g');
   check('ליד חם: never a group', n('hot'), 'l');
   check('נשלח פולו-אפ: never staff', n('followup_sent'), 'p');
   check('נשלח מחירון', n('pricelist_sent'), 'p');
-  check('the primary tabs (owner, 2026-10-07)', cm31.BOXES.filter((b) => b.primary).map((b) => b.key).join(','), 'unknown,lead,followup,hot,unread,all');
+  check('the filter chips, WhatsApp-style (owner, 2026-10-12)', cm31.BOXES.filter((b) => b.primary).map((b) => b.key).join(','), 'all,unread,hot,followup');
 }
 
 section('strangers the bot recognised count as leads (display only)');
@@ -2260,6 +2261,23 @@ console.log('\n— PART 52: information requests —');
   check('a colleague asking for information → still silent (vendor veto)', wi52.detectLeadIntent('היי, אני צלם, אשמח לקבל מידע על חתונות אצלכם', {}).isInquiry, false);
 }
 
+// PART 55 — the WhatsApp-like home: which types, and "מה מחכה לי" (2026-10-12)
+console.log('\n— PART 55: chat home —');
+{
+  const cm55 = await loadModule('src/lib/chatModel.js', 'cm55');
+  check('home types: default = all but groups', cm55.homeTypesFrom(null).includes('group') + '|' + cm55.homeTypesFrom(null).includes('client'), 'false|true');
+  check('home types: saved list kept, unknown keys dropped', cm55.homeTypesFrom(['lead', 'x', 'group']).join(), 'lead,group');
+  check('home types: empty saved list → default', cm55.homeTypesFrom([]).length, cm55.DEFAULT_HOME_TYPES.length);
+  const old = '2026-10-01T10:00:00Z';
+  const waiting = { id: 'w', contactType: 'lead', lastInboundAt: '2026-10-12T09:00:00Z', lastMessageAt: '2026-10-12T09:00:00Z' };
+  const hot = { id: 'h', contactType: 'lead', leadTemperature: 'hot', lastInboundAt: old, lastMessageAt: '2026-10-02T10:00:00Z' };
+  const both = { ...waiting, id: 'b', leadTemperature: 'hot' };
+  const grp = { id: 'g', contactType: 'group', lastInboundAt: '2026-10-12T09:00:00Z' };
+  check('mine: waiting for me first, then hot; a group never', [waiting, hot, both, grp].map((c) => cm55.mineSection(c, {}) || '-').join(), 'needs,hot,needs,-');
+  check('unread respects the home types (a group is not counted)', cm55.matchesBox(grp, 'unread', { unread: { g: 3 } }), false);
+  check('preview: voice file / image type / a sentence kept', [cm55.previewText('b1-6e5e-4b24.oga'), cm55.previewText('imageMessage'), cm55.previewText('היי, מה המחיר?')].join('|'), '🎤 הודעה קולית|📷 תמונה|היי, מה המחיר?');
+}
+
 // PART 54 — the search box on "סטטוס עבודה" (2026-10-09)
 console.log('\n— PART 54: work-status search —');
 {
@@ -2314,7 +2332,7 @@ console.log('\n— PART 50: box order —');
   check('no saved order → the default', def.primary.map((b) => b.key).join(), cm50.BOXES.filter((b) => b.primary).map((b) => b.key).join());
   const o = cm50.orderBoxes({ primary: ['hot', 'needs', 'lead', 'gone'], more: ['all', 'client', 'hot'] });
   check('saved order wins; "needs" moved up; unknown key and repeats dropped', o.primary.slice(0, 3).map((b) => b.key).join() + '|' + o.more[0].key, 'hot,needs,lead|all');
-  check('boxes missing from the saved order still appear in their default place', o.primary.map((b) => b.key).includes('unknown') && o.more.map((b) => b.key).includes('archive'), true);
+  check('boxes missing from the saved order still appear in their default place', o.primary.map((b) => b.key).includes('unread') && o.more.map((b) => b.key).includes('archive'), true);
   check('every box exactly once', o.primary.length + o.more.length, cm50.BOXES.length);
 }
 

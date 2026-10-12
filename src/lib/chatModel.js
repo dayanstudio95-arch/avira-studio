@@ -133,18 +133,21 @@ export function sortConversations(list) {
   });
 }
 
-// The boxes. `ctx` = { unread: {id: n}, labelsByConv: {id: [labelId]}, followUpAfterDays }.
-// 2026-10-07 (the old inbox merged in, the owner's choice): the primary row is what he works
-// from — strangers first, then leads, follow-ups, hot leads; everything else sits under
-// "עוד". "הכל" = leads and strangers only (no clients, groups, staff).
+// The boxes. `ctx` = { unread: {id: n}, labelsByConv: {id: [labelId]}, followUpAfterDays,
+// leadsById, homeTypes }.
+// 2026-10-12 (the owner: "it should feel like WhatsApp"): the home list "שיחות" is every
+// conversation by time, like WhatsApp — of the contact types the owner chose (groups off by
+// default, editable in "מה מופיע בשיחות", saved per user). The filter chips above it are
+// WhatsApp-style: הכל · לא נקראו · חמים · פולו-אפ. "מה מחכה לי" gathers what needs him.
 export const BOXES = [
-  { key: "unknown", label: "לא מוכר", primary: true },
-  { key: "lead", label: "לידים", primary: true },
-  { key: "followup", label: "פולו אפ", primary: true },
-  { key: "hot", label: "ליד חם", primary: true },
+  { key: "all", label: "שיחות", primary: true },
   { key: "unread", label: "לא נקראו", primary: true },
-  { key: "all", label: "הכל", primary: true },
+  { key: "hot", label: "ליד חם", primary: true },
+  { key: "followup", label: "פולו אפ", primary: true },
+  { key: "mine", label: "מה מחכה לי" },
   { key: "needs", label: "דורש מענה" },
+  { key: "unknown", label: "לא מוכר" },
+  { key: "lead", label: "לידים" },
   { key: "followup_noreply", label: "פולו-אפ · לא ענו" },
   { key: "followup_replied", label: "ענו אחרי פולו-אפ" },
   { key: "pricelist_sent", label: "נשלח מחירון" },
@@ -162,6 +165,54 @@ export const BOXES = [
   { key: "optedout", label: "ביקשו הסרה" },
   { key: "archive", label: "ארכיון" },
 ];
+
+// Which contact types the home list shows (profiles.chat_prefs.homeTypes). Default: all but
+// groups. A saved list keeps only known types; an empty or broken one falls back.
+export const HOME_TYPE_OPTIONS = CONTACT_TYPES.map((t) => ({ key: t.key, label: t.label }));
+export const DEFAULT_HOME_TYPES = CONTACT_TYPES.map((t) => t.key).filter((k) => k !== "group");
+export function homeTypesFrom(saved) {
+  const known = new Set(CONTACT_TYPES.map((t) => t.key));
+  const list = Array.isArray(saved) ? saved.filter((k) => known.has(k)) : [];
+  return list.length ? list : DEFAULT_HOME_TYPES;
+}
+const inHome = (c, ctx) => (ctx.homeTypes || DEFAULT_HOME_TYPES).includes(c.contactType || "unknown");
+
+// "מה מחכה לי": the first reason a conversation needs the owner, in this order — or null.
+export const MINE_SECTIONS = [
+  { key: "needs", label: "💬 מחכים לתשובה שלי" },
+  { key: "hot", label: "🔥 חמים" },
+  { key: "followup", label: "⏳ פולו-אפ" },
+  { key: "return", label: "⏰ לחזור אליהם היום" },
+];
+export function mineSection(c, ctx = {}) {
+  if (!c || c.archivedAt) return null;
+  if (needsReply(c)) return "needs";
+  if (isHotLead(c, c.matchedLeadId ? ctx.leadsById?.[c.matchedLeadId] : null)) return "hot";
+  if (isAwaitingFollowUp(c, ctx.followUpAfterDays || 0) && !c.optedOutAt) return "followup";
+  if (isReturnDue(c)) return "return";
+  return null;
+}
+
+// What a row shows as the last message (2026-10-12, WhatsApp-like): media arrives with a
+// file name as its text ("b1-6e5e….oga") — show what it is instead, the way WhatsApp does.
+const MEDIA_PREVIEW = [
+  [/\.(oga|ogg|opus|mp3|m4a|aac|amr|wav)(\?.*)?$/i, "🎤 הודעה קולית"],
+  [/\.(jpe?g|png|webp|heic|gif)(\?.*)?$/i, "📷 תמונה"],
+  [/\.(mp4|mov|3gp|webm|m4v)(\?.*)?$/i, "🎥 סרטון"],
+  [/\.(pdf|docx?|xlsx?|pptx?|zip)(\?.*)?$/i, "📄 מסמך"],
+];
+const TYPE_PREVIEW = {
+  audioMessage: "🎤 הודעה קולית", imageMessage: "📷 תמונה", videoMessage: "🎥 סרטון",
+  documentMessage: "📄 מסמך", stickerMessage: "מדבקה", locationMessage: "📍 מיקום",
+  contactMessage: "👤 איש קשר", reactionMessage: "תגובה",
+};
+export function previewText(text) {
+  const t = String(text || "").trim();
+  if (TYPE_PREVIEW[t]) return TYPE_PREVIEW[t]; // no text — the webhook stored the type
+  if (!t || /\s/.test(t)) return t; // a real sentence has spaces; a file name has none
+  for (const [re, label] of MEDIA_PREVIEW) if (re.test(t)) return label;
+  return t;
+}
 
 // The owner's own arrangement of the boxes (2026-10-09, profiles.chat_prefs.boxOrder):
 // { primary: [keys], more: [keys] }. Keys that no longer exist are dropped; a box added to
@@ -185,8 +236,8 @@ export function orderBoxes(saved) {
   return { primary, more };
 }
 
-// Opens on "לידים" (the owner, 2026-10-07 — after the bot-recognised strangers moved there).
-export const DEFAULT_BOX = "lead";
+// Opens on "שיחות", like WhatsApp (2026-10-12; was "לידים").
+export const DEFAULT_BOX = "all";
 
 // "ליד חם" is a lead still being won (2026-10-07: couples who had signed stayed in the box).
 // A client, or a conversation whose CRM lead is closed / signed, is no longer hot.
@@ -211,12 +262,13 @@ export function matchesBox(c, box, ctx = {}) {
   if (c.archivedAt) return false;
   const type = c.contactType || "unknown";
   switch (box) {
-    case "all": return type === "lead" || type === "unknown";
+    case "all": return inHome(c, ctx);
+    case "mine": return mineSection(c, ctx) !== null;
     // Strangers the bot recognised as inquiries count as leads (isBotLead).
     case "unknown": return type === "unknown" && !isBotLead(c);
     case "lead": return type === "lead" || isBotLead(c);
     case "needs": return needsReply(c);
-    case "unread": return (ctx.unread?.[c.id] || 0) > 0;
+    case "unread": return (ctx.unread?.[c.id] || 0) > 0 && inHome(c, ctx);
     case "client": return type === "client" || type === "past_client";
     case "followup": return isAwaitingFollowUp(c, ctx.followUpAfterDays || 0) && !c.optedOutAt;
     case "optedout": return !!c.optedOutAt;

@@ -2,13 +2,13 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowUpDown, MessageSquare, X, LayoutGrid, SlidersHorizontal, LogOut, Bell, Flame, Hourglass, Settings2, History, Users, Phone, AlertCircle, BookImage, CalendarClock } from "lucide-react";
+import { ArrowUpDown, Eye, ListChecks, Plus, MoreHorizontal, MessageSquare, X, LayoutGrid, SlidersHorizontal, LogOut, Bell, Flame, Hourglass, Settings2, History, CalendarClock } from "lucide-react";
 import { supabase } from "@/api/supabaseClient";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/SupabaseAuthContext";
 import { isAdmin } from "@/lib/permissions";
 import LeadFormDialog from "@/components/leads/LeadFormDialog";
-import { BOXES, DEFAULT_BOX, boxCounts, matchesBox, matchesSearch, sortConversations, needsReply, isHotLead, orderBoxes } from "@/lib/chatModel";
+import { BOXES, DEFAULT_BOX, boxCounts, matchesBox, matchesSearch, sortConversations, needsReply, isHotLead, orderBoxes, homeTypesFrom, mineSection, MINE_SECTIONS } from "@/lib/chatModel";
 import { isAwaitingFollowUp, followUpsSentToday } from "@/lib/followUpQueue";
 import WhatsAppFollowUpDialog from "@/components/whatsapp/WhatsAppFollowUpDialog";
 import WhatsAppFollowUpSettingsDialog from "@/components/whatsapp/WhatsAppFollowUpSettingsDialog";
@@ -20,6 +20,7 @@ import { useChatData } from "@/components/chat/useChatData";
 import { useThread } from "@/components/chat/useThread";
 import ChatSidebar from "@/components/chat/ChatSidebar";
 import BoxOrderEditor from "@/components/chat/BoxOrderEditor";
+import HomeTypesDialog from "@/components/chat/HomeTypesDialog";
 import ChatList, { conversationTitle, AvatarUrlContext } from "@/components/chat/ChatList";
 import ChatThread from "@/components/chat/ChatThread";
 import ContactPanel from "@/components/chat/ContactPanel";
@@ -35,18 +36,10 @@ import { registerChatServiceWorker, setBadge } from "@/lib/push";
 // Nothing here sends to more than one person: bulk SENDING is stage 2 (the safety
 // rules agreed with the owner). Bulk SORTING is here, and every change can be undone.
 
-// The bottom bar on a phone (the owner's choice, 2026-10-07): clients and three of his own
-// labels, found by name — a label that doesn't exist (renamed, deleted) is simply left out.
-const BOTTOM_LABEL_TABS = [
-  { name: "לחזור בטלפון", icon: Phone },
-  { name: "דחוף", icon: AlertCircle },
-  { name: "אלבומים", icon: BookImage },
-];
 // The tab rows above the list (2026-10-07, as in the old inbox). On a phone: two rows —
 // לא מוכר · לידים · ליד חם / לא נקראו · פולו אפ · הכל · עוד. Everything else is under "עוד".
 // Once the owner arranges the boxes himself ("סדר את התיבות", 2026-10-09) the rows follow
 // his top section, three per row.
-const CHIP_ROWS = [["unknown", "lead", "hot"], ["unread", "followup", "all"]];
 const CHIP_ICONS = { followup: Hourglass, hot: Flame };
 
 function useDebounced(value, ms) {
@@ -86,14 +79,26 @@ export default function ChatApp() {
   });
   const savedOrder = prefsQ.data?.boxOrder || null;
   const ordered = useMemo(() => orderBoxes(savedOrder), [savedOrder]);
-  const chipRows = useMemo(() => {
-    if (!savedOrder) return CHIP_ROWS;
-    const keys = ordered.primary.map((b) => b.key);
-    const rows = [];
-    for (let i = 0; i < keys.length; i += 3) rows.push(keys.slice(i, i + 3));
-    return rows.length ? rows : CHIP_ROWS;
-  }, [savedOrder, ordered]);
   const [orderOpen, setOrderOpen] = useState(false);
+  const [homeTypesOpen, setHomeTypesOpen] = useState(false);
+  // Any key of chat_prefs, merged into what is saved (box order, home types…).
+  const savePrefs = async (patch, doneText) => {
+    if (!prefsQ.isSuccess) {
+      toast.error("ההגדרות עוד נטענות — נסו שוב בעוד רגע");
+      return false;
+    }
+    try {
+      const next = { ...(prefsQ.data || {}), ...patch };
+      const { error } = await supabase.from("profiles").update({ chat_prefs: next }).eq("id", data.user.id);
+      if (error) throw error;
+      qc.setQueryData(prefsKey, next);
+      toast.success(doneText);
+      return true;
+    } catch (e) {
+      toast.error("השמירה נכשלה", { description: e?.message });
+      return false;
+    }
+  };
   const saveBoxOrder = async (order) => {
     if (!prefsQ.isSuccess) {
       toast.error("ההגדרות עוד נטענות — נסו שוב בעוד רגע");
@@ -147,7 +152,7 @@ export default function ChatApp() {
     const next = new URLSearchParams(params);
     next.delete("meeting");
     setParams(next, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [meetingParam]);
 
   // The chat lives outside Layout, so the menu's "hot lead" badge (notification type
@@ -189,11 +194,14 @@ export default function ChatApp() {
   }, [unreadConversations]);
 
   const labelsById = useMemo(() => Object.fromEntries(data.labels.map((l) => [l.id, l])), [data.labels]);
-  const ctx = { unread: data.unread, labelsByConv: data.labelsByConv, followUpAfterDays: data.followUpAfterDays, leadsById: data.leadsById };
+  // Which contact types "שיחות" shows (2026-10-12): the owner's choice, saved per user —
+  // groups are left out until he adds them in "מה מופיע בשיחות".
+  const homeTypes = useMemo(() => homeTypesFrom(prefsQ.data?.homeTypes), [prefsQ.data]);
+  const ctx = { unread: data.unread, labelsByConv: data.labelsByConv, followUpAfterDays: data.followUpAfterDays, leadsById: data.leadsById, homeTypes };
   const counts = useMemo(
     () => boxCounts(data.conversations, ctx, data.labels.map((l) => l.id)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [data.conversations, data.unread, data.labelsByConv, data.followUpAfterDays, data.labels, data.leadsById]
+     
+    [data.conversations, data.unread, data.labelsByConv, data.followUpAfterDays, data.labels, data.leadsById, homeTypes]
   );
 
   // The follow-up queue, for the bulk send (WhatsAppFollowUpDialog, from the old inbox).
@@ -221,9 +229,21 @@ export default function ChatApp() {
     const list = q
       ? data.conversations.filter((c) => matchesSearch(c, q) || searchHits?.[c.id])
       : data.conversations.filter((c) => matchesBox(c, box, ctx));
+    if (box === "mine" && !q) {
+      // "מה מחכה לי": by section (waiting for me → hot → follow-up → return), the longest
+      // wait first inside "waiting for me".
+      const order = Object.fromEntries(MINE_SECTIONS.map((x, i) => [x.key, i]));
+      const ms = (iso) => (iso ? new Date(iso).getTime() : 0);
+      return [...list].sort((a, b) => {
+        const sa = order[mineSection(a, ctx)] ?? 9, sb = order[mineSection(b, ctx)] ?? 9;
+        if (sa !== sb) return sa - sb;
+        if (sa === 0) return ms(a.lastInboundAt) - ms(b.lastInboundAt);
+        return 0;
+      });
+    }
     return sortConversations(list);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data.conversations, box, q, searchHits, data.unread, data.labelsByConv, data.followUpAfterDays, data.leadsById]);
+     
+  }, [data.conversations, box, q, searchHits, data.unread, data.labelsByConv, data.followUpAfterDays, data.leadsById, homeTypes]);
 
   // Profile pictures: one signed-URL request for every picture on screen (private bucket).
   const avatarPaths = useMemo(
@@ -255,7 +275,7 @@ export default function ChatApp() {
   useEffect(() => {
     if (!active) return;
     if (document.visibilityState === "visible") data.actions.markRead(active);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [active?.id, activeUnread]);
 
   // Back from the background on a phone: catch up at once instead of waiting for a poll.
@@ -426,58 +446,81 @@ export default function ChatApp() {
 
   const title = q ? `חיפוש: ${q}` : box.startsWith("label:") ? `תווית: ${labelsById[box.slice(6)]?.name || ""}` : BOXES.find((b) => b.key === box)?.label;
 
+  // The filter chips (2026-10-12, WhatsApp-style): one row under the search — הכל · לא נקראו ·
+  // חמים · פולו-אפ by default (the owner's own "למעלה" boxes once he arranged them), and "+"
+  // to add or arrange. Scrolls sideways on a phone like WhatsApp's.
+  const CHIP_LABEL = { all: "הכל" };
   const chip = (key) => {
     const b = BOXES.find((x) => x.key === key);
+    if (!b) return null;
     const on = box === key && !q;
     const n = counts[key] || 0;
     const Icon = CHIP_ICONS[key];
-    const alert = key === "hot" && n > 0;
     return (
       <button
         key={key}
         type="button"
         onClick={() => { setBox(key); setSearch(""); }}
-        className={`flex min-h-[36px] items-center justify-center gap-1 rounded-full text-sm md:min-h-[30px] md:flex-none md:px-2.5 md:text-xs ${key === "all" ? "flex-none px-3.5" : "min-w-0 flex-1 px-2"} ${on ? "bg-yellow-400 font-semibold text-gray-900" : "border border-gray-800 bg-gray-800/70 text-gray-300"}`}
+        className={`flex min-h-[34px] shrink-0 items-center gap-1 rounded-full px-3 text-sm md:min-h-[30px] md:text-xs ${on ? "bg-emerald-500/20 font-semibold text-emerald-200 ring-1 ring-emerald-500/50" : "bg-gray-800/80 text-gray-300"}`}
       >
-        {Icon && <Icon className={`h-3.5 w-3.5 shrink-0 ${key === "hot" && !on ? "text-orange-400" : ""}`} aria-hidden="true" />}
-        <span className="truncate">{b.label}</span>
+        {Icon && <Icon className={`h-3.5 w-3.5 shrink-0 ${key === "hot" ? "text-orange-400" : ""}`} aria-hidden="true" />}
+        <span>{CHIP_LABEL[key] || b.label}</span>
         {key !== "all" && n > 0 && (
-          <span className={`shrink-0 rounded-full px-1.5 text-[11px] font-bold ${on ? "bg-gray-900/20" : alert ? "bg-red-500 text-white" : "bg-gray-700 text-gray-200"}`}>{n}</span>
+          <span className={`rounded-full px-1.5 text-[11px] font-bold ${on ? "bg-emerald-500 text-gray-950" : "bg-gray-700 text-gray-200"}`}>{n}</span>
         )}
       </button>
     );
   };
-  const onMoreBox = !chipRows.flat().includes(box) && !q;
   const chips = (
-    <div className="space-y-1.5 md:flex md:flex-wrap md:gap-1.5 md:space-y-0">
-      {chipRows.map((row, i) => (
-        <div key={i} className="flex gap-1.5 md:contents">
-          {row.map(chip)}
-          {i === chipRows.length - 1 && (
-            <button
-              type="button"
-              onClick={() => setMoreOpen(true)}
-              className={`flex min-h-[36px] flex-none items-center justify-center rounded-full border px-3 text-sm md:hidden ${onMoreBox ? "border-yellow-500 bg-yellow-400/10 text-yellow-300" : "border-gray-800 bg-gray-800/70 text-gray-400"}`}
-            >
-              עוד ▾
-            </button>
-          )}
-          {/* Computer only — on a phone the chips are tight; there it is under "עוד". */}
-          {i === chipRows.length - 1 && data.user?.id && (
-            <button
-              type="button"
-              onClick={() => setOrderOpen(true)}
-              aria-label="סדר והוסף כפתורים"
-              title="לסדר את הכפתורים או להוסיף כפתור"
-              className="hidden flex-none items-center justify-center rounded-full border border-dashed border-gray-700 px-2.5 text-gray-400 hover:text-white md:flex md:min-h-[30px]"
-            >
-              <ArrowUpDown className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
-      ))}
+    <div className="-mx-3.5 flex gap-1.5 overflow-x-auto px-3.5 pb-0.5 [scrollbar-width:none] md:mx-0 md:flex-wrap md:overflow-visible md:px-0">
+      {ordered.primary.map((b) => chip(b.key))}
+      {data.user?.id && (
+        <button
+          type="button"
+          onClick={() => setOrderOpen(true)}
+          aria-label="הוסף או סדר מסננים"
+          title="להוסיף מסנן או לסדר"
+          className="flex min-h-[34px] shrink-0 items-center justify-center rounded-full bg-gray-800/80 px-3 text-gray-400 hover:text-white md:min-h-[30px]"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+      )}
     </div>
   );
+
+  // "מה מחכה לי" — the row at the top of "שיחות" (like WhatsApp's "בארכיון" row).
+  const mineCounts = useMemo(() => {
+    const out = { needs: 0, hot: 0, followup: 0, return: 0 };
+    for (const c of data.conversations) {
+      const k = mineSection(c, ctx);
+      if (k) out[k]++;
+    }
+    return out;
+     
+  }, [data.conversations, data.unread, data.followUpAfterDays, data.leadsById]);
+  const mineTotal = mineCounts.needs + mineCounts.hot + mineCounts.followup + mineCounts.return;
+  const mineRow = box === "all" && !q && mineTotal > 0 && (
+    <button
+      type="button"
+      onClick={() => setBox("mine")}
+      className="flex w-full items-center gap-3 border-b border-gray-800 bg-amber-500/[0.07] px-4 py-2.5 text-start hover:bg-amber-500/[0.12]"
+    >
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-amber-300"><ListChecks className="h-5 w-5" /></span>
+      <span className="min-w-0 flex-1">
+        <span className="block font-semibold text-amber-200">מה מחכה לי</span>
+        <span className="block truncate text-xs text-amber-200/80">
+          {[
+            mineCounts.needs && `${mineCounts.needs} מחכים לתשובה`,
+            mineCounts.hot && `${mineCounts.hot} חמים`,
+            mineCounts.followup && `${mineCounts.followup} פולו-אפ`,
+            mineCounts.return && `${mineCounts.return} לחזור אליהם`,
+          ].filter(Boolean).join(" · ")}
+        </span>
+      </span>
+      <span className="text-amber-300">‹</span>
+    </button>
+  );
+  const mineLabels = Object.fromEntries(MINE_SECTIONS.map((x) => [x.key, x.label]));
 
   // A meeting in the next hour: a bar above the list, so it can't be missed.
   const meetingBanner = soonMeeting && (
@@ -494,12 +537,13 @@ export default function ChatApp() {
     </button>
   );
 
+  // The bottom bar on a phone (2026-10-12, WhatsApp-like): שיחות · מחכה לי · פגישות · עוד.
+  // The owner's labels and every other box are under "עוד".
   const bottomTabs = [
-    { key: "client", label: "לקוחות", icon: Users },
-    ...BOTTOM_LABEL_TABS.map((t) => {
-      const l = data.labels.find((x) => x.name === t.name);
-      return l ? { key: "label:" + l.id, label: t.name, icon: t.icon, color: l.color } : null;
-    }).filter(Boolean),
+    { key: "all", label: "שיחות", icon: MessageSquare, count: counts.unread || 0 },
+    { key: "mine", label: "מחכה לי", icon: ListChecks, count: mineTotal },
+    { action: () => setMeetingsOpen(true), key: "meetings", label: "פגישות", icon: CalendarClock },
+    { action: () => setMoreOpen(true), key: "more", label: "עוד", icon: MoreHorizontal },
   ];
 
   // In the follow-up box: the bulk send and its settings (from the old inbox).
@@ -539,6 +583,7 @@ export default function ChatApp() {
         primaryBoxes={ordered.primary}
         moreBoxes={ordered.more}
         onSaveOrder={data.user?.id ? saveBoxOrder : undefined}
+        onOpenHomeTypes={data.user?.id ? () => setHomeTypesOpen(true) : undefined}
         onDeleteLabel={async (id) => {
           try { await data.actions.deleteLabel(id); if (box === "label:" + id) setBox(DEFAULT_BOX); toast.success("התווית נמחקה"); } catch (e) { toast.error("המחיקה נכשלה", { description: e?.message }); }
         }}
@@ -565,26 +610,29 @@ export default function ChatApp() {
           labels={data.labels}
           onBulk={onBulk}
           mobileChips={chips}
-          topBar={<>{meetingBanner}{followUpBar}</>}
+          topBar={<>{meetingBanner}{mineRow}{followUpBar}</>}
+          sectionOf={box === "mine" && !q ? (c) => mineLabels[mineSection(c, ctx)] || null : undefined}
           compact
         />
         {!selectMode && (
           <nav aria-label="ניווט" className="flex border-t border-gray-800 bg-gray-950 pb-[max(0.25rem,env(safe-area-inset-bottom))] md:hidden">
             {bottomTabs.map((t) => {
-              const on = box === t.key && !q;
-              const n = counts[t.key] || 0;
+              const on = !t.action && box === t.key && !q;
               return (
-                <button key={t.key} type="button" onClick={() => { setBox(t.key); setSearch(""); }} className={`relative flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] ${on ? "font-semibold text-yellow-400" : "text-gray-400"}`}>
-                  <t.icon className="h-6 w-6" aria-hidden="true" style={!on && t.color ? { color: t.color } : undefined} />
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => (t.action ? t.action() : (setBox(t.key), setSearch("")))}
+                  className={`relative flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] ${on ? "font-semibold text-emerald-300" : "text-gray-400"}`}
+                >
+                  <t.icon className="h-6 w-6" aria-hidden="true" />
                   {t.label}
-                  {n > 0 && (
-                    <span className="absolute right-[calc(50%-22px)] top-1 rounded-full bg-yellow-400 px-1.5 text-[10px] font-bold text-gray-900">{n}</span>
+                  {t.count > 0 && (
+                    <span className="absolute right-[calc(50%-22px)] top-1 rounded-full bg-emerald-500 px-1.5 text-[10px] font-bold text-gray-950">{t.count}</span>
                   )}
                 </button>
               );
             })}
-            {/* "עוד" is the last tab chip above the list (2026-10-07: the bottom bar is the
-                owner's four boxes — לקוחות · לחזור בטלפון · דחוף · אלבומים). */}
           </nav>
         )}
       </div>
@@ -650,6 +698,14 @@ export default function ChatApp() {
         </>
       )}
 
+      {homeTypesOpen && (
+        <HomeTypesDialog
+          value={homeTypes}
+          onClose={() => setHomeTypesOpen(false)}
+          onSave={(types) => savePrefs({ homeTypes: types }, "נשמר — הרשימה מתעדכנת")}
+        />
+      )}
+
       {/* "סדר את התיבות" from the button next to the chips — the same editor as the sidebar */}
       {orderOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 md:items-center" onClick={() => setOrderOpen(false)}>
@@ -698,8 +754,13 @@ export default function ChatApp() {
             </div>
             <div className="mt-4 space-y-1 border-t border-gray-800 pt-3">
               {data.user?.id && (
+                <button type="button" onClick={() => { setMoreOpen(false); setHomeTypesOpen(true); }} className="flex min-h-[44px] w-full items-center gap-3 rounded-xl px-3 text-gray-300">
+                  <Eye className="h-5 w-5" /> מה מופיע ב"שיחות"
+                </button>
+              )}
+              {data.user?.id && (
                 <button type="button" onClick={() => { setMoreOpen(false); setOrderOpen(true); }} className="flex min-h-[44px] w-full items-center gap-3 rounded-xl px-3 text-gray-300">
-                  <ArrowUpDown className="h-5 w-5" /> סדר את התיבות והכפתורים
+                  <ArrowUpDown className="h-5 w-5" /> סדר את המסננים
                 </button>
               )}
               <Link to="/BotControlCenter" className="flex min-h-[44px] items-center gap-3 rounded-xl px-3 text-gray-300"><SlidersHorizontal className="h-5 w-5" /> מרכז שליטה לבוט</Link>
