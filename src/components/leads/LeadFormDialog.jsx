@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from "react";
+import { leadSourceOptions } from "@/lib/leadSources";
+import { supabase } from "@/api/supabaseClient";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +35,14 @@ const UPDATED_CONTRACT_MESSAGE = "שלום {{names}} 😊\nעדכנו את הח�
 //                   as `lead` would send handleSave into `Lead.update(undefined, ...)`.
 export default function LeadFormDialog({ isOpen, onClose, lead, initialValues, packagePrices, onSaved }) {
   const [packages, setPackages] = useState([]);
+  // Sources the studio already used, so its own ones are offered too (2026-10-13).
+  const [usedSources, setUsedSources] = useState([]);
+  useEffect(() => {
+    if (!isOpen) return;
+    supabase.from("leads").select("source").not("source", "is", null).limit(1000)
+      .then(({ data }) => setUsedSources((data || []).map((r) => r.source)))
+      .catch(() => {});
+  }, [isOpen]);
   const [form, setForm] = useState({
     coupleNames: "",
     eventDate: "",
@@ -55,6 +65,7 @@ export default function LeadFormDialog({ isOpen, onClose, lead, initialValues, p
     finalPrice: "",
     status: "חדש",
     notes: "",
+    source: "",
     contractTerms: DEFAULT_CONTRACT_TERMS,
     packageDetails: "",
   });
@@ -109,6 +120,7 @@ export default function LeadFormDialog({ isOpen, onClose, lead, initialValues, p
         finalPrice: lead.finalPrice || "",
         status: lead.status || "חדש",
         notes: lead.notes || "",
+        source: lead.source || "",
         contractTerms: lead.contractTerms || DEFAULT_CONTRACT_TERMS,
         packageDetails: lead.packageDetails || "",
       });
@@ -124,7 +136,7 @@ export default function LeadFormDialog({ isOpen, onClose, lead, initialValues, p
           productionBridePhone: "", productionGroomPhone: "",
           email: "avira.media1@gmail.com", venueName: "",
           packageChoice: "", packageId: "", basePrice: "", discount: "", finalPrice: "",
-          status: "חדש", notes: "", packageDetails: "",
+          status: "חדש", notes: "", source: "", packageDetails: "",
           ...(initialValues || {}),
           contractTerms: terms,
         });
@@ -220,6 +232,7 @@ export default function LeadFormDialog({ isOpen, onClose, lead, initialValues, p
         finalPrice: Number(form.finalPrice) || 0,
         status: form.status,
         notes: form.notes || undefined,
+        source: String(form.source || "").trim() || null,
         contractTerms: form.contractTerms || DEFAULT_CONTRACT_TERMS,
         packageDetails: form.packageDetails || undefined,
       };
@@ -469,6 +482,30 @@ export default function LeadFormDialog({ isOpen, onClose, lead, initialValues, p
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div>
+            <Label className="text-gray-300">מאיפה הגיעו?</Label>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {leadSourceOptions(usedSources).map((src) => (
+                <button
+                  key={src}
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, source: f.source === src ? "" : src }))}
+                  className={`min-h-[32px] rounded-full border px-3 text-xs ${
+                    form.source === src ? "border-yellow-500 bg-yellow-500/20 text-yellow-200" : "border-gray-700 bg-gray-800 text-gray-300 hover:text-white"
+                  }`}
+                >
+                  {src}
+                </button>
+              ))}
+            </div>
+            <Input
+              value={form.source || ""}
+              onChange={(e) => setForm((f) => ({ ...f, source: e.target.value }))}
+              className="bg-gray-800 border-gray-700 text-white mt-1.5"
+              placeholder="או כתבו מקור אחר..."
+            />
           </div>
 
           <div>

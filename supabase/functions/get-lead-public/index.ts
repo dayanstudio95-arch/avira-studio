@@ -8,6 +8,9 @@ import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createServiceRoleClient } from '../_shared/supabaseClients.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { signedContractUrl } from '../_shared/signedContract.ts';
+import { getRequestUser } from '../_shared/supabaseClients.ts';
+import { shouldStampContractView, contractViewUpdate } from '../_shared/contractViews.ts';
+import { sendPush } from '../_shared/webPush.ts';
 
 Deno.serve(async (req) => {
   const preflight = handleOptions(req);
@@ -22,7 +25,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { leadId } = await req.json();
+    const { leadId, purpose } = await req.json();
     if (!leadId) return jsonResponse({ error: 'leadId is required' }, { status: 400 });
 
     const supabase = createServiceRoleClient();
@@ -30,6 +33,12 @@ Deno.serve(async (req) => {
 
     if (error) return jsonResponse({ error: error.message }, { status: 500 });
     if (!lead) return jsonResponse({ error: 'Lead not found' }, { status: 404 });
+
+    // "מי פתח את החוזה" (2026-10-13). Best-effort: a failed stamp must never stop the
+    // couple from reading their contract, so it runs after the response is sent.
+    if (purpose === 'contract' && !lead.signed_at) {
+      EdgeRuntime.waitUntil(stampContractView(req, supabase, lead, purpose));
+    }
 
     // Added (2026-08-13) so the public contract page can stamp the studio's own saved
     // signature (Settings -> חוזה -> חתימת הסטודיו) onto the signed PDF next to the
@@ -126,3 +135,57 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: error.message }, { status: 500 });
   }
 });
+
+async function stampContractView(req: Request, supabase: any, lead: any, purpose: unknown) {
+  try {
+    // A signed-in member of this studio is the owner checking the link, not the couple.
+    let viewerIsStudio = false;
+    const user = await getRequestUser(req).catch(() => null);
+    if (user) {
+      const { data: profile } = await supabase.from('profiles').select('tenant_id').eq('id', user.id).maybeSingle();
+      viewerIsStudio = !!profile && profile.tenant_id === lead.tenant_id;
+    }
+    if (!shouldStampContractView({ purpose, signedAt: lead.signed_at, viewerIsStudio })) return;
+
+    // "First" is decided by the database, not by what this request read: two loads at the
+    // same moment (a reload, two phones) must not both notify.
+    const nowIso = new Date().toISOString();
+    const { data: firstRow } = await supabase
+      .from('leads')
+      .update({ contract_viewed_first_at: nowIso })
+      .eq('id', lead.id)
+      .is('contract_viewed_first_at', null)
+      .is('signed_at', null)
+      .select('id');
+    const first = !!firstRow?.length;
+    const { error } = await supabase
+      .from('leads')
+      .update({ contract_viewed_at: nowIso, contract_view_count: contractViewUpdate(lead).contract_view_count })
+      .eq('id', lead.id)
+      .is('signed_at', null);
+    if (error) { console.error('[getLeadPublic] contract view stamp failed:', error.message); return; }
+    if (!first) return;
+
+    // The first time only: a bell row (opens לידים) and a phone notification.
+    const names = lead.couple_names || 'זוג';
+    await supabase.from('notifications').insert({
+      tenant_id: lead.tenant_id,
+      type: 'contract_viewed',
+      title: `👁 ${names} פתחו את החוזה`,
+      body: 'עוד לא חתמו — זה זמן טוב לדבר איתם',
+      related_lead_id: lead.id,
+    });
+    const { data: conv } = await supabase
+      .from('whatsapp_conversations').select('id')
+      .eq('tenant_id', lead.tenant_id).eq('matched_lead_id', lead.id).limit(1).maybeSingle();
+    await sendPush(supabase, lead.tenant_id, 'lead', {
+      title: `👁 ${names} פתחו את החוזה`,
+      body: 'עוד לא חתמו — זה זמן טוב לדבר איתם',
+      conversationId: conv?.id,
+      url: conv?.id ? undefined : '/Leads',
+      tag: `contract-${lead.id}`,
+    });
+  } catch (err) {
+    console.error('[getLeadPublic] contract view stamp error:', err);
+  }
+}

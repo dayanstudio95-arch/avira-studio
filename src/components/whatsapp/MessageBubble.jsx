@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Download, Bot, BotOff, Check, CheckCheck, AlertCircle } from "lucide-react";
 import { supabase } from "@/api/supabaseClient";
@@ -46,13 +46,60 @@ function StoredMedia({ path, mime, label }) {
       </a>
     );
   }
-  if (kind === "audio") return <audio controls src={url} className="mt-1.5 w-60 max-w-full" />;
+  if (kind === "audio") return <VoiceNote url={url} />;
   if (kind === "video") return <video controls src={url} className="mt-1.5 max-h-72 max-w-full rounded-lg" />;
   return (
     <a href={url} target="_blank" rel="noopener noreferrer" className="mt-1.5 inline-flex items-center gap-1 text-xs text-yellow-300 underline hover:text-yellow-200">
       <Download className="h-3 w-3" />
       {label || "פתיחת הקובץ"}
     </a>
+  );
+}
+
+// A voice note with WhatsApp's speed button (2026-10-13, the owner's request): 1× → 1.5× → 2×.
+// The chosen speed is remembered on this device for every voice note.
+const RATES = [1, 1.5, 2];
+const RATE_KEY = "chat_audio_rate";
+const readRate = () => {
+  try {
+    const r = Number(localStorage.getItem(RATE_KEY));
+    return RATES.includes(r) ? r : 1;
+  } catch {
+    return 1;
+  }
+};
+export function VoiceNote({ url }) {
+  const ref = useRef(null);
+  const [rate, setRate] = useState(readRate);
+  useEffect(() => {
+    if (ref.current) ref.current.playbackRate = rate;
+  }, [rate, url]);
+  const next = () => {
+    const r = RATES[(RATES.indexOf(rate) + 1) % RATES.length];
+    setRate(r);
+    try { localStorage.setItem(RATE_KEY, String(r)); } catch { /* private mode */ }
+  };
+  return (
+    <div className="mt-1.5 flex items-center gap-1.5">
+      <audio
+        ref={ref}
+        controls
+        src={url}
+        className="w-56 max-w-full"
+        // Some browsers reset the speed when the file loads; set it again.
+        onLoadedMetadata={(e) => { e.currentTarget.playbackRate = rate; }}
+        onPlay={(e) => { e.currentTarget.playbackRate = rate; }}
+      />
+      <button
+        type="button"
+        onClick={next}
+        aria-label={`מהירות ${rate}×, לחץ לשינוי`}
+        className="min-h-[32px] min-w-[44px] shrink-0 rounded-full bg-black/30 px-2 text-xs font-bold tabular-nums text-white hover:bg-black/50"
+        dir="ltr"
+      >
+        {rate}×
+      </button>
+    </div>
   );
 }
 
@@ -73,6 +120,16 @@ const DIRECTION_STYLES = {
 };
 
 export default function MessageBubble({ message }) {
+  // A WhatsApp call nobody answered (2026-10-13) — a line in the middle, like WhatsApp.
+  if (message.typeMessage === "missedCall") {
+    return (
+      <div className="flex justify-center">
+        <div className="rounded-full border border-red-900/60 bg-red-950/40 px-3 py-1 text-xs text-red-200">
+          {message.bodyText || "📞 שיחה שלא נענתה"} · <span dir="ltr" className="tabular-nums">{formatMessageDateTime(message.createdDate || message.created_date)}</span>
+        </div>
+      </div>
+    );
+  }
   const isOutbound = message.direction !== "inbound";
   const style = DIRECTION_STYLES[message.direction] || DIRECTION_STYLES.inbound;
 

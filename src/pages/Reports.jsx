@@ -6,7 +6,8 @@ import { getEventVatAmount, getEventTeamCost } from "../lib/financialCalculation
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Download, TrendingUp, Calendar, BarChart3 } from "lucide-react";
+import { Download, TrendingUp, Calendar, BarChart3, Users } from "lucide-react";
+import LeadsReport from "../components/reports/LeadsReport";
 
 import ReportsChart from "../components/reports/ReportsChart";
 import MonthlyChart from "../components/reports/MonthlyChart";
@@ -111,7 +112,9 @@ export default function Reports() {
   const tabs = [
     { id: 'daily', label: 'יומי', icon: Calendar },
     { id: 'monthly', label: 'חודשי', icon: TrendingUp },
-    { id: 'annual', label: 'שנתי', icon: BarChart3 }
+    { id: 'annual', label: 'שנתי', icon: BarChart3 },
+    // 2026-10-13: leads and signings per month (src/components/reports/LeadsReport.jsx).
+    { id: 'leads', label: 'לידים', icon: Users },
   ];
 
   return (
@@ -131,7 +134,7 @@ export default function Reports() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 h-11 rounded-xl bg-[#0B1529] border border-[#2A3B57] p-1">
+          <TabsList className="grid w-full grid-cols-4 h-11 rounded-xl bg-[#0B1529] border border-[#2A3B57] p-1">
             {tabs.map((tab) => (
               <TabsTrigger 
                 key={tab.id}
@@ -258,6 +261,25 @@ export default function Reports() {
 
             {/* Monthly Overview Chart for Annual View */}
             <MonthlyChart events={events} isLoading={isLoading} staffMembers={staffMembers} year={selectedYear} />
+          </TabsContent>
+
+          {/* Leads Tab */}
+          <TabsContent value="leads" className="space-y-6">
+            <div className="flex items-center gap-4">
+              <Select value={selectedMonth.toString()} onValueChange={(value) => setSelectedMonth(parseInt(value))}>
+                <SelectTrigger className="w-40 h-10 rounded-xl bg-[#0B1529] border-[#2A3B57] text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-900 border-gray-700 text-white">
+                  {MONTHS.map((month) => (
+                    <SelectItem key={month.value} value={month.value.toString()}>
+                      {month.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <LeadsReport year={selectedYear} month={selectedMonth} />
           </TabsContent>
         </Tabs>
       </div>

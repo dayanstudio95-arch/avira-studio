@@ -15,6 +15,7 @@
 // A new type is one line here and it appears in the menu; nothing else to touch.
 export const NAV_ROUTE_BY_NOTIFICATION_TYPE = {
   contract_signed: "/Leads",
+  contract_viewed: "/Leads", // get-lead-public: the couple opened the contract (2026-10-13)
   whatsapp_hot_lead: "/chat", // the merged chat screen (2026-10-07); ChatApp marks these read
   album_round_approved: "/AlbumOrders",
   album_revision_requested: "/AlbumOrders",
@@ -72,6 +73,7 @@ export function notificationEmoji(type) {
   const t = String(type || "");
   if (t.endsWith("_failed")) return "⚠️";
   if (t === "whatsapp_hot_lead") return "🔥";
+  if (t === "contract_viewed") return "👁";
   if (t === "whatsapp_opt_out") return "🚫";
   if (t === "meeting_reminder" || t === "whatsapp_return_reminder") return "⏰";
   return NOTIFICATION_TABS.find((x) => x.key === notificationTab(t))?.icon || "🔔";

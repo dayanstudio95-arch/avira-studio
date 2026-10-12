@@ -76,7 +76,9 @@ export default function ContractPage() {
   useEffect(() => {
     if (!leadId) { setNotFound(true); setLoading(false); return; }
 
-    base44.functions.invoke('getLeadPublic', { leadId })
+    // purpose 'contract' (2026-10-13): the server notes that the couple opened it — the
+    // questionnaire page reads the same lead without it.
+    base44.functions.invoke('getLeadPublic', { leadId, purpose: 'contract' })
       .then((res) => {
         const data = res.data;
         if (data && data.id) {

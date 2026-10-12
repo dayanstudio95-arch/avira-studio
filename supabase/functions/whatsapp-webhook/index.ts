@@ -76,6 +76,7 @@ import {
 } from '../_shared/whatsappStatus.ts';
 import { detectOptOut } from '../_shared/whatsappOptOut.ts';
 import { sendPush, categoryForContactType } from '../_shared/webPush.ts';
+import { handleIncomingCall } from '../_shared/whatsappMissedCall.ts';
 
 const PG_UNIQUE_VIOLATION = '23505';
 
@@ -308,6 +309,23 @@ Deno.serve(async (req: Request) => {
       sendPush(supabase, tenantId, 'delivery', a)
     );
     return jsonResponse({ ok: true, status: result });
+  }
+
+  // A WhatsApp call (2026-10-13): an unanswered one becomes "📞 שיחה שלא נענתה" in the chat,
+  // and an unknown number or a lead gets "ראינו שהתקשרתם" once (_shared/whatsappMissedCall.ts).
+  // Arrives only after the studio turns on incomingCallWebhook in the Green API console.
+  if (typeWebhook === 'incomingCall') {
+    try {
+      const result = await handleIncomingCall(supabase, tenantId, payload, {
+        later: (p) => EdgeRuntime.waitUntil(p),
+        push: (contactType, a) => sendPush(supabase, tenantId, categoryForContactType(contactType), a),
+      });
+      return jsonResponse({ ok: true, call: result });
+    } catch (e: any) {
+      // Logged and answered: a retry storm from Green API would not fix a database error.
+      console.error('[whatsapp-webhook] incomingCall failed:', e?.message || e);
+      return jsonResponse({ ok: true, call: 'error' });
+    }
   }
 
   const isInbound = INBOUND_TYPES.includes(typeWebhook);
@@ -1023,6 +1041,8 @@ Deno.serve(async (req: Request) => {
                 .select('id', { count: 'exact', head: true })
                 .eq('conversation_id', conversation.id)
                 .in('direction', ['outbound_bot', 'outbound_human'])
+                // A "ראינו שהתקשרתם" reply (2026-10-13) is not the conversation moving on.
+                .neq('type_webhook', 'bot:missed_call')
                 .gt('created_at', nowIso);
               if ((since ?? 0) > 0) {
                 console.log('[whatsapp-webhook] greeting skipped — the conversation moved on during the delay');

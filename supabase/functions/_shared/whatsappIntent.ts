@@ -565,7 +565,8 @@ export const MAX_BOT_MESSAGES = 3;
 // customer who came back after the nudge could be handed off before the price list.
 // Matched against whatsapp_messages.type_webhook, which whatsappBotSend.ts tags
 // `bot:<kind>`.
-export const BOT_BUDGET_EXCLUDED_KINDS = ['bot:nudge'];
+// 'bot:missed_call' (2026-10-13): the "ראינו שהתקשרתם" reply is not part of the details flow.
+export const BOT_BUDGET_EXCLUDED_KINDS = ['bot:nudge', 'bot:missed_call'];
 
 // Exported for the housekeeping tick (nudge + drainer), which must apply the same
 // in-flow definition the gate does rather than a copy of it.

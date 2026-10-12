@@ -1,4 +1,5 @@
 import React from "react";
+import { contractViewInfo } from "@/lib/contractViews";
 import { Link } from "react-router-dom";
 import ClientActionsCard from "./ClientActionsCard";
 import { Switch } from "@/components/ui/switch";
@@ -132,7 +133,10 @@ export default function ContactPanel({
               {lead.venueName ? ` · ${lead.venueName}` : ""}
             </div>
           )}
-          <div className="text-gray-400">סטטוס: {lead.status}</div>
+          <div className="text-gray-400">סטטוס: {lead.status}{lead.source ? ` · מקור: ${lead.source}` : ""}</div>
+          {contractViewInfo(lead) && (
+            <div className={contractViewInfo(lead).opened ? "text-amber-300" : "text-gray-500"}>{contractViewInfo(lead).text}</div>
+          )}
           <Link to={`/Leads?openLeadId=${lead.id}`} className="inline-block pt-1 text-yellow-400 underline">פתח בדף הלידים</Link>
         </section>
       ) : (

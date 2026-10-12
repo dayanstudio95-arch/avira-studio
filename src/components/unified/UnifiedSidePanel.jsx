@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { contractViewInfo } from "@/lib/contractViews";
 import { base44 } from "@/api/base44Client";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetClose } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -807,6 +808,11 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                 } border`}>
                   {lead.productionFormFilledAt ? "✅ שאלון" : "📝 שאלון"}
                 </Badge>
+                {contractViewInfo(lead) && (
+                  <span className={`text-xs ${contractViewInfo(lead).opened ? "text-amber-300" : "text-gray-400"}`}>
+                    {contractViewInfo(lead).text}
+                  </span>
+                )}
               </div>
             )}
 

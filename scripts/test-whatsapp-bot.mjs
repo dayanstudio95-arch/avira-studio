@@ -2659,5 +2659,95 @@ console.log('\n— PART 43: album editor round 2 —');
   check('page count never deletes spreads with photos', pc.blocked, 1);
 }
 
+// =====================================================================================
+// PART 57 — leads pack (2026-10-13): contract opened, unsigned-contract reminder, missed
+// calls, lead source, monthly leads report
+console.log('\n— PART 57: leads pack —');
+{
+  const cvS = await loadModule('supabase/functions/_shared/contractViews.ts', 'cvs57');
+  check('stamp: couple opens unsigned contract', cvS.shouldStampContractView({ purpose: 'contract', signedAt: null, viewerIsStudio: false }), true);
+  check('stamp: questionnaire page does not count', cvS.shouldStampContractView({ purpose: undefined, signedAt: null, viewerIsStudio: false }), false);
+  check('stamp: after signing does not count', cvS.shouldStampContractView({ purpose: 'contract', signedAt: '2026-10-01T10:00:00Z', viewerIsStudio: false }), false);
+  check('stamp: the studio itself does not count', cvS.shouldStampContractView({ purpose: 'contract', signedAt: null, viewerIsStudio: true }), false);
+  const now57 = new Date('2026-10-13T09:00:00Z');
+  const u1 = cvS.contractViewUpdate({ contract_viewed_first_at: null, contract_view_count: 0 }, now57);
+  check('first view', [u1.first, u1.contract_view_count, u1.contract_viewed_first_at], [true, 1, now57.toISOString()]);
+  const u2 = cvS.contractViewUpdate({ contract_viewed_first_at: '2026-10-10T09:00:00Z', contract_view_count: 2 }, now57);
+  check('later view keeps first, counts up', [u2.first, u2.contract_view_count, u2.contract_viewed_first_at], [false, 3, '2026-10-10T09:00:00Z']);
+
+  const cv = await loadModule('src/lib/contractViews.js', 'cv57');
+  const nowL = new Date('2026-10-13T12:00:00Z');
+  check('view info: not sent → null', cv.contractViewInfo({ contractSent: false }, nowL), null);
+  check('view info: signed → null', cv.contractViewInfo({ contractSent: true, signedAt: '2026-10-01' }, nowL), null);
+  check('view info: sent, never opened', cv.contractViewInfo({ contractSent: true, contractViewCount: 0 }, nowL), { opened: false, text: '📭 עוד לא פתחו את החוזה' });
+  check('view info: opened yesterday 3 times', cv.contractViewInfo({ contractSent: true, contractViewCount: 3, contractViewedAt: '2026-10-12T18:40:00Z' }, nowL),
+    { opened: true, text: '👁 פתחו את החוזה 3 פעמים · אחרונה אתמול 21:40' });
+  check('when label: today', cv.whenLabel('2026-10-13T07:05:00Z', nowL), 'היום 10:05');
+  check('when label: older', cv.whenLabel('2026-10-02T07:05:00Z', nowL), '2.10 10:05');
+
+  const cr = await loadModule('src/lib/contractReminder.js', 'cr57');
+  const base = { contractSent: true, signedAt: null, status: 'נשלחה הצעה', phoneNumber: '0501234567', eventDate: '2027-05-01', contractSentAt: '2026-10-09T10:00:00Z' };
+  check('reminder due after 4 days', cr.isContractReminderDue(base, nowL), true);
+  check('not due after 2 days', cr.isContractReminderDue({ ...base, contractSentAt: '2026-10-11T10:00:00Z' }, nowL), false);
+  check('not due when signed', cr.isContractReminderDue({ ...base, signedAt: '2026-10-12' }, nowL), false);
+  check('not due when done', cr.isContractReminderDue({ ...base, contractReminderDoneAt: '2026-10-12' }, nowL), false);
+  check('not due when lost', cr.isContractReminderDue({ ...base, status: 'לא רלוונטי' }, nowL), false);
+  check('not due when event passed', cr.isContractReminderDue({ ...base, eventDate: '2026-10-01' }, nowL), false);
+  check('not due without phone', cr.isContractReminderDue({ ...base, phoneNumber: '' }, nowL), false);
+  check('not due after 60+ days', cr.isContractReminderDue({ ...base, contractSentAt: '2026-07-01T10:00:00Z' }, nowL), false);
+  check('oldest first', cr.dueContractReminders([{ ...base, id: 'b', contractSentAt: '2026-10-08T10:00:00Z' }, { ...base, id: 'a', contractSentAt: '2026-10-01T10:00:00Z' }], nowL).map((l) => l.id), ['a', 'b']);
+
+  const mc = await loadModule('supabase/functions/_shared/whatsappMissedCall.ts', 'mc57');
+  check('missed statuses', ['offer', 'pickUp', 'hungUp', 'declined', 'missed'].map(mc.isMissedCallStatus), [false, false, true, true, true]);
+  const nowC = new Date('2026-10-13T10:00:00Z');
+  const ok = { enabled: true, text: 'היי', contactType: 'unknown', isGroup: false, optedOut: false, hasPhone: true,
+    missedCallAt: '2026-10-13T09:58:00Z', replyAt: null, studioRepliedSince: false, inQuietHours: false, now: nowC };
+  check('reply: unknown number', mc.decideMissedCallReply(ok), { send: true });
+  check('reply: lead', mc.decideMissedCallReply({ ...ok, contactType: 'lead' }), { send: true });
+  check('no reply: client', mc.decideMissedCallReply({ ...ok, contactType: 'client' }), { send: false, reason: 'not_lead' });
+  check('no reply: staff', mc.decideMissedCallReply({ ...ok, contactType: 'staff' }), { send: false, reason: 'not_lead' });
+  check('no reply: switched off', mc.decideMissedCallReply({ ...ok, enabled: false }), { send: false, reason: 'disabled' });
+  check('no reply: opted out', mc.decideMissedCallReply({ ...ok, optedOut: true }), { send: false, reason: 'opted_out' });
+  check('no reply: already replied', mc.decideMissedCallReply({ ...ok, replyAt: '2026-10-13T09:59:00Z' }), { send: false, reason: 'already_replied' });
+  check('no reply: studio answered', mc.decideMissedCallReply({ ...ok, studioRepliedSince: true }), { send: false, reason: 'studio_replied' });
+  check('later: quiet hours', mc.decideMissedCallReply({ ...ok, inQuietHours: true }), { send: false, reason: 'quiet_hours' });
+  check('no reply: older than 12h', mc.decideMissedCallReply({ ...ok, missedCallAt: '2026-10-12T21:00:00Z' }), { send: false, reason: 'expired' });
+  check('no reply: unknown number the studio already wrote to', mc.decideMissedCallReply({ ...ok, studioEverWrote: true }), { send: false, reason: 'known_to_studio' });
+  check('reply: lead even if the studio wrote before', mc.decideMissedCallReply({ ...ok, contactType: 'lead', studioEverWrote: true }), { send: true });
+  check('call time from Green API timestamp', mc.callTime({ timestamp: 1791820800 }, nowC).toISOString(), new Date(1791820800 * 1000).toISOString());
+  check('call time: missing → now', mc.callTime({}, nowC).toISOString(), nowC.toISOString());
+  check('call time: future → now', mc.callTime({ timestamp: 9999999999 }, nowC).toISOString(), nowC.toISOString());
+  check('cooldown: reply 2h ago stays', mc.shouldResetMissedCallReply('2026-10-13T08:00:00Z', nowC), false);
+  check('cooldown: reply yesterday resets', mc.shouldResetMissedCallReply('2026-10-12T08:00:00Z', nowC), true);
+  check('cooldown: never replied', mc.shouldResetMissedCallReply(null, nowC), false);
+
+  const ls = await loadModule('src/lib/leadSources.js', 'ls57');
+  check('sources: defaults then own', ls.leadSourceOptions(['גוגל', 'חתונה של חברים', '', null]).slice(-1), ['חתונה של חברים']);
+  check('sources: no repeats', ls.leadSourceOptions(['גוגל']).filter((x) => x === 'גוגל').length, 1);
+  check('source from ad chat', ls.sourceFromConversation({ source: 'facebook_ad' }), 'מודעה בפייסבוק');
+  check('source from plain chat', ls.sourceFromConversation({ source: null }), '');
+
+  const lr = await loadModule('src/lib/leadReport.js', 'lr57');
+  const leads = [
+    { createdAt: '2026-09-02T10:00:00Z', signedAt: '2026-09-10T10:00:00Z', status: 'חוזה', finalPrice: 13000, source: 'אינסטגרם' },
+    { createdAt: '2026-09-05T10:00:00Z', signedAt: null, status: 'לא רלוונטי', finalPrice: 0, source: 'גוגל' },
+    { createdAt: '2026-09-30T22:30:00Z', signedAt: null, status: 'חדש', finalPrice: 0, source: '' }, // 1.10 in Israel
+    { createdAt: '2026-08-13T10:00:00Z', signedAt: '2026-09-20T10:00:00Z', status: 'חוזה', finalPrice: 12000, source: null },
+  ];
+  const convs = [{ createdAt: '2026-09-03T10:00:00Z', contactType: 'unknown' }, { createdAt: '2026-09-04T10:00:00Z', contactType: 'staff' }];
+  const sep = lr.monthStats(leads, convs, '2026-09');
+  check('report: new leads (Israel month)', sep.newLeads, 2);
+  check('report: signed this month', [sep.signed, sep.signedTotal, sep.avgPrice], [2, 25000, 12500]);
+  check('report: cohort conversion', [sep.cohortSigned, sep.conversion], [1, 50]);
+  check('report: lost', sep.lost, 1);
+  check('report: inquiries skip staff', sep.inquiries, 1);
+  check('report: by source', sep.bySource.map((r) => [r.source, r.leads, r.signed]), [['אינסטגרם', 1, 1], ['גוגל', 1, 0]]);
+  check('report: october gets the late-night lead', lr.monthStats(leads, convs, '2026-10').bySource.map((r) => r.source), ['לא צוין']);
+  check('report: august not reliable', lr.monthStats(leads, convs, '2026-08').newLeadsReliable, false);
+  check('report: prev month over new year', lr.prevMonthKey('2026-01'), '2025-12');
+  check('report: last months', lr.lastMonths('2026-02', 3), ['2025-12', '2026-01', '2026-02']);
+  check('report: delta', [lr.delta(5, 3), lr.delta(2, 4), lr.delta(3, 3), lr.delta(1, null)], ['+2', '−2', '0', null]);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

@@ -26,6 +26,9 @@ export const DEFAULT_GREETING =
 // Must match DEFAULT_FLOW_NUDGE_TEXT in whatsappBotSend.ts.
 export const DEFAULT_NUDGE = "היי, עדיין כאן 🙂 אם תשלחו לנו את הפרטים החסרים נחזור אליכם עם הצעת מחיר";
 
+// Must match DEFAULT_MISSED_CALL_TEXT in whatsappBotSend.ts.
+export const DEFAULT_MISSED_CALL = "היי 🙏 ראינו שהתקשרתם ולא הספקנו לענות. נחזור אליכם בהקדם — ואפשר גם לכתוב לנו כאן 😊";
+
 // key → { default, kind }. kind: 'text' | 'bool' | 'list' | 'fields'
 const FIELDS = {
   whatsapp_bot_enabled: { def: false, kind: "bool" },
@@ -48,6 +51,9 @@ const FIELDS = {
   whatsapp_question_text_many: { def: "", kind: "text" },
   whatsapp_max_bot_messages: { def: "3", kind: "text" },
   whatsapp_nudge_after_hours: { def: "24", kind: "text" },
+  // "שיחה שלא נענתה" (2026-10-13)
+  whatsapp_missed_call_enabled: { def: false, kind: "bool" },
+  whatsapp_missed_call_text: { def: "", kind: "text" },
   // The follow-up queue's two keys (also edited by WhatsAppFollowUpSettingsDialog).
   [FOLLOWUP_TEMPLATE_KEY]: { def: DEFAULT_TEMPLATE, kind: "text" },
   [FOLLOWUP_AFTER_DAYS_KEY]: { def: "0", kind: "text" },

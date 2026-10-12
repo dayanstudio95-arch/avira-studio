@@ -7,6 +7,7 @@
 //   3. Send the daily digest to the studio's alert number at the configured hour
 //      (on Sundays with a weekly section underneath — AI sales help, 2026-10-09).
 //   4. "מתי לחזור אליהם": a lead who said they need time is due → bell + push, once.
+//   5. "ראינו שהתקשרתם" for a call missed in quiet hours (whatsappMissedCall.ts).
 //
 // Why here and not a new cron job: the only scheduler this project can rely on is
 // `automation-engine-hourly` (confirmed live). A new job would mean a new secret pasted
@@ -25,6 +26,7 @@ import {
 import { IN_FLOW_STATES } from './whatsappIntent.ts';
 import { composeDigest, composeWeekly, type DigestStats, type WeeklyStats } from './whatsappDigest.ts';
 import { sendStudioAlert } from './whatsappStudioAlerts.ts';
+import { sendPendingMissedCallReplies } from './whatsappMissedCall.ts';
 
 const DRAIN_BATCH = 20;     // per tenant per tick — the engine has a ~400s wall clock
 const NUDGE_BATCH = 20;
@@ -38,6 +40,7 @@ export interface HousekeepingResult {
   nudged: number;
   digestSent: boolean;
   returnReminders?: number;
+  missedCallReplies?: number;
   errors: number;
 }
 
@@ -74,6 +77,15 @@ export async function runWhatsAppHousekeeping(supabase: any, tenantId: string, p
       r.errors++;
       console.error('[whatsappHousekeeping] nudge failed:', e?.message || e);
     }
+  }
+
+  // "ראינו שהתקשרתם" for calls that came in quiet hours (2026-10-13). Its own switch, not
+  // the bot's.
+  try {
+    r.missedCallReplies = await sendPendingMissedCallReplies(supabase, tenantId, settings, inQuiet);
+  } catch (e: any) {
+    r.errors++;
+    console.error('[whatsappHousekeeping] missed-call replies failed:', e?.message || e);
   }
 
   // The digest goes out whether or not the bot is on: "the bot is off" is itself a fact

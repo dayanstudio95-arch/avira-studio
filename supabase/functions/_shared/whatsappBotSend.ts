@@ -50,6 +50,10 @@ export interface BotSettings {
   maxBotMessages: number;
   // Hours of silence mid-flow before the one-time nudge (was 24).
   nudgeAfterHours: number;
+  // "שיחה שלא נענתה" (2026-10-13): a WhatsApp call nobody answered from an unknown number
+  // or a lead gets this text once. Its own switch, independent of the bot's; off by default.
+  missedCallEnabled: boolean;
+  missedCallText: string;
 }
 
 export const BOT_SETTING_KEYS = [
@@ -72,6 +76,8 @@ export const BOT_SETTING_KEYS = [
   'whatsapp_question_text_many',
   'whatsapp_max_bot_messages',
   'whatsapp_nudge_after_hours',
+  'whatsapp_missed_call_enabled',
+  'whatsapp_missed_call_text',
 ] as const;
 
 // The question texts the webhook used to hard-code. Still the defaults; an empty or
@@ -80,6 +86,9 @@ export const BOT_SETTING_KEYS = [
 export const DEFAULT_QUESTION_TEXT_ONE = 'תודה! רק עוד פרט אחד ונוכל לחזור אליכם עם הצעת מחיר — {{missing}}?';
 export const DEFAULT_QUESTION_TEXT_MANY = 'תודה! רק עוד כמה פרטים ונוכל לחזור אליכם עם הצעת מחיר:\n{{missing_list}}';
 export const DEFAULT_NUDGE_AFTER_HOURS = 24;
+
+export const DEFAULT_MISSED_CALL_TEXT =
+  'היי 🙏 ראינו שהתקשרתם ולא הספקנו לענות. נחזור אליכם בהקדם — ואפשר גם לכתוב לנו כאן 😊';
 
 export const DEFAULT_FLOW_NUDGE_TEXT =
   'היי, עדיין כאן 🙂 אם תשלחו לנו את הפרטים החסרים נחזור אליכם עם הצעת מחיר';
@@ -198,6 +207,10 @@ export async function loadBotSettings(supabase: any, tenantId: string): Promise<
     maxBotMessages: parseIntInRange(get('whatsapp_max_bot_messages'), DEFAULTS.maxBotMessages, 2, 6),
     // 1 hour .. a week.
     nudgeAfterHours: parseIntInRange(get('whatsapp_nudge_after_hours'), DEFAULTS.nudgeAfterHours, 1, 168),
+    // Off until the studio switches it on in the control centre — a message to people who
+    // called is a send, and every send starts with the owner's yes.
+    missedCallEnabled: parseBool(get('whatsapp_missed_call_enabled')),
+    missedCallText: String(get('whatsapp_missed_call_text') ?? '').trim() || DEFAULT_MISSED_CALL_TEXT,
   };
 }
 
@@ -276,7 +289,7 @@ export async function notifyFailure(
 // (2026-09-15; earlier rows carry the constant 'botSend' and are left as they are).
 // Two readers depend on the tag: the daily digest counts greetings and price lists by
 // it, and the flow budget excludes 'bot:nudge' (see BOT_BUDGET_EXCLUDED_KINDS).
-export type BotSendKind = 'greeting' | 'question' | 'pricelist' | 'nudge';
+export type BotSendKind = 'greeting' | 'question' | 'pricelist' | 'nudge' | 'missed_call';
 
 async function recordBotMessage(
   supabase: any,

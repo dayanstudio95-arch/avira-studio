@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { contractViewInfo } from "@/lib/contractViews";
 import { useLocation } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
@@ -740,7 +741,8 @@ export default function Leads() {
                         </td>
                         <td className="px-2 py-2 text-center">
                           {lead.signedAt ? <span title="נחתם" className="text-green-400">✅</span>
-                            : lead.contractSent ? <span title="נשלח" className="text-blue-400">📨</span>
+                            : lead.contractSent && contractViewInfo(lead)?.opened ? <span title={contractViewInfo(lead).text} className="text-amber-300">👁</span>
+                            : lead.contractSent ? <span title={contractViewInfo(lead)?.text || "נשלח"} className="text-blue-400">📨</span>
                             : <span className="text-gray-600">—</span>}
                         </td>
                         <td className="px-2 py-2 text-center font-semibold whitespace-nowrap">

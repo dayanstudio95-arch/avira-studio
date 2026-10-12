@@ -11,6 +11,7 @@ import { typeColor, stageColor } from "@/lib/chatColors";
 import { displayPhone } from "@/components/whatsapp/whatsappInboxShared";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import AiAssistPanel from "./AiAssistPanel";
+import EmojiPicker from "./EmojiPicker";
 import BotSendPanel from "./BotSendPanel";
 import AiSummaryBar from "./AiSummaryBar";
 import ReturnReminderButton from "./ReturnReminderButton";
@@ -50,6 +51,21 @@ export default function ChatThread({
   const [editing, setEditing] = useState(null); // {id?, name, body}
   const scrollRef = useRef(null);
   const textRef = useRef(null);
+  const [showEmoji, setShowEmoji] = useState(false);
+  // Puts the emoji where the cursor is, then the cursor right after it.
+  const insertEmoji = (emoji) => {
+    const el = textRef.current;
+    const start = el ? el.selectionStart ?? text.length : text.length;
+    const end = el ? el.selectionEnd ?? text.length : text.length;
+    const next = text.slice(0, start) + emoji + text.slice(end);
+    setText(next);
+    requestAnimationFrame(() => {
+      if (!el) return;
+      el.focus();
+      const pos = start + emoji.length;
+      el.setSelectionRange(pos, pos);
+    });
+  };
 
   // Draft per conversation, so switching chats never sends one person's text to another.
   const drafts = useRef({});
@@ -58,6 +74,7 @@ export default function ChatThread({
     setShowTemplates(false);
     setShowAi(false);
     setShowBot(false);
+    setShowEmoji(false);
     setMode("msg");
   }, [conversation.id]);
   useEffect(() => {
@@ -315,6 +332,8 @@ export default function ChatThread({
           </div>
         )}
 
+        {showEmoji && <EmojiPicker onPick={insertEmoji} onClose={() => setShowEmoji(false)} />}
+
         <div className="mb-1.5 flex gap-1.5" role="tablist" aria-label="סוג">
           <button type="button" role="tab" aria-selected={!isNote} onClick={() => setMode("msg")} className={`rounded-full px-3 py-1 text-xs ${!isNote ? "bg-emerald-900/70 text-emerald-100" : "text-gray-400"}`}>הודעת וואטסאפ</button>
           <button type="button" role="tab" aria-selected={isNote} onClick={() => setMode("note")} className={`rounded-full px-3 py-1 text-xs ${isNote ? "bg-yellow-900/60 text-yellow-200" : "text-gray-400"}`}>הערה פנימית</button>
@@ -343,6 +362,16 @@ export default function ChatThread({
               <Bot className="h-5 w-5" />
             </button>
           )}
+          <button
+            type="button"
+            data-emoji-toggle
+            onClick={() => setShowEmoji((v) => !v)}
+            aria-label="אימוג'ים"
+            title="אימוג'ים"
+            className={`hidden h-11 w-11 shrink-0 items-center justify-center rounded-full text-xl md:flex ${showEmoji ? "bg-gray-700" : "bg-gray-800 hover:bg-gray-700"}`}
+          >
+            😊
+          </button>
           <textarea
             ref={textRef}
             value={text}

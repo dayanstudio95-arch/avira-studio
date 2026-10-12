@@ -21,6 +21,11 @@ import { useThread } from "@/components/chat/useThread";
 import ChatSidebar from "@/components/chat/ChatSidebar";
 import BoxOrderEditor from "@/components/chat/BoxOrderEditor";
 import HomeTypesDialog from "@/components/chat/HomeTypesDialog";
+import UnsignedContractsDialog from "@/components/chat/UnsignedContractsDialog";
+import { sourceFromConversation } from "@/lib/leadSources";
+
+const NO_LEADS = [];
+import { dueContractReminders, DEFAULT_CONTRACT_REMINDER, CONTRACT_REMINDER_AFTER_DAYS, CONTRACT_REMINDER_MAX_DAYS } from "@/lib/contractReminder";
 import ChatList, { conversationTitle, AvatarUrlContext } from "@/components/chat/ChatList";
 import ChatThread from "@/components/chat/ChatThread";
 import ContactPanel from "@/components/chat/ContactPanel";
@@ -77,6 +82,38 @@ export default function ChatApp() {
       return row?.chat_prefs || {};
     },
   });
+  // "📝 חוזים שלא נחתמו" (2026-10-13): couples who got the contract 3+ days ago and did not
+  // sign — a ready reminder in "מה מחכה לי", sent only by the owner's click.
+  const contractsKey = ["unsignedContracts"];
+  const contractsQ = useQuery({
+    queryKey: contractsKey,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const now = Date.now();
+      const [{ data: rows, error }, { data: tpl }] = await Promise.all([
+        supabase
+          .from("leads")
+          .select("id, couple_names, event_date, venue_name, status, phone_number, signed_at, contract_sent, contract_sent_at, contract_viewed_at, contract_view_count, contract_reminder_done_at")
+          .eq("contract_sent", true)
+          .is("signed_at", null)
+          .is("contract_reminder_done_at", null)
+          .lte("contract_sent_at", new Date(now - CONTRACT_REMINDER_AFTER_DAYS * 86400000).toISOString())
+          .gte("contract_sent_at", new Date(now - CONTRACT_REMINDER_MAX_DAYS * 86400000).toISOString())
+          .limit(200),
+        supabase.from("app_settings").select("value").eq("key", "template_lead_followup").maybeSingle(),
+      ]);
+      if (error) throw error;
+      const leads = (rows || []).map((l) => ({
+        id: l.id, coupleNames: l.couple_names, eventDate: l.event_date, venueName: l.venue_name, status: l.status,
+        phoneNumber: l.phone_number, signedAt: l.signed_at, contractSent: l.contract_sent, contractSentAt: l.contract_sent_at,
+        contractViewedAt: l.contract_viewed_at, contractViewCount: l.contract_view_count, contractReminderDoneAt: l.contract_reminder_done_at,
+      }));
+      return { leads: dueContractReminders(leads), template: tpl?.value?.trim() || DEFAULT_CONTRACT_REMINDER };
+    },
+  });
+  const dueContracts = contractsQ.data?.leads || NO_LEADS;
+  const [contractsOpen, setContractsOpen] = useState(false);
+
   const savedOrder = prefsQ.data?.boxOrder || null;
   const ordered = useMemo(() => orderBoxes(savedOrder), [savedOrder]);
   const [orderOpen, setOrderOpen] = useState(false);
@@ -392,6 +429,7 @@ export default function ChatApp() {
           phoneNumber: c.callbackPhone || c.phone || "",
           venueName: c.venue || "",
           notes: notes.join(" | "),
+          source: sourceFromConversation(c),
           ...(c.leadStage ? { status: c.leadStage } : {}),
         },
       });
@@ -494,7 +532,7 @@ export default function ChatApp() {
     return out;
      
   }, [data.conversations, data.unread, data.followUpAfterDays, data.leadsById]);
-  const mineTotal = mineCounts.needs + mineCounts.hot + mineCounts.followup + mineCounts.return;
+  const mineTotal = mineCounts.needs + mineCounts.hot + mineCounts.followup + mineCounts.return + dueContracts.length;
   // The number on the home-screen icon (2026-10-13, the owner's choice): how many people are
   // waiting for an answer — not unread chats, which also counts what needs nothing.
   useEffect(() => {
@@ -515,6 +553,7 @@ export default function ChatApp() {
             mineCounts.hot && `${mineCounts.hot} חמים`,
             mineCounts.followup && `${mineCounts.followup} פולו-אפ`,
             mineCounts.return && `${mineCounts.return} לחזור אליהם`,
+            dueContracts.length && (dueContracts.length === 1 ? "חוזה אחד לא נחתם" : `${dueContracts.length} חוזים לא נחתמו`),
           ].filter(Boolean).join(" · ")}
         </span>
       </span>
@@ -522,6 +561,19 @@ export default function ChatApp() {
     </button>
   );
   const mineLabels = Object.fromEntries(MINE_SECTIONS.map((x) => [x.key, x.label]));
+  const contractsBar = box === "mine" && !q && dueContracts.length > 0 && (
+    <button
+      type="button"
+      onClick={() => setContractsOpen(true)}
+      className="flex w-full items-center gap-2 border-b border-gray-800 bg-sky-950/40 px-3.5 py-2 text-start text-sm text-sky-100 hover:bg-sky-950/60"
+    >
+      <span aria-hidden="true">📝</span>
+      <span className="min-w-0 flex-1 truncate">
+        {dueContracts.length === 1 ? "חוזה אחד לא נחתם" : `${dueContracts.length} חוזים לא נחתמו`} · תזכורת מוכנה לשליחה
+      </span>
+      <span className="shrink-0 text-xs text-sky-300">פתח ›</span>
+    </button>
+  );
 
   // A meeting in the next hour: a bar above the list, so it can't be missed.
   const meetingBanner = soonMeeting && (
@@ -611,7 +663,7 @@ export default function ChatApp() {
           labels={data.labels}
           onBulk={onBulk}
           mobileChips={chips}
-          topBar={<>{meetingBanner}{mineRow}{followUpBar}</>}
+          topBar={<>{meetingBanner}{mineRow}{contractsBar}{followUpBar}</>}
           sectionOf={box === "mine" && !q ? (c) => mineLabels[mineSection(c, ctx)] || null : undefined}
           onSwipeHandled={(c) => run(data.actions.setHandled([c], true), () => '✓ טופל · יחזור כשיכתבו שוב')}
           onSwipeArchive={(c) => run(data.actions.setArchived([c], !c.archivedAt), () => (c.archivedAt ? "הוחזר מהארכיון" : "הועבר לארכיון · יחזור לבד כשיכתבו שוב"))}
@@ -709,6 +761,7 @@ export default function ChatApp() {
             <div className="truncate px-2 pb-2 text-sm font-semibold text-white">{conversationTitle(rowMenu)}</div>
             {[
               { label: rowMenu.pinnedAt ? "בטל נעיצה" : "📌 נעץ למעלה", act: () => run(data.actions.setPinned([rowMenu], !rowMenu.pinnedAt), () => (rowMenu.pinnedAt ? "בוטלה הנעיצה" : "ננעץ למעלה")) },
+              rowMenu.leadTemperature === "hot" && { label: "🔥 לא חם", act: () => run(data.actions.clearHot([rowMenu]), () => 'הוסר מ"ליד חם"') },
               needsReply(rowMenu) && { label: "✓ טופל", act: () => run(data.actions.setHandled([rowMenu], true), () => '✓ טופל · יחזור כשיכתבו שוב') },
               ["unknown", "lead", "client", "past_client"].includes(rowMenu.contactType || "unknown") && {
                 label: isAwaitingFollowUp(rowMenu, data.followUpAfterDays || 0) ? "הוצא מפולו-אפ" : "⏳ לפולו-אפ",
@@ -731,6 +784,15 @@ export default function ChatApp() {
             ))}
           </div>
         </div>
+      )}
+
+      {contractsOpen && (
+        <UnsignedContractsDialog
+          leads={dueContracts}
+          template={contractsQ.data?.template || DEFAULT_CONTRACT_REMINDER}
+          onDone={() => qc.invalidateQueries({ queryKey: contractsKey })}
+          onClose={() => setContractsOpen(false)}
+        />
       )}
 
       {homeTypesOpen && (

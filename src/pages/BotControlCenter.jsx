@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Bot, Inbox, UserSearch, Filter, MoonStar, Hand, ListChecks, FileText, Flame, Timer, FlaskConical,
-  Save, Upload, Image as ImageIcon, AlertTriangle, Loader2,
+  Save, Upload, Image as ImageIcon, AlertTriangle, Loader2, PhoneMissed,
 } from "lucide-react";
 import { toast } from "sonner";
 import { uploadFile } from "@/api/uploadFile";
@@ -19,7 +19,7 @@ import BotStepCard from "@/components/bot/BotStepCard";
 import TermListEditor from "@/components/bot/TermListEditor";
 import BotSimulator from "@/components/whatsapp/BotSimulator";
 import QuietHoursCard from "@/components/settings/QuietHoursCard";
-import { useBotSettings, DEFAULT_GREETING, DEFAULT_NUDGE } from "@/components/settings/useBotSettings";
+import { useBotSettings, DEFAULT_GREETING, DEFAULT_NUDGE, DEFAULT_MISSED_CALL } from "@/components/settings/useBotSettings";
 import {
   TERM_LISTS, LEAD_FIELDS, renderQuestionPreview, DEFAULT_QUESTION_TEXT_ONE, DEFAULT_QUESTION_TEXT_MANY,
 } from "@/lib/botTerms";
@@ -494,9 +494,33 @@ export default function BotControlCenter() {
             </div>
           </BotStepCard>
 
-          {/* 10 */}
+          {/* שיחה שלא נענתה (2026-10-13) */}
           <BotStepCard
             number={10}
+            title="שיחה שלא נענתה"
+            icon={PhoneMissed}
+            summary={
+              <>
+                <p>כשמישהו מתקשר בוואטסאפ ולא עונים — בצ'אט מופיעה שורה "📞 שיחה שלא נענתה", והיא נכנסת ל"מה מחכה לי".</p>
+                <p>מספר לא מוכר או ליד מקבל פעם אחת את ההודעה למטה. לקוחות, צוות, ספקים, קבוצות ומספר שכבר כתבת לו בעצמך (ספק, אולם, משפחה) — לא מקבלים כלום. כבוי עד שתדליק.</p>
+              </>
+            }
+            fixed="פעם אחת ביום לכל מספר. בשעות שקט — נשלח בסיומן (עד 12 שעות אחרי השיחה). אם כבר ענית לו — לא נשלח. עובד רק אחרי שמדליקים את incomingCallWebhook ב-Green API."
+          >
+            <div className="flex items-center justify-between gap-3">
+              <Label className="text-gray-300">לשלוח הודעה על שיחה שלא נענתה</Label>
+              <Switch checked={!!values.whatsapp_missed_call_enabled} onCheckedChange={(v) => setValue("whatsapp_missed_call_enabled", v)} disabled={loading} />
+            </div>
+            <div>
+              <Label className="text-gray-300">נוסח ההודעה</Label>
+              {help("ריק = הנוסח המובנה.")}
+              <Textarea value={values.whatsapp_missed_call_text} onChange={(e) => setValue("whatsapp_missed_call_text", e.target.value)} rows={2} placeholder={DEFAULT_MISSED_CALL} className={inputCls} />
+            </div>
+          </BotStepCard>
+
+          {/* 11 */}
+          <BotStepCard
+            number={11}
             title="בדוק בעצמך"
             icon={FlaskConical}
             summary={

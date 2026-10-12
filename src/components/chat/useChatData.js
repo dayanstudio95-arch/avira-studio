@@ -102,11 +102,13 @@ export function useChatData() {
       for (let i = 0; i < leadIds.length; i += 150) {
         const { data, error } = await supabase
           .from("leads")
-          .select("id, couple_names, event_date, venue_name, status, phone_number, signed_at")
+          .select("id, couple_names, event_date, venue_name, status, phone_number, signed_at, contract_sent, contract_viewed_at, contract_view_count, source")
           .in("id", leadIds.slice(i, i + 150));
         if (error) throw error;
         for (const l of data || []) {
-          out[l.id] = { id: l.id, coupleNames: l.couple_names, eventDate: l.event_date, venueName: l.venue_name, status: l.status, phoneNumber: l.phone_number, signed: !!l.signed_at };
+          out[l.id] = { id: l.id, coupleNames: l.couple_names, eventDate: l.event_date, venueName: l.venue_name, status: l.status, phoneNumber: l.phone_number, signed: !!l.signed_at,
+            signedAt: l.signed_at, contractSent: l.contract_sent, contractViewedAt: l.contract_viewed_at,
+            contractViewCount: l.contract_view_count, source: l.source };
         }
       }
       return out;
