@@ -2786,5 +2786,37 @@ console.log('\n— PART 58: reactions, links —');
   check('two links', lk.linkifyParts('https://a.co https://b.co').filter((p) => p.href).length, 2);
 }
 
+// =====================================================================================
+// PART 59 — forward a message (2026-10-13)
+console.log('\n— PART 59: forward —');
+{
+  const fw = await loadModule('supabase/functions/_shared/whatsappForward.ts', 'fw59');
+  const fl = await loadModule('src/lib/forward.js', 'fl59');
+  for (const [name, mod] of [['server', fw], ['screen', fl]]) {
+    check(`${name}: a real message can be forwarded`, mod.isForwardableMessage({ idMessage: '3EB0ABC', typeMessage: 'imageMessage' }), true);
+    check(`${name}: a missed-call line cannot`, mod.isForwardableMessage({ idMessage: 'call-ABC', typeMessage: 'missedCall' }), false);
+    check(`${name}: a bot row without a send id cannot`, mod.isForwardableMessage({ idMessage: 'bot-x-1', typeMessage: 'textMessage' }), false);
+    check(`${name}: a reaction cannot`, mod.isForwardableMessage({ idMessage: 'R1', typeMessage: 'reactionMessage' }), false);
+    check(`${name}: no id cannot`, mod.isForwardableMessage({ typeMessage: 'textMessage' }), false);
+  }
+  const known = ['a', 'b', 'c', 'd', 'e', 'f'];
+  check('plan: ok, repeats and the source removed', fw.planForward({ sourceConversationId: 's', targetIds: ['a', 'a', 's', 'b'], knownTargetIds: known }), { ok: true, targets: ['a', 'b'] });
+  check('plan: nothing picked', fw.planForward({ sourceConversationId: 's', targetIds: [], knownTargetIds: known }).ok, false);
+  check('plan: more than 5', fw.planForward({ sourceConversationId: 's', targetIds: known, knownTargetIds: known }).ok, false);
+  check('plan: a chat of another studio', fw.planForward({ sourceConversationId: 's', targetIds: ['zzz'], knownTargetIds: known }), { ok: false, error: 'שיחה לא נמצאה' });
+  check('plan: not a list', fw.planForward({ sourceConversationId: 's', targetIds: 'a', knownTargetIds: known }).ok, false);
+  const convs = [
+    { id: 's', chatId: '1@c.us', title: 'מקור', lastMessageAt: '2026-10-13' },
+    { id: 'x', chatId: '2@c.us', title: 'דנה', phone: '0501234567', lastMessageAt: '2026-10-10' },
+    { id: 'y', chatId: '3@c.us', title: 'רון', phone: '0529999999', lastMessageAt: '2026-10-12' },
+    { id: 'z', chatId: null, title: 'בלי צ׳אט', lastMessageAt: '2026-10-13' },
+    { id: 'w', chatId: '4@c.us', title: 'ארכיון', archivedAt: '2026-10-01', lastMessageAt: '2026-10-13' },
+  ];
+  const title = (c) => c.title;
+  check('candidates: newest first, archive last, no source / no chat', fl.forwardCandidates(convs, 's', '', title).map((c) => c.id), ['y', 'x', 'w']);
+  check('candidates: by name', fl.forwardCandidates(convs, 's', 'דנ', title).map((c) => c.id), ['x']);
+  check('candidates: by phone digits', fl.forwardCandidates(convs, 's', '999', title).map((c) => c.id), ['y']);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

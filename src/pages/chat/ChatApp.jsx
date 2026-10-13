@@ -22,6 +22,7 @@ import ChatSidebar from "@/components/chat/ChatSidebar";
 import BoxOrderEditor from "@/components/chat/BoxOrderEditor";
 import HomeTypesDialog from "@/components/chat/HomeTypesDialog";
 import UnsignedContractsDialog from "@/components/chat/UnsignedContractsDialog";
+import ForwardDialog from "@/components/chat/ForwardDialog";
 import { sourceFromConversation } from "@/lib/leadSources";
 
 const NO_LEADS = [];
@@ -113,6 +114,7 @@ export default function ChatApp() {
   });
   const dueContracts = contractsQ.data?.leads || NO_LEADS;
   const [contractsOpen, setContractsOpen] = useState(false);
+  const [forwardMsg, setForwardMsg] = useState(null); // { message, source } — "↪️ העבר"
 
   const savedOrder = prefsQ.data?.boxOrder || null;
   const ordered = useMemo(() => orderBoxes(savedOrder), [savedOrder]);
@@ -712,6 +714,7 @@ export default function ChatApp() {
             onMarkFollowUpSent={() => run(data.actions.markFollowUpSent([active]), () => 'סומן: נשלח פולו-אפ · עבר ל"פולו-אפ · לא ענו"')}
             onClearHot={() => run(data.actions.clearHot([active]), () => 'הוסר מ"ליד חם"')}
             onScheduleMeeting={() => openMeetingFor(active)}
+            onForwardMessage={(m) => setForwardMsg({ message: m, source: active })}
             onToggleFollowUp={(on) => run(data.actions.setFollowUpFlag([active], on), () => (on ? "נוסף לתור הפולו-אפ" : "הוסר מתור הפולו-אפ"))}
             templates={data.templates}
             onSaveTemplate={saveTemplate}
@@ -784,6 +787,15 @@ export default function ChatApp() {
             ))}
           </div>
         </div>
+      )}
+
+      {forwardMsg && (
+        <ForwardDialog
+          message={forwardMsg.message}
+          source={forwardMsg.source}
+          conversations={data.conversations}
+          onClose={() => setForwardMsg(null)}
+        />
       )}
 
       {contractsOpen && (

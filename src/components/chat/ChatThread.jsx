@@ -39,7 +39,7 @@ function NoteBubble({ note, onDelete }) {
 
 // The conversation column: header, timeline (messages + internal notes), composer.
 export default function ChatThread({
-  conversation, lead, labels, thread, onBack, onTogglePanel, onPin, onArchive, onHandled, needsReplyNow, onToggleFollowUp, inFollowUp, onScheduleMeeting, isHot, onClearHot, onMarkFollowUpSent,
+  conversation, lead, labels, thread, onBack, onTogglePanel, onForwardMessage, onPin, onArchive, onHandled, needsReplyNow, onToggleFollowUp, inFollowUp, onScheduleMeeting, isHot, onClearHot, onMarkFollowUpSent,
   templates, onSaveTemplate, onDeleteTemplate, userContext,
 }) {
   const [text, setText] = useState("");
@@ -255,7 +255,7 @@ export default function ChatThread({
                   }}
                 />
               ) : (
-                <MessageBubble key={item.id} message={item} />
+                <MessageBubble key={item.id} message={item} onForward={onForwardMessage} />
               )
             )}
           </div>

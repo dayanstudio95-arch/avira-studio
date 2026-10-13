@@ -4,6 +4,7 @@ import { Download, Bot, BotOff, Check, CheckCheck, AlertCircle } from "lucide-re
 import { supabase } from "@/api/supabaseClient";
 import { formatMessageDateTime, botDecisionLabel } from "./whatsappInboxShared";
 import { linkifyParts } from "@/lib/linkify";
+import { isForwardableMessage } from "@/lib/forward";
 
 // One message in the thread.
 //
@@ -149,7 +150,38 @@ function Reactions({ items, isOutbound }) {
   );
 }
 
-export default function MessageBubble({ message }) {
+// Long-press (phone) or right-click (computer) on a bubble → onLongPress. A press that
+// moves (a scroll) is not a long-press.
+function PressArea({ onLongPress, className, children }) {
+  const timer = useRef(null);
+  const start = useRef(null);
+  const clear = () => { clearTimeout(timer.current); timer.current = null; };
+  if (!onLongPress) return <div className={className}>{children}</div>;
+  return (
+    <div
+      className={className}
+      onTouchStart={(e) => {
+        const t = e.touches[0];
+        start.current = { x: t.clientX, y: t.clientY };
+        clear();
+        timer.current = setTimeout(() => { timer.current = null; onLongPress(); }, 500);
+      }}
+      onTouchMove={(e) => {
+        const t = e.touches[0];
+        if (start.current && Math.hypot(t.clientX - start.current.x, t.clientY - start.current.y) > 10) clear();
+      }}
+      onTouchEnd={clear}
+      onTouchCancel={clear}
+      onContextMenu={(e) => { e.preventDefault(); clear(); onLongPress(); }}
+    >
+      {children}
+    </div>
+  );
+}
+
+// `onForward` (2026-10-13): the chat passes it; long-press / right-click or the ↪ button
+// on hover opens "העבר". The old inbox does not pass it.
+export default function MessageBubble({ message, onForward }) {
   // A reaction whose message is not loaded (older than the last 500) — a small line.
   if (message.typeMessage === "reactionMessage") {
     const mine = message.direction !== "inbound";
@@ -173,11 +205,12 @@ export default function MessageBubble({ message }) {
   }
   const isOutbound = message.direction !== "inbound";
   const style = DIRECTION_STYLES[message.direction] || DIRECTION_STYLES.inbound;
+  const forward = onForward && isForwardableMessage(message) ? () => onForward(message) : null;
 
   return (
     <div className={message.reactions?.length ? "pb-1" : undefined}>
-    <div className={`flex ${isOutbound ? "justify-start" : "justify-end"}`}>
-      <div className={`max-w-[75%] rounded-2xl border px-3 py-2 shadow-sm ${style}`}>
+    <div className={`group flex items-center gap-1 ${isOutbound ? "justify-start" : "flex-row-reverse justify-start"}`}>
+      <PressArea onLongPress={forward} className={`max-w-[75%] rounded-2xl border px-3 py-2 shadow-sm ${style}`}>
         {message.direction === "outbound_bot" && (
           <div className="mb-1 text-[10px] font-medium text-blue-300">🤖 הודעה אוטומטית</div>
         )}
@@ -244,7 +277,18 @@ export default function MessageBubble({ message }) {
             <span>{botDecisionLabel(message.botSkipReason)}</span>
           </div>
         )}
-      </div>
+      </PressArea>
+      {forward && (
+        <button
+          type="button"
+          onClick={forward}
+          aria-label="העבר הודעה"
+          title="העבר"
+          className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-800/80 text-sm text-gray-300 opacity-0 transition-opacity hover:text-white focus:opacity-100 group-hover:opacity-100 md:flex"
+        >
+          ↪
+        </button>
+      )}
     </div>
     <Reactions items={message.reactions} isOutbound={isOutbound} />
     </div>

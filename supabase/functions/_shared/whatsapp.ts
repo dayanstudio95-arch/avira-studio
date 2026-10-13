@@ -215,6 +215,46 @@ export async function sendWhatsApp(
   }
 }
 
+// Forwards one message that already exists in a chat to another chat, the way WhatsApp's
+// "העבר" does — media included, shown to the recipient as "Forwarded" (2026-10-13).
+//
+// Contract verified against https://green-api.com/en/docs/api/sending/ForwardMessages/
+// on 2026-10-13 — NOT written from memory:
+//   POST {{apiUrl}}/waInstance{{idInstance}}/forwardMessages/{{apiTokenInstance}}
+//   body: { chatId, chatIdFrom, messages: [idMessage, ...] }
+// An unknown idMessage still returns 200 and simply never arrives, so the caller only
+// forwards ids it has on record. Never retried after a server error (a retry could
+// forward twice), and paced like every other send.
+export async function forwardWhatsAppMessage(
+  supabase: any,
+  { chatId, chatIdFrom, idMessage }: { chatId: string; chatIdFrom: string; idMessage: string },
+  tenantId?: string
+): Promise<SendWhatsAppResult> {
+  const settings = await loadWhatsAppSettings(supabase, tenantId);
+  if (!settings) {
+    return { success: false, error: 'WhatsApp gateway URL, instance ID and API token are required (set them in Settings)' };
+  }
+  const to = resolveChatIdForSend(chatId);
+  const from = resolveChatIdForSend(chatIdFrom);
+  if (!to || !from) return { success: false, error: 'Invalid chat id' };
+
+  await paceSend();
+  try {
+    const res = await fetchWithRetry(buildUrl(settings, 'forwardMessages'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chatId: to, chatIdFrom: from, messages: [idMessage] }),
+    }, { retryUnsafe: false });
+    const text = await res.text();
+    let data: any = {};
+    try { data = JSON.parse(text); } catch { /* non-JSON */ }
+    if (!res.ok) return { success: false, error: `Green-API Error (${res.status}): ${text}` };
+    return { success: true, raw: data };
+  } catch (e) {
+    return { success: false, error: `Network error: ${e.message}` };
+  }
+}
+
 // Green-API caps a file's caption at 1024 characters. Exported because the caller has
 // to decide what to do when the studio's price-list text is longer than that -- the
 // WhatsApp bot sends the image with a short caption and the full text as a separate
