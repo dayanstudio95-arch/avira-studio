@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { supabase } from "@/api/supabaseClient";
+import { groupReactions } from "@/lib/reactions";
 
 // One conversation's timeline: the newest 500 messages (oldest first on screen), their
 // delivery receipts, and the internal notes, merged by time. Same message query as the
@@ -61,13 +62,16 @@ export function useThread(conversationId) {
     // The entity layer names created_at "created_date" (src/api/entities.js
     // CASE_OVERRIDES_REVERSE), not "createdDate" — read as createdDate it was always empty,
     // so no bubble showed its time and the day separators never appeared (2026-10-07).
-    const msgs = rawMessages.map((m) => ({
+    // Reactions sit on their message (2026-10-13), not as messages of their own.
+    const { messages: shown, reactionsByTarget } = groupReactions(rawMessages);
+    const msgs = shown.map((m) => ({
       kind: "message",
       at: m.created_date,
       ...m,
       createdDate: m.created_date,
       deliveryStatus: statusById[m.idMessage] || null,
-      quotedText: m.quotedIdMessage ? textById[m.quotedIdMessage] || "הודעה קודמת" : null,
+      quotedText: m.typeMessage === "reactionMessage" ? null : m.quotedIdMessage ? textById[m.quotedIdMessage] || "הודעה קודמת" : null,
+      reactions: (m.idMessage && reactionsByTarget[m.idMessage]) || null,
     }));
     const notes = (notesQ.data || []).map((n) => ({ kind: "note", at: n.created_date, ...n, createdDate: n.created_date }));
     return [...msgs, ...notes].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());

@@ -2749,5 +2749,42 @@ console.log('\n— PART 57: leads pack —');
   check('report: delta', [lr.delta(5, 3), lr.delta(2, 4), lr.delta(3, 3), lr.delta(1, null)], ['+2', '−2', '0', null]);
 }
 
+// =====================================================================================
+// PART 58 — reactions on messages, clickable links (2026-10-13)
+console.log('\n— PART 58: reactions, links —');
+{
+  const rx = await loadModule('src/lib/reactions.js', 'rx58');
+  const msgs = [
+    { idMessage: 'A', direction: 'outbound_human', typeMessage: 'textMessage', bodyText: 'שלום' },
+    { idMessage: 'B', direction: 'inbound', typeMessage: 'textMessage', bodyText: 'היי' },
+    { idMessage: 'r1', direction: 'inbound', typeMessage: 'reactionMessage', bodyText: '👍', quotedIdMessage: 'A' },
+    { idMessage: 'r2', direction: 'inbound', typeMessage: 'reactionMessage', bodyText: '❤️', quotedIdMessage: 'A' },
+    { idMessage: 'r3', direction: 'outbound_human', typeMessage: 'reactionMessage', bodyText: '🙏', quotedIdMessage: 'B' },
+    { idMessage: 'r4', direction: 'outbound_human', typeMessage: 'reactionMessage', bodyText: '😂', quotedIdMessage: 'B' },
+    { idMessage: 'r5', direction: 'outbound_human', typeMessage: 'reactionMessage', bodyText: '', quotedIdMessage: 'B' },
+    { idMessage: 'r6', direction: 'inbound', typeMessage: 'reactionMessage', bodyText: '🔥', quotedIdMessage: 'OLD' },
+    { idMessage: 'r7', direction: 'inbound', typeMessage: 'reactionMessage', bodyText: '', quotedIdMessage: 'OLD' },
+  ];
+  const g = rx.groupReactions(msgs);
+  check('reactions leave the timeline (old target stays as a line)', g.messages.map((m) => m.idMessage), ['A', 'B', 'r6']);
+  check('their newer reaction replaces the older', g.reactionsByTarget.A, [{ emoji: '❤️', mine: false, by: null }]);
+  check('my reaction removed → nothing on B', g.reactionsByTarget.B, undefined);
+  const g2 = rx.groupReactions([...msgs.slice(0, 2), { idMessage: 'x', direction: 'outbound_human', typeMessage: 'reactionMessage', bodyText: '🙏', quotedIdMessage: 'B' }, { idMessage: 'y', direction: 'inbound', typeMessage: 'reactionMessage', bodyText: '👍', quotedIdMessage: 'B' }]);
+  check('both sides on one message', g2.reactionsByTarget.B, [{ emoji: '🙏', mine: true, by: null }, { emoji: '👍', mine: false, by: null }]);
+  const g3 = rx.groupReactions([msgs[0], { idMessage: 'g1', direction: 'inbound', senderChatId: '1@c.us', senderName: 'דנה', typeMessage: 'reactionMessage', bodyText: '👍', quotedIdMessage: 'A' }, { idMessage: 'g2', direction: 'inbound', senderChatId: '2@c.us', senderName: 'רון', typeMessage: 'reactionMessage', bodyText: '❤️', quotedIdMessage: 'A' }]);
+  check('group: one per person', g3.reactionsByTarget.A.map((r) => r.by), ['דנה', 'רון']);
+
+  const st = await loadModule('supabase/functions/_shared/whatsappStatus.ts', 'st58');
+  check('reaction target from quotedMessage', st.extractQuotedId({ typeMessage: 'reactionMessage', quotedMessage: { stanzaId: 'AC8E' }, extendedTextMessageData: { text: '❤️' } }), 'AC8E');
+  check('quoted reply target unchanged', st.extractQuotedId({ typeMessage: 'quotedMessage', extendedTextMessageData: { stanzaId: 'Q1' }, quotedMessage: { stanzaId: 'ignored' } }), 'Q1');
+  const lk = await loadModule('src/lib/linkify.js', 'lk58');
+  check('link in text', lk.linkifyParts('ראו https://studioplan.co.il/x עכשיו'), [{ text: 'ראו ' }, { href: 'https://studioplan.co.il/x', text: 'https://studioplan.co.il/x' }, { text: ' עכשיו' }]);
+  check('trailing punctuation stays text', lk.linkifyParts('(https://a.co/b).'), [{ text: '(' }, { href: 'https://a.co/b', text: 'https://a.co/b' }, { text: ').' }]);
+  check('www gets https', lk.linkifyParts('www.avira.co.il')[0].href, 'https://www.avira.co.il');
+  check('javascript: is not a link', lk.linkifyParts('javascript:alert(1)'), [{ text: 'javascript:alert(1)' }]);
+  check('no links', lk.linkifyParts('שלום'), [{ text: 'שלום' }]);
+  check('two links', lk.linkifyParts('https://a.co https://b.co').filter((p) => p.href).length, 2);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

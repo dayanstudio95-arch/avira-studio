@@ -422,6 +422,10 @@ Deno.serve(async (req: Request) => {
     // would describe a link preview the studio itself sent.
     const inboundAd = isInbound ? adContext : null;
     const direction = isInbound ? 'inbound' : 'outbound_human';
+    // A reaction (👍 / ❤️ on one of our messages, 2026-10-13) is shown on that message in
+    // the chat. It is not a new message: it does not wake the bot, does not make the chat
+    // "waiting for an answer" and does not move it to the top.
+    const isInboundReaction = isInbound && typeMessage === 'reactionMessage';
 
     // ---- Re-classification (must happen BEFORE the verdict) -----------------
     //
@@ -475,7 +479,7 @@ Deno.serve(async (req: Request) => {
     // Loaded before the gate when the cheap checks pass (2026-09-24): the studio's own
     // words for the intent gate live in the settings. Reused by Stage 2 below.
     let earlyBotSettings: BotSettings | null | undefined;
-    if (isInbound) {
+    if (isInbound && !isInboundReaction) {
       // Quiet hours costs a DB read, so it's only fetched when the cheap gates have
       // already passed — otherwise the chain would have stopped before reaching it and
       // the value would be thrown away. Passing `false` when unreachable is safe for
@@ -555,11 +559,11 @@ Deno.serve(async (req: Request) => {
     // ---- Conversation aggregates --------------------------------------------
     const nowIso = new Date().toISOString();
     let optedOutNow = false;
-    const updates: Record<string, unknown> = {
+    const updates: Record<string, unknown> = isInboundReaction ? {} : {
       last_message_at: nowIso,
       last_message_preview: bodyText ? bodyText.slice(0, 200) : typeMessage,
     };
-    if (isInbound) {
+    if (isInbound && !isInboundReaction) {
       updates.last_inbound_at = nowIso;
       // Ad attribution is written once and never overwritten: the first message is the
       // only one that carries it, and "where did this person come from" does not change.
@@ -614,6 +618,19 @@ Deno.serve(async (req: Request) => {
       updates.contact_type = reclassified.contactType;
       updates.matched_lead_id = reclassified.leadId;
       updates.matched_event_id = reclassified.eventId;
+    }
+
+    // "הסר" → "לא רלוונטי" (2026-10-13, the owner's request). Set as a manual type so the
+    // phone tables never turn it back; the team stays the team (they are scheduled into
+    // shifts) and a group is a group. Logged like any type change, so "בטל" works.
+    let optOutTypeChange: { from: string; manualAt: string | null } | null = null;
+    if (optedOutNow) {
+      const currentType = (updates.contact_type as string) || effectiveContactType || 'unknown';
+      if (!['staff', 'group', 'irrelevant'].includes(currentType)) {
+        optOutTypeChange = { from: currentType, manualAt: conversation.contact_type_manual_at ?? null };
+        updates.contact_type = 'irrelevant';
+        updates.contact_type_manual_at = nowIso;
+      }
     }
 
     // Conversation-level mirror of the verdict, so the inbox list can flag the chats
@@ -789,7 +806,7 @@ Deno.serve(async (req: Request) => {
     let pricelistFor: { url: string; text: string } | null = null;
     let followUpQuestion: string | null = null;
 
-    if (isInbound && !decision?.wouldReply) {
+    if (isInbound && !isInboundReaction && !decision?.wouldReply) {
       const flowSettings = await loadBotSettings(supabase, tenantId);
       if (flowSettings?.enabled) {
         // Counts the bot's own messages in this thread. Used instead of a counter
@@ -917,10 +934,13 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const { error: updateError } = await supabase
-      .from('whatsapp_conversations')
-      .update(updates)
-      .eq('id', conversation.id);
+    // An inbound reaction changes nothing on the conversation (see isInboundReaction).
+    const { error: updateError } = Object.keys(updates).length === 0
+      ? { error: null }
+      : await supabase
+        .from('whatsapp_conversations')
+        .update(updates)
+        .eq('id', conversation.id);
     if (updateError) {
       // The message is already safely stored; a failed aggregate update is cosmetic,
       // and returning non-200 here would make Green API redeliver a message we have.
@@ -943,6 +963,15 @@ Deno.serve(async (req: Request) => {
             tenant_id: tenantId, conversation_id: conversation.id, action: 'opted_out',
             before: { opted_out_at: null }, after: { opted_out_at: nowIso, by: 'customer' },
           });
+          if (optOutTypeChange) {
+            // Same shape as the chat's own "set_type" rows, so the history shows it and
+            // "בטל" can put the old type back.
+            await supabase.from('whatsapp_activity').insert({
+              tenant_id: tenantId, conversation_id: conversation.id, action: 'set_type',
+              before: { contactType: optOutTypeChange.from, contactTypeManualAt: optOutTypeChange.manualAt },
+              after: { contactType: 'irrelevant', reason: 'opt_out' },
+            });
+          }
           await supabase.from('notifications').insert({
             tenant_id: tenantId,
             type: 'whatsapp_opt_out',
@@ -960,7 +989,8 @@ Deno.serve(async (req: Request) => {
     // (stage 1ב). Each device decides by its own switches — category, mute, night.
     if (isInbound) {
       const who = conversation.couple_names || displayName || conversation.display_name || phone || 'וואטסאפ';
-      const what = bodyText || (typeMessage === 'audioMessage' ? '🎤 הודעה קולית'
+      const what = isInboundReaction ? `הגיב/ה ${bodyText || ''} על הודעה`.replace('  ', ' ')
+        : bodyText || (typeMessage === 'audioMessage' ? '🎤 הודעה קולית'
         : typeMessage === 'imageMessage' ? '📷 תמונה'
         : typeMessage === 'videoMessage' ? '🎬 סרטון'
         : typeMessage === 'documentMessage' ? '📎 קובץ' : 'הודעה חדשה');

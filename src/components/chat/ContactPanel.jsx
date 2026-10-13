@@ -20,7 +20,7 @@ const chip = (on, color) =>
   }`;
 
 const ACTION_TEXT = {
-  set_type: (r) => `סוג: ${contactTypeLabel(r.before?.contactType)} ← ${contactTypeLabel(r.after?.contactType)}${r.after?.reason === "signed" ? " (אוטומטי — חתמו)" : ""}`,
+  set_type: (r) => `סוג: ${contactTypeLabel(r.before?.contactType)} ← ${contactTypeLabel(r.after?.contactType)}${r.after?.reason === "signed" ? " (אוטומטי — חתמו)" : r.after?.reason === "opt_out" ? " (אוטומטי — ביקשו הסר)" : ""}`,
   set_stage: (r) => `שלב: ${r.before?.leadStatus || r.before?.leadStage || r.before?.shown || "—"} ← ${r.after?.leadStatus || r.after?.leadStage}${r.before?.leadId ? " (גם בדף הלידים)" : ""}`,
   label_add: () => "נוספה תווית",
   label_remove: () => "הוסרה תווית",

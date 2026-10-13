@@ -79,7 +79,11 @@ export function groupSender(
 }
 
 export function extractQuotedId(messageData: any): string | null {
-  const id = messageData?.extendedTextMessageData?.stanzaId;
+  // A reaction (👍 / ❤️ on a message) names its message in quotedMessage.stanzaId, not in
+  // extendedTextMessageData — checked on stored payloads, 2026-10-13.
+  const id = messageData?.typeMessage === 'reactionMessage'
+    ? messageData?.quotedMessage?.stanzaId
+    : messageData?.extendedTextMessageData?.stanzaId;
   return typeof id === 'string' && id.trim() ? id.trim() : null;
 }
 

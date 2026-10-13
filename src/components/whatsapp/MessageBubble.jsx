@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Download, Bot, BotOff, Check, CheckCheck, AlertCircle } from "lucide-react";
 import { supabase } from "@/api/supabaseClient";
 import { formatMessageDateTime, botDecisionLabel } from "./whatsappInboxShared";
+import { linkifyParts } from "@/lib/linkify";
 
 // One message in the thread.
 //
@@ -119,7 +120,47 @@ const DIRECTION_STYLES = {
   outbound_bot: "bg-blue-900/50 text-blue-50 border-blue-800/60",
 };
 
+// Links in a message open in a new tab (2026-10-13, the owner's request) — src/lib/linkify.js.
+function Linkified({ text }) {
+  return linkifyParts(text).map((p, i) =>
+    p.href ? (
+      <a key={i} href={p.href} target="_blank" rel="noopener noreferrer" dir="ltr" className="break-all text-sky-300 underline hover:text-sky-200">
+        {p.text}
+      </a>
+    ) : (
+      <React.Fragment key={i}>{p.text}</React.Fragment>
+    )
+  );
+}
+
+// Reactions on a message (2026-10-13): theirs and the owner's, like WhatsApp.
+function Reactions({ items, isOutbound }) {
+  if (!items?.length) return null;
+  return (
+    <div className={`-mt-2 flex ${isOutbound ? "justify-start ps-3" : "justify-end pe-3"}`}>
+      <div className="relative z-10 flex items-center gap-1 rounded-full border border-gray-700 bg-gray-900 px-1.5 py-0.5 text-sm shadow">
+        {items.map((r, i) => (
+          <span key={i} title={r.mine ? "התגובה שלך" : r.by ? `תגובה של ${r.by}` : "התגובה שלהם"} className={r.mine ? "rounded-full bg-emerald-500/25 px-1" : "px-0.5"}>
+            {r.emoji}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function MessageBubble({ message }) {
+  // A reaction whose message is not loaded (older than the last 500) — a small line.
+  if (message.typeMessage === "reactionMessage") {
+    const mine = message.direction !== "inbound";
+    return (
+      <div className="flex justify-center">
+        <div className="rounded-full border border-gray-800 bg-gray-900/70 px-3 py-1 text-xs text-gray-300">
+          {mine ? "הגבת" : message.senderName ? `${message.senderName} הגיב/ה` : "הגיבו"} {message.bodyText} להודעה קודמת · <span dir="ltr" className="tabular-nums">{formatMessageDateTime(message.createdDate || message.created_date)}</span>
+        </div>
+      </div>
+    );
+  }
   // A WhatsApp call nobody answered (2026-10-13) — a line in the middle, like WhatsApp.
   if (message.typeMessage === "missedCall") {
     return (
@@ -134,6 +175,7 @@ export default function MessageBubble({ message }) {
   const style = DIRECTION_STYLES[message.direction] || DIRECTION_STYLES.inbound;
 
   return (
+    <div className={message.reactions?.length ? "pb-1" : undefined}>
     <div className={`flex ${isOutbound ? "justify-start" : "justify-end"}`}>
       <div className={`max-w-[75%] rounded-2xl border px-3 py-2 shadow-sm ${style}`}>
         {message.direction === "outbound_bot" && (
@@ -155,7 +197,7 @@ export default function MessageBubble({ message }) {
         )}
 
         {message.bodyText ? (
-          <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">{message.bodyText}</div>
+          <div className="whitespace-pre-wrap break-words text-sm leading-relaxed"><Linkified text={message.bodyText} /></div>
         ) : (
           <div className="text-sm italic text-gray-400">[{message.typeMessage || "הודעה"}]</div>
         )}
@@ -203,6 +245,8 @@ export default function MessageBubble({ message }) {
           </div>
         )}
       </div>
+    </div>
+    <Reactions items={message.reactions} isOutbound={isOutbound} />
     </div>
   );
 }
