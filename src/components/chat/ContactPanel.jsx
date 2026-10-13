@@ -2,6 +2,7 @@ import React from "react";
 import { contractViewInfo } from "@/lib/contractViews";
 import { Link } from "react-router-dom";
 import ClientActionsCard from "./ClientActionsCard";
+import SendContractButton from "./SendContractButton";
 import { Switch } from "@/components/ui/switch";
 import { CONTACT_TYPES, STAGES, contactTypeLabel, effectiveStage, hasStage } from "@/lib/chatModel";
 import { Avatar, conversationTitle } from "./ChatList";
@@ -138,6 +139,7 @@ export default function ContactPanel({
             <div className={contractViewInfo(lead).opened ? "text-amber-300" : "text-gray-500"}>{contractViewInfo(lead).text}</div>
           )}
           <Link to={`/Leads?openLeadId=${lead.id}`} className="inline-block pt-1 text-yellow-400 underline">פתח בדף הלידים</Link>
+          {!lead.signed && <SendContractButton leadId={lead.id} conversation={c} />}
         </section>
       ) : (
         ["unknown", "lead"].includes(c.contactType) && (
