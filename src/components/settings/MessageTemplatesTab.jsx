@@ -54,10 +54,18 @@ const TEMPLATES = [
   },
   {
     key: "template_payment_request",
-    label: "דרישת תשלום",
-    description: "ההודעה שתישלח כשלוחצים על 'שלח דרישת תשלום' בוואטסאפ",
+    label: "דרישת תשלום — עוסק מורשה",
+    description: "ההודעה של 'שלח דרישת תשלום' כשבוחרים עוסק מורשה — כאן פרטי הבנק של המורשה",
     defaultValue: `היי {{names}}, מזל טוב! 🥂 \nנשארה יתרה לתשלום על סך {{balance}} ש"ח.\nניתן לשלם כאן: {{payment_link}}`,
     variables: ["{{names}}", "{{balance}}", "{{payment_link}}"],
+  },
+  {
+    // 2026-10-14: the studio is also a חברה בע״מ; some couples pay the company.
+    key: "template_payment_request_company",
+    label: "דרישת תשלום — חברה בע״מ",
+    description: "ההודעה של 'שלח דרישת תשלום' כשבוחרים חברה בע״מ — כאן פרטי הבנק של החברה",
+    defaultValue: `היי {{names}}, מזל טוב! 🥂\nנשארה יתרה לתשלום על סך {{balance}} ש"ח.\n\nפרטים להעברה בנקאית (חברה בע״מ):\nשם החברה: \nבנק: \nסניף: \nמספר חשבון: `,
+    variables: ["{{names}}", "{{balance}}"],
   },
   {
     key: "template_album_graphic",

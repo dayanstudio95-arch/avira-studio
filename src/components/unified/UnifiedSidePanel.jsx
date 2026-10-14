@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { contractViewInfo } from "@/lib/contractViews";
+import PaymentRequestComposer from "@/components/payments/PaymentRequestComposer";
+import { ENTITIES, defaultEntity, invoiceEntityConflict, paymentRequestLine } from "@/lib/paymentEntity";
 import { base44 } from "@/api/base44Client";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetClose } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -57,8 +59,6 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
   const [showQuestionnaireTemplateEditor, setShowQuestionnaireTemplateEditor] = useState(false);
   const [questionnaireTemplate, setQuestionnaireTemplate] = useState("");
   const [copiedQLink, setCopiedQLink] = useState(false);
-  const [paymentMessageText, setPaymentMessageText] = useState("");
-  const [isSendingPayment, setIsSendingPayment] = useState(false);
   const [showPaymentSection, setShowPaymentSection] = useState(false);
   const [editingEventDate, setEditingEventDate] = useState(false);
   const [editingEventDateValue, setEditingEventDateValue] = useState(eventDate);
@@ -230,31 +230,31 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
     }
   };
 
-  const buildPaymentMessage = () => {
-    const balance = (lead?.finalPrice || 0) - (lead?.totalPaid || 0);
-    // B10 (2026-10-06): the fallback no longer contains a "[לינק לתשלום]" placeholder that
-    // nothing fills in — there is no payment link in the system.
-    return `היי ${lead?.coupleNames || ''}, מזל טוב! 🎉\nנשארה יתרה לתשלום על סך ${balance.toLocaleString('he-IL')} ש"ח.`;
+  const handleOpenPaymentSection = () => setShowPaymentSection(true);
+
+  // The couple's business, set by hand (2026-10-14). null = not decided.
+  const handleSetPaymentEntity = async (entity) => {
+    try {
+      await base44.entities.Lead.update(lead.id, { paymentEntity: entity });
+      toast.success(entity ? `נשמר: ${ENTITIES[entity].label}` : 'בוטל');
+      if (onLeadUpdated) onLeadUpdated();
+    } catch (e) {
+      toast.error('השמירה נכשלה', { description: e?.message });
+    }
   };
 
-  const handleOpenPaymentSection = async () => {
-    const balance = (lead?.finalPrice || 0) - (lead?.totalPaid || 0);
-    try {
-      const settings = await base44.entities.AppSetting.list();
-      const tpl = settings.find(s => s.key === 'template_payment_request')?.value;
-      if (tpl) {
-        const msg = tpl
-          .replace(/\{\{names\}\}/g, lead?.coupleNames || '')
-          .replace(/\{\{balance\}\}/g, balance.toLocaleString('he-IL'))
-          .replace(/\{\{payment_link\}\}/g, ''); // B10: no payment link exists — never send a placeholder
-        setPaymentMessageText(msg);
-      } else {
-        setPaymentMessageText(buildPaymentMessage());
-      }
-    } catch {
-      setPaymentMessageText(buildPaymentMessage());
+  // An invoice from the other business than the couple's asks first.
+  const openInvoiceFor = async (type) => {
+    const expected = invoiceEntityConflict(lead, type);
+    if (expected) {
+      const ok = await confirmDialog({
+        title: `הזוג משלם ל${ENTITIES[expected].label}`,
+        message: `${lead?.paymentRequestEntity === expected ? `דרישת התשלום נשלחה מ${ENTITIES[expected].label}. ` : ''}להוציא בכל זאת חשבונית מ${ENTITIES[type].label}?`,
+        confirmText: `כן, ${ENTITIES[type].short}`,
+      });
+      if (!ok) return;
     }
-    setShowPaymentSection(true);
+    setInvoiceDialogBusinessType(type);
   };
 
   const formatPhoneForWhatsApp = (phone) => {
@@ -338,26 +338,6 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
       toast.error('שגיאה בשליחה');
     } finally {
       setIsSendingContract(false);
-    }
-  };
-
-  const handleSendPaymentRequest = async () => {
-    if (!lead?.phoneNumber) {
-      toast.error('אין מספר טלפון');
-      return;
-    }
-    setIsSendingPayment(true);
-    try {
-      const ok = await sendViaWebhook('payment_request', lead.phoneNumber, paymentMessageText);
-      if (ok) {
-        setShowPaymentSection(false);
-        setPaymentMessageText('');
-        toast.success('דרישת התשלום נשלחה בהצלחה! ✓');
-      }
-    } catch (error) {
-      toast.error('שגיאה בשליחה');
-    } finally {
-      setIsSendingPayment(false);
     }
   };
 
@@ -610,19 +590,49 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                 </Button>
               )}
               {/* 4 כפתורים בחלק העליון */}
+              {/* The couple's business (2026-10-14): which one they pay, the last payment
+                  request, and a warning before an invoice from the other business. */}
+              {lead && (
+                <div className="rounded-xl border border-gray-700 bg-gray-800/40 p-2.5 text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-gray-300">העסק שהזוג משלם לו:</span>
+                    <div className="flex gap-1">
+                      {Object.values(ENTITIES).map((e) => {
+                        const on = lead.paymentEntity === e.key;
+                        return (
+                          <button
+                            key={e.key}
+                            type="button"
+                            onClick={() => handleSetPaymentEntity(on ? null : e.key)}
+                            className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                              on
+                                ? e.key === 'company' ? 'border-purple-400 bg-purple-600 text-white' : 'border-emerald-400 bg-emerald-600 text-white'
+                                : 'border-gray-600 text-gray-400 hover:text-white'
+                            }`}
+                          >
+                            {e.short}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {paymentRequestLine(lead) && <div className="mt-1 text-xs text-orange-300">{paymentRequestLine(lead)}</div>}
+                  {!lead.paymentEntity && <div className="mt-1 text-xs text-gray-500">עוד לא נקבע — ייקבע בדרישת התשלום או בחשבונית הראשונה.</div>}
+                </div>
+              )}
               <Button
-                onClick={() => setInvoiceDialogBusinessType('company')}
+                onClick={() => openInvoiceFor('company')}
                 className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 rounded-xl gap-2"
               >
                 <Receipt className="w-5 h-5" />
-                הפקת חשבונית חברה בע״מ
+                הפקת חשבונית חברה בע״מ{defaultEntity(lead) === 'company' ? ' ✓' : ''}
               </Button>
               <Button
-                onClick={() => setInvoiceDialogBusinessType('sole_prop')}
+                onClick={() => openInvoiceFor('sole_prop')}
                 className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl gap-2"
               >
                 <Receipt className="w-5 h-5" />
-                הפקת חשבונית מס קבלה
+                הפקת חשבונית מס קבלה{defaultEntity(lead) === 'sole_prop' ? ' ✓' : ''}
               </Button>
               {lead && (
                 <Button
@@ -674,7 +684,7 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
               )}
             </div>
 
-            {/* סעיף עריכת דרישת התשלום קבוע */}
+            {/* דרישת תשלום — קודם בוחרים מאיזה עסק (2026-10-14) */}
             {lead && showPaymentSection && (
               <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4 space-y-3">
                 <div className="flex items-center justify-between">
@@ -686,29 +696,16 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                     ✕ סגור
                   </button>
                 </div>
-                <textarea
-                  className="w-full bg-gray-900 text-white text-sm border border-gray-700 rounded-lg p-3 resize-none focus:outline-none focus:border-orange-500"
-                  rows={5}
-                  value={paymentMessageText}
-                  onChange={e => setPaymentMessageText(e.target.value)}
+                <PaymentRequestComposer
+                  lead={lead}
+                  names={lead.coupleNames}
+                  balance={(lead.finalPrice || 0) - (lead.totalPaid || 0)}
+                  phone={lead.phoneNumber}
+                  onSent={() => {
+                    setShowPaymentSection(false);
+                    if (onLeadUpdated) onLeadUpdated();
+                  }}
                 />
-                <Button
-                  onClick={handleSendPaymentRequest}
-                  disabled={isSendingPayment || !paymentMessageText.trim()}
-                  className="w-full bg-orange-600 hover:bg-orange-700 disabled:bg-orange-800 text-white font-semibold py-2 rounded-lg gap-2"
-                >
-                  {isSendingPayment ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      שולח...
-                    </>
-                  ) : (
-                    <>
-                      <MessageCircle className="w-4 h-4 mr-2" />
-                      אשר ושלח לזוג
-                    </>
-                  )}
-                </Button>
               </div>
             )}
 

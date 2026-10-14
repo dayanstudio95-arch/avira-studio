@@ -2818,5 +2818,30 @@ console.log('\n— PART 59: forward —');
   check('candidates: by phone digits', fl.forwardCandidates(convs, 's', '999', title).map((c) => c.id), ['y']);
 }
 
+// =====================================================================================
+// PART 60 — payment requests per business (2026-10-14)
+console.log('\n— PART 60: payment entity —');
+{
+  const pe = await loadModule('src/lib/paymentEntity.js', 'pe60');
+  check('default: remembered business', pe.defaultEntity({ paymentEntity: 'company' }), 'company');
+  check('default: last request when nothing remembered', pe.defaultEntity({ paymentRequestEntity: 'sole_prop' }), 'sole_prop');
+  check('default: unknown → null (owner chooses)', pe.defaultEntity({}), null);
+  check('default: junk → null', pe.defaultEntity({ paymentEntity: 'x' }), null);
+  const tpls = { template_payment_request: 'היי {{names}} יתרה {{balance}} בנק מורשה', template_payment_request_company: '' };
+  check('message: sole prop template', pe.paymentMessageFor('sole_prop', tpls, { names: 'דנה ורון', balance: 12500 }).text, 'היי דנה ורון יתרה 12,500 בנק מורשה');
+  const co = pe.paymentMessageFor('company', tpls, { names: 'דנה', balance: 500 });
+  check('message: empty company template → default + flag', [co.missingTemplate, co.text.includes('500')], [true, true]);
+  const inc = pe.paymentMessageFor('company', { template_payment_request_company: 'היי {{names}}\nבנק: \nמספר חשבון: 123' }, { names: 'א', balance: 1 });
+  check('message: empty bank line flagged', inc.incomplete, true);
+  const full = pe.paymentMessageFor('company', { template_payment_request_company: 'היי\nבנק: לאומי\nמספר חשבון: 123' }, { names: 'א', balance: 1 });
+  check('message: full template not flagged', [full.missingTemplate, full.incomplete], [false, false]);
+  check('payment link placeholder removed', pe.paymentMessageFor('sole_prop', { template_payment_request: 'שלמו {{payment_link}}!' }, { names: '', balance: 0 }).text, 'שלמו !');
+  check('invoice conflict: other business', pe.invoiceEntityConflict({ paymentEntity: 'company' }, 'sole_prop'), 'company');
+  check('invoice conflict: same business', pe.invoiceEntityConflict({ paymentEntity: 'company' }, 'company'), null);
+  check('invoice conflict: unknown business', pe.invoiceEntityConflict({}, 'company'), null);
+  check('request line', pe.paymentRequestLine({ paymentRequestEntity: 'company', paymentRequestSentAt: '2026-10-12T10:00:00Z' }), '💳 דרישת תשלום: חברה בע״מ · 12.10');
+  check('request line: none', pe.paymentRequestLine({}), null);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

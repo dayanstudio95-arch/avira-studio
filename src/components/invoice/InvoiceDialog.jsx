@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { supabase } from "@/api/supabaseClient";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -156,6 +157,14 @@ export default function InvoiceDialog({
       });
 
       const data = res.data;
+
+      // The first invoice decides the couple's business when nothing decided it yet
+      // (2026-10-14) — the deposit invoice right after signing, typically. Never overrides a
+      // business already chosen; best-effort.
+      if (leadId && (data?.success || data?.warning || data?.invoiceUrl)) {
+        supabase.from("leads").update({ payment_entity: businessType }).eq("id", leadId).is("payment_entity", null)
+          .then(({ error }) => error && console.error("payment entity save failed:", error.message));
+      }
 
       if (data?.success || data?.warning) {
         // החשבונית הופקה בהצלחה ב-Morning וכבר נשמרה ב-CRM.

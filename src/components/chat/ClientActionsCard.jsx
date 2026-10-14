@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
-import { CalendarClock, Camera, Check, FileCheck, FileDown, ListChecks, Loader2, Receipt, Scissors, Send, Video } from "lucide-react";
+import { CalendarClock, Camera, Check, FileCheck, FileDown, ListChecks, Loader2, MessageCircle, Receipt, Scissors, Send, Video } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { base44 } from "@/api/base44Client";
 import { supabase } from "@/api/supabaseClient";
+import PaymentRequestComposer from "@/components/payments/PaymentRequestComposer";
+import { ENTITIES, defaultEntity, invoiceEntityConflict, paymentRequestLine } from "@/lib/paymentEntity";
 import InvoiceDialog from "@/components/invoice/InvoiceDialog";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { openSignedContract } from "@/lib/signedContract";
@@ -85,6 +87,17 @@ export default function ClientActionsCard({ conversation }) {
   const [templates, setTemplates] = useState(null); // null = still loading
   const [sending, setSending] = useState(null); // 'summer' | 'winter' | 'friday' | 'contract'
   const [invoiceType, setInvoiceType] = useState(null); // 'sole_prop' | 'company'
+  const [payOpen, setPayOpen] = useState(false);
+  // An invoice from the other business than the couple's asks first (2026-10-14).
+  const openInvoiceFor = async (type) => {
+    const expected = invoiceEntityConflict(state.lead, type);
+    if (expected && !(await confirmDialog({
+      title: `הזוג משלם ל${ENTITIES[expected].label}`,
+      message: `להוציא בכל זאת חשבונית מ${ENTITIES[type].label}?`,
+      confirmText: `כן, ${ENTITIES[type].short}`,
+    }))) return;
+    setInvoiceType(type);
+  };
 
   // QA 2026-10-09: switching chats fast let a slow lookup for the previous chat land in this
   // card — and its buttons would then send to the wrong couple. Only the newest request wins.
@@ -211,9 +224,28 @@ export default function ClientActionsCard({ conversation }) {
       <div className="space-y-1.5">
         <div className="flex items-center gap-1 text-[11px] text-gray-500"><Receipt className="h-3.5 w-3.5" /> חשבונית</div>
         <div className="grid grid-cols-2 gap-1.5">
-          <button type="button" onClick={() => setInvoiceType("sole_prop")} className={`${btn} bg-emerald-600 hover:bg-emerald-700`}>חשבונית מס קבלה</button>
-          <button type="button" onClick={() => setInvoiceType("company")} className={`${btn} bg-purple-600 hover:bg-purple-700`}>חשבונית חברה בע״מ</button>
+          <button type="button" onClick={() => openInvoiceFor("sole_prop")} className={`${btn} bg-emerald-600 hover:bg-emerald-700`}>חשבונית מס קבלה{defaultEntity(lead) === "sole_prop" ? " ✓" : ""}</button>
+          <button type="button" onClick={() => openInvoiceFor("company")} className={`${btn} bg-purple-600 hover:bg-purple-700`}>חשבונית חברה בע״מ{defaultEntity(lead) === "company" ? " ✓" : ""}</button>
         </div>
+        {paymentRequestLine(lead) && <div className="text-[11px] text-orange-300">{paymentRequestLine(lead)}</div>}
+      </div>
+
+      {/* דרישת תשלום — מאיזה עסק (2026-10-14), אותו חלון כמו בחלונית הליד */}
+      <div className="space-y-1.5">
+        <button type="button" onClick={() => setPayOpen((v) => !v)} className={`${btn} w-full bg-orange-600 hover:bg-orange-700`}>
+          <MessageCircle className="h-4 w-4" /> {payOpen ? "סגור דרישת תשלום" : "שלח דרישת תשלום"}
+        </button>
+        {payOpen && (
+          <div className="rounded-xl border border-gray-800 bg-gray-950 p-2.5">
+            <PaymentRequestComposer
+              lead={lead}
+              names={lead.coupleNames}
+              balance={(lead.finalPrice || 0) - (lead.totalPaid || 0)}
+              phone={lead.phoneNumber}
+              onSent={() => { setPayOpen(false); load(); }}
+            />
+          </div>
+        )}
       </div>
 
       <InvoiceDialog
