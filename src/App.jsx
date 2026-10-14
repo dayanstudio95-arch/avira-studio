@@ -7,6 +7,7 @@ import { queryClientInstance } from '@/lib/query-client';
 import { AuthProvider, useAuth } from '@/lib/SupabaseAuthContext';
 import { isAdmin, isLeadCoordinator, isPhotographerRole, isAlbumManagerRole, isEditorRole } from '@/lib/permissions';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+import AuthConnectionError from '@/components/AuthConnectionError';
 import PageNotFound from '@/lib/PageNotFound';
 import Layout from './pages/Layout';
 
@@ -104,7 +105,9 @@ const AuthenticatedApp = () => {
   }
 
   if (authError) {
-    if (authError.type === 'user_not_registered') {
+    if (authError.type === 'connection') {
+      return <AuthConnectionError error={authError} />;
+    } else if (authError.type === 'user_not_registered') {
       return <UserNotRegisteredError />;
     } else if (authError.type === 'auth_required') {
       navigateToLogin();

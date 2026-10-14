@@ -12,6 +12,36 @@ const isPublicRoute = () => {
   return path.startsWith('/questionnaire') || path.startsWith('/contract');
 };
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const looksLikeAuthError = (e) =>
+  e && (e.status === 401 || e.code === 'PGRST301' || e.code === 'PGRST303' || /jwt/i.test(String(e.message || '')));
+
+// The profile lookup, tried up to three times. A login-token error refreshes the session
+// before the next try. Returns { profile } (null = no profile row) or { error }.
+async function loadProfileWithRetry(userId, isMounted) {
+  let lastError = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) {
+      if (looksLikeAuthError(lastError)) await supabase.auth.refreshSession().catch(() => {});
+      await sleep(attempt * 1200);
+      if (!isMounted()) return { error: null, profile: null };
+    }
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, tenant_id, role, full_name, phone')
+        .eq('id', userId)
+        .maybeSingle();
+      if (!error) return { profile: data || null, error: null };
+      lastError = error;
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  console.error('[auth] profile lookup failed after 3 tries:', lastError);
+  return { error: lastError || new Error('unknown error'), profile: null };
+}
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -19,6 +49,8 @@ export const AuthProvider = ({ children }) => {
   const [authError, setAuthError] = useState(null);
   // Who is signed in right now — lets the auth listener ignore events about the same user.
   const currentUserIdRef = useRef(null);
+  // "נסה שוב" on the connection-problem screen re-runs the session check (set below).
+  const retryRef = useRef(null);
   // Tenant-level financial defaults (VAT %/deposit amount) -- loaded alongside
   // the profile so every consuming component reads them the same way user/profile
   // are already read elsewhere, instead of each form doing its own Tenant.get().
@@ -47,15 +79,24 @@ export const AuthProvider = ({ children }) => {
 
       // profiles row carries tenant_id + role; a Supabase-authenticated user
       // with no profile row is a signed-up-but-not-provisioned account (SaaS onboarding case).
-      const { data: profile, error } = await supabase
-        .from('profiles')
-        .select('id, tenant_id, role, full_name, phone')
-        .eq('id', session.user.id)
-        .maybeSingle();
+      //
+      // 2026-10-14: a FAILED lookup (network blip, expired token, a server hiccup) used to be
+      // shown as "Access Restricted — you are not registered", which never retried and sent
+      // the owner hunting for a permissions problem that did not exist. Now: up to three
+      // tries (refreshing the login in between), and a real error is shown as a connection
+      // problem with "נסה שוב". "Not registered" only when the lookup worked and found nothing.
+      const { profile, error } = await loadProfileWithRetry(session.user.id, () => mounted);
 
       if (!mounted) return;
 
-      if (error || !profile) {
+      if (error) {
+        setUser(null);
+        setIsAuthenticated(false);
+        setAuthError({ type: 'connection', message: error.message || String(error), code: error.code || error.status || null });
+        setIsLoadingAuth(false);
+        return;
+      }
+      if (!profile) {
         setUser(null);
         setIsAuthenticated(false);
         setAuthError({ type: 'user_not_registered', message: 'No studio profile linked to this account' });
@@ -63,6 +104,7 @@ export const AuthProvider = ({ children }) => {
         return;
       }
 
+      try { sessionStorage.removeItem('auth_auto_retries'); } catch { /* private mode */ }
       currentUserIdRef.current = session.user.id;
       setUser({ id: session.user.id, email: session.user.email, ...profile });
       setIsAuthenticated(true);
@@ -89,7 +131,19 @@ export const AuthProvider = ({ children }) => {
       }
     };
 
-    supabase.auth.getSession().then(({ data: { session } }) => loadSession(session));
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => loadSession(session))
+      .catch((e) => {
+        if (!mounted) return;
+        setAuthError({ type: 'connection', message: e?.message || String(e), code: null });
+        setIsLoadingAuth(false);
+      });
+    retryRef.current = async () => {
+      setIsLoadingAuth(true);
+      setAuthError(null);
+      const { data: { session } } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }));
+      await loadSession(session);
+    };
 
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       // UX-01 (audit 2026-10-05): Supabase fires SIGNED_IN when the tab comes back to the
@@ -138,6 +192,7 @@ export const AuthProvider = ({ children }) => {
       appPublicSettings: null,
       logout,
       navigateToLogin,
+      retryAuth: () => retryRef.current?.(),
       checkAppState: () => {},
     }}>
       {children}
