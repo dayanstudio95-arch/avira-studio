@@ -550,7 +550,7 @@ export default function Payments() {
                                                        size="sm"
                                                        onClick={(e) => {
                                                            e.stopPropagation();
-                                                           setDetailDialogStaff({ name, phone: getStaffPhone(name), events: data.events, total: data.total });
+                                                           setDetailDialogStaff({ name, phone: getStaffPhone(name) || data.events.find((ev) => ev.phone)?.phone || null, events: data.events, total: data.total }); // a one-time crew member's phone lives on the event (2026-10-15)
                                                        }}
                                                        className="bg-amber-500 hover:bg-amber-600 text-gray-900 text-xs px-2 font-semibold"
                                                    >

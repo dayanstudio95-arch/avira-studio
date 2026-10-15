@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import StaffPickerPanel from "./StaffPickerPanel";
+import { buildTemporaryMember, jobRoleForSlot } from "@/lib/staffPicker";
 import { useColumnWidths } from '@/hooks/useColumnWidths';
 import { format } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -53,7 +55,8 @@ export function StaffPickerCell({ event, role, roleKey, label, color, icon, staf
           {member?.staffMemberName ? (
             <div className={`flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium border ${color} w-fit hover:opacity-80 transition-opacity max-w-full`}>
               <span>{icon}</span>
-              <span className="truncate" title={member.staffMemberName}>{member.staffMemberName}</span>
+              <span className="truncate" title={member.isTemporary ? `${member.staffMemberName} — זמני (רק באירוע הזה)` : member.staffMemberName}>{member.staffMemberName}</span>
+              {member.isTemporary && <span className="flex-shrink-0 rounded bg-amber-500/25 px-1 text-[9px] text-amber-200">זמני</span>}
               <button onClick={removeMember} className="hover:text-red-400 text-sm leading-none flex-shrink-0">×</button>
             </div>
           ) : (
@@ -61,82 +64,62 @@ export function StaffPickerCell({ event, role, roleKey, label, color, icon, staf
           )}
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-72 bg-gray-900 border-gray-700 text-white p-3" align="start" side="bottom">
-        <div className="text-sm font-semibold text-gray-400 mb-3">בחר {label}</div>
-        {/* CHANGED: max-h-72 (fixed 288px, ~5 rows) was cutting the list short well
-            before the popover ran out of actual screen room, and widening it alone
-            wasn't enough either -- this Popover portals its content to document.body
-            as a SIBLING of the parent Sheet/Dialog's own content in the DOM (not a
-            descendant), so the Sheet's touch-scroll lock (which blocks touchmove on
-            anything outside its own content ref, to stop the background page from
-            scrolling while it's open) was intercepting drags here too, even though
-            visually the list sits on top of the sheet. Fix: widen the cap to real
-            available viewport space, add -webkit-overflow-scrolling for iOS momentum
-            scroll, and stopPropagation on touchmove so it never reaches that
-            document-level listener -- the browser's native scroll then behaves
-            normally inside this div specifically. */}
-        <div
-          className="space-y-2 max-h-[65vh] overflow-y-auto pr-1"
-          style={{ WebkitOverflowScrolling: 'touch' }}
-          onTouchMove={(e) => e.stopPropagation()}
-        >
-          {staffList.length === 0 ? (
-            <div className="text-sm text-gray-500 text-center py-4">אין {label} זמינים</div>
-          ) : (
-            staffList.map((staff) => {
-              const isSelected = member?.staffMemberName === staff.name;
-              const isBooked = events.some(e =>
-                e.id !== event.id &&
-                e.date === event.date &&
-                e.team?.some(m => m.staffMemberName === staff.name && m.role === roleKey)
-              );
-              return (
-                <div key={staff.id} className={`flex items-center gap-3 p-2 rounded ${isBooked && !isSelected ? 'opacity-60 cursor-not-allowed' : 'hover:bg-gray-800/50'}`}>
-                  <button
-                    type="button"
-                    disabled={isBooked && !isSelected}
-                    onClick={async () => {
-                      const currentTeam = event.team || [];
-                      const newTeam = currentTeam.filter(m => m.role !== roleKey);
-                      if (!isSelected) {
-                        // Get cost from ratesByRole if available, otherwise use defaultRate
-                        let cost = staff.defaultRate || 0;
-                        if (staff.ratesByRole && staff.ratesByRole.length > 0) {
-                          const roleRate = staff.ratesByRole.find(r => r.role === roleKey);
-                          if (roleRate) {
-                            cost = roleRate.rate;
-                          }
-                        }
-                        newTeam.push({ role: roleKey, staffMemberName: staff.name, cost, isPaid: false, progressStatus: 'pending' });
-                        await base44.entities.Event.update(event.id, { team: newTeam });
-                        await sendCalendarInviteByName(event.id, staff.name);
-                      } else {
-                        await base44.entities.Event.update(event.id, { team: newTeam });
-                      }
-                      if (onRefresh) onRefresh();
-                      setEditingKey(null);
-                    }}
-                    className={`shrink-0 text-xs font-semibold px-3 py-1.5 rounded-md transition-colors ${
-                      isSelected
-                        ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
-                        : isBooked
-                        ? 'bg-gray-800 text-gray-600 border border-gray-700 cursor-not-allowed'
-                        : 'bg-amber-500 hover:bg-amber-600 text-gray-900'
-                    }`}
-                  >
-                    {isSelected ? '✓ נבחר' : 'בחר'}
-                  </button>
-                  <div className="flex items-center gap-2 flex-1">
-                    <div className={`w-8 h-8 ${color} rounded-full flex items-center justify-center text-sm font-semibold`}>
-                      {staff.name.charAt(0).toUpperCase()}
-                    </div>
-                    <span className="text-sm">{staff.name}{isBooked && !isSelected && ' (כבר משובץ)'}</span>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
+      <PopoverContent className="w-72 bg-gray-900 border-gray-700 text-white p-3 overflow-hidden overflow-y-hidden" align="start" side="bottom">
+        {/* 2026-10-15: one scroll (the popover itself no longer scrolls too), a search box,
+            favourites first, and a one-time crew member — StaffPickerPanel. */}
+        <StaffPickerPanel
+          label={label}
+          color={color}
+          staffList={staffList}
+          event={event}
+          events={events}
+          roleKey={roleKey}
+          member={member}
+          onSelect={async (staff, isSelected) => {
+            const currentTeam = event.team || [];
+            const newTeam = currentTeam.filter(m => m.role !== roleKey);
+            if (!isSelected) {
+              // Get cost from ratesByRole if available, otherwise use defaultRate
+              let cost = staff.defaultRate || 0;
+              if (staff.ratesByRole && staff.ratesByRole.length > 0) {
+                const roleRate = staff.ratesByRole.find(r => r.role === roleKey);
+                if (roleRate) {
+                  cost = roleRate.rate;
+                }
+              }
+              newTeam.push({ role: roleKey, staffMemberName: staff.name, cost, isPaid: false, progressStatus: 'pending' });
+              await base44.entities.Event.update(event.id, { team: newTeam });
+              await sendCalendarInviteByName(event.id, staff.name);
+            } else {
+              await base44.entities.Event.update(event.id, { team: newTeam });
+            }
+            if (onRefresh) onRefresh();
+            setEditingKey(null);
+          }}
+          onAddTemporary={async (temp) => {
+            const newTeam = (event.team || []).filter(m => m.role !== roleKey);
+            newTeam.push(buildTemporaryMember({ roleKey, ...temp }));
+            await base44.entities.Event.update(event.id, { team: newTeam });
+            toast.success(`${temp.name.trim()} שובץ כזמני`);
+            if (onRefresh) onRefresh();
+            setEditingKey(null);
+          }}
+          onPromoteTemporary={async () => {
+            const jobRole = jobRoleForSlot(roleKey);
+            if (!jobRole) return;
+            await base44.entities.StaffMember.create({
+              name: member.staffMemberName,
+              role: jobRole,
+              phoneNumber: member.phone || '',
+              defaultRate: Number(member.cost) || 0,
+            });
+            const newTeam = (event.team || []).map(m => (m.role === roleKey ? { ...m, isTemporary: false } : m));
+            await base44.entities.Event.update(event.id, { team: newTeam });
+            toast.success(`${member.staffMemberName} נוסף לרשימת הצוות`);
+            if (onRefresh) onRefresh();
+            setEditingKey(null);
+          }}
+        />
       </PopoverContent>
     </Popover>
   );
@@ -586,7 +569,9 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
                         {/* Editor */}
                         <TableCell className="px-1 py-1" style={{ width: `${widths.editor}px`, minWidth: `${widths.editor}px` }}>
                           {(() => {
+                            // A one-time editor (2026-10-15) is not in the staff list — found by its slot.
                             const videoEditor = event.team?.find(m => {
+                              if (m.isTemporary && m.role === 'editor' && m.staffMemberName) return true;
                               const staff = staffMembers.find(s => s.name === m.staffMemberName);
                               return staff?.role === 'editor';
                             });
@@ -598,6 +583,7 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
                                       <div className="flex items-center gap-1 px-1 py-0.5 rounded text-[10px] font-medium border bg-purple-500/20 text-purple-400 border-purple-500/30 w-fit hover:opacity-80 transition-opacity">
                                         <span>✂️</span>
                                         <span className="truncate max-w-[44px]" title={videoEditor.staffMemberName}>{videoEditor.staffMemberName}</span>
+                                        {videoEditor.isTemporary && <span className="flex-shrink-0 rounded bg-amber-500/25 px-1 text-[9px] text-amber-200">זמני</span>}
                                         <button onClick={(e) => { e.stopPropagation(); handleRemoveTeamMember(event, videoEditor.staffMemberName); }} className="hover:text-red-400 text-sm leading-none">×</button>
                                       </div>
                                     ) : (
@@ -605,67 +591,61 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
                                     )}
                                   </button>
                                 </PopoverTrigger>
-                                <PopoverContent className="w-80 bg-gray-900 border-gray-700 text-white p-3" align="start">
-                                  <div className="text-sm font-semibold text-gray-400 mb-3">בחר עורך וידאו</div>
-                                  {/* CHANGED: see the matching comment in StaffPickerCell above --
-                                      this Popover portals to document.body as a sibling of this
-                                      table's own Dialog/Sheet content elsewhere on mobile, so
-                                      stopPropagation on touchmove keeps drags from being blocked
-                                      by that ancestor's scroll lock. */}
-                                  <div
-                                    className="space-y-2 max-h-[65vh] overflow-y-auto pr-1"
-                                    style={{ WebkitOverflowScrolling: 'touch' }}
-                                    onTouchMove={(e) => e.stopPropagation()}
-                                  >
-                                    {editors.length === 0 ? (
-                                      <div className="text-sm text-gray-500 text-center py-4">אין עורכים זמינים</div>
-                                    ) : (
-                                      editors.map((staff) => {
-                                        const isSelected = videoEditor?.staffMemberName === staff.name;
-                                        return (
-                                          <div key={staff.id} className="flex items-center gap-3 p-2 rounded hover:bg-gray-800/50">
-                                            <button
-                                              type="button"
-                                              onClick={async () => {
-                                                if (isSelected) {
-                                                  await handleRemoveTeamMember(event, staff.name);
-                                                } else {
-                                                    const currentTeam = event.team || [];
-                                                    const withoutEmptyEditor = currentTeam.filter(m => m.role !== 'editor' || m.staffMemberName);
-                                                    // Get cost from ratesByRole if available, otherwise use defaultRate
-                                                    let cost = staff.defaultRate || 0;
-                                                    if (staff.ratesByRole && staff.ratesByRole.length > 0) {
-                                                      const roleRate = staff.ratesByRole.find(r => r.role === 'editor');
-                                                      if (roleRate) {
-                                                        cost = roleRate.rate;
-                                                      }
-                                                    }
-                                                    const newTeam = [...withoutEmptyEditor, { role: 'editor', staffMemberName: staff.name, cost, isPaid: false, progressStatus: 'pending' }];
-                                                    await base44.entities.Event.update(event.id, { team: newTeam });
-                                                    await sendCalendarInviteByName(event.id, staff.name);
-                                                    if (onRefresh) onRefresh();
-                                                  }
-                                                setEditingTeamEventId(null);
-                                              }}
-                                              className={`shrink-0 text-xs font-semibold px-3 py-1.5 rounded-md transition-colors ${
-                                                isSelected
-                                                  ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
-                                                  : 'bg-amber-500 hover:bg-amber-600 text-gray-900'
-                                              }`}
-                                            >
-                                              {isSelected ? '✓ נבחר' : 'בחר'}
-                                            </button>
-                                            <div className="flex items-center gap-2 flex-1">
-                                              <div className="w-8 h-8 bg-purple-500/20 text-purple-400 rounded-full flex items-center justify-center text-sm font-semibold">
-                                                {staff.name.charAt(0).toUpperCase()}
-                                              </div>
-                                              <span className="text-sm">{staff.name}</span>
-                                            </div>
-                                          </div>
-                                        );
-                                      })
-                                    )}
-                                  </div>
+                                <PopoverContent className="w-80 bg-gray-900 border-gray-700 text-white p-3 overflow-hidden overflow-y-hidden" align="start">
+                                  {/* 2026-10-15: same panel as the crew slots — one scroll, search, one-time editor. */}
+                                  <StaffPickerPanel
+                                    label="עורך וידאו"
+                                    color="bg-purple-500/20 text-purple-400"
+                                    staffList={editors}
+                                    event={event}
+                                    events={events}
+                                    roleKey="editor"
+                                    member={videoEditor}
+                                    checkBooked={false}
+                                    onSelect={async (staff, isSelected) => {
+                                      if (isSelected) {
+                                        await handleRemoveTeamMember(event, staff.name);
+                                      } else {
+                                        const currentTeam = event.team || [];
+                                        // Replaces the current editor (staff or one-time) — one editor per event.
+                                        const withoutEditor = currentTeam.filter(m => m !== videoEditor && (m.role !== 'editor' || m.staffMemberName));
+                                        // Get cost from ratesByRole if available, otherwise use defaultRate
+                                        let cost = staff.defaultRate || 0;
+                                        if (staff.ratesByRole && staff.ratesByRole.length > 0) {
+                                          const roleRate = staff.ratesByRole.find(r => r.role === 'editor');
+                                          if (roleRate) {
+                                            cost = roleRate.rate;
+                                          }
+                                        }
+                                        const newTeam = [...withoutEditor, { role: 'editor', staffMemberName: staff.name, cost, isPaid: false, progressStatus: 'pending' }];
+                                        await base44.entities.Event.update(event.id, { team: newTeam });
+                                        await sendCalendarInviteByName(event.id, staff.name);
+                                        if (onRefresh) onRefresh();
+                                      }
+                                      setEditingTeamEventId(null);
+                                    }}
+                                    onAddTemporary={async (temp) => {
+                                      const withoutEditor = (event.team || []).filter(m => m !== videoEditor && (m.role !== 'editor' || m.staffMemberName));
+                                      const newTeam = [...withoutEditor, buildTemporaryMember({ roleKey: 'editor', ...temp })];
+                                      await base44.entities.Event.update(event.id, { team: newTeam });
+                                      toast.success(`${temp.name.trim()} שובץ כזמני`);
+                                      if (onRefresh) onRefresh();
+                                      setEditingTeamEventId(null);
+                                    }}
+                                    onPromoteTemporary={async () => {
+                                      await base44.entities.StaffMember.create({
+                                        name: videoEditor.staffMemberName,
+                                        role: 'editor',
+                                        phoneNumber: videoEditor.phone || '',
+                                        defaultRate: Number(videoEditor.cost) || 0,
+                                      });
+                                      const newTeam = (event.team || []).map(m => (m === videoEditor ? { ...m, isTemporary: false } : m));
+                                      await base44.entities.Event.update(event.id, { team: newTeam });
+                                      toast.success(`${videoEditor.staffMemberName} נוסף לרשימת הצוות`);
+                                      if (onRefresh) onRefresh();
+                                      setEditingTeamEventId(null);
+                                    }}
+                                  />
                                 </PopoverContent>
                               </Popover>
                             );

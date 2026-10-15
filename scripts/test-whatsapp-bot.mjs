@@ -2843,5 +2843,32 @@ console.log('\n— PART 60: payment entity —');
   check('request line: none', pe.paymentRequestLine({}), null);
 }
 
+// =====================================================================================
+// PART 61 — crew picker: search, order, one-time crew member (2026-10-15)
+console.log('\n— PART 61: crew picker —');
+{
+  const sp = await loadModule('src/lib/staffPicker.js', 'sp61');
+  check('slot → job role', ['photographer2', 'videographer', 'editor', 'x'].map(sp.jobRoleForSlot), ['photographer', 'videographer', 'editor', null]);
+  const staff = [
+    { id: 1, name: 'עידן פרץ' }, { id: 2, name: 'איל ברוך', isFavorite: true }, { id: 3, name: 'אלמוג ספדי' }, { id: 4, name: 'בני' },
+  ];
+  const event = { id: 'e1', date: '2026-11-01' };
+  const events = [event, { id: 'e2', date: '2026-11-01', team: [{ role: 'photographer1', staffMemberName: 'אלמוג ספדי' }] }];
+  const rows = sp.pickerRows({ staffList: staff, event, events, roleKey: 'photographer1', member: null, search: '' });
+  check('order: favourite, א-ב, booked last', rows.map((r) => r.staff.name), ['איל ברוך', 'בני', 'עידן פרץ', 'אלמוג ספדי']);
+  check('booked marked', rows.find((r) => r.staff.name === 'אלמוג ספדי').isBooked, true);
+  check('search', sp.pickerRows({ staffList: staff, event, events, roleKey: 'photographer1', search: 'עיד' }).map((r) => r.staff.name), ['עידן פרץ']);
+  check('booked on another slot type is free', sp.pickerRows({ staffList: staff, event, events, roleKey: 'videographer', search: 'אלמוג' })[0].isBooked, false);
+  check('editor: no booking check', sp.pickerRows({ staffList: staff, event, events, roleKey: 'photographer1', search: 'אלמוג', checkBooked: false })[0].isBooked, false);
+  const sel = sp.pickerRows({ staffList: staff, event, events, roleKey: 'photographer1', member: { staffMemberName: 'איל ברוך' }, search: '' });
+  check('Enter picks the first free one (not the selected)', sp.firstPickable(sel).staff.name, 'בני');
+  check('one-time member', sp.buildTemporaryMember({ roleKey: 'photographer2', name: ' דני ', phone: '050', cost: '700' }),
+    { role: 'photographer2', staffMemberName: 'דני', cost: 700, isPaid: false, progressStatus: 'pending', isTemporary: true, phone: '050' });
+  check('one-time: no phone, bad cost', [sp.buildTemporaryMember({ roleKey: 'editor', name: 'x', cost: 'abc' }).phone, sp.buildTemporaryMember({ roleKey: 'editor', name: 'x', cost: '-5' }).cost], [null, 0]);
+  check('one-time name: empty', sp.temporaryNameProblem('  ', staff), 'כתבו שם');
+  check('one-time name: already on the staff list', sp.temporaryNameProblem('בני', staff) !== null, true);
+  check('one-time name: ok', sp.temporaryNameProblem('דני חדש', staff), null);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
