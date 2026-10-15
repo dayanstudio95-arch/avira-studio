@@ -1,10 +1,13 @@
 import React, { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/api/supabaseClient";
-import { ENTITIES } from "@/lib/paymentEntity";
+import { ENTITIES, invoiceEntityConflict } from "@/lib/paymentEntity";
+import InvoiceEntityPicker from "@/components/payments/InvoiceEntityPicker";
+import InvoiceDialog from "@/components/invoice/InvoiceDialog";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { format } from "date-fns";
-import { CreditCard, MessageCircle } from "lucide-react";
+import { CreditCard, MessageCircle, Receipt } from "lucide-react";
 import PaymentStatusSelector from "@/components/common/PaymentStatusSelector";
 import PaymentRequestDialog from "@/components/dashboard/PaymentRequestDialog";
 import DashTitleLink from "./DashTitleLink";
@@ -27,12 +30,30 @@ export default function DashboardUnpaidCard({ events, onRefresh }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("leads")
-        .select("id, payment_entity, payment_request_entity, payment_request_sent_at")
+        .select("id, couple_names, email, phone_number, venue_name, final_price, total_paid, payment_entity, payment_request_entity, payment_request_sent_at")
         .in("id", leadIds);
       if (error) throw error;
       return Object.fromEntries((data || []).map((l) => [l.id, l]));
     },
   });
+  // "🧾 חשבונית" (2026-10-15): pick the business, then the invoice window with "תשלום
+  // יתרה" and the remaining balance filled in. After "שולם" on its success screen the couple
+  // leaves this list.
+  const [invoiceFor, setInvoiceFor] = useState(null); // { event, step: 'pick' | 'invoice', type }
+  const leadOf = (e) => entityQ.data?.[e.sourceLeadId] || null;
+  const asLead = (l) => (l ? { paymentEntity: l.payment_entity, paymentRequestEntity: l.payment_request_entity } : null);
+  const pickBusiness = async (type) => {
+    const ev = invoiceFor?.event;
+    const expected = invoiceEntityConflict(asLead(leadOf(ev)), type);
+    if (expected && !(await confirmDialog({
+      title: `הזוג משלם ל${ENTITIES[expected].label}`,
+      message: `להוציא בכל זאת חשבונית מ${ENTITIES[type].label}?`,
+      confirmText: `כן, ${ENTITIES[type].short}`,
+    }))) return;
+    setInvoiceFor({ event: ev, step: "invoice", type });
+  };
+  const invLead = invoiceFor ? leadOf(invoiceFor.event) : null;
+
   const entityOf = (e) => entityQ.data?.[e.sourceLeadId]?.payment_entity || entityQ.data?.[e.sourceLeadId]?.payment_request_entity || null;
   const unpaidEvents = allUnpaid.filter((e) => entityFilter === "all" || (entityOf(e) || "none") === entityFilter);
   const filters = [
@@ -107,6 +128,14 @@ export default function DashboardUnpaidCard({ events, onRefresh }) {
                     <MessageCircle className="w-3 h-3" />
                     דרישת תשלום
                   </button>
+                  <button
+                    onClick={() => setInvoiceFor({ event, step: "pick" })}
+                    className="e-chip e-chip-purple flex-shrink-0 hover:brightness-125 transition"
+                    title="הוצא חשבונית"
+                  >
+                    <Receipt className="w-3 h-3" />
+                    חשבונית
+                  </button>
                   <PaymentStatusSelector
                     eventId={event.id}
                     currentStatus={event.clientPaymentStatus}
@@ -126,6 +155,33 @@ export default function DashboardUnpaidCard({ events, onRefresh }) {
         }}
         onSent={() => entityQ.refetch()}
       />
+      <InvoiceEntityPicker
+        open={invoiceFor?.step === "pick"}
+        onOpenChange={(o) => { if (!o) setInvoiceFor(null); }}
+        coupleNames={invoiceFor?.event?.coupleNames}
+        lead={asLead(invLead)}
+        onPick={pickBusiness}
+      />
+      {invoiceFor?.step === "invoice" && (
+        <InvoiceDialog
+          isOpen
+          onClose={() => setInvoiceFor(null)}
+          businessType={invoiceFor.type}
+          coupleNames={invLead?.couple_names || invoiceFor.event.coupleNames}
+          eventDate={invoiceFor.event.date}
+          venueName={invLead?.venue_name || invoiceFor.event.venue || ""}
+          clientEmail={invLead?.email || ""}
+          clientPhone={invLead?.phone_number || invoiceFor.event.phoneNumber || ""}
+          leadId={invoiceFor.event.sourceLeadId || ""}
+          remainingBalance={invLead ? (Number(invLead.final_price) || 0) - (Number(invLead.total_paid) || 0) : null}
+          eventId={invoiceFor.event.id}
+          initialItem="תשלום יתרה"
+          onInvoiceCreated={() => {
+            entityQ.refetch();
+            onRefresh?.();
+          }}
+        />
+      )}
     </Card>
   );
 }
