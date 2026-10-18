@@ -5,6 +5,7 @@
 // CHANGED (2026-08-17 security audit, Step 4): these keys moved out of app_settings into
 // the dedicated tenant_secrets table (migration 0019_tenant_secrets.sql, admin-only RLS).
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
+import { fetchMorningToken } from '../_shared/morningAuth.ts';
 import { createUserClient, getRequestUser } from '../_shared/supabaseClients.ts';
 
 const SETTINGS_KEYS: Record<string, { key: string; secret: string }> = {
@@ -39,26 +40,12 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: `מפתחות Morning עבור ה${businessLabel} לא הוגדרו בהגדרות → אינטגרציות.` }, { status: 400 });
     }
 
-    const tokenRes = await fetch('https://api.greeninvoice.co.il/api/v1/account/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: apiKey, secret: apiSecret }),
-    });
-
-    const tokenText = await tokenRes.text();
-    if (!tokenRes.ok) {
-      return jsonResponse({ error: `שגיאה בקבלת טוקן (${tokenRes.status}): ${tokenText}` }, { status: 502 });
+    // Morning's OAuth 2.0 login (2026-10-18) — see _shared/morningAuth.ts.
+    const login = await fetchMorningToken(apiKey, apiSecret);
+    if (!login.ok) {
+      return jsonResponse({ error: login.message }, { status: 502 });
     }
-
-    let tokenData: any;
-    try { tokenData = JSON.parse(tokenText); } catch {
-      return jsonResponse({ error: `תשובת הטוקן אינה JSON תקין: ${tokenText}` }, { status: 502 });
-    }
-
-    const token = tokenData.token || tokenData.access_token || tokenData.jwt || tokenData.id_token || tokenData.data?.token;
-    if (!token) {
-      return jsonResponse({ error: `לא התקבל טוקן. שדות זמינים: ${Object.keys(tokenData).join(', ')}` }, { status: 502 });
-    }
+    const token = login.token;
 
     const searchBody = { type: [320], pageSize: 1, page: 1, sortBy: 'documentDate', sortOrder: 'desc' };
 

@@ -18,6 +18,7 @@
 // caller's JWT so app_settings/leads queries are automatically scoped by RLS to the
 // caller's own tenant — no manual tenant_id filtering needed.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
+import { fetchMorningToken } from '../_shared/morningAuth.ts';
 import { createUserClient, getRequestUser } from '../_shared/supabaseClients.ts';
 
 const SETTINGS_KEYS: Record<string, { key: string; secret: string }> = {
@@ -103,31 +104,12 @@ Deno.serve(async (req) => {
     const docDescParts = [clientName, eventDateStr, itemNotes || itemDescription].filter(Boolean);
     const documentDescription = docDescParts.join(' | ');
 
-    const tokenRes = await fetch('https://api.greeninvoice.co.il/api/v1/account/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: apiKey, secret: apiSecret }),
-    });
-
-    const tokenText = await tokenRes.text();
-    if (!tokenRes.ok) {
-      return jsonResponse({
-        error: `שגיאה בקבלת טוקן ממורנינג (${tokenRes.status}): ${tokenText}`,
-        rawBody: tokenText,
-      });
+    // Morning's OAuth 2.0 login (2026-10-18) — see _shared/morningAuth.ts.
+    const login = await fetchMorningToken(apiKey, apiSecret);
+    if (!login.ok) {
+      return jsonResponse({ error: login.message, rawBody: login.raw });
     }
-
-    let tokenData: any;
-    try { tokenData = JSON.parse(tokenText); } catch {
-      return jsonResponse({ error: `תשובת הטוקן אינה JSON תקין: ${tokenText}`, rawBody: tokenText });
-    }
-    const token = tokenData.token || tokenData.access_token || tokenData.jwt || tokenData.id_token || tokenData.data?.token;
-    if (!token) {
-      return jsonResponse({
-        error: `לא התקבל טוקן. שדות זמינים: ${Object.keys(tokenData).join(', ')}`,
-        rawBody: tokenText,
-      });
-    }
+    const token = login.token;
 
     invoicePayload = {
       type: 320,

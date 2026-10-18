@@ -2870,5 +2870,21 @@ console.log('\n— PART 61: crew picker —');
   check('one-time name: ok', sp.temporaryNameProblem('דני חדש', staff), null);
 }
 
+// =====================================================================================
+// PART 62 — Morning OAuth login (2026-10-18)
+console.log('\n— PART 62: Morning login —');
+{
+  const ma = await loadModule('supabase/functions/_shared/morningAuth.ts', 'ma62');
+  check('token: accessToken', ma.readMorningToken({ accessToken: 'abc', expiresAt: 1 }), 'abc');
+  check('token: access_token', ma.readMorningToken({ access_token: 'def', expires_in: 3600 }), 'def');
+  check('token: legacy token', ma.readMorningToken({ token: 'ghi' }), 'ghi');
+  check('token: nested', ma.readMorningToken({ data: { accessToken: 'jkl' } }), 'jkl');
+  check('token: none', ma.readMorningToken({ error: 'x' }), null);
+  check('token: not an object', ma.readMorningToken('x'), null);
+  check('error: invalid client → new keys hint', ma.morningLoginError(401, '{"error":"invalid_client"}').includes('מפתח API חדש'), true);
+  check('error: other', ma.morningLoginError(500, 'boom'), 'שגיאת התחברות ל-Morning (500): boom');
+  check('endpoint', ma.MORNING_TOKEN_URL, 'https://api.morning.co/idp/v1/oauth/token');
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
