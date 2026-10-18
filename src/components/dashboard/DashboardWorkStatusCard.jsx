@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { format } from "date-fns";
 import { Clapperboard, ChevronDown, ChevronUp } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import DashTitleLink from "./DashTitleLink";
+import ProgressEventDialog from "./ProgressEventDialog";
 
 // same fields as ProgressStatus
 const ROLE_DONE_FIELDS = {
@@ -67,10 +68,12 @@ function getRelevantFields(event) {
   return fields;
 }
 
-function EventWorkRow({ event, onUpdated }) {
+function EventWorkRow({ event, onUpdated, onOpen }) {
   const [expanded, setExpanded] = useState(false);
   const [localEvent, setLocalEvent] = useState(event);
   const [saving, setSaving] = useState(null);
+  // A refresh after the progress window (or elsewhere) brings a newer copy.
+  useEffect(() => setLocalEvent(event), [event]);
 
   const progress = getProgress(localEvent);
   const relevantFields = getRelevantFields(localEvent);
@@ -87,15 +90,25 @@ function EventWorkRow({ event, onUpdated }) {
 
   return (
     <div className="e-row">
-      <div
-        className="flex items-center justify-between gap-2 px-2 py-3 cursor-pointer rounded-lg hover:bg-white/[0.03] transition-colors"
-        onClick={() => setExpanded((v) => !v)}
-      >
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-white truncate">{localEvent.coupleNames}</p>
+      {/* 2026-10-18 (the owner's request): the couple's name opens their full progress row —
+          the same window as the events table's "סטטוס התקדמות" (links, → עורך / → זוג /
+          → גרפיקה). The arrow keeps the quick ticks inside the card. */}
+      <div className="flex items-center justify-between gap-2 px-2 py-3 rounded-lg hover:bg-white/[0.03] transition-colors">
+        <button
+          type="button"
+          onClick={() => onOpen(localEvent)}
+          className="flex-1 min-w-0 text-start"
+          title="פתח את סטטוס ההתקדמות — לינקים ושליחה"
+        >
+          <p className="text-sm font-medium text-white truncate hover:text-amber-300 hover:underline">{localEvent.coupleNames}</p>
           <p className="text-xs text-slate-400">{format(new Date(localEvent.date), "d/M/yyyy")}</p>
-        </div>
-        <div className="flex items-center gap-1.5">
+        </button>
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-label={expanded ? "סגור סימונים מהירים" : "סימונים מהירים"}
+          className="flex items-center gap-1.5 rounded-md p-1 hover:bg-white/[0.05]"
+        >
           <span className={`e-chip ${progress.color}`}>
             {progress.label}
           </span>
@@ -104,7 +117,7 @@ function EventWorkRow({ event, onUpdated }) {
           ) : (
             <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
           )}
-        </div>
+        </button>
       </div>
 
       {expanded && (
@@ -137,8 +150,9 @@ function EventWorkRow({ event, onUpdated }) {
   );
 }
 
-export default function DashboardWorkStatusCard({ events, onRefresh }) {
+export default function DashboardWorkStatusCard({ events, onRefresh, staffMembers = [] }) {
   const now = new Date();
+  const [progressFor, setProgressFor] = useState(null);
 
   const incompleteEvents = events.filter((e) => {
     if (new Date(e.date) >= now) return false;
@@ -165,11 +179,12 @@ export default function DashboardWorkStatusCard({ events, onRefresh }) {
         ) : (
           <div>
             {incompleteEvents.map((event) => (
-              <EventWorkRow key={event.id} event={event} onUpdated={onRefresh} />
+              <EventWorkRow key={event.id} event={event} onUpdated={onRefresh} onOpen={setProgressFor} />
             ))}
           </div>
         )}
       </CardContent>
+      <ProgressEventDialog event={progressFor} staffMembers={staffMembers} onClose={() => setProgressFor(null)} onChanged={onRefresh} />
     </Card>
   );
 }
