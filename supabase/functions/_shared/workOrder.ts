@@ -58,9 +58,10 @@ export function orderDescription(eventDate: string | null | undefined): string {
 // Remarks are length-checked by the caller (after merging with the business's default) and
 // sent as they are — never cut here, so what is stored is exactly what Morning prints.
 // clientId: the Morning client of the order being replaced, so the couple stays one client.
+// date: the document date (YYYY-MM-DD); omitted → Morning's default, today.
 export function buildOrderPayload(
-  { coupleNames, eventDate, lines, remarks, clientId }:
-  { coupleNames: string; eventDate?: string | null; lines: OrderLine[]; remarks?: string | null; clientId?: string | null },
+  { coupleNames, eventDate, lines, remarks, clientId, date }:
+  { coupleNames: string; eventDate?: string | null; lines: OrderLine[]; remarks?: string | null; clientId?: string | null; date?: string | null },
 ) {
   const name = String(coupleNames).trim().slice(0, 200);
   return {
@@ -68,6 +69,7 @@ export function buildOrderPayload(
     lang: 'he',
     currency: 'ILS',
     vatType: 0,
+    ...(date ? { date } : {}),
     description: orderDescription(eventDate),
     // No emails on purpose: the order stays internal (the owner's choice) — Morning sends the
     // document to client.emails. `add` keeps the couple as a client so every invoice links to
@@ -134,4 +136,20 @@ export function invoiceOrderFields(
 // can retry with the number in the text only.
 export function isLinkRefusal(errorCode: number | null | undefined): boolean {
   return errorCode === 2429 || errorCode === 2404;
+}
+
+// The order's date against Morning's window for the type (GET /documents/info?type=100):
+// from the business's last order (lastDocumentDate) up to today. Error text or null.
+// Kept in step with src/lib/workOrder.js orderDateProblem.
+// receivedOn: the contract's signing day — an order is never dated before it was received.
+export function orderDateProblem(
+  date: string,
+  { today, lastDocumentDate, receivedOn }: { today?: string | null; lastDocumentDate?: string | null; receivedOn?: string | null },
+): string | null {
+  const d = String(date || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return 'בחרו תאריך להזמנה';
+  if (today && d > today) return 'אי אפשר להוציא הזמנה בתאריך עתידי';
+  if (lastDocumentDate && d < lastDocumentDate) return `Morning מאפשר תאריך מההזמנה האחרונה של העסק (${fmtDate(lastDocumentDate)}) ועד היום`;
+  if (receivedOn && d < String(receivedOn).slice(0, 10)) return `תאריך ההזמנה לא יכול להיות לפני חתימת החוזה (${fmtDate(receivedOn)})`;
+  return null;
 }

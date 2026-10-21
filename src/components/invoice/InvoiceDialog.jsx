@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import { supabase } from "@/api/supabaseClient";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -69,6 +69,7 @@ export default function InvoiceDialog({
   };
 
   const [clientName, setClientName] = useState(coupleNames || "");
+  const autoName = useRef(coupleNames || ""); // the last name filled in automatically
   const [item, setItem] = useState("");
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
@@ -116,7 +117,7 @@ export default function InvoiceDialog({
   // (e.g. typing "עדי ואופק כהן" instead of the default) without stale values
   // leaking into the next invoice opened for a different couple.
   useEffect(() => {
-    if (isOpen) setClientName(coupleNames || "");
+    if (isOpen) { setClientName(coupleNames || ""); autoName.current = coupleNames || ""; }
   }, [isOpen, coupleNames]);
 
   useEffect(() => {
@@ -160,6 +161,20 @@ export default function InvoiceDialog({
   }, [isOpen, leadId]);
 
   const order = activeOrder(orders, businessType);
+  // The invoice is issued to the order's Morning client — under the name on the order (it may
+  // have been edited there, e.g. full names), unless the owner typed another one. Only this
+  // couple's freshly loaded orders count (the window may still hold the previous couple's).
+  useEffect(() => {
+    if (ordersState !== "ready" || !order || order.lead_id !== leadId) return;
+    const name = String(order.couple_names || "").trim();
+    if (!name) return;
+    setClientName((cur) => {
+      const c = String(cur || "").trim();
+      if (c && c !== String(autoName.current || "").trim()) return cur; // typed by the owner
+      autoName.current = name;
+      return name;
+    });
+  }, [order?.id, ordersState, leadId]);
   const pending = pendingOrder(orders, businessType);
   const otherOrder = !order ? activeOrder(orders, businessType === "company" ? "sole_prop" : "company") : null;
   const orderLeft = order ? orderBalance(order, orderLead?.invoicesList || []) : null;

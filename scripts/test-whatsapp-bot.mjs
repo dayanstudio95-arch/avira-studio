@@ -2948,7 +2948,7 @@ console.log('\n— PART 63: work orders —');
   const r2 = wo.orderRemarks({ deposit: { amount: 500, invoice: { number: '245', date: '2026-10-21' }, orderNumber: 12 }, replaces: { number: 12, date: '2026-10-21', reason: 'הלקוח בחר לשלם עבור צילום וידאו ישירות לספק', supplier: 'דודו' } });
   check('remarks: replacement', r2, "הזמנה זו מחליפה את הזמנת עבודה מס' 12 מיום 21/10/2026. סיבת העדכון: הלקוח בחר לשלם עבור צילום וידאו ישירות לספק (דודו).\nמקדמה בסך 500 ₪ שולמה בחשבונית מס' 245 מיום 21/10/2026 (מקושרת להזמנה מס' 12) — חלק מהסכום הכולל.");
   const invs = [{ description: 'מקדמה', amount: 500, businessType: 'company' }, { amount: 300 }];
-  check('balance: same business only (old invoices = sole prop)', [wo.orderBalance({ total: 7500, business_type: 'company' }, invs), wo.orderBalance({ total: 1000, business_type: 'sole_prop' }, invs)], [7000, 700]);
+  check('balance: own business invoices; the other business\'s deposit counts when the order has none of its own', [wo.orderBalance({ total: 7500, business_type: 'company' }, invs), wo.orderBalance({ total: 1000, business_type: 'sole_prop' }, invs)], [7000, 200]);
   check('check: partial balance invoice', wo.invoiceOrderCheck({ item: 'תשלום יתרה', amount: 7000, balance: 12000 }), 'partial');
   check('check: full balance ok', wo.invoiceOrderCheck({ item: 'תשלום יתרה', amount: 12000, balance: 12000 }), null);
   check('check: over', wo.invoiceOrderCheck({ item: 'מקדמה', amount: 600, balance: 500 }), 'over');
@@ -2963,6 +2963,40 @@ console.log('\n— PART 63: work orders —');
   check('network error while issuing → check before retrying', wo.friendlyError(new TypeError('Failed to fetch'), { issuing: true }).includes('ייתכן שהמסמך כן הופק'), true);
   check('server message kept', wo.friendlyError(new Error('הזמנה כבר קיימת')), 'הזמנה כבר קיימת');
   check('gateway timeout while issuing → check before retrying', wo.friendlyError(new Error('generateMorningOrder failed (HTTP 504)'), { issuing: true }).includes('ייתכן שהמסמך כן הופק'), true);
+  // retroactive orders (2026-10-21): deposit from the other business, invoices already issued, the date window
+  const r3 = wo.orderRemarks({ deposit: { amount: 500, invoice: { number: '31203', date: '2026-04-16', businessLabel: 'עוסק מורשה' } }, prior: [{ description: 'תשלום יתרה', amount: 12500, number: '60001', date: '2026-10-14' }], receivedOn: '2026-04-15', documentDate: '2026-10-21' });
+  check('remarks: deposit of the other business + invoices already issued', r3, "ההזמנה התקבלה בתאריך 15/04/2026 (חתימת החוזה).\nמקדמה בסך 500 ₪ שולמה בחשבונית מס' 31203 של העוסק מורשה מיום 16/04/2026 — חלק מהסכום הכולל.\nחשבוניות שכבר הופקו לזוג: תשלום יתרה 12,500 ₪ — חשבונית מס' 60001 מיום 14/10/2026.");
+  check('remarks: order dated on the signing day → no "received on" line', wo.orderRemarks({ receivedOn: '2026-04-15', documentDate: '2026-04-15' }), '');
+  const yi = [{ amount: 12500, number: '60001', date: '2026-10-14', description: 'תשלום יתרה', businessType: 'company' }, { amount: 500, number: '31203', date: '2026-04-16', description: 'מקדמה' }];
+  check('couple invoices oldest first, old = sole prop', wo.coupleInvoices(yi).map((i) => [i.number, i.businessType]), [['31203', 'sole_prop'], ['60001', 'company']]);
+  check('deposit of any business (own first)', [wo.depositInvoiceAny(yi, 'company')?.number, wo.depositInvoiceAny(yi, 'sole_prop')?.number, wo.depositInvoiceAny([], 'company')], ['31203', '31203', null]);
+  check('business from the latest invoice', [wo.businessFromInvoices(yi), wo.businessFromInvoices([{ amount: 500, date: '2026-01-01' }]), wo.businessFromInvoices([])], ['company', 'sole_prop', null]);
+  const win = { today: '2026-10-21', lastDocumentDate: '2026-10-01' };
+  check('date window', [wo.orderDateProblem('2026-10-10', win), !!wo.orderDateProblem('2026-09-30', win), !!wo.orderDateProblem('2026-10-22', win), !!wo.orderDateProblem('', win), wo.orderDateProblem('2026-04-15', { today: '2026-10-21', lastDocumentDate: null })], [null, true, true, true, null]);
+  check('date window: same rule on the server', [so.orderDateProblem('2026-10-10', win), !!so.orderDateProblem('2026-09-30', win), !!so.orderDateProblem('2026-10-22', win)], [null, true, true]);
+  check('quick date choices with what Morning allows', wo.orderDateChoices({ ...win, signedOn: '2026-04-15', depositDate: '2026-10-05' }).map((c) => [c.key, c.allowed]), [['today', true], ['signed', false], ['deposit', true]]);
+  const back = wo.orderRemarks({ deposit: { amount: 500, invoice: { number: '31203', date: '2026-04-16', businessLabel: 'עוסק מורשה' } }, prior: [{ description: 'תשלום יתרה', amount: 12500, number: '60001', date: '2026-10-14' }], receivedOn: '2026-04-15', documentDate: '2026-04-15', recordedOn: '2026-10-21' });
+  check('remarks: order dated back — says when it was recorded; later invoices not "paid/already"', back, "ההזמנה נרשמה בספר ההזמנות ביום 21/10/2026.\nמקדמה בסך 500 ₪ — בחשבונית מס' 31203 של העוסק מורשה מיום 16/04/2026 — חלק מהסכום הכולל.\nחשבוניות שהופקו לזוג עד יום הרישום: תשלום יתרה 12,500 ₪ — חשבונית מס' 60001 מיום 14/10/2026.");
+  check('remarks: dated today → no "recorded on" line', wo.orderRemarks({ documentDate: '2026-10-21', recordedOn: '2026-10-21' }), '');
+  check('date: never before the signing day (client + server)', [wo.orderDateProblem('2026-10-10', { today: '2026-10-21', receivedOn: '2026-10-15' }), so.orderDateProblem('2026-10-10', { today: '2026-10-21', receivedOn: '2026-10-15' }), wo.orderDateProblem('2026-10-15', { today: '2026-10-21', receivedOn: '2026-10-15' })].map((x) => x === null ? null : x.startsWith('תאריך ההזמנה לא יכול')), [true, true, null]);
+  check('quick choices: a deposit before the signing day is not offered', wo.orderDateChoices({ today: '2026-10-21', lastDocumentDate: null, signedOn: '2026-10-15', depositDate: '2026-10-12' }).map((c) => [c.key, c.allowed]), [['today', true], ['signed', true], ['deposit', false]]);
+  check('balance: company order, deposit from the sole proprietor (יקיר ושני)', wo.orderBalance({ total: 13000, business_type: 'company' }, yi), 0);
+  check('balance: a deposit linked to the other business\'s own order is not counted twice', wo.orderBalance({ id: 'S', total: 1000, business_type: 'sole_prop' }, [{ description: 'מקדמה', amount: 500, businessType: 'company', workOrderId: 'C' }]), 1000);
+  check('payload: chosen document date', [so.buildOrderPayload({ coupleNames: 'a', lines: [{ description: 'x', price: 1 }], date: '2026-10-10' }).date, 'date' in so.buildOrderPayload({ coupleNames: 'a', lines: [{ description: 'x', price: 1 }] })], ['2026-10-10', false]);
+
+  const ob = await loadModule('src/lib/workOrderBook.js', 'ob63');
+  const bookLeads = [
+    { id: 'L1', status: 'נסגר/חתימה', signedAt: '2026-04-15T19:08:16Z', eventDate: '2026-10-08', finalPrice: 13000, invoicesList: yi, paymentEntity: 'company' },
+    { id: 'L2', status: 'חוזה', signedAt: '2026-03-26T10:00:00Z', eventDate: '2027-02-01', finalPrice: 9000, invoicesList: [] },
+    { id: 'L3', status: 'נסגר/חתימה', signedAt: '2026-05-01T10:00:00Z', eventDate: '2027-03-01', finalPrice: 9000 },
+    { id: 'L4', status: 'לא רלוונטי', signedAt: '2026-02-01T10:00:00Z' },
+    { id: 'L5', status: 'חדש', signedAt: null },
+  ];
+  const book = ob.missingOrders(bookLeads, [{ lead_id: 'L3', status: 'replaced' }], '2026-10-21');
+  check('book: signed couples without any order, oldest signature first', book.map((r) => r.lead.id), ['L2', 'L1']);
+  check('book: Israeli signing date, deposit, paid in full, past event', [book[1].signedOn, book[1].deposit?.number, book[1].fullyInvoiced, book[1].eventPast, book[0].fullyInvoiced, book[0].deposit], ['2026-04-15', '31203', true, true, false, null]);
+  check('book: filters by event date', [ob.filterMissing(book, 'upcoming').map((r) => r.lead.id), ob.filterMissing(book, 'past').map((r) => r.lead.id)], [['L2'], ['L1']]);
+  check('book: issued orders by number, reservations last', ob.issuedOrders([{ id: 'c', morning_number: null, created_at: '3' }, { id: 'b', morning_number: 10002 }, { id: 'a', morning_number: 10001 }]).map((o) => o.id), ['a', 'b', 'c']);
 }
 
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);

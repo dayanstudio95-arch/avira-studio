@@ -55,6 +55,7 @@ const MyEvents = lazy(() => import('./pages/MyEvents'));
 // same four roles independently of this routing.
 const WhatsAppInbox = lazy(() => import('./pages/WhatsAppInbox'));
 const Meetings = lazy(() => import('./pages/Meetings'));
+const WorkOrders = lazy(() => import('./pages/WorkOrders'));
 
 // Wedding Albums module (see CLAUDE.md's "Wedding Albums module" section) — admin
 // pages for the album_manager scoped role + full admin access, and the two public
@@ -255,6 +256,8 @@ const AuthenticatedApp = () => {
           <Route path="/WhatsAppInbox" element={<WhatsAppInbox />} />
           <Route path="/Meetings" element={<Meetings />} />
           <Route path="/BotControlCenter" element={<BotControlCenter />} />
+          {/* ספר הזמנות (2026-10-21) — admin block only; RLS on work_orders is the real boundary */}
+          <Route path="/WorkOrders" element={<WorkOrders />} />
           <Route path="/SystemAdvisor" element={<SystemAdvisor />} />
 
           {/* דף מדריך סטטי, admin-only — ההגנה כאן היא רק בכך שהראוט הזה נמצא בבלוק

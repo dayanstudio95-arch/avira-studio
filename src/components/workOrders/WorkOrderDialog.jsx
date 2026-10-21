@@ -11,7 +11,8 @@ import { useAuth } from "@/lib/SupabaseAuthContext";
 import { todayInIsrael } from "@/lib/localDate";
 import { ENTITIES, ENTITY_KEYS, defaultEntity } from "@/lib/paymentEntity";
 import {
-  DEFAULT_WORK_ORDER_NOTE, defaultOrderLines, packageForLead, linesTotal, orderRemarks, depositInvoiceOf, fmtDate, VIDEO_LINE, friendlyError, israelDateOf,
+  DEFAULT_WORK_ORDER_NOTE, defaultOrderLines, packageForLead, linesTotal, orderRemarks, fmtDate, VIDEO_LINE, friendlyError, israelDateOf,
+  coupleInvoices, depositInvoiceAny, businessFromInvoices, orderDateProblem, orderDateChoices,
 } from "@/lib/workOrder";
 import PdfPreview from "./PdfPreview";
 import { notifyWorkOrdersChanged } from "./useWorkOrders";
@@ -42,30 +43,58 @@ export default function WorkOrderDialog({ isOpen, onClose, lead, replaceOrder = 
   const [pendingMsg, setPendingMsg] = useState(null);
   // Replacement: also lower the couple's final price by what left the order (owner's choice).
   const [updatePrice, setUpdatePrice] = useState(true);
+  // The name on the document (editable — e.g. full names) and the document's date.
+  const [clientName, setClientName] = useState("");
+  const [docDate, setDocDate] = useState(today);
+  // Morning's window for the order's date: { today, lastDocumentDate, nextNumber } of the business.
+  const [morningInfo, setMorningInfo] = useState(null);
+  const [infoError, setInfoError] = useState(null);
 
   const receivedOn = israelDateOf(lead?.signedAt);
   const finalPrice = Number(lead?.finalPrice) || 0;
+  const invoices = coupleInvoices(lead?.invoicesList);
 
   // A replacement order with no video row left drops the subcontractor clause — the video is
   // no longer part of the order, and the reason line already says why (still editable).
-  const buildRemarks = (b, n, rsn, sup, ls = lines) => {
-    const dep = depositInvoiceOf(lead?.invoicesList, b);
-    const clause = replaceOrder && !ls.some((l) => l.description === VIDEO_LINE) ? "" : n;
+  // The deposit invoice is named even when the other business issued it; the couple's other
+  // invoices already issued are listed too (orders recorded after the payments).
+  const buildRemarks = (o = {}) => {
+    const b = o.business ?? business;
+    const ls = o.lines ?? lines;
+    const dep = depositInvoiceAny(lead?.invoicesList, b);
+    const clause = replaceOrder && !ls.some((l) => l.description === VIDEO_LINE) ? "" : (o.note ?? note);
+    const label = (t) => (b && t && t !== b ? ENTITIES[t]?.label : null);
     return orderRemarks({
       note: clause,
-      deposit: { amount: dep?.amount || depositAmount, invoice: dep ? { number: dep.number, date: dep.date } : null, orderNumber: replaceOrder && dep?.workOrderNumber ? dep.workOrderNumber : null },
+      deposit: {
+        amount: dep?.amount || depositAmount,
+        invoice: dep ? { number: dep.number, date: dep.date, businessLabel: label(dep.businessType) } : null,
+        orderNumber: replaceOrder && dep?.workOrderNumber ? dep.workOrderNumber : null,
+      },
+      prior: invoices.filter((i) => !(dep && i.number === dep.number && i.businessType === dep.businessType))
+        .map((i) => ({ description: i.description, amount: i.amount, number: i.number, date: i.date, businessLabel: label(i.businessType) })),
       receivedOn,
-      documentDate: today,
-      replaces: replaceOrder ? { number: replaceOrder.morning_number, date: replaceOrder.document_date, reason: rsn, supplier: sup } : null,
+      documentDate: o.docDate ?? docDate,
+      recordedOn: today,
+      replaces: replaceOrder ? { number: replaceOrder.morning_number, date: replaceOrder.document_date, reason: o.reason ?? reason, supplier: o.supplier ?? supplier } : null,
     });
   };
+
+  // The latest builder / date, for answers that arrive after a re-render (Morning's info).
+  const buildRemarksRef = useRef(buildRemarks);
+  buildRemarksRef.current = buildRemarks;
+  const docDateRef = useRef(docDate);
+  docDateRef.current = docDate;
 
   // Fresh defaults each time the window opens.
   useEffect(() => {
     if (!isOpen || !lead) return;
     let alive = true;
     setPreview(null); setError(null); setLoaded(false); setSupplier(""); setReason(DEFAULT_REPLACE_REASON); setPendingMsg(null); setUpdatePrice(true);
-    const b = replaceOrder?.business_type || defaultEntity(lead) || null;
+    // a replacement keeps the name of the order it replaces (it may have been edited there)
+    setClientName(String(replaceOrder?.couple_names || lead.coupleNames || "").trim()); setDocDate(today); setMorningInfo(null); setInfoError(null);
+    // The couple's business; never set → the business of their latest invoice.
+    const b = replaceOrder?.business_type || defaultEntity(lead) || businessFromInvoices(lead.invoicesList) || null;
     setBusiness(b);
     (async () => {
       const [packages, settings] = await Promise.all([
@@ -88,11 +117,57 @@ export default function WorkOrderDialog({ isOpen, onClose, lead, replaceOrder = 
         setNeedsSplit(d.needsSplit);
       }
       setLines(initial);
-      setRemarks(buildRemarks(b, n, DEFAULT_REPLACE_REASON, "", initial));
+      setRemarks(buildRemarks({ business: b, note: n, reason: DEFAULT_REPLACE_REASON, supplier: "", lines: initial, docDate: today }));
       setLoaded(true);
     })();
     return () => { alive = false; };
   }, [isOpen, lead?.id, replaceOrder?.id]);
+
+  // Morning's date window for the chosen business (read-only call). A date outside it moves
+  // back to today.
+  useEffect(() => {
+    if (!isOpen || !business) return;
+    let alive = true;
+    setMorningInfo(null); setInfoError(null);
+    base44.functions.invoke("generateMorningOrder", { action: "info", businessType: business })
+      .then((res) => {
+        if (!alive) return;
+        const d = res?.data || {};
+        if (!d.success) throw new Error(d.error || "לא התקבלו פרטים מ-Morning");
+        setMorningInfo({ today: d.today, lastDocumentDate: d.lastDocumentDate, nextNumber: d.nextNumber, first: d.first });
+        const cur = docDateRef.current;
+        if (orderDateProblem(cur, { today: d.today, lastDocumentDate: d.lastDocumentDate, receivedOn })) {
+          setDocDate(d.today);
+          setRemarks(buildRemarksRef.current({ docDate: d.today }));
+          setPreview(null);
+        }
+      })
+      .catch((e) => {
+        if (!alive) return;
+        setInfoError(friendlyError(e, { fallback: "לא הצלחנו לקרוא מ-Morning את תאריך ההזמנה האחרונה" }));
+        // without Morning's window only today can be issued
+        if (docDateRef.current !== today) {
+          setDocDate(today);
+          setRemarks(buildRemarksRef.current({ docDate: today }));
+          setPreview(null);
+        }
+      });
+    return () => { alive = false; };
+  }, [isOpen, business]);
+
+  // Until Morning answered (or if it could not be read), only today — the server needs that
+  // answer anyway and would refuse anything else.
+  const dateWindow = morningInfo
+    ? { today: morningInfo.today || today, lastDocumentDate: morningInfo.lastDocumentDate || null, receivedOn }
+    : { today, lastDocumentDate: today, receivedOn };
+  const depositInv = depositInvoiceAny(lead?.invoicesList, business);
+  const dateChoices = orderDateChoices({ ...dateWindow, signedOn: receivedOn, depositDate: depositInv?.date || null });
+  // the earliest date allowed: Morning's last order, and never before the signing day
+  const minDate = [dateWindow.lastDocumentDate, receivedOn].filter(Boolean).sort().pop() || undefined;
+  const dateProblemNow = !morningInfo
+    ? (docDate !== today ? (infoError ? "לא הצלחנו לבדוק ב-Morning איזה תאריך מותר — אפשר להוציא רק בתאריך של היום" : "בודק ב-Morning איזה תאריך מותר — רגע") : null)
+    : orderDateProblem(docDate, dateWindow);
+  const pickDate = (d) => { setDocDate(d); setRemarks(buildRemarks({ docDate: d })); setPreview(null); };
 
   const total = useMemo(() => linesTotal(lines), [lines]);
   const mismatch = !replaceOrder && finalPrice > 0 && Math.abs(total - finalPrice) > 0.5;
@@ -104,7 +179,8 @@ export default function WorkOrderDialog({ isOpen, onClose, lead, replaceOrder = 
   const payload = () => ({
     businessType: business,
     leadId: lead.id,
-    coupleNames: lead.coupleNames,
+    coupleNames: clientName.trim(),
+    documentDate: docDate,
     eventDate: lead.eventDate || null,
     lines: lines.map((l) => ({ description: String(l.description || "").trim(), price: Number(l.price) })),
     remarks,
@@ -118,6 +194,9 @@ export default function WorkOrderDialog({ isOpen, onClose, lead, replaceOrder = 
 
   const check = () => {
     if (!business) return "בחרו מאיזה עסק להוציא";
+    if (!clientName.trim()) return "חסר שם הלקוח במסמך";
+    const dp = dateProblemNow;
+    if (dp) return dp;
     if (!lines.length) return "צריך לפחות שורה אחת";
     if (lines.some((l) => !String(l.description || "").trim() || !(Number(l.price) > 0))) return "לכל שורה צריך תיאור וסכום";
     return null;
@@ -149,7 +228,7 @@ export default function WorkOrderDialog({ isOpen, onClose, lead, replaceOrder = 
     if (problem) { setError(problem); return; }
     const ok = await confirmDialog({
       title: replaceOrder ? `להפיק הזמנה מעודכנת ל${lead.coupleNames}?` : `להפיק הזמנת עבודה ל${lead.coupleNames}?`,
-      message: `${ENTITIES[business].label} · ${total.toLocaleString("he-IL")} ₪${replaceOrder ? ` · הזמנה מס' ${replaceOrder.morning_number} תיסגר` : ""}\nזה מסמך אמיתי בספרים של Morning — אי אפשר לערוך או למחוק אותו אחר כך.`,
+      message: `${clientName.trim()} · ${ENTITIES[business].label} · ${total.toLocaleString("he-IL")} ₪ · תאריך ${fmtDate(docDate)}${replaceOrder ? ` · הזמנה מס' ${replaceOrder.morning_number} תיסגר` : ""}\nזה מסמך אמיתי בספרים של Morning — אי אפשר לערוך או למחוק אותו אחר כך.`,
       confirmText: "הפק",
     });
     if (!ok) return;
@@ -199,7 +278,7 @@ export default function WorkOrderDialog({ isOpen, onClose, lead, replaceOrder = 
         ) : (
           <div className="space-y-4 text-sm">
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-xl border border-gray-700 bg-gray-800/60 p-3">
-              <div><span className="text-gray-400">תאריך ההזמנה: </span>{fmtDate(today)}</div>
+              <div><span className="text-gray-400">תאריך החתימה: </span>{receivedOn ? fmtDate(receivedOn) : "—"}</div>
               <div><span className="text-gray-400">תאריך האירוע: </span>{lead.eventDate ? fmtDate(lead.eventDate) : "—"}</div>
               <div><span className="text-gray-400">חבילה: </span>{lead.packageChoice || "—"}</div>
               <div><span className="text-gray-400">מחיר סופי: </span>{finalPrice ? `${finalPrice.toLocaleString("he-IL")} ₪` : "—"}</div>
@@ -213,7 +292,7 @@ export default function WorkOrderDialog({ isOpen, onClose, lead, replaceOrder = 
                     key={k}
                     type="button"
                     disabled={!!replaceOrder}
-                    onClick={() => { setBusiness(k); setRemarks(buildRemarks(k, note, reason, supplier)); setPreview(null); }}
+                    onClick={() => { setBusiness(k); setRemarks(buildRemarks({ business: k })); setPreview(null); }}
                     className={`min-h-[44px] rounded-xl border px-3 font-semibold disabled:cursor-not-allowed ${tone(k, business === k)} ${replaceOrder && business !== k ? "opacity-40" : ""}`}
                   >
                     {ENTITIES[k].label}
@@ -221,6 +300,52 @@ export default function WorkOrderDialog({ isOpen, onClose, lead, replaceOrder = 
                 ))}
               </div>
               {replaceOrder && <div className="mt-1 text-xs text-gray-500">הזמנה מעודכנת יוצאת מאותו עסק של ההזמנה המקורית.</div>}
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <div className="mb-1 text-gray-300">שם הלקוח במסמך</div>
+                <Input value={clientName} onChange={(e) => { setClientName(e.target.value); setPreview(null); }} maxLength={200} placeholder="שמות הזוג" className="border-gray-700 bg-gray-800 text-white" />
+                <div className="mt-1 text-xs text-gray-500">כך יופיע ב-Morning, וגם בחשבוניות שיקושרו להזמנה. אחרי ההפקה אי אפשר לשנות.</div>
+              </div>
+              <div>
+                <div className="mb-1 text-gray-300">תאריך ההזמנה</div>
+                <Input
+                  type="date"
+                  value={docDate}
+                  min={minDate}
+                  max={dateWindow.today}
+                  onChange={(e) => pickDate(e.target.value)}
+                  className="border-gray-700 bg-gray-800 text-white"
+                  dir="ltr"
+                />
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {dateChoices.map((c) => (
+                    <button
+                      key={c.key}
+                      type="button"
+                      disabled={!c.allowed}
+                      onClick={() => pickDate(c.date)}
+                      title={c.allowed ? "" : !morningInfo
+                        ? (infoError ? "אין חיבור ל-Morning — אפשר רק בתאריך של היום" : "בודק ב-Morning איזה תאריך מותר")
+                        : (orderDateProblem(c.date, dateWindow) || "")}
+                      className={`rounded-full border px-2.5 py-1 text-xs ${docDate === c.date ? "border-sky-400 bg-sky-900/50 text-sky-100" : "border-gray-600 text-gray-300 hover:bg-gray-800"} disabled:cursor-not-allowed disabled:opacity-40`}
+                    >
+                      {c.label} {fmtDate(c.date)}
+                    </button>
+                  ))}
+                </div>
+                {dateProblemNow && <div className="mt-1 text-xs text-amber-300">{dateProblemNow}</div>}
+                <div className="mt-1 text-xs text-gray-500">
+                  {infoError
+                    ? <span className="text-amber-300">{infoError}</span>
+                    : morningInfo
+                      ? (morningInfo.lastDocumentDate
+                        ? <>אפשר מ-{fmtDate(minDate)} ({minDate === morningInfo.lastDocumentDate ? "ההזמנה האחרונה של העסק ב-Morning" : "חתימת החוזה"}) ועד היום{morningInfo.nextNumber ? ` · המספר הבא: ${morningInfo.nextNumber}` : ""}.</>
+                        : <>זו ההזמנה הראשונה של העסק ב-Morning{morningInfo.nextNumber ? ` (מס' ${morningInfo.nextNumber})` : ""} — אפשר לבחור תאריך מהחתימה ועד היום; התצוגה המקדימה תראה אם Morning מקבל אותו. אחריה, כל הזמנה תהיה מהתאריך הזה והלאה.</>)
+                      : business ? "בודק ב-Morning איזה תאריך מותר…" : "בחרו עסק כדי לראות איזה תאריך מותר."}
+                </div>
+              </div>
             </div>
 
             <div>
@@ -256,6 +381,28 @@ export default function WorkOrderDialog({ isOpen, onClose, lead, replaceOrder = 
               )}
             </div>
 
+            <div>
+              <div className="mb-1 text-gray-300">החשבוניות של הזוג</div>
+              {invoices.length === 0 ? (
+                <div className="text-xs text-gray-500">עוד לא הופקו חשבוניות לזוג.</div>
+              ) : (
+                <div className="divide-y divide-gray-800 rounded-lg border border-gray-700 bg-gray-800/40 text-xs">
+                  {invoices.map((i, idx) => (
+                    <div key={`${i.number}-${idx}`} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 px-2.5 py-1.5">
+                      <span className="font-semibold text-gray-100">{fmtDate(i.date)} · {i.description || "חשבונית"}</span>
+                      <span className="text-gray-300">
+                        {Number(i.amount).toLocaleString("he-IL")} ₪ · מס' {i.number || "—"}
+                        <span className={`mr-1.5 rounded-full px-1.5 py-0.5 ${i.businessType === "company" ? "bg-purple-500/20 text-purple-200" : "bg-emerald-500/20 text-emerald-200"}`}>{ENTITIES[i.businessType]?.short}</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {business && invoices.some((i) => i.businessType !== business) && (
+                <div className="mt-1 text-xs text-amber-300">חלק מהחשבוניות הופקו מה{ENTITIES[business === "company" ? "sole_prop" : "company"]?.label} — הן מופיעות בהערות עם שם העסק.</div>
+              )}
+            </div>
+
             {replaceOrder && priceDrop > 0 && finalPrice > 0 && (
               <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-gray-700 bg-gray-800/60 p-2.5 text-xs text-gray-200">
                 <input type="checkbox" checked={updatePrice} onChange={(e) => setUpdatePrice(e.target.checked)} className="mt-0.5 h-4 w-4 accent-amber-500" />
@@ -270,11 +417,11 @@ export default function WorkOrderDialog({ isOpen, onClose, lead, replaceOrder = 
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <div>
                   <div className="mb-1 text-gray-300">סיבת העדכון</div>
-                  <Input value={reason} onChange={(e) => { setReason(e.target.value); setRemarks(buildRemarks(business, note, e.target.value, supplier)); setPreview(null); }} className="border-gray-700 bg-gray-800 text-white" />
+                  <Input value={reason} onChange={(e) => { setReason(e.target.value); setRemarks(buildRemarks({ reason: e.target.value })); setPreview(null); }} className="border-gray-700 bg-gray-800 text-white" />
                 </div>
                 <div>
                   <div className="mb-1 text-gray-300">שם הספק (לא חובה)</div>
-                  <Input value={supplier} onChange={(e) => { setSupplier(e.target.value); setRemarks(buildRemarks(business, note, reason, e.target.value)); setPreview(null); }} placeholder="למשל: דודו וידאו" className="border-gray-700 bg-gray-800 text-white" />
+                  <Input value={supplier} onChange={(e) => { setSupplier(e.target.value); setRemarks(buildRemarks({ supplier: e.target.value })); setPreview(null); }} placeholder="למשל: דודו וידאו" className="border-gray-700 bg-gray-800 text-white" />
                 </div>
               </div>
             )}
@@ -282,7 +429,7 @@ export default function WorkOrderDialog({ isOpen, onClose, lead, replaceOrder = 
             <div>
               <div className="mb-1 flex items-center justify-between">
                 <span className="text-gray-300">הערות שיודפסו על ההזמנה</span>
-                <button type="button" onClick={() => { setRemarks(buildRemarks(business, note, reason, supplier)); setPreview(null); }} className="flex items-center gap-1 text-xs text-gray-400 hover:text-white">
+                <button type="button" onClick={() => { setRemarks(buildRemarks()); setPreview(null); }} className="flex items-center gap-1 text-xs text-gray-400 hover:text-white">
                   <RotateCcw className="h-3.5 w-3.5" /> לנוסח המקורי
                 </button>
               </div>

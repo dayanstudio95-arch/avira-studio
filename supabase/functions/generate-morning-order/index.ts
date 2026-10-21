@@ -9,6 +9,8 @@
 //              looks the order up in Morning (POST /documents/search) and either completes the
 //              row or releases it. Never issues anything.
 //   linked   — GET /documents/{id}/linked: the documents Morning holds as linked to an order.
+//   info     — GET /documents/info?type=100: the business's last order date, today, next number
+//              (the window the order's date may be chosen in). Read-only.
 // A Morning document cannot be deleted, so a second order must never be issued by accident:
 // the row is reserved BEFORE Morning is called ('issuing'; the replaced order is claimed as
 // 'replacing'), and the unique index in 0091 makes a concurrent attempt fail first.
@@ -19,7 +21,7 @@ import { createUserClient, getRequestUser } from '../_shared/supabaseClients.ts'
 import { getCallerProfile, isAdmin } from '../_shared/permissions.ts';
 import { openMorningSession, morningErrorText, businessTypeOf, BUSINESS_LABEL, isDefiniteRefusal } from '../_shared/morningClient.ts';
 import {
-  validateOrderLines, linesTotal, buildOrderPayload, mergeRemarks, MAX_REMARKS, ORDER_DOC_TYPE, dateOrNull, classifyIssuedOrders,
+  validateOrderLines, linesTotal, buildOrderPayload, mergeRemarks, MAX_REMARKS, ORDER_DOC_TYPE, dateOrNull, classifyIssuedOrders, orderDateProblem,
 } from '../_shared/workOrder.ts';
 
 // An unfinished issue may be checked only after this — far beyond the 60s limit on every
@@ -114,6 +116,21 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const action = String(body?.action || '');
 
+    // ---- info ------------------------------------------------------------------
+    if (action === 'info') {
+      const session = await openMorningSession(supabase, businessTypeOf(body.businessType));
+      if (!session.ok) return jsonResponse({ error: session.message }, { status: session.status });
+      const info = await session.call('GET', `/documents/info?type=${ORDER_DOC_TYPE}`);
+      if (!info.ok) return jsonResponse({ error: morningErrorText(info, 'קריאת פרטי ההזמנות ב-Morning') }, { status: 502 });
+      return jsonResponse({
+        success: true,
+        today: (typeof info.data?.today === 'string' && info.data.today) || israelDate(new Date()),
+        lastDocumentDate: typeof info.data?.lastDocumentDate === 'string' ? info.data.lastDocumentDate.slice(0, 10) : null,
+        first: info.data?.first ?? null,
+        nextNumber: info.data?.number ?? null,
+      });
+    }
+
     // ---- linked ----------------------------------------------------------------
     if (action === 'linked') {
       const { data: order } = await supabase.from('work_orders').select('*').eq('id', String(body.orderId || '')).maybeSingle();
@@ -146,13 +163,18 @@ Deno.serve(async (req) => {
         : { data: null };
       const session = await openMorningSession(supabase, slot.business_type);
       if (!session.ok) return jsonResponse({ error: session.message }, { status: session.status });
-      // Every order document of the business since the day before the attempt — no client
-      // filter, so a name Morning stored differently cannot hide it. All pages, or no decision.
+      // Every order document of the business dated since the earlier of the order's own date
+      // (it may be dated back) and the day before the attempt — the search filters by document
+      // date; classifyIssuedOrders then keeps those CREATED since the attempt. No client filter,
+      // so a name Morning stored differently cannot hide it. All pages, or no decision.
+      const dayBefore = israelDate(new Date(since - 24 * 3600 * 1000));
+      const slotDate = String(slot.document_date || '').slice(0, 10);
+      const searchFrom = /^\d{4}-\d{2}-\d{2}$/.test(slotDate) && slotDate < dayBefore ? slotDate : dayBefore;
       const items: any[] = [];
       let complete = false;
       for (let page = 1; page <= SEARCH_MAX_PAGES; page++) {
         const r = await session.call('POST', '/documents/search', {
-          page, pageSize: 100, type: [ORDER_DOC_TYPE], fromDate: israelDate(new Date(since - 24 * 3600 * 1000)),
+          page, pageSize: 100, type: [ORDER_DOC_TYPE], fromDate: searchFrom,
         });
         if (!r.ok) return jsonResponse({ error: `${morningErrorText(r, 'החיפוש')}. לא שיניתי כלום — נסו שוב מאוחר יותר.` }, { status: 502 });
         items.push(...(Array.isArray(r.data?.items) ? r.data.items : []));
@@ -211,7 +233,7 @@ Deno.serve(async (req) => {
     const ourRemarks = String(body.remarks || '').trim();
     if (ourRemarks.length > MAX_REMARKS) return jsonResponse({ error: `ההערה ארוכה מדי (עד ${MAX_REMARKS} תווים)` }, { status: 400 });
 
-    const { data: lead } = await supabase.from('leads').select('id').eq('id', leadId).maybeSingle();
+    const { data: lead } = await supabase.from('leads').select('id, signed_at').eq('id', leadId).maybeSingle();
     if (!lead) return jsonResponse({ error: 'הליד לא נמצא' }, { status: 404 });
 
     let replaced: any = null;
@@ -247,18 +269,28 @@ Deno.serve(async (req) => {
         error: `ההערות ארוכות מדי: יחד עם ההערה הקבועה של העסק ב-Morning מותר עד ${MAX_REMARKS} תווים — קצרו ב-${remarks.length - MAX_REMARKS} תווים.`,
       }, { status: 400 });
     }
-    const payload = buildOrderPayload({ coupleNames, eventDate, lines, remarks, clientId: replaced?.morning_client_id || null });
+    // The document's date: the one chosen in the window, inside Morning's window for orders
+    // (from the business's last order up to today, in the business's timezone — not UTC).
+    // No date sent → today.
+    const today = (typeof info.data?.today === 'string' && info.data.today) || israelDate(new Date());
+    const lastDocumentDate = typeof info.data?.lastDocumentDate === 'string' ? info.data.lastDocumentDate.slice(0, 10) : null;
+    const docDate = dateOrNull(body.documentDate) || today;
+    // never before the contract was signed (the receipt date the order book records)
+    const signedOn = lead.signed_at ? israelDate(new Date(lead.signed_at)) : null;
+    const dateProblem = orderDateProblem(docDate, { today, lastDocumentDate, receivedOn: signedOn });
+    if (dateProblem) return jsonResponse({ error: dateProblem }, { status: 400 });
+    const payload = buildOrderPayload({ coupleNames, eventDate, lines, remarks, clientId: replaced?.morning_client_id || null, date: docDate });
+    // Morning's own date refusal (2405), with the window it allows
+    const dateHint = (r: any) => (r.errorCode === 2405 ? ` — Morning מקבל תאריך ${lastDocumentDate ? `מ-${lastDocumentDate.split('-').reverse().join('/')} ` : ''}ועד היום` : '');
 
     // ---- preview ------------------------------------------------------------------
     if (action === 'preview') {
       const r = await session.call('POST', '/documents/preview', payload);
-      if (!r.ok || !r.data?.file) return jsonResponse({ error: morningErrorText(r, 'תצוגה מקדימה') }, { status: 502 });
+      if (!r.ok || !r.data?.file) return jsonResponse({ error: `${morningErrorText(r, 'תצוגה מקדימה')}${dateHint(r)}` }, { status: 502 });
       return jsonResponse({ success: true, file: r.data.file, nextNumber: info.data?.number ?? null });
     }
 
     // ---- create -------------------------------------------------------------------
-    // The document's date is "today" in the business's timezone (DocumentInfo.today), not UTC.
-    const today = (typeof info.data?.today === 'string' && info.data.today) || israelDate(new Date());
 
     // 1. Reserve (one transaction): claim the replaced order and write the 'issuing' row —
     //    before anything reaches Morning. A concurrent attempt fails here.
@@ -266,8 +298,8 @@ Deno.serve(async (req) => {
       p_lead_id: leadId,
       p_business_type: businessType,
       p_replaces: replaced?.id || null,
-      p_document_date: today,
-      p_received_on: receivedOn,
+      p_document_date: docDate,
+      p_received_on: signedOn || receivedOn,
       p_couple_names: coupleNames,
       p_event_date: eventDate,
       p_lines: lines,
@@ -287,7 +319,7 @@ Deno.serve(async (req) => {
     if (!created.ok || !created.data?.id) {
       if (isDefiniteRefusal(created)) {
         const rel = await release(supabase, slot.id);
-        const err = morningErrorText(created, 'הפקת ההזמנה');
+        const err = `${morningErrorText(created, 'הפקת ההזמנה')}${dateHint(created)}`;
         // Morning refused, so nothing exists there; if even the release failed, the card shows
         // the reservation and "בדוק מול Morning" clears it.
         return jsonResponse({ error: rel.released ? err : `${err}. (שמירת המקום לא שוחררה — לחצו "בדוק מול Morning" בכרטיס.)` }, { status: 502 });

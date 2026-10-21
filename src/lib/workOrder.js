@@ -60,41 +60,114 @@ export function linesTotal(lines) {
 
 // The remarks printed on the order. All parts optional:
 //   note       — the subcontractor clause (template)
-//   deposit    — { amount, invoice?: { number, date } , orderNumber? }
+//   deposit    — { amount, invoice?: { number, date, businessLabel? }, orderNumber? }
+//                businessLabel: set when the deposit was invoiced by the OTHER business
+//   prior      — invoices already issued to the couple before this order (not the deposit):
+//                [{ description, amount, number, date, businessLabel? }]
 //   receivedOn — the contract's signing date, when the order is dated later
+//   recordedOn — the day the order is actually issued (today); when the order carries an
+//                earlier date this is said, and invoices dated after the order's date are
+//                described without "paid/already" (they came after that date)
 //   replaces   — { number, date, reason, supplier }
-export function orderRemarks({ note, deposit, receivedOn, documentDate, replaces } = {}) {
+export function orderRemarks({ note, deposit, prior, receivedOn, documentDate, recordedOn, replaces } = {}) {
+  const docDay = documentDate ? String(documentDate).slice(0, 10) : null;
+  const backdated = !!(docDay && recordedOn && docDay < String(recordedOn).slice(0, 10));
+  const afterOrderDate = (d) => !!(docDay && d && String(d).slice(0, 10) > docDay);
   const parts = [];
   if (replaces) {
     let line = `הזמנה זו מחליפה את הזמנת עבודה מס' ${replaces.number} מיום ${fmtDate(replaces.date)}.`;
     if (replaces.reason) line += ` סיבת העדכון: ${String(replaces.reason).trim().replace(/\.$/, "")}${replaces.supplier ? ` (${String(replaces.supplier).trim()})` : ""}.`;
     parts.push(line);
   }
-  if (receivedOn && (!documentDate || String(receivedOn).slice(0, 10) < String(documentDate).slice(0, 10))) {
+  if (receivedOn && (!documentDate || String(receivedOn).slice(0, 10) !== String(documentDate).slice(0, 10))) {
     parts.push(`ההזמנה התקבלה בתאריך ${fmtDate(receivedOn)} (חתימת החוזה).`);
   }
+  if (backdated) parts.push(`ההזמנה נרשמה בספר ההזמנות ביום ${fmtDate(recordedOn)}.`);
   if (deposit && money(deposit.amount) > 0) {
     if (deposit.invoice?.number) {
-      parts.push(`מקדמה בסך ${ils(deposit.amount)} שולמה בחשבונית מס' ${deposit.invoice.number}${deposit.invoice.date ? ` מיום ${fmtDate(deposit.invoice.date)}` : ""}${deposit.orderNumber ? ` (מקושרת להזמנה מס' ${deposit.orderNumber})` : ""} — חלק מהסכום הכולל.`);
+      const where = deposit.invoice.businessLabel ? ` של ה${deposit.invoice.businessLabel}` : "";
+      const verb = afterOrderDate(deposit.invoice.date) ? "—" : "שולמה";
+      parts.push(`מקדמה בסך ${ils(deposit.amount)} ${verb} בחשבונית מס' ${deposit.invoice.number}${where}${deposit.invoice.date ? ` מיום ${fmtDate(deposit.invoice.date)}` : ""}${deposit.orderNumber ? ` (מקושרת להזמנה מס' ${deposit.orderNumber})` : ""} — חלק מהסכום הכולל.`);
     } else {
       parts.push(`מקדמה לשריון התאריך בסך ${ils(deposit.amount)} — חלק מהסכום הכולל.`);
     }
+  }
+  const before = (prior || []).filter((i) => i && money(i.amount) > 0 && i.number);
+  if (before.length) {
+    const items = before.map((i) =>
+      `${i.description || "תשלום"} ${ils(i.amount)} — חשבונית מס' ${i.number}${i.businessLabel ? ` של ה${i.businessLabel}` : ""}${i.date ? ` מיום ${fmtDate(i.date)}` : ""}`);
+    parts.push(`${backdated ? "חשבוניות שהופקו לזוג עד יום הרישום" : "חשבוניות שכבר הופקו לזוג"}: ${items.join("; ")}.`);
   }
   if (note && String(note).trim()) parts.push(String(note).trim());
   return parts.join("\n");
 }
 
-// The couple's invoices that count against an order of business `businessType`: every invoice
-// of that business (also ones issued before the order existed — a deposit paid at signing).
-// Old invoices without a businessType were issued by the sole proprietorship.
+// The couple's invoices, oldest first (old ones without businessType are the sole proprietor's).
+export function coupleInvoices(invoices) {
+  return (invoices || [])
+    .filter((i) => i && money(i.amount) > 0)
+    .map((i) => ({ ...i, businessType: i.businessType || "sole_prop" }))
+    .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+}
+
+// The deposit invoice to mention: the order's own business first, otherwise the other one's.
+export function depositInvoiceAny(invoices, businessType) {
+  const list = coupleInvoices(invoices).filter((i) => i.description === DEPOSIT_ITEM);
+  return list.find((i) => i.businessType === businessType) || list[0] || null;
+}
+
+// The business of the couple's most recent invoice — a default when the couple's business
+// was never set (old invoices are the sole proprietor's).
+export function businessFromInvoices(invoices) {
+  const list = coupleInvoices(invoices);
+  return list.length ? list[list.length - 1].businessType : null;
+}
+
+// The order's date: Morning accepts from the business's last order of this type up to today
+// (GET /documents/info?type=100 → lastDocumentDate, today). Earlier is Morning-website-only
+// (≤60 days) and not offered here. Returns an error text or null.
+// receivedOn: the contract's signing day — an order is never dated before it was received.
+// Kept in step with supabase/functions/_shared/workOrder.ts orderDateProblem.
+export function orderDateProblem(date, { today, lastDocumentDate, receivedOn } = {}) {
+  const d = String(date || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return "בחרו תאריך להזמנה";
+  if (today && d > today) return "אי אפשר להוציא הזמנה בתאריך עתידי";
+  if (lastDocumentDate && d < lastDocumentDate) return `Morning מאפשר תאריך מההזמנה האחרונה של העסק (${fmtDate(lastDocumentDate)}) ועד היום`;
+  if (receivedOn && d < String(receivedOn).slice(0, 10)) return `תאריך ההזמנה לא יכול להיות לפני חתימת החוזה (${fmtDate(receivedOn)})`;
+  return null;
+}
+
+// Quick picks for the date: today, the signing day, the deposit invoice's day — each with
+// whether Morning would accept it.
+export function orderDateChoices({ today, lastDocumentDate, signedOn, depositDate } = {}) {
+  const raw = [
+    { key: "today", label: "היום", date: today },
+    { key: "signed", label: "תאריך החתימה", date: signedOn },
+    { key: "deposit", label: "תאריך חשבונית המקדמה", date: depositDate },
+  ];
+  return raw.filter((c) => c.date)
+    .map((c) => ({ ...c, date: String(c.date).slice(0, 10), allowed: !orderDateProblem(c.date, { today, lastDocumentDate, receivedOn: signedOn }) }));
+}
+
 export function invoicesForBusiness(invoices, businessType) {
   return (invoices || []).filter((i) => (i.businessType || "sole_prop") === businessType);
 }
 
 // What is left to invoice on the active order.
+// What is left to invoice on an order: its total minus the invoices of its business — and,
+// when the deposit was invoiced by the OTHER business, that deposit too (the order's remarks
+// name it as part of the total).
 export function orderBalance(order, invoices) {
   if (!order) return null;
-  const paid = invoicesForBusiness(invoices, order.business_type || order.businessType).reduce((s, i) => s + (Number(i.amount) || 0), 0);
+  const b = order.business_type || order.businessType;
+  const own = invoicesForBusiness(invoices, b);
+  let paid = own.reduce((s, i) => s + (Number(i.amount) || 0), 0);
+  if (!own.some((i) => i.description === DEPOSIT_ITEM)) {
+    const dep = depositInvoiceAny(invoices, b);
+    // …unless that deposit already belongs to the other business's own order
+    const linkedElsewhere = dep?.workOrderId && dep.workOrderId !== order.id;
+    if (dep && dep.businessType !== b && !linkedElsewhere) paid += Number(dep.amount) || 0;
+  }
   return money(Number(order.total) - paid);
 }
 
