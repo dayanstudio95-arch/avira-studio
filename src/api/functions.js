@@ -67,6 +67,7 @@ const FUNCTION_MAP = {
   whatsappAiAssist: 'whatsapp-ai-assist',
   whatsappSendBotMessage: 'whatsapp-send-bot-message',
   whatsappForwardMessage: 'whatsapp-forward-message',
+  generateMorningOrder: 'generate-morning-order',
   pushTest: 'push-test',
   monthlyCrewSchedule: 'monthly-crew-schedule',
   sendQuestionnaireReminders: 'send-questionnaire-reminders',

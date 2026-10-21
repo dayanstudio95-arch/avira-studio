@@ -1676,7 +1676,10 @@ section('steps: skip, continue where you left, finish');
 {
   check('new → first step', ps.currentStep(null), 'status');
   const f1 = ps.advance(null, 'status', 'done', new Date('2026-10-07T10:00:00Z'));
-  check('after status → invoice', ps.currentStep(f1), 'invoice');
+  // 2026-10-21: the work order step comes between status and the deposit invoice.
+  check('after status → work order', ps.currentStep(f1), 'order');
+  check('after the order → invoice', ps.currentStep(ps.advance(f1, 'order', 'done')), 'invoice');
+  check('a flow saved on invoice stays on invoice', ps.currentStep({ step: 'invoice', done: { status: 'done' } }), 'invoice');
   check('startedAt set', f1.startedAt, '2026-10-07T10:00:00.000Z');
   const f2 = ps.advance(f1, 'invoice', 'skipped');
   check('skip invoice → schedule', ps.currentStep(f2), 'schedule');
@@ -2884,6 +2887,82 @@ console.log('\n— PART 62: Morning login —');
   check('error: invalid client → new keys hint', ma.morningLoginError(401, '{"error":"invalid_client"}').includes('מפתח API חדש'), true);
   check('error: other', ma.morningLoginError(500, 'boom'), 'שגיאת התחברות ל-Morning (500): boom');
   check('endpoint', ma.MORNING_TOKEN_URL, 'https://api.morning.co/idp/v1/oauth/token');
+}
+
+// =====================================================================================
+// PART 63 — הזמנת עבודה (2026-10-21)
+console.log('\n— PART 63: work orders —');
+{
+  const so = await loadModule('supabase/functions/_shared/workOrder.ts', 'so63');
+  check('date format', so.fmtDate('2026-10-21'), '21/10/2026');
+  check('lines: ok + rounding', so.validateOrderLines([{ description: ' צילום סטילס ', price: '7500.004' }]), { lines: [{ description: 'צילום סטילס', price: 7500 }] });
+  check('lines: empty list', so.validateOrderLines([]), { error: 'צריך לפחות שורה אחת בהזמנה' });
+  check('lines: zero price', 'error' in so.validateOrderLines([{ description: 'x', price: 0 }]), true);
+  check('lines: no description', 'error' in so.validateOrderLines([{ description: ' ', price: 5 }]), true);
+  check('lines: too many', 'error' in so.validateOrderLines(Array.from({ length: 21 }, () => ({ description: 'a', price: 1 }))), true);
+  check('total', so.linesTotal([{ description: 'a', price: 7500 }, { description: 'b', price: 5000 }]), 12500);
+  const pl = so.buildOrderPayload({ coupleNames: ' דנה ורון ', eventDate: '2027-06-01', lines: [{ description: 'צילום סטילס', price: 7500 }, { description: 'צילום וידאו', price: 5000 }], remarks: ' הערה ' });
+  check('payload: type / lang / vat', [pl.type, pl.lang, pl.currency, pl.vatType], [100, 'he', 'ILS', 0]);
+  check('payload: rows VAT included', pl.income.map((r) => [r.description, r.price, r.vatType, r.currency, r.quantity]), [['צילום סטילס', 7500, 1, 'ILS', 1], ['צילום וידאו', 5000, 1, 'ILS', 1]]);
+  check('payload: client without emails', pl.client, { name: 'דנה ורון', add: true });
+  check('payload: description + remarks', [pl.description, pl.remarks], ['הזמנת עבודה — צילום אירוע · תאריך האירוע 01/06/2027', 'הערה']);
+  check('payload: no remarks key when empty', 'remarks' in so.buildOrderPayload({ coupleNames: 'a', lines: [{ description: 'x', price: 1 }], remarks: '' }), false);
+  check('merge remarks: default first', so.mergeRemarks('פרטי בנק', 'סעיף ספק'), 'פרטי בנק\nסעיף ספק');
+  check('merge remarks: no repeat', so.mergeRemarks('פרטי בנק', 'פרטי בנק\nסעיף'), 'פרטי בנק\nסעיף');
+  check('merge remarks: no default', so.mergeRemarks('', 'סעיף'), 'סעיף');
+  check('invoice reference', so.orderReferenceText(12, '2026-10-21'), "בהתאם להזמנת עבודה מס' 12 מיום 21/10/2026");
+  const order = { morning_id: 'abc', morning_number: 12, document_date: '2026-10-21', morning_client_id: 'c1' };
+  check('invoice fields: link', so.invoiceOrderFields(order).link, { linkedDocumentIds: ['abc'], linkType: 'link' });
+  check('invoice fields: text only', so.invoiceOrderFields(order, 'text').link, null);
+  check('invoice fields: client id', so.invoiceOrderFields(order).clientId, 'c1');
+  check('link refusal codes', [2429, 2404, 2405, null].map(so.isLinkRefusal), [true, true, false, false]);
+  check('payload: replacement keeps the Morning client', so.buildOrderPayload({ coupleNames: 'דנה ורון', lines: [{ description: 'x', price: 1 }], clientId: 'c9' }).client, { id: 'c9', name: 'דנה ורון' });
+  check('payload: remarks never cut', so.buildOrderPayload({ coupleNames: 'a', lines: [{ description: 'x', price: 1 }], remarks: 'א'.repeat(2500) }).remarks.length, 2500);
+  check('dates: valid / invalid / empty', [so.dateOrNull('2027-06-01T10:00:00Z'), so.dateOrNull('1/6/27'), so.dateOrNull(''), so.dateOrNull('2027-13-45')], ['2027-06-01', null, null, null]);
+  const since = Date.parse('2026-10-21T09:00:00Z');
+  const docs = [
+    { id: 'm1', type: 100, number: 13, description: 'הזמנת עבודה — צילום אירוע · תאריך האירוע 20/11/2026', client: { name: 'דנה ורון' }, amount: 7500, creationDate: since / 1000 + 30 },
+    { id: 'm2', type: 100, number: 12, description: 'הזמנת עבודה — צילום אירוע · תאריך האירוע 20/11/2026', client: { name: 'דנה ורון' }, amount: 12500, creationDate: since / 1000 - 86400 * 40 },
+    { id: 'm3', type: 320, number: 300, description: 'הזמנת עבודה — צילום אירוע · תאריך האירוע 20/11/2026', client: { name: 'דנה ורון' }, amount: 7500, creationDate: since / 1000 + 60 },
+    { id: 'm4', type: 100, number: 14, description: 'הזמנת עבודה — צילום אירוע · תאריך האירוע 20/11/2026', client: { name: 'זוג אחר' }, amount: 7500, creationDate: since / 1000 + 60 },
+  ];
+  const cls = (o) => { const r = so.classifyIssuedOrders(docs, { coupleNames: 'דנה ורון', total: 7500, eventDate: '2026-11-20', sinceMs: since, knownIds: new Set(), ...o }); return [r.candidates.map((d) => d.id), r.exact.map((d) => d.id)]; };
+  check('interrupted issue: new unrecorded orders = candidates; the exact one found', cls({}), [['m1', 'm4'], ['m1']]);
+  check('interrupted issue: different total → candidates remain, no exact (never released)', cls({ total: 9000 }), [['m1', 'm4'], []]);
+  check('interrupted issue: one agora of float noise still matches', cls({ total: 7499.999 })[1], ['m1']);
+  check('interrupted issue: orders already in the book are not candidates', cls({ knownIds: new Set(['m1', 'm4']) }), [[], []]);
+  check('interrupted issue: replacement matched by Morning client id, not name', so.classifyIssuedOrders([{ ...docs[0], client: { id: 'c7', name: 'שם אחר' } }], { coupleNames: 'דנה ורון', clientId: 'c7', total: 7500, eventDate: '2026-11-20', sinceMs: since, knownIds: new Set() }).exact.length, 1);
+
+  const wo = await loadModule('src/lib/workOrder.js', 'wo63');
+  check('split: video from package, stills = the rest', wo.defaultOrderLines(12500, { videoPrice: 5000 }).lines, [{ description: 'צילום סטילס', price: 7500 }, { description: 'צילום וידאו', price: 5000 }]);
+  check('split: no split on the package → one row + hint', wo.defaultOrderLines(12500, { name: 'חבילה 2' }), { lines: [{ description: 'צילום האירוע', price: 12500 }], needsSplit: 'no_split' });
+  check('split: stills-only package', wo.defaultOrderLines(9500, { stillsPrice: 9500, videoPrice: 0 }), { lines: [{ description: 'צילום סטילס', price: 9500 }], needsSplit: false });
+  check('split: no package → one event row + hint', wo.defaultOrderLines(9000, null), { lines: [{ description: 'צילום האירוע', price: 9000 }], needsSplit: 'no_package' });
+  check('split: video not below the final price', wo.defaultOrderLines(4000, { videoPrice: 5000 }), { lines: [{ description: 'צילום האירוע', price: 4000 }], needsSplit: 'video_over' });
+  check('split: video set to 0 = stills only', wo.defaultOrderLines(9000, { videoPrice: 0 }), { lines: [{ description: 'צילום סטילס', price: 9000 }], needsSplit: false });
+  check('split: no price', wo.defaultOrderLines(0, { videoPrice: 5000 }).lines, []);
+  check('package by id, else name', [wo.packageForLead({ packageId: 'p2' }, [{ id: 'p1', name: 'א' }, { id: 'p2', name: 'ב' }])?.id, wo.packageForLead({ packageChoice: 'א' }, [{ id: 'p1', name: 'א' }])?.id], ['p2', 'p1']);
+  const r1 = wo.orderRemarks({ note: 'סעיף ספק', deposit: { amount: 500 }, receivedOn: '2026-09-01', documentDate: '2026-10-21' });
+  check('remarks: signing date + deposit + clause', r1, 'ההזמנה התקבלה בתאריך 01/09/2026 (חתימת החוזה).\nמקדמה לשריון התאריך בסך 500 ₪ — חלק מהסכום הכולל.\nסעיף ספק');
+  check('remarks: no signing line on the same day', wo.orderRemarks({ receivedOn: '2026-10-21', documentDate: '2026-10-21' }), '');
+  const r2 = wo.orderRemarks({ deposit: { amount: 500, invoice: { number: '245', date: '2026-10-21' }, orderNumber: 12 }, replaces: { number: 12, date: '2026-10-21', reason: 'הלקוח בחר לשלם עבור צילום וידאו ישירות לספק', supplier: 'דודו' } });
+  check('remarks: replacement', r2, "הזמנה זו מחליפה את הזמנת עבודה מס' 12 מיום 21/10/2026. סיבת העדכון: הלקוח בחר לשלם עבור צילום וידאו ישירות לספק (דודו).\nמקדמה בסך 500 ₪ שולמה בחשבונית מס' 245 מיום 21/10/2026 (מקושרת להזמנה מס' 12) — חלק מהסכום הכולל.");
+  const invs = [{ description: 'מקדמה', amount: 500, businessType: 'company' }, { amount: 300 }];
+  check('balance: same business only (old invoices = sole prop)', [wo.orderBalance({ total: 7500, business_type: 'company' }, invs), wo.orderBalance({ total: 1000, business_type: 'sole_prop' }, invs)], [7000, 700]);
+  check('check: partial balance invoice', wo.invoiceOrderCheck({ item: 'תשלום יתרה', amount: 7000, balance: 12000 }), 'partial');
+  check('check: full balance ok', wo.invoiceOrderCheck({ item: 'תשלום יתרה', amount: 12000, balance: 12000 }), null);
+  check('check: over', wo.invoiceOrderCheck({ item: 'מקדמה', amount: 600, balance: 500 }), 'over');
+  check('check: deposit smaller is fine', wo.invoiceOrderCheck({ item: 'מקדמה', amount: 500, balance: 12500 }), null);
+  check('check: no order', wo.invoiceOrderCheck({ item: 'תשלום יתרה', amount: 1, balance: null }), null);
+  const orders = [{ id: 'a', status: 'replaced', business_type: 'company', created_at: '2026-10-01' }, { id: 'b', status: 'active', business_type: 'company', created_at: '2026-10-21' }, { id: 'c', status: 'active', business_type: 'sole_prop', created_at: '2026-10-02' }];
+  check('active order per business', [wo.activeOrder(orders, 'company')?.id, wo.activeOrder(orders, 'sole_prop')?.id, wo.activeOrder([], 'company')], ['b', 'c', null]);
+  check('deposit invoice of the business', wo.depositInvoiceOf(invs, 'company')?.amount, 500);
+  check('pending order per business', [wo.pendingOrder([{ id: 'p', status: 'issuing', business_type: 'company' }], 'company')?.id, wo.pendingOrder([{ id: 'p', status: 'issuing', business_type: 'company' }], 'sole_prop')], ['p', null]);
+  check('signing date in Israel (after midnight = that day)', [wo.israelDateOf('2026-10-20T21:30:00+00:00'), wo.israelDateOf('2026-12-31T22:30:00Z'), wo.israelDateOf(null)], ['2026-10-21', '2027-01-01', null]);
+  check('network error in Hebrew', wo.friendlyError(new TypeError('Failed to fetch')).startsWith('לא הצלחנו להגיע לשרת'), true);
+  check('network error while issuing → check before retrying', wo.friendlyError(new TypeError('Failed to fetch'), { issuing: true }).includes('ייתכן שהמסמך כן הופק'), true);
+  check('server message kept', wo.friendlyError(new Error('הזמנה כבר קיימת')), 'הזמנה כבר קיימת');
+  check('gateway timeout while issuing → check before retrying', wo.friendlyError(new Error('generateMorningOrder failed (HTTP 504)'), { issuing: true }).includes('ייתכן שהמסמך כן הופק'), true);
 }
 
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);

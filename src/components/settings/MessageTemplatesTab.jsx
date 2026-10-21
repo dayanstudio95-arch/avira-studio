@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { DEFAULT_WORK_ORDER_NOTE } from "@/lib/workOrder";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -66,6 +67,14 @@ const TEMPLATES = [
     description: "ההודעה של 'שלח דרישת תשלום' כשבוחרים חברה בע״מ — כאן פרטי הבנק של החברה",
     defaultValue: `היי {{names}}, מזל טוב! 🥂\nנשארה יתרה לתשלום על סך {{balance}} ש"ח.\n\nפרטים להעברה בנקאית (חברה בע״מ):\nשם החברה: \nבנק: \nסניף: \nמספר חשבון: `,
     variables: ["{{names}}", "{{balance}}"],
+  },
+  {
+    // 2026-10-21: printed on every הזמנת עבודה (Morning order) — the subcontractor clause.
+    key: "template_work_order_note",
+    label: "הזמנת עבודה — סעיף ספק (קבלן משנה)",
+    description: "הטקסט שמודפס בהערות של כל הזמנת עבודה ב-Morning. מומלץ לאשר את הניסוח מול רואה החשבון.",
+    defaultValue: DEFAULT_WORK_ORDER_NOTE,
+    variables: [],
   },
   {
     key: "template_album_graphic",

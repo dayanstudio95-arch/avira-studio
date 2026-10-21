@@ -71,10 +71,12 @@ export default function PricingManagement() {
         name: pkg.name,
         price: pkg.price,
         description: pkg.description || "",
+        stillsPrice: pkg.stillsPrice ?? "",
+        videoPrice: pkg.videoPrice ?? "",
       });
     } else {
       setEditingPackage(null);
-      setFormData({ name: "", price: 0, description: "" });
+      setFormData({ name: "", price: 0, description: "", stillsPrice: "", videoPrice: "" });
     }
     setIsDialogOpen(true);
   };
@@ -82,18 +84,23 @@ export default function PricingManagement() {
   const handleCloseDialog = () => {
     setIsDialogOpen(false);
     setEditingPackage(null);
-    setFormData({ name: "", price: 0, description: "" });
+    setFormData({ name: "", price: 0, description: "", stillsPrice: "", videoPrice: "" });
   };
 
   const handleSubmit = () => {
     if (!formData.name || formData.price <= 0) return;
+    // The stills / video split for הזמנת עבודה (2026-10-21) — empty means "not set".
+    const num = (v) => (v === "" || v === null || v === undefined ? null : Math.max(0, Number(v) || 0));
+    const data = { ...formData, stillsPrice: num(formData.stillsPrice), videoPrice: num(formData.videoPrice) };
 
     if (editingPackage) {
-      updateMutation.mutate({ id: editingPackage.id, data: formData });
+      updateMutation.mutate({ id: editingPackage.id, data });
     } else {
-      createMutation.mutate(formData);
+      createMutation.mutate(data);
     }
   };
+  const splitSum = (Number(formData.stillsPrice) || 0) + (Number(formData.videoPrice) || 0);
+  const splitMismatch = (formData.stillsPrice !== "" || formData.videoPrice !== "") && formData.price > 0 && Math.abs(splitSum - formData.price) > 0.5;
 
   const handleDelete = async (id) => {
     if (await confirmDialog("האם אתה בטוח שברצונך למחוק חבילה זו?")) {
@@ -149,6 +156,11 @@ export default function PricingManagement() {
                     <TableCell className="text-white font-medium">{pkg.name}</TableCell>
                     <TableCell className="text-yellow-400 font-semibold">
                       ₪{pkg.price?.toLocaleString()}
+                      {(pkg.stillsPrice != null || pkg.videoPrice != null) && (
+                        <div className="text-[11px] font-normal text-gray-400">
+                          סטילס {Number(pkg.stillsPrice || 0).toLocaleString()} · וידאו {Number(pkg.videoPrice || 0).toLocaleString()}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="text-gray-400 text-sm">
                       {pkg.description ? (
@@ -217,6 +229,37 @@ export default function PricingManagement() {
                   placeholder="0"
                   className="bg-gray-800 border-gray-700 text-white"
                 />
+              </div>
+
+              <div>
+                <label className="text-sm text-gray-400 mb-1 block">פיצול להזמנת עבודה (כולל מע״מ, לא חובה)</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="mb-0.5 block text-xs text-gray-500">סטילס ₪</span>
+                    <Input
+                      type="number"
+                      value={formData.stillsPrice ?? ""}
+                      onChange={(e) => setFormData({ ...formData, stillsPrice: e.target.value })}
+                      placeholder="סטילס ₪"
+                      className="bg-gray-800 border-gray-700 text-white"
+                    />
+                  </div>
+                  <div>
+                    <span className="mb-0.5 block text-xs text-gray-500">וידאו ₪ (0 = בלי וידאו)</span>
+                    <Input
+                      type="number"
+                      value={formData.videoPrice ?? ""}
+                      onChange={(e) => setFormData({ ...formData, videoPrice: e.target.value })}
+                      placeholder="וידאו ₪"
+                      className="bg-gray-800 border-gray-700 text-white"
+                    />
+                  </div>
+                </div>
+                <p className={`mt-1 text-xs ${splitMismatch ? "text-amber-300" : "text-gray-500"}`}>
+                  {splitMismatch
+                    ? `סטילס + וידאו = ${splitSum.toLocaleString()} ₪, לא כמו מחיר החבילה. בהזמנה: הווידאו לפי מה שכתוב כאן, והסטילס = מה שנשאר מהמחיר הסופי של הזוג.`
+                    : "בהזמנת העבודה: הווידאו לפי הסכום כאן, והסטילס = המחיר הסופי של הזוג פחות הווידאו. אפשר לשנות לכל זוג."}
+                </p>
               </div>
 
               <div>

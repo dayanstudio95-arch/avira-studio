@@ -7,6 +7,8 @@
 
 export const STEPS = [
   { key: "status", label: "סטטוס" },
+  // 2026-10-21: the order book entry comes right after signing ("מיד עם קבלת ההזמנה").
+  { key: "order", label: "הזמנת עבודה" },
   { key: "invoice", label: "חשבונית מקדמה" },
   { key: "schedule", label: "לוז" },
   { key: "availability", label: "זמינות צלמים" },

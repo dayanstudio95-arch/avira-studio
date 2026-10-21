@@ -44,6 +44,7 @@ const TABLES = [
   { name: "events", label: "אירועים, לוז וצוות" },
   { name: "staff_members", label: "אנשי צוות ותעריפים" },
   { name: "packages", label: "חבילות ומחירים" },
+  { name: "work_orders", label: "הזמנות עבודה (ספר הזמנות)" },
   { name: "whatsapp_conversations", label: "שיחות וואטסאפ (פרטי הפנייה)" },
 ];
 

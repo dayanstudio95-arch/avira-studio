@@ -8,6 +8,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Loader2, Check, SkipForward, Clock, Receipt, Send, Users, CheckCircle2, ChevronLeft } from "lucide-react";
 import InvoiceDialog from "@/components/invoice/InvoiceDialog";
+import WorkOrderDialog from "@/components/workOrders/WorkOrderDialog";
+import { useWorkOrders } from "@/components/workOrders/useWorkOrders";
+import PendingOrderNotice from "@/components/workOrders/PendingOrderNotice";
+import { ENTITIES } from "@/lib/paymentEntity";
+import { fmtDate } from "@/lib/workOrder";
 import StaffAvailabilityModal from "@/components/leads/StaffAvailabilityModal";
 import AvailabilityPills from "@/components/events/AvailabilityPills";
 import StaffAssignmentRoleList from "@/components/events/StaffAssignmentRoleList";
@@ -55,6 +60,12 @@ export default function PostSignWizard({ lead: initialLead, isOpen, onClose, onC
   const [busy, setBusy] = useState(false);
 
   const [invoiceType, setInvoiceType] = useState(null); // 'sole_prop' | 'company' | null
+  const [orderOpen, setOrderOpen] = useState(false);
+  const { orders: workOrders, reload: reloadOrders } = useWorkOrders(isOpen ? initialLead?.id : null);
+  const activeWorkOrders = workOrders.filter((o) => o.status === "active");
+  const pendingWorkOrders = workOrders.filter((o) => o.status === "issuing");
+  // The deposit goes to the business that holds the couple's order (one order → that business).
+  const orderBusiness = activeWorkOrders.length === 1 ? activeWorkOrders[0].business_type : null;
   const [templates, setTemplates] = useState(null);
   const [scheduleKey, setScheduleKey] = useState(null);
   const [scheduleText, setScheduleText] = useState("");
@@ -229,7 +240,7 @@ export default function PostSignWizard({ lead: initialLead, isOpen, onClose, onC
 
   return (
     <>
-      <Dialog open={isOpen && !invoiceType && !showAvailability} onOpenChange={(o) => { if (!o) handleCloseForNow(); }}>
+      <Dialog open={isOpen && !invoiceType && !showAvailability && !orderOpen} onOpenChange={(o) => { if (!o) handleCloseForNow(); }}>
         <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-2xl max-h-[92vh] overflow-y-auto" dir="rtl">
           <DialogHeader>
             <DialogTitle className="text-white text-right">✍️ תהליך אחרי חתימה</DialogTitle>
@@ -296,6 +307,28 @@ export default function PostSignWizard({ lead: initialLead, isOpen, onClose, onC
               </>
             )}
 
+            {step === "order" && (
+              <>
+                <p className="font-semibold">הזמנת עבודה בספר ההזמנות (Morning)</p>
+                <p className="text-xs text-gray-400">
+                  מוציאים עכשיו, סמוך לחתימה: תאריך, שמות הזוג, תאריך האירוע והשירותים. כל חשבונית לזוג תקושר אליה ותציין את מספרה.
+                  לפני ההפקה רואים תצוגה מקדימה.
+                </p>
+                {pendingWorkOrders.map((o) => <PendingOrderNotice key={o.id} order={o} />)}
+                {pendingWorkOrders.length > 0 ? null : activeWorkOrders.length > 0 ? (
+                  <div className="flex items-center gap-2 text-emerald-400 text-sm">
+                    <CheckCircle2 className="w-4 h-4" />
+                    {activeWorkOrders.map((o) => `הזמנה מס' ${o.morning_number} (${ENTITIES[o.business_type]?.short}) מיום ${fmtDate(o.document_date)}`).join(" · ")}
+                    <Button size="sm" onClick={() => markStep("order", "done")} className="mr-auto bg-yellow-500 hover:bg-yellow-600 text-black">הבא <ChevronLeft className="w-4 h-4" /></Button>
+                  </div>
+                ) : (
+                  <Button onClick={() => setOrderOpen(true)} className="bg-sky-700 hover:bg-sky-600 text-white font-semibold">
+                    <Receipt className="w-4 h-4 ml-2" /> הפק הזמנת עבודה
+                  </Button>
+                )}
+              </>
+            )}
+
             {step === "invoice" && (
               <>
                 <p className="font-semibold">להוציא חשבונית מס קבלה על המקדמה — מאיזה עסק?</p>
@@ -304,12 +337,17 @@ export default function PostSignWizard({ lead: initialLead, isOpen, onClose, onC
                     שים לב: כבר הופקה ללקוח הזה חשבונית מקדמה ({depositInvoices.map((i) => `₪${i.amount}${i.date ? ` ב-${i.date}` : ""}`).join(", ")}).
                   </p>
                 )}
+                {orderBusiness && (
+                  <p className="text-xs text-sky-300">
+                    הזמנת העבודה של הזוג יצאה מה{ENTITIES[orderBusiness]?.label} — החשבונית צריכה לצאת מאותו עסק כדי להיות מקושרת אליה.
+                  </p>
+                )}
                 <div className="flex gap-2">
-                  <Button onClick={() => setInvoiceType("sole_prop")} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white">
-                    <Receipt className="w-4 h-4 ml-2" /> עוסק מורשה
+                  <Button onClick={() => setInvoiceType("sole_prop")} className={`flex-1 bg-emerald-600 hover:bg-emerald-700 text-white ${orderBusiness === "company" ? "opacity-40" : ""} ${orderBusiness === "sole_prop" ? "ring-2 ring-sky-400" : ""}`}>
+                    <Receipt className="w-4 h-4 ml-2" /> עוסק מורשה{orderBusiness === "sole_prop" ? " ✓" : ""}
                   </Button>
-                  <Button onClick={() => setInvoiceType("company")} className="flex-1 bg-purple-600 hover:bg-purple-700 text-white">
-                    <Receipt className="w-4 h-4 ml-2" /> חברה בע״מ
+                  <Button onClick={() => setInvoiceType("company")} className={`flex-1 bg-purple-600 hover:bg-purple-700 text-white ${orderBusiness === "sole_prop" ? "opacity-40" : ""} ${orderBusiness === "company" ? "ring-2 ring-sky-400" : ""}`}>
+                    <Receipt className="w-4 h-4 ml-2" /> חברה בע״מ{orderBusiness === "company" ? " ✓" : ""}
                   </Button>
                 </div>
               </>
@@ -461,6 +499,13 @@ export default function PostSignWizard({ lead: initialLead, isOpen, onClose, onC
           </div>
         </DialogContent>
       </Dialog>
+
+      <WorkOrderDialog
+        isOpen={orderOpen}
+        onClose={() => setOrderOpen(false)}
+        lead={lead}
+        onCreated={(o) => { setOrderOpen(false); reloadOrders(); reloadLead(); if (o) markStep("order", "done"); }}
+      />
 
       <InvoiceDialog
         isOpen={!!invoiceType}

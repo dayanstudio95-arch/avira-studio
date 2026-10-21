@@ -19,6 +19,7 @@
 // caller's own tenant — no manual tenant_id filtering needed.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { fetchMorningToken } from '../_shared/morningAuth.ts';
+import { invoiceOrderFields, isLinkRefusal } from '../_shared/workOrder.ts';
 import { createUserClient, getRequestUser } from '../_shared/supabaseClients.ts';
 
 const SETTINGS_KEYS: Record<string, { key: string; secret: string }> = {
@@ -48,6 +49,14 @@ Deno.serve(async (req) => {
       documentDate,
       leadId,
     } = body;
+    // הזמנת עבודה (2026-10-21): the invoice is linked to the couple's active work order in
+    // Morning (linkedDocumentIds + linkType 'link', per the official spec) and its description
+    // names the order — Morning does not print the order's number on the invoice by itself.
+    // linkMode 'text' names it without the Morning link (fallback when Morning refused the link).
+    // preview: the PDF from POST /documents/preview, nothing is created or saved.
+    const workOrderId = body.workOrderId ? String(body.workOrderId) : null;
+    const linkMode: 'link' | 'text' = body.linkMode === 'text' ? 'text' : 'link';
+    const isPreview = body.preview === true;
 
     const businessType = SETTINGS_KEYS[body.businessType] ? body.businessType : 'sole_prop';
     const settingKeys = SETTINGS_KEYS[businessType];
@@ -100,8 +109,41 @@ Deno.serve(async (req) => {
     const paymentType = Number(paymentMethodType) || 4;
     const incomeDescription = String(itemDescription || defaultServiceDescription);
 
+    let orderFields: ReturnType<typeof invoiceOrderFields> | null = null;
+    let workOrder: any = null;
+    if (workOrderId) {
+      const { data: wo } = await supabase.from('work_orders').select('*').eq('id', workOrderId).maybeSingle();
+      if (!wo) return jsonResponse({ error: 'הזמנת העבודה לא נמצאה' }, { status: 404 });
+      // Only the couple's current order — never one that was replaced, closed or is mid-issue
+      // (the window may have been open while it changed). orderChanged: the window reloads.
+      if (wo.status !== 'active' || !wo.morning_id) {
+        return jsonResponse({ error: `הזמנת העבודה מס' ${wo.morning_number ?? '—'} כבר לא פעילה (הוחלפה או בהפקה). טענתי מחדש את ההזמנה — בדקו ונסו שוב.`, orderChanged: true });
+      }
+      if (wo.business_type !== businessType) {
+        const woLabel = wo.business_type === 'company' ? 'חברה בע״מ' : 'עוסק מורשה';
+        return jsonResponse({ error: `הזמנת העבודה מס' ${wo.morning_number} היא של ה${woLabel} — החשבונית חייבת לצאת מאותו עסק` }, { status: 400 });
+      }
+      if (!leadId || wo.lead_id !== leadId) return jsonResponse({ error: 'הזמנת העבודה שייכת לזוג אחר' }, { status: 400 });
+      workOrder = wo;
+      orderFields = invoiceOrderFields(wo, linkMode);
+    } else if (leadId) {
+      // The window thought the couple has no order of this business — check, so an invoice is
+      // never issued unlinked just because the window had not loaded it (a link can only be
+      // set when the invoice is created).
+      const { data: open } = await supabase.from('work_orders').select('morning_number, status')
+        .eq('lead_id', leadId).eq('business_type', businessType).in('status', ['active', 'issuing', 'replacing']).limit(1);
+      if (open?.length) {
+        return jsonResponse({
+          error: open[0].status === 'active'
+            ? `לזוג יש הזמנת עבודה מס' ${open[0].morning_number} — טענתי אותה, והחשבונית תקושר אליה. בדקו ולחצו שוב.`
+            : 'לזוג יש הזמנת עבודה שההפקה שלה לא הסתיימה — בדקו אותה בכרטיס הזמנת העבודה לפני חשבונית.',
+          orderChanged: true,
+        });
+      }
+    }
+
     const eventDateStr = body.eventDate ? String(body.eventDate).substring(0, 10) : '';
-    const docDescParts = [clientName, eventDateStr, itemNotes || itemDescription].filter(Boolean);
+    const docDescParts = [clientName, eventDateStr, itemNotes || itemDescription, orderFields?.reference].filter(Boolean);
     const documentDescription = docDescParts.join(' | ');
 
     // Morning's OAuth 2.0 login (2026-10-18) — see _shared/morningAuth.ts.
@@ -117,10 +159,34 @@ Deno.serve(async (req) => {
       currency: 'ILS',
       date: normalizedDate,
       description: documentDescription,
-      client: { name: String(clientName), email: clientEmail },
+      client: {
+        // the order's Morning client, so the invoice and its order belong to the same client
+        ...(orderFields?.clientId ? { id: orderFields.clientId } : {}),
+        name: String(clientName), email: clientEmail,
+      },
       income: [{ description: incomeDescription, quantity: 1, price: exactAmount, vatType: 1 }],
       payment: [{ type: paymentType, amount: exactAmount, date: normalizedDate, price: exactAmount }],
+      ...(orderFields?.link || {}),
     };
+
+    if (isPreview) {
+      const prevRes = await fetch('https://api.greeninvoice.co.il/api/v1/documents/preview', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(invoicePayload),
+      });
+      const prevText = await prevRes.text();
+      let prevData: any = null;
+      try { prevData = JSON.parse(prevText); } catch { /* not JSON */ }
+      if (!prevRes.ok || !prevData?.file) {
+        const code = typeof prevData?.errorCode === 'number' ? prevData.errorCode : null;
+        return jsonResponse({
+          error: `תצוגה מקדימה נכשלה ב-Morning (${code ?? prevRes.status}): ${prevData?.errorMessage || prevText.slice(0, 300)}`,
+          linkFailed: !!workOrder && linkMode === 'link' && isLinkRefusal(code),
+        });
+      }
+      return jsonResponse({ success: true, preview: true, file: prevData.file });
+    }
 
     const invoiceRes = await fetch('https://api.greeninvoice.co.il/api/v1/documents', {
       method: 'POST',
@@ -130,10 +196,13 @@ Deno.serve(async (req) => {
 
     const invoiceText = await invoiceRes.text();
     if (!invoiceRes.ok) {
+      let errCode: number | null = null;
+      try { const j = JSON.parse(invoiceText); errCode = typeof j?.errorCode === 'number' ? j.errorCode : null; } catch { /* not JSON */ }
       return jsonResponse({
         error: `טוקן תקין, שגיאה בהפקת מסמך (${invoiceRes.status}): ${invoiceText}`,
         rawBody: invoiceText,
         debugPayload: invoicePayload,
+        linkFailed: !!workOrder && linkMode === 'link' && isLinkRefusal(errCode),
       });
     }
 
@@ -161,6 +230,11 @@ Deno.serve(async (req) => {
           amount: exactAmount,
           url: invoiceUrl,
           businessType,
+          ...(workOrder ? {
+            workOrderId: workOrder.id,
+            workOrderNumber: workOrder.morning_number,
+            linkedInMorning: linkMode === 'link',
+          } : {}),
         };
         const updatedInvoices = [...existingInvoices, newInvoice];
 

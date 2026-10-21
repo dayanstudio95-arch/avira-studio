@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { base44 } from "@/api/base44Client";
 import { supabase } from "@/api/supabaseClient";
 import PaymentRequestComposer from "@/components/payments/PaymentRequestComposer";
+import WorkOrderCard from "@/components/workOrders/WorkOrderCard";
 import { ENTITIES, defaultEntity, invoiceEntityConflict, paymentRequestLine } from "@/lib/paymentEntity";
 import InvoiceDialog from "@/components/invoice/InvoiceDialog";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
@@ -220,6 +221,9 @@ export default function ClientActionsCard({ conversation }) {
           </div>
         </div>
       )}
+
+      {/* הזמנת עבודה (2026-10-21) */}
+      <WorkOrderCard lead={lead} onChanged={load} compact />
 
       <div className="space-y-1.5">
         <div className="flex items-center gap-1 text-[11px] text-gray-500"><Receipt className="h-3.5 w-3.5" /> חשבונית</div>

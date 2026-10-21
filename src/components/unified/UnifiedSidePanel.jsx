@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { contractViewInfo } from "@/lib/contractViews";
 import PaymentRequestComposer from "@/components/payments/PaymentRequestComposer";
+import WorkOrderCard from "@/components/workOrders/WorkOrderCard";
 import { ENTITIES, defaultEntity, invoiceEntityConflict, paymentRequestLine } from "@/lib/paymentEntity";
 import { base44 } from "@/api/base44Client";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetClose } from "@/components/ui/sheet";
@@ -620,6 +621,8 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                   {!lead.paymentEntity && <div className="mt-1 text-xs text-gray-500">עוד לא נקבע — ייקבע בדרישת התשלום או בחשבונית הראשונה.</div>}
                 </div>
               )}
+              {/* הזמנת עבודה (2026-10-21) — the order book entry every invoice links to */}
+              {lead && <WorkOrderCard lead={lead} onChanged={onLeadUpdated} />}
               <Button
                 onClick={() => openInvoiceFor('company')}
                 className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 rounded-xl gap-2"

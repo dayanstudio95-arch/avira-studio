@@ -6,10 +6,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FileText, ExternalLink, Loader2, AlertTriangle, XCircle, Wifi, CalendarCheck, CheckCircle2 } from "lucide-react";
+import { FileText, ExternalLink, Loader2, AlertTriangle, XCircle, Wifi, CalendarCheck, CheckCircle2, Link2, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/SupabaseAuthContext";
 import { todayInIsrael } from "@/lib/localDate";
+import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { activeOrder, pendingOrder, orderBalance, invoiceOrderCheck, friendlyError } from "@/lib/workOrder";
+import { ENTITIES } from "@/lib/paymentEntity";
+import { fetchWorkOrders, notifyWorkOrdersChanged } from "@/components/workOrders/useWorkOrders";
+import PendingOrderNotice from "@/components/workOrders/PendingOrderNotice";
+import WorkOrderDialog from "@/components/workOrders/WorkOrderDialog";
+import PdfPreview from "@/components/workOrders/PdfPreview";
 
 const INVOICE_ITEMS = ["מקדמה", "תשלום יתרה", "תוספת צילום", "אלבומים"];
 
@@ -57,7 +64,7 @@ export default function InvoiceDialog({
 
   const getAutoAmount = (selectedItem) => {
     if (selectedItem === "מקדמה") return DEPOSIT_AMOUNT;
-    if (selectedItem === "תשלום יתרה" && remainingBalance != null) return remainingBalance;
+    if (selectedItem === "תשלום יתרה" && liveRemaining != null) return liveRemaining;
     return "";
   };
 
@@ -82,6 +89,19 @@ export default function InvoiceDialog({
   const [apiStatus, setApiStatus] = useState(null); // { ok: bool, msg: string }
   const [latestMorningDate, setLatestMorningDate] = useState(null); // latest issued doc date globally
   const [isFetchingLatestDate, setIsFetchingLatestDate] = useState(false);
+  // הזמנת עבודה (2026-10-21): the couple's active order of this business — the invoice is
+  // linked to it in Morning and names its number.
+  const [orderLead, setOrderLead] = useState(null);
+  const [orders, setOrders] = useState([]);
+  // 'loading' | 'ready' | 'error' — nothing is issued for a couple before we know whether they
+  // have an order (an invoice issued unlinked can never be linked afterwards).
+  const [ordersState, setOrdersState] = useState("ready");
+  const [linkMode, setLinkMode] = useState("link"); // 'text' after Morning refused the link
+  const [linkFailed, setLinkFailed] = useState(false);
+  const [partialAsk, setPartialAsk] = useState(false);
+  const [replaceFor, setReplaceFor] = useState(null);
+  const [previewFile, setPreviewFile] = useState(null);
+  const [isPreviewing, setIsPreviewing] = useState(false);
 
   // Display-only VAT breakdown preview (the actual charged amount, amountNum, is
   // unaffected). Reads the tenant's own rate so a VAT-exempt studio (עוסק פטור,
@@ -120,9 +140,78 @@ export default function InvoiceDialog({
       .finally(() => setIsFetchingLatestDate(false));
   }, [isOpen, businessType]);
 
+  const loadOrders = async () => {
+    if (!leadId) { setOrders([]); setOrderLead(null); setOrdersState("ready"); return; }
+    setOrdersState("loading");
+    try {
+      const [list, lead] = await Promise.all([fetchWorkOrders(leadId), base44.entities.Lead.get(leadId)]);
+      setOrders(list);
+      setOrderLead(lead);
+      setOrdersState("ready");
+    } catch {
+      setOrdersState("error");
+    }
+  };
+  useEffect(() => {
+    if (!isOpen) return;
+    setOrders([]); setOrderLead(null); setReplaceFor(null);
+    setLinkMode("link"); setLinkFailed(false); setPartialAsk(false); setPreviewFile(null);
+    loadOrders();
+  }, [isOpen, leadId]);
+
+  const order = activeOrder(orders, businessType);
+  const pending = pendingOrder(orders, businessType);
+  const otherOrder = !order ? activeOrder(orders, businessType === "company" ? "sole_prop" : "company") : null;
+  const orderLeft = order ? orderBalance(order, orderLead?.invoicesList || []) : null;
+  // With an order the couple's balance is read from the lead loaded here (a replacement order
+  // issued from this window may have lowered the final price); otherwise the caller's value.
+  const liveRemaining = order && orderLead
+    ? Math.max(0, (Number(orderLead.finalPrice) || 0) - (Number(orderLead.totalPaid) || 0))
+    : remainingBalance;
+  const ordersBlocked = ordersState !== "ready" || !!pending;
+  // Any edit makes a shown preview stale, and re-asks the partial-payment question.
+  const edited = () => { setPreviewFile(null); setPartialAsk(false); };
+
   const isDateBeforeLatest = latestMorningDate && documentDate < latestMorningDate;
 
-  const handleSubmit = async () => {
+  const invoiceBody = () => ({
+    clientName: clientName.trim(),
+    clientEmail: clientEmail || "avira.media1@gmail.com",
+    clientPhone: clientPhone || "",
+    itemDescription: item,
+    itemNotes: description,
+    amount: amountNum,
+    paymentMethodType: parseInt(paymentMethod),
+    documentDate,
+    eventDate: eventDate || "",
+    leadId: leadId || "",
+    businessType,
+    ...(order ? { workOrderId: order.id, linkMode } : {}),
+  });
+
+  // The invoice as Morning would print it (with the link and the order line) — creates nothing.
+  const handlePreview = async () => {
+    if (!item || !amountNum || !clientName.trim()) {
+      setErrorMsg("חסרים שדות: יש למלא פריט, סכום ושם לקוח");
+      return;
+    }
+    setIsPreviewing(true);
+    setErrorMsg(null);
+    try {
+      const res = await base44.functions.invoke("generateMorningInvoice", { ...invoiceBody(), preview: true });
+      if (res.data?.file) setPreviewFile(res.data.file);
+      else {
+        setErrorMsg(res.data?.error || "התצוגה נכשלה");
+        if (res.data?.linkFailed) setLinkFailed(true);
+        if (res.data?.orderChanged) loadOrders();
+      }
+    } catch (e) {
+      setErrorMsg(friendlyError(e, { fallback: "התצוגה נכשלה" }));
+    }
+    setIsPreviewing(false);
+  };
+
+  const handleSubmit = async (opts = {}) => {
     // שלב א׳ - בדיקת תקינות מקומית
     if (!item || !amountNum || !paymentMethod) {
       setErrorMsg("חסרים שדות: יש למלא פריט, סכום ואמצעי תשלום");
@@ -136,25 +225,34 @@ export default function InvoiceDialog({
       setErrorMsg(`תאריך המסמך (${documentDate}) קודם לתאריך המסמך האחרון שהונפק במורנינג (${latestMorningDate}). לא ניתן להנפיק מסמך בתאריך מוקדם יותר.`);
       return;
     }
+    if (ordersBlocked) {
+      setErrorMsg(pending ? "יש לזוג הזמנת עבודה שההפקה שלה לא הסתיימה — בדקו אותה קודם (למעלה)." : "עוד לא ידוע אם לזוג יש הזמנת עבודה — חכו רגע או לחצו 'נסו שוב'.");
+      return;
+    }
+
+    // Against the couple's work order: a "תשלום יתרה" smaller than what is left asks first
+    // whether part was paid directly to a supplier (then a replacement order comes first);
+    // more than what is left asks too.
+    if (order) {
+      const verdict = invoiceOrderCheck({ item, amount: amountNum, balance: orderLeft });
+      if (verdict === "partial" && !opts.skipPartial) { setPartialAsk(true); return; }
+      if (verdict === "over") {
+        const ok = await confirmDialog({
+          title: "הסכום עובר את היתרה בהזמנת העבודה",
+          message: `בהזמנה מס' ${order.morning_number} נשארו ${Math.max(0, orderLeft).toLocaleString("he-IL")} ₪ לחשבונית. להפיק בכל זאת ${amountNum.toLocaleString("he-IL")} ₪?`,
+          confirmText: "הפק בכל זאת",
+        });
+        if (!ok) return;
+      }
+    }
+    setPartialAsk(false);
 
     setIsLoading(true);
     setErrorMsg(null);
 
     try {
       // שלב ב׳ + ג׳ - שליחה לשרת (שם מתבצע אימות הטוקן והפקת המסמך)
-      const res = await base44.functions.invoke("generateMorningInvoice", {
-        clientName: clientName.trim(),
-        clientEmail: clientEmail || "avira.media1@gmail.com",
-        clientPhone: clientPhone || "",
-        itemDescription: item,
-        itemNotes: description,
-        amount: amountNum,
-        paymentMethodType: parseInt(paymentMethod),
-        documentDate,
-        eventDate: eventDate || "",
-        leadId: leadId || "",
-        businessType,
-      });
+      const res = await base44.functions.invoke("generateMorningInvoice", invoiceBody());
 
       const data = res.data;
 
@@ -170,6 +268,7 @@ export default function InvoiceDialog({
         // החשבונית הופקה בהצלחה ב-Morning וכבר נשמרה ב-CRM.
         // onInvoiceCreated נקרא רק בסגירת מסך ההצלחה (handleClose) — ראו `created`.
         setCreated({ url: data.invoiceUrl || null, amount: amountNum });
+        notifyWorkOrdersChanged(leadId);
         if (data.warning) {
           toast.error(data.warning);
         } else {
@@ -185,6 +284,19 @@ export default function InvoiceDialog({
         const rawBody = data?.rawBody || "";
         setErrorMsg(errMsg);
         console.error("Morning invoice error:", data);
+        if (data?.linkFailed) {
+          // Morning refused the link itself — offer to issue with the order's number in the text.
+          setLinkFailed(true);
+          setIsLoading(false);
+          return;
+        }
+        if (data?.orderChanged) {
+          // The couple's order changed (or the window had not loaded it) — reload and let the
+          // owner look again; nothing was issued.
+          loadOrders();
+          setIsLoading(false);
+          return;
+        }
         const debugInfo = data?.debugPayload ? `\n\n--- DEBUG PAYLOAD ---\n${JSON.stringify(data.debugPayload, null, 2)}` : "";
         alert(`Detailed Server Error: ${rawBody || errMsg}${debugInfo}`);
       }
@@ -234,7 +346,7 @@ export default function InvoiceDialog({
   // After a "תשלום יתרה" invoice the owner decides the event's payment status himself
   // (2026-10-07) — nothing changes without his click. Same field PaymentStatusSelector writes.
   const isBalanceInvoice = item === "תשלום יתרה";
-  const balanceAfter = created ? (Number(remainingBalance) || 0) - created.amount : null;
+  const balanceAfter = created ? (Number(liveRemaining) || 0) - created.amount : null;
   const suggestedStatus = balanceAfter != null && balanceAfter <= 0 ? "Paid" : "Partially Paid";
   const handleSetPaymentStatus = async (status) => {
     if (status === "unchanged") { setPaymentStatusSaved("unchanged"); return; }
@@ -250,8 +362,9 @@ export default function InvoiceDialog({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-md" dir="rtl">
+    <>
+    <Dialog open={isOpen && !replaceFor} onOpenChange={handleClose}>
+      <DialogContent className="bg-gray-900 border-gray-700 text-white max-w-md max-h-[92vh] overflow-y-auto" dir="rtl">
         <DialogHeader>
           <DialogTitle className="text-white flex items-center gap-2">
             <FileText className={`w-5 h-5 ${theme.icon}`} />
@@ -329,11 +442,39 @@ export default function InvoiceDialog({
                <Label className="text-gray-300 mb-1 block">שם הלקוח *</Label>
                <Input
                  value={clientName}
-                 onChange={(e) => setClientName(e.target.value)}
+                 onChange={(e) => { setClientName(e.target.value); edited(); }}
                  placeholder="שם הלקוח לחשבונית"
                  className="bg-gray-800 border-gray-700 text-white"
                />
              </div>
+
+             {/* הזמנת עבודה (2026-10-21) */}
+             {ordersState === "loading" ? (
+               <div className="flex items-center gap-2 text-xs text-gray-400"><Loader2 className="h-3.5 w-3.5 animate-spin" /> בודק אם לזוג יש הזמנת עבודה…</div>
+             ) : ordersState === "error" ? (
+               <div className="flex items-center justify-between gap-2 rounded-lg border border-red-800/60 bg-red-950/30 p-3 text-xs text-red-200">
+                 <span>לא הצלחנו לבדוק אם לזוג יש הזמנת עבודה — אי אפשר להפיק עד שזה ידוע.</span>
+                 <Button size="sm" variant="outline" onClick={loadOrders} className="border-red-700 bg-transparent text-red-100">נסו שוב</Button>
+               </div>
+             ) : pending ? (
+               <PendingOrderNotice order={pending} onResolved={loadOrders} />
+             ) : order ? (
+               <div className="flex items-start gap-2 rounded-lg border border-sky-800/60 bg-sky-950/30 p-3 text-xs text-sky-200">
+                 <Link2 className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                 <span>
+                   {linkMode === "link" ? "מקושרת" : "מפנה (בטקסט)"} להזמנת עבודה מס' {order.morning_number} · נשאר לחשבונית{" "}
+                   <span className="font-semibold">{Math.max(0, orderLeft).toLocaleString("he-IL")} ₪</span> מתוך {Number(order.total).toLocaleString("he-IL")} ₪.
+                   {" "}בחשבונית ייכתב "בהתאם להזמנת עבודה מס' {order.morning_number}".
+                 </span>
+               </div>
+             ) : otherOrder ? (
+               <div className="flex items-start gap-2 rounded-lg border border-amber-800/60 bg-amber-950/30 p-3 text-xs text-amber-200">
+                 <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                 <span>לזוג יש הזמנת עבודה פעילה ב{ENTITIES[otherOrder.business_type]?.label} (מס' {otherOrder.morning_number}) — חשבונית מה{businessLabel} לא תקושר אליה.</span>
+               </div>
+             ) : leadId ? (
+               <div className="text-xs text-gray-500">לזוג אין הזמנת עבודה — החשבונית לא תקושר להזמנה.</div>
+             ) : null}
 
              {/* התראת מייל חסר */}
              {!clientEmail && (
@@ -360,7 +501,7 @@ export default function InvoiceDialog({
               <Input
                 type="date"
                 value={documentDate}
-                onChange={(e) => { setDocumentDate(e.target.value); setErrorMsg(null); }}
+                onChange={(e) => { setDocumentDate(e.target.value); setErrorMsg(null); edited(); }}
                 className={`bg-gray-800 text-white ${isDateBeforeLatest ? "border-red-500" : "border-gray-700"}`}
                 dir="ltr"
               />
@@ -385,7 +526,7 @@ export default function InvoiceDialog({
             {/* פריט */}
             <div>
               <Label className="text-gray-300 mb-1 block">פריט לחיוב *</Label>
-              <Select value={item} onValueChange={(val) => { setItem(val); setAmount(getAutoAmount(val)); }}>
+              <Select value={item} onValueChange={(val) => { setItem(val); setAmount(getAutoAmount(val)); edited(); }}>
                 <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
                   <SelectValue placeholder="בחר פריט..." />
                 </SelectTrigger>
@@ -403,7 +544,7 @@ export default function InvoiceDialog({
               <Input
                 type="text"
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
+                onChange={(e) => { setDescription(e.target.value); edited(); }}
                 placeholder="לדוגמה: מקדמה לצילום חתונה - יוסי ומיכל"
                 className="bg-gray-800 border-gray-700 text-white"
               />
@@ -415,7 +556,7 @@ export default function InvoiceDialog({
               <Input
                 type="number"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(e) => { setAmount(e.target.value); edited(); }}
                 placeholder="0"
                 className="bg-gray-800 border-gray-700 text-white"
                 dir="ltr"
@@ -430,7 +571,7 @@ export default function InvoiceDialog({
             {/* אמצעי תשלום */}
             <div>
               <Label className="text-gray-300 mb-1 block">אמצעי תשלום *</Label>
-              <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+              <Select value={paymentMethod} onValueChange={(v) => { setPaymentMethod(v); edited(); }}>
                 <SelectTrigger className="bg-gray-800 border-gray-700 text-white">
                   <SelectValue />
                 </SelectTrigger>
@@ -450,10 +591,49 @@ export default function InvoiceDialog({
               </div>
             )}
 
+            {/* "תשלום יתרה" smaller than what is left on the order */}
+            {partialAsk && order && (
+              <div className="space-y-2 rounded-lg border border-amber-700/60 bg-amber-950/30 p-3 text-xs text-amber-100">
+                <p className="font-semibold">
+                  החשבונית ({amountNum.toLocaleString("he-IL")} ₪) קטנה ממה שנשאר בהזמנה מס' {order.morning_number} ({Math.max(0, orderLeft).toLocaleString("he-IL")} ₪).
+                  הזוג שילם על חלק מהשירותים ישירות לספק?
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" disabled={!orderLead} onClick={() => { setPartialAsk(false); setReplaceFor(order); }} className="bg-amber-500 text-black hover:bg-amber-400">
+                    כן — הוצא קודם הזמנה מעודכנת
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => handleSubmit({ skipPartial: true })} className="border-gray-600 bg-gray-800 text-gray-200">
+                    לא, תשלום חלקי — המשך
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Morning refused the link itself */}
+            {linkFailed && order && linkMode === "link" && (
+              <div className="space-y-2 rounded-lg border border-red-800/60 bg-red-950/30 p-3 text-xs text-red-200">
+                <p>Morning לא קיבל את הקישור להזמנה מס' {order.morning_number}. אפשר להפיק את החשבונית עם מספר ההזמנה בטקסט בלבד (בלי קישור במערכת של Morning).</p>
+                <Button size="sm" onClick={() => { setLinkMode("text"); setLinkFailed(false); setErrorMsg(null); edited(); }} className="bg-red-600 text-white hover:bg-red-500">
+                  הפק בלי קישור (מספר ההזמנה בטקסט)
+                </Button>
+              </div>
+            )}
+
+            {previewFile && <PdfPreview base64={previewFile} title="תצוגה מקדימה של החשבונית" />}
+
             <div className="flex gap-2 pt-2">
               <Button
-                onClick={handleSubmit}
-                disabled={isLoading || isDateBeforeLatest}
+                variant="outline"
+                onClick={handlePreview}
+                disabled={isPreviewing || isLoading || ordersBlocked}
+                className="border-gray-600 bg-gray-800 text-gray-300 text-xs px-3"
+                title="תצוגה מקדימה — לא יוצר מסמך"
+              >
+                {isPreviewing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Eye className="w-3 h-3" />}
+              </Button>
+              <Button
+                onClick={() => handleSubmit()}
+                disabled={isLoading || isDateBeforeLatest || ordersBlocked}
                 className={`flex-1 ${theme.btn} text-white disabled:opacity-50`}
               >
                 {isLoading ? (
@@ -479,5 +659,15 @@ export default function InvoiceDialog({
         )}
       </DialogContent>
     </Dialog>
+    {replaceFor && orderLead && (
+      <WorkOrderDialog
+        isOpen
+        onClose={() => { setReplaceFor(null); loadOrders(); }}
+        lead={orderLead}
+        replaceOrder={replaceFor}
+        onCreated={() => { setReplaceFor(null); loadOrders(); }}
+      />
+    )}
+    </>
   );
 }
