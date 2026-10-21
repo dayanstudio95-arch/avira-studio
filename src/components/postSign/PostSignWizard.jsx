@@ -12,7 +12,7 @@ import WorkOrderDialog from "@/components/workOrders/WorkOrderDialog";
 import { useWorkOrders } from "@/components/workOrders/useWorkOrders";
 import PendingOrderNotice from "@/components/workOrders/PendingOrderNotice";
 import { ENTITIES } from "@/lib/paymentEntity";
-import { fmtDate } from "@/lib/workOrder";
+import { fmtDate, israelDateOf } from "@/lib/workOrder";
 import StaffAvailabilityModal from "@/components/leads/StaffAvailabilityModal";
 import AvailabilityPills from "@/components/events/AvailabilityPills";
 import StaffAssignmentRoleList from "@/components/events/StaffAssignmentRoleList";
@@ -255,6 +255,12 @@ export default function PostSignWizard({ lead: initialLead, isOpen, onClose, onC
             <div><span className="text-gray-400">מחיר: </span>{lead.finalPrice ? `₪${Number(lead.finalPrice).toLocaleString()}` : "—"}</div>
             <div><span className="text-gray-400">טלפון: </span><span dir="ltr">{lead.phoneNumber || "—"}</span></div>
             <div><span className="text-gray-400">סטטוס: </span>{lead.status}</div>
+            <div className="col-span-2">
+              <span className="text-gray-400">חתימה דיגיטלית: </span>
+              {lead.signedAt
+                ? <span className="text-emerald-300">✓ נחתם {fmtDate(israelDateOf(lead.signedAt))}{lead.signedContractPdfUrl ? " · יש PDF חתום" : ""}</span>
+                : <span className="text-amber-300">אין חתימה במערכת — לבדוק לפני שמבקשים מקדמה</span>}
+            </div>
             {(lead.notes || lead.coupleNotesSigned) && (
               <div className="col-span-2 text-gray-300 whitespace-pre-wrap border-t border-gray-700 pt-1.5 mt-1">
                 <span className="text-gray-400">הערות: </span>

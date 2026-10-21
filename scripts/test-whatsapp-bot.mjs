@@ -1649,8 +1649,9 @@ const ps = await loadModule('src/lib/postSignFlow.js', 'postsign');
 section('when the wizard pops up');
 {
   const now = new Date('2026-10-07T10:00:00Z');
-  const base = { id: 'L1', status: 'חוזה', eventDate: '2027-01-14' };
+  const base = { id: 'L1', status: 'חוזה', eventDate: '2027-01-14', signedAt: '2026-10-06T18:00:00Z' };
   check('signed, never started → pops up', ps.isPostSignPending(base, now), true);
+  check('status "חוזה" picked by hand, no signature → no', ps.isPostSignPending({ ...base, signedAt: null }, now), false);
   check('already נסגר/חתימה, never started → no', ps.isPostSignPending({ ...base, status: 'נסגר/חתימה' }, now), false);
   check('started, not finished (status already changed) → pops up', ps.isPostSignPending({ ...base, status: 'נסגר/חתימה', postSignFlow: { step: 'invoice', done: { status: 'done' } } }, now), true);
   check('finished → no', ps.isPostSignPending({ ...base, postSignFlow: { completedAt: '2026-10-01T00:00:00Z' } }, now), false);

@@ -24,7 +24,7 @@ import { packagePrices } from "@/lib/packagePrices";
 import { applyLeadTemplateVariables } from "@/lib/leadMessages";
 import PostSignWizard from "@/components/postSign/PostSignWizard";
 import MeetingDialog from "@/components/meetings/MeetingDialog";
-import { SIGNED_STATUS } from "@/lib/postSignFlow";
+import { SIGNED_STATUS, hasSigned } from "@/lib/postSignFlow";
 import { calendarSyncOutcome } from "@/lib/actionOutcome";
 import {
   PRODUCTION_QUESTIONNAIRE_FIELDS,
@@ -579,7 +579,7 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                 </div>
               )}
               {/* תהליך אחרי חתימה — לזוג שחתם (חוזה) או שהתהליך שלו לא הסתיים. נפתח גם כשנדחה. */}
-              {lead && (lead.status === SIGNED_STATUS || (lead.postSignFlow && !lead.postSignFlow.completedAt)) && (
+              {lead && ((lead.status === SIGNED_STATUS && hasSigned(lead)) || (lead.postSignFlow && !lead.postSignFlow.completedAt)) && (
                 <Button
                   onClick={() => setIsPostSignOpen(true)}
                   className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-semibold py-3 rounded-xl gap-2"

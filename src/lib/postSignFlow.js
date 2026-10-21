@@ -70,15 +70,24 @@ export function snoozeUntil(option, now = new Date(), pickedDate = null) {
   }
 }
 
+// A real digital signature: signed_at is written only when the couple signs (sign-lead-public
+// / the in-app signing) — the status "חוזה" alone is not proof, it can be picked by hand in
+// the status list (2026-10-21: a couple who had only opened the contract got the wizard and
+// was asked for the deposit).
+export function hasSigned(lead) {
+  return !!lead?.signedAt;
+}
+
 // The wizard should pop up for this lead (ignoring the per-tab "until next login" snooze,
 // which the host checks itself):
-//   * a couple who signed and whose wizard never started, or a wizard started and not finished;
+//   * a couple who signed (status "חוזה" AND a real signature) and whose wizard never
+//     started, or a wizard started and not finished;
 //   * the wedding is not in the past;
 //   * not snoozed to a later moment.
 export function isPostSignPending(lead, now = new Date()) {
   if (!lead) return false;
   const flow = lead.postSignFlow;
-  const open = flow ? !flow.completedAt : lead.status === SIGNED_STATUS;
+  const open = flow ? !flow.completedAt : lead.status === SIGNED_STATUS && hasSigned(lead);
   if (!open) return false;
   if (lead.status === "לא רלוונטי") return false;
   if (lead.eventDate && lead.eventDate < israelDateStr(now)) return false;
