@@ -259,7 +259,9 @@ export default function PostSignWizard({ lead: initialLead, isOpen, onClose, onC
               <span className="text-gray-400">חתימה דיגיטלית: </span>
               {lead.signedAt
                 ? <span className="text-emerald-300">✓ נחתם {fmtDate(israelDateOf(lead.signedAt))}{lead.signedContractPdfUrl ? " · יש PDF חתום" : ""}</span>
-                : <span className="text-amber-300">אין חתימה במערכת — לבדוק לפני שמבקשים מקדמה</span>}
+                : lead.signedContractPdfUrl
+                  ? <span className="text-amber-300">⚠️ ה-PDF החתום נשמר, אבל פרטי החתימה לא נשמרו (החתימה נקטעה באמצע) — כדאי לפתוח את ה-PDF ולוודא</span>
+                  : <span className="text-amber-300">אין חתימה במערכת — לבדוק לפני שמבקשים מקדמה</span>}
             </div>
             {(lead.notes || lead.coupleNotesSigned) && (
               <div className="col-span-2 text-gray-300 whitespace-pre-wrap border-t border-gray-700 pt-1.5 mt-1">

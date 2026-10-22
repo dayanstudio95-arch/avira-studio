@@ -14,7 +14,7 @@ import { useMeetings, MEETINGS_KEY } from "@/components/meetings/MeetingsList";
 import { kindLabel, utcToIsraelParts, todayIsrael } from "@/lib/meetings";
 import { whatsappPulse, followUpSummary } from "@/lib/dashboardPulse";
 import { fetchLeadPhoneIndex, LEAD_PHONE_INDEX_KEY, leadForPhone } from "@/lib/leadPhoneIndex";
-import { isPostSignPending, STEPS, currentStep, SIGNED_STATUS } from "@/lib/postSignFlow";
+import { isPostSignPending, STEPS, currentStep, POST_SIGN_QUERY } from "@/lib/postSignFlow";
 import { todayInIsrael } from "@/lib/localDate";
 import PostSignWizard from "@/components/postSign/PostSignWizard";
 import QuickChatDialog from "./QuickChatDialog";
@@ -236,7 +236,7 @@ export function PostSignCard() {
       const { data, error } = await supabase
         .from("leads")
         .select("*")
-        .or(`status.eq."${SIGNED_STATUS}",post_sign_flow.not.is.null`)
+        .or(POST_SIGN_QUERY)
         .or(`event_date.is.null,event_date.gte.${todayInIsrael()}`)
         .limit(200);
       if (error) throw error;

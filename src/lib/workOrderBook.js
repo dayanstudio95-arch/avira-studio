@@ -7,13 +7,14 @@ import { coupleInvoices, depositInvoiceAny, israelDateOf } from "./workOrder";
 // Statuses the page loads. Who counts (closedNeedsOrder):
 //   "נסגר/חתימה" — a closed deal, signed in the system or outside it (the couples imported
 //                   from the old system have no digital signature, 2026-10-22);
-//   "חוזה"       — only with a real digital signature (the status can be picked by hand).
+//   "חוזה"       — only with a real signature (signed_at, or the signed PDF of a signing
+//                   cut off halfway) — the status can be picked by hand.
 export const SIGNED_STATUSES = ["נסגר/חתימה", "חוזה"];
 
 export function closedNeedsOrder(lead) {
   if (!lead) return false;
   if (lead.status === "נסגר/חתימה") return true;
-  return lead.status === "חוזה" && !!lead.signedAt;
+  return lead.status === "חוזה" && !!(lead.signedAt || lead.signedContractPdfUrl);
 }
 
 export const ORDER_STATUS_LABELS = {
@@ -35,7 +36,9 @@ function rowOf(l, today) {
     signedOn,
     // the best known day the order was received: the signature, else the deposit invoice
     receivedKey: signedOn || deposit?.date || null,
-    outsideSystem: !l.signedAt,
+    outsideSystem: !l.signedAt && !l.signedContractPdfUrl,
+    // signed PDF saved, the signing's second step never arrived (no signed_at)
+    signingCutOff: !l.signedAt && !!l.signedContractPdfUrl,
     deposit,
     invoicesCount: invoices.length,
     fullyInvoiced: finalPrice > 0 && invoiced >= finalPrice - 0.5,

@@ -1652,6 +1652,13 @@ section('when the wizard pops up');
   const base = { id: 'L1', status: 'חוזה', eventDate: '2027-01-14', signedAt: '2026-10-06T18:00:00Z' };
   check('signed, never started → pops up', ps.isPostSignPending(base, now), true);
   check('status "חוזה" picked by hand, no signature → no', ps.isPostSignPending({ ...base, signedAt: null }, now), false);
+  // 2026-10-22: a signing cut off between its two steps (signed PDF saved, no signed_at)
+  const cut = { ...base, signedAt: null, signedContractPdfUrl: 'x/signed-contract.pdf' };
+  check('signed PDF without signed_at → pops up', ps.isPostSignPending(cut, now), true);
+  check('cut-off signing still in "נשלחה הצעה" → pops up', ps.isPostSignPending({ ...cut, status: 'נשלחה הצעה' }, now), true);
+  check('cut-off signing already closed / irrelevant → no', [ps.isPostSignPending({ ...cut, status: 'נסגר/חתימה' }, now), ps.isPostSignPending({ ...cut, status: 'לא רלוונטי' }, now)], [false, false]);
+  check('signature state', [ps.signatureState(base), ps.signatureState(cut), ps.signatureState({ status: 'חוזה' })], ['signed', 'pdf_only', 'none']);
+  check('wizard query also loads signed PDFs without signed_at', ps.POST_SIGN_QUERY.includes('and(signed_contract_pdf_url.not.is.null,signed_at.is.null)'), true);
   check('already נסגר/חתימה, never started → no', ps.isPostSignPending({ ...base, status: 'נסגר/חתימה' }, now), false);
   check('started, not finished (status already changed) → pops up', ps.isPostSignPending({ ...base, status: 'נסגר/חתימה', postSignFlow: { step: 'invoice', done: { status: 'done' } } }, now), true);
   check('finished → no', ps.isPostSignPending({ ...base, postSignFlow: { completedAt: '2026-10-01T00:00:00Z' } }, now), false);
@@ -3011,6 +3018,7 @@ console.log('\n— PART 63: work orders —');
   check('book: outside-system flag', book2.map((r) => r.outsideSystem), [false, false, true, true]);
   check('book: removed couples listed apart', ob.skippedRows(more, [], '2026-10-21').map((r) => r.lead.id), ['L9']);
   check('book: "from this month on" filter', ob.filterMissing(book2, 'month', '2026-10-21').map((r) => r.lead.id), ['L2', 'L1', 'L6']);
+  check('book: a cut-off signing in "חוזה" is listed, flagged, not "outside the system"', (() => { const r = ob.missingOrders([{ id: 'C1', status: 'חוזה', signedAt: null, signedContractPdfUrl: 'p', eventDate: '2027-11-10' }], [], '2026-10-22'); return [r.length, r[0]?.signingCutOff, r[0]?.outsideSystem]; })(), [1, true, false]);
   check('closedNeedsOrder', [ob.closedNeedsOrder({ status: 'נסגר/חתימה' }), ob.closedNeedsOrder({ status: 'חוזה' }), ob.closedNeedsOrder({ status: 'חוזה', signedAt: 'x' }), ob.closedNeedsOrder({ status: 'חדש', signedAt: 'x' })], [true, false, true, false]);
   check('book: issued orders by number, reservations last', ob.issuedOrders([{ id: 'c', morning_number: null, created_at: '3' }, { id: 'b', morning_number: 10002 }, { id: 'a', morning_number: 10001 }]).map((o) => o.id), ['a', 'b', 'c']);
 }

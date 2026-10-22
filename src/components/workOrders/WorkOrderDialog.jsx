@@ -290,7 +290,7 @@ export default function WorkOrderDialog({ isOpen, onClose, lead, replaceOrder = 
         ) : (
           <div className="space-y-4 text-sm">
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-xl border border-gray-700 bg-gray-800/60 p-3">
-              <div><span className="text-gray-400">תאריך החתימה: </span>{signedOn ? fmtDate(signedOn) : "לא ידוע (נסגר מחוץ למערכת)"}</div>
+              <div><span className="text-gray-400">תאריך החתימה: </span>{signedOn ? fmtDate(signedOn) : lead.signedContractPdfUrl ? "לא נשמר (יש PDF חתום)" : "לא ידוע (נסגר מחוץ למערכת)"}</div>
               <div><span className="text-gray-400">תאריך האירוע: </span>{lead.eventDate ? fmtDate(lead.eventDate) : "—"}</div>
               <div><span className="text-gray-400">חבילה: </span>{lead.packageChoice || "—"}</div>
               <div><span className="text-gray-400">מחיר סופי: </span>{finalPrice ? `${finalPrice.toLocaleString("he-IL")} ₪` : "—"}</div>
@@ -336,7 +336,9 @@ export default function WorkOrderDialog({ isOpen, onClose, lead, replaceOrder = 
                 <div className="mt-1 text-xs text-amber-200">
                   {manualReceived
                     ? "יודפס בהזמנה: \"ההזמנה התקבלה בתאריך …\"."
-                    : "הזוג נסגר מחוץ למערכת, אז אין תאריך חתימה. ספר ההזמנות דורש את תאריך קבלת ההזמנה — מלאו אותו אם ידוע (מהחוזה או מהמערכת הישנה)."}
+                    : lead.signedContractPdfUrl
+                      ? "החתימה נקטעה באמצע: ה-PDF החתום נשמר, אבל תאריך החתימה לא נשמר. התאריך כתוב ב-PDF (\"נחתם: …\") — מלאו אותו כאן."
+                      : "הזוג נסגר מחוץ למערכת, אז אין תאריך חתימה. ספר ההזמנות דורש את תאריך קבלת ההזמנה — מלאו אותו אם ידוע (מהחוזה או מהמערכת הישנה)."}
                 </div>
               </div>
             )}

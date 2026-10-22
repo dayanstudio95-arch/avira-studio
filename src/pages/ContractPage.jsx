@@ -87,7 +87,10 @@ export default function ContractPage() {
           // moves it to 'נסגר/חתימה' later) — gating on that specific status here meant
           // reloading the page right after signing would show the signing form again.
           // signedAt is the actual "already signed" signal.
-          if (data.signedAt) {
+          // 2026-10-22: a signing cut off halfway (PDF saved, details not) that the studio
+          // already accepted and closed ("נסגר/חתימה") is signed too — signing again would
+          // replace the PDF the studio checked.
+          if (data.signedAt || (data.signedContractPdfUrl && data.status === 'נסגר/חתימה')) {
             setSigned(true);
             if (data.signedContractPdfUrl) setSignedPdfUrl(data.signedContractPdfUrl);
           }
@@ -224,30 +227,46 @@ export default function ContractPage() {
       // off-screen container. Race it against a hard timeout so this step always
       // either resolves or throws into the outer try/catch in handleSign, instead of
       // leaving the "שומר ומאמת..." button spinning forever with no error surfaced.
+      // Browsers give a canvas no pixels past ~16.7M (iOS Safari) — a very long contract
+      // at scale 2 would come out blank. Lower the scale just enough to stay under it.
+      const cssArea = Math.max(1, container.offsetWidth * container.scrollHeight);
+      const scale = Math.max(1, Math.min(2, Math.sqrt(16_000_000 / cssArea)));
       const canvas = await Promise.race([
-        html2canvas(container, { scale: 2, backgroundColor: '#ffffff', useCORS: true }),
+        html2canvas(container, { scale, backgroundColor: '#ffffff', useCORS: true }),
         new Promise((_, reject) => setTimeout(
           () => reject(new Error('יצירת מסמך ה-PDF נתקעה (חריגת זמן) — נסה שוב, ואם הבעיה נמשכת נסה מדפדפן או רשת אחרת')),
           15000
         )),
       ]);
 
-      const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+      // FIXED (2026-10-22): the whole contract was one PNG at scale 2, and the SAME full image
+      // was embedded again on every page (shifted up) — a 6-page contract came out ~20MB, and
+      // uploading that from a phone sometimes broke halfway (the PDF saved, the signing's
+      // second step never ran). Now each page gets only its own slice, as JPEG: same layout,
+      // same page breaks, same resolution, a fraction of the size.
+      // The contract opens with a dark title band — a light top-left pixel means the
+      // browser produced an empty picture; stop before anything is uploaded or signed.
+      const corner = canvas.getContext('2d').getImageData(4, 4, 1, 1).data;
+      if (corner[3] === 0 || (corner[0] > 200 && corner[1] > 200 && corner[2] > 200)) {
+        throw new Error('יצירת מסמך ה-PDF נכשלה (המסמך יצא ריק) — נסו שוב, או מדפדפן אחר');
+      }
+      const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
       const pageWidth = 210;
       const pageHeight = 297;
-      const imgWidth = pageWidth;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      const imgData = canvas.toDataURL('image/png');
-
-      let heightLeft = imgHeight;
-      let position = 0;
-      doc.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-      while (heightLeft > 0) {
-        position = heightLeft - imgHeight;
-        doc.addPage();
-        doc.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
+      const pxPerMm = canvas.width / pageWidth;
+      const pagePx = Math.floor(pageHeight * pxPerMm);
+      for (let y = 0, page = 0; y < canvas.height; y += pagePx, page += 1) {
+        const h = Math.min(pagePx, canvas.height - y);
+        const slice = document.createElement('canvas');
+        slice.width = canvas.width;
+        slice.height = h;
+        const ctx = slice.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, slice.width, h);
+        ctx.drawImage(canvas, 0, y, canvas.width, h, 0, 0, canvas.width, h);
+        if (page > 0) doc.addPage();
+        doc.addImage(slice.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pageWidth, h / pxPerMm, `page-${page}`, 'FAST');
+        slice.width = 0; // free the slice's memory right away (phones)
       }
 
       const dataUri = doc.output('datauristring');
@@ -305,23 +324,40 @@ export default function ContractPage() {
 
       const { pdfBase64, fileName } = await generateSignedPdf(lead, clientForm, signedAt, signatureDataUrl, lead.studioSignature);
 
+      // A dropped connection (common on phones) gets one automatic retry per step: saving
+      // the PDF again only replaces it (nothing is signed yet), and a repeated signing step
+      // that finds the contract already signed means the first one did go through.
+      const transient = (e) => /failed to fetch|networkerror|load failed|network request failed|timeout|\(HTTP 5\d\d\)/i.test(String(e?.message || ''));
+      const once = async (fn) => {
+        try { return await fn(); } catch (e) {
+          if (!transient(e)) throw e;
+          await new Promise((r) => setTimeout(r, 2000));
+          return await fn();
+        }
+      };
+
       step = 'upload';
-      const saveRes = await base44.functions.invoke('saveSignedContract', {
+      const saveRes = await once(() => base44.functions.invoke('saveSignedContract', {
         leadId: lead.id,
         pdfBase64,
         fileName,
-      });
+      }));
       const fileUrl = saveRes?.data?.fileUrl || null;
 
       step = 'sign';
-      await base44.functions.invoke('signLeadPublic', {
-        leadId: lead.id,
-        idNumber: clientForm.idNumber,
-        email: clientForm.email || undefined,
-        phoneNumber: clientForm.phone || undefined,
-        coupleNames: clientForm.coupleNamesVerify || undefined,
-        coupleNotesSigned: clientForm.coupleNotes || undefined,
-      });
+      try {
+        await once(() => base44.functions.invoke('signLeadPublic', {
+          leadId: lead.id,
+          idNumber: clientForm.idNumber,
+          email: clientForm.email || undefined,
+          phoneNumber: clientForm.phone || undefined,
+          coupleNames: clientForm.coupleNamesVerify || undefined,
+          coupleNotesSigned: clientForm.coupleNotes || undefined,
+        }));
+      } catch (e) {
+        // "already signed" right after our own attempt = our first try succeeded
+        if (!/החוזה כבר נחתם/.test(String(e?.message || ''))) throw e;
+      }
 
       setSignedPdfUrl(fileUrl);
       setSignedFileName(fileName);

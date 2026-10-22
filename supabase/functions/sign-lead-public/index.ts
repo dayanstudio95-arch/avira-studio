@@ -49,12 +49,28 @@ Deno.serve(async (req) => {
     if (phoneNumber) updateData.signed_phone_number = phoneNumber;
     if (coupleNames) updateData.signed_couple_names = coupleNames;
 
-    const { data: updated, error } = await supabase
+    // Never move a couple the studio already closed ("נסגר/חתימה") back to "חוזה" — e.g. a
+    // signing cut off halfway (PDF saved, details not) that the post-sign wizard already
+    // closed, then signed again: the signature is recorded, the status stays (2026-10-22).
+    // sync-lead-to-event syncs only "נסגר/חתימה", so moving it back would silently stop
+    // the event's sync.
+    let { data: updated, error } = await supabase
       .from('leads')
       .update(updateData)
       .eq('id', leadId)
       .is('signed_at', null)
+      .neq('status', 'נסגר/חתימה')
       .select('id');
+    if (!error && (!updated || updated.length === 0)) {
+      const { status: _keep, ...withoutStatus } = updateData;
+      ({ data: updated, error } = await supabase
+        .from('leads')
+        .update(withoutStatus)
+        .eq('id', leadId)
+        .is('signed_at', null)
+        .eq('status', 'נסגר/חתימה')
+        .select('id'));
+    }
     if (error) {
       console.error('[signLeadPublic] Error:', error.message);
       return jsonResponse({ error: error.message }, { status: 500 });

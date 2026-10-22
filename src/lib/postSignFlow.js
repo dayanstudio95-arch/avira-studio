@@ -70,13 +70,34 @@ export function snoozeUntil(option, now = new Date(), pickedDate = null) {
   }
 }
 
-// A real digital signature: signed_at is written only when the couple signs (sign-lead-public
-// / the in-app signing) — the status "חוזה" alone is not proof, it can be picked by hand in
-// the status list (2026-10-21: a couple who had only opened the contract got the wizard and
-// was asked for the deposit).
-export function hasSigned(lead) {
-  return !!lead?.signedAt;
+// Did the couple sign? signed_at is written only by the signing itself (sign-lead-public /
+// the in-app signing) — the status "חוזה" alone is not proof, it can be picked by hand
+// (2026-10-21). A signed PDF with no signed_at is a signing cut off between its two steps
+// (the PDF is uploaded first, then the details are recorded — 2026-10-22: the upload took
+// long on a phone and the second step never arrived): the PDF carries the signature and ID
+// number, so it counts as signed, and the screens say the details were not saved.
+//   'signed' | 'pdf_only' | 'none'
+export function signatureState(lead) {
+  if (lead?.signedAt) return "signed";
+  if (lead?.signedContractPdfUrl) return "pdf_only";
+  return "none";
 }
+export function hasSigned(lead) {
+  return signatureState(lead) !== "none";
+}
+
+// A wizard that never started opens for: status "חוזה" with a signature, or a signing cut
+// off halfway (its status was never moved to "חוזה") that is not closed / irrelevant yet.
+export function readyForPostSign(lead) {
+  const state = signatureState(lead);
+  if (state === "none") return false;
+  if (lead.status === SIGNED_STATUS) return true;
+  return state === "pdf_only" && !["נסגר/חתימה", "לא רלוונטי"].includes(lead.status);
+}
+
+// The leads the wizard host / dashboard card load (PostgREST .or): in "חוזה", a wizard
+// already started, or a signed PDF without signed_at.
+export const POST_SIGN_QUERY = `status.eq."${SIGNED_STATUS}",post_sign_flow.not.is.null,and(signed_contract_pdf_url.not.is.null,signed_at.is.null)`;
 
 // The wizard should pop up for this lead (ignoring the per-tab "until next login" snooze,
 // which the host checks itself):
@@ -87,7 +108,7 @@ export function hasSigned(lead) {
 export function isPostSignPending(lead, now = new Date()) {
   if (!lead) return false;
   const flow = lead.postSignFlow;
-  const open = flow ? !flow.completedAt : lead.status === SIGNED_STATUS && hasSigned(lead);
+  const open = flow ? !flow.completedAt : readyForPostSign(lead);
   if (!open) return false;
   if (lead.status === "לא רלוונטי") return false;
   if (lead.eventDate && lead.eventDate < israelDateStr(now)) return false;

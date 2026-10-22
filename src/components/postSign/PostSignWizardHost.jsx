@@ -4,7 +4,7 @@ import { rowToRecord } from "@/api/entities";
 import { useAuth } from "@/lib/SupabaseAuthContext";
 import { isAdmin } from "@/lib/permissions";
 import { todayInIsrael } from "@/lib/localDate";
-import { isPostSignPending, SIGNED_STATUS } from "@/lib/postSignFlow";
+import { isPostSignPending, POST_SIGN_QUERY } from "@/lib/postSignFlow";
 import PostSignWizard, { isSessionSnoozed, isAnyWizardOpen } from "./PostSignWizard";
 
 // Pops the "after signing" wizard up by itself, on any admin screen (2026-10-07). Looks for
@@ -33,7 +33,7 @@ export default function PostSignWizardHost() {
       const { data, error } = await supabase
         .from("leads")
         .select("*")
-        .or(`status.eq."${SIGNED_STATUS}",post_sign_flow.not.is.null`)
+        .or(POST_SIGN_QUERY)
         .or(`event_date.is.null,event_date.gte.${todayInIsrael()}`)
         .order("signed_at", { ascending: true, nullsFirst: false })
         .limit(200);

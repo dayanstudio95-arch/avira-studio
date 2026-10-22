@@ -18,7 +18,7 @@ import PendingOrderNotice from "@/components/workOrders/PendingOrderNotice";
 // the lead panel. 2026-10-22: couples closed outside the system (imported from the old one, no
 // digital signature) are listed too; the owner can take couples that need no order off the
 // list ("הסר מהרשימה" — nothing is deleted, "הוסרו" brings them back).
-const LEAD_COLUMNS = "id, couple_names, event_date, signed_at, status, final_price, package_choice, package_id, payment_entity, payment_request_entity, invoices_list, work_order_skipped_at";
+const LEAD_COLUMNS = "id, couple_names, event_date, signed_at, status, final_price, package_choice, package_id, payment_entity, payment_request_entity, invoices_list, work_order_skipped_at, signed_contract_pdf_url";
 
 const TONES = {
   amber: "border-[#F59E0B]/50 bg-[#F59E0B]/12 text-amber-300",
@@ -60,6 +60,7 @@ function CoupleInfo({ r, next }) {
         {r.eventPast && <span className="rounded-full bg-gray-700 px-2 py-0.5 text-[11px] text-gray-200">האירוע עבר</span>}
         {r.fullyInvoiced && <span className="rounded-full bg-emerald-800/60 px-2 py-0.5 text-[11px] text-emerald-100">שולם במלואו</span>}
         {r.outsideSystem && <span className="rounded-full bg-amber-900/50 px-2 py-0.5 text-[11px] text-amber-100">חתמו מחוץ למערכת</span>}
+        {r.signingCutOff && <span className="rounded-full bg-amber-900/50 px-2 py-0.5 text-[11px] text-amber-100">יש PDF חתום, החתימה נקטעה</span>}
       </div>
       <div className="mt-0.5 text-xs text-gray-400">
         {r.signedOn ? `חתמו ${fmtDate(r.signedOn)}` : "תאריך חתימה לא ידוע"} · אירוע {l.eventDate ? fmtDate(l.eventDate) : "—"} · {Number(l.finalPrice || 0).toLocaleString("he-IL")} ₪
