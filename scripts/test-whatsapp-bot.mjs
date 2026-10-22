@@ -2997,6 +2997,21 @@ console.log('\n— PART 63: work orders —');
   check('book: signed couples without any order, oldest signature first', book.map((r) => r.lead.id), ['L2', 'L1']);
   check('book: Israeli signing date, deposit, paid in full, past event', [book[1].signedOn, book[1].deposit?.number, book[1].fullyInvoiced, book[1].eventPast, book[0].fullyInvoiced, book[0].deposit], ['2026-04-15', '31203', true, true, false, null]);
   check('book: filters by event date', [ob.filterMissing(book, 'upcoming').map((r) => r.lead.id), ob.filterMissing(book, 'past').map((r) => r.lead.id)], [['L2'], ['L1']]);
+  // 2026-10-22: couples closed outside the system, and couples taken off the list
+  const more = [
+    ...bookLeads,
+    { id: 'L6', status: 'נסגר/חתימה', signedAt: null, eventDate: '2026-10-25', finalPrice: 9000 },
+    { id: 'L7', status: 'נסגר/חתימה', signedAt: null, eventDate: '2026-09-10', finalPrice: 9000, invoicesList: [{ number: '7', date: '2026-05-01', description: 'מקדמה', amount: 500 }] },
+    { id: 'L8', status: 'חוזה', signedAt: null, eventDate: '2026-12-01' },
+    { id: 'L9', status: 'נסגר/חתימה', signedAt: null, eventDate: '2026-11-01', workOrderSkippedAt: '2026-10-22T08:00:00Z' },
+  ];
+  const book2 = ob.missingOrders(more, [{ lead_id: 'L3', status: 'replaced' }], '2026-10-21');
+  check('book: closed outside the system included; by receipt day (signature, else deposit), unknown last by event', book2.map((r) => r.lead.id), ['L2', 'L1', 'L7', 'L6']);
+  check('book: "חוזה" picked by hand (no signature) and removed couples are not listed', [book2.some((r) => r.lead.id === 'L8'), book2.some((r) => r.lead.id === 'L9')], [false, false]);
+  check('book: outside-system flag', book2.map((r) => r.outsideSystem), [false, false, true, true]);
+  check('book: removed couples listed apart', ob.skippedRows(more, [], '2026-10-21').map((r) => r.lead.id), ['L9']);
+  check('book: "from this month on" filter', ob.filterMissing(book2, 'month', '2026-10-21').map((r) => r.lead.id), ['L2', 'L1', 'L6']);
+  check('closedNeedsOrder', [ob.closedNeedsOrder({ status: 'נסגר/חתימה' }), ob.closedNeedsOrder({ status: 'חוזה' }), ob.closedNeedsOrder({ status: 'חוזה', signedAt: 'x' }), ob.closedNeedsOrder({ status: 'חדש', signedAt: 'x' })], [true, false, true, false]);
   check('book: issued orders by number, reservations last', ob.issuedOrders([{ id: 'c', morning_number: null, created_at: '3' }, { id: 'b', morning_number: 10002 }, { id: 'a', morning_number: 10001 }]).map((o) => o.id), ['a', 'b', 'c']);
 }
 

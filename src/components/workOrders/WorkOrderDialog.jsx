@@ -50,7 +50,11 @@ export default function WorkOrderDialog({ isOpen, onClose, lead, replaceOrder = 
   const [morningInfo, setMorningInfo] = useState(null);
   const [infoError, setInfoError] = useState(null);
 
-  const receivedOn = israelDateOf(lead?.signedAt);
+  // The day the order was received: the digital signature; for a couple who closed outside
+  // the system (imported from the old one) the owner types it — the order book requires it.
+  const signedOn = israelDateOf(lead?.signedAt);
+  const [manualReceived, setManualReceived] = useState("");
+  const receivedOn = signedOn || manualReceived || null;
   const finalPrice = Number(lead?.finalPrice) || 0;
   const invoices = coupleInvoices(lead?.invoicesList);
 
@@ -73,7 +77,7 @@ export default function WorkOrderDialog({ isOpen, onClose, lead, replaceOrder = 
       },
       prior: invoices.filter((i) => !(dep && i.number === dep.number && i.businessType === dep.businessType))
         .map((i) => ({ description: i.description, amount: i.amount, number: i.number, date: i.date, businessLabel: label(i.businessType) })),
-      receivedOn,
+      receivedOn: o.receivedOn !== undefined ? o.receivedOn : receivedOn,
       documentDate: o.docDate ?? docDate,
       recordedOn: today,
       replaces: replaceOrder ? { number: replaceOrder.morning_number, date: replaceOrder.document_date, reason: o.reason ?? reason, supplier: o.supplier ?? supplier } : null,
@@ -93,6 +97,11 @@ export default function WorkOrderDialog({ isOpen, onClose, lead, replaceOrder = 
     setPreview(null); setError(null); setLoaded(false); setSupplier(""); setReason(DEFAULT_REPLACE_REASON); setPendingMsg(null); setUpdatePrice(true);
     // a replacement keeps the name of the order it replaces (it may have been edited there)
     setClientName(String(replaceOrder?.couple_names || lead.coupleNames || "").trim()); setDocDate(today); setMorningInfo(null); setInfoError(null);
+    // this couple's receipt date — never the one typed for the previous couple (the window
+    // stays mounted between couples); a replacement keeps the replaced order's
+    const initialManual = replaceOrder?.received_on ? String(replaceOrder.received_on).slice(0, 10) : "";
+    const initialReceived = israelDateOf(lead.signedAt) || initialManual || null;
+    setManualReceived(initialManual);
     // The couple's business; never set → the business of their latest invoice.
     const b = replaceOrder?.business_type || defaultEntity(lead) || businessFromInvoices(lead.invoicesList) || null;
     setBusiness(b);
@@ -117,7 +126,7 @@ export default function WorkOrderDialog({ isOpen, onClose, lead, replaceOrder = 
         setNeedsSplit(d.needsSplit);
       }
       setLines(initial);
-      setRemarks(buildRemarks({ business: b, note: n, reason: DEFAULT_REPLACE_REASON, supplier: "", lines: initial, docDate: today }));
+      setRemarks(buildRemarks({ business: b, note: n, reason: DEFAULT_REPLACE_REASON, supplier: "", lines: initial, docDate: today, receivedOn: initialReceived }));
       setLoaded(true);
     })();
     return () => { alive = false; };
@@ -164,9 +173,12 @@ export default function WorkOrderDialog({ isOpen, onClose, lead, replaceOrder = 
   const dateChoices = orderDateChoices({ ...dateWindow, signedOn: receivedOn, depositDate: depositInv?.date || null });
   // the earliest date allowed: Morning's last order, and never before the signing day
   const minDate = [dateWindow.lastDocumentDate, receivedOn].filter(Boolean).sort().pop() || undefined;
-  const dateProblemNow = !morningInfo
-    ? (docDate !== today ? (infoError ? "לא הצלחנו לבדוק ב-Morning איזה תאריך מותר — אפשר להוציא רק בתאריך של היום" : "בודק ב-Morning איזה תאריך מותר — רגע") : null)
-    : orderDateProblem(docDate, dateWindow);
+  const receiptProblem = receivedOn && receivedOn > today ? "תאריך קבלת ההזמנה לא יכול להיות בעתיד" : null;
+  const dateProblemNow = receiptProblem || (!morningInfo
+    ? (docDate !== today
+      ? (infoError ? "לא הצלחנו לבדוק ב-Morning איזה תאריך מותר — אפשר להוציא רק בתאריך של היום" : "בודק ב-Morning איזה תאריך מותר — רגע")
+      : orderDateProblem(docDate, { today, receivedOn }))
+    : orderDateProblem(docDate, dateWindow));
   const pickDate = (d) => { setDocDate(d); setRemarks(buildRemarks({ docDate: d })); setPreview(null); };
 
   const total = useMemo(() => linesTotal(lines), [lines]);
@@ -278,7 +290,7 @@ export default function WorkOrderDialog({ isOpen, onClose, lead, replaceOrder = 
         ) : (
           <div className="space-y-4 text-sm">
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-xl border border-gray-700 bg-gray-800/60 p-3">
-              <div><span className="text-gray-400">תאריך החתימה: </span>{receivedOn ? fmtDate(receivedOn) : "—"}</div>
+              <div><span className="text-gray-400">תאריך החתימה: </span>{signedOn ? fmtDate(signedOn) : "לא ידוע (נסגר מחוץ למערכת)"}</div>
               <div><span className="text-gray-400">תאריך האירוע: </span>{lead.eventDate ? fmtDate(lead.eventDate) : "—"}</div>
               <div><span className="text-gray-400">חבילה: </span>{lead.packageChoice || "—"}</div>
               <div><span className="text-gray-400">מחיר סופי: </span>{finalPrice ? `${finalPrice.toLocaleString("he-IL")} ₪` : "—"}</div>
@@ -301,6 +313,33 @@ export default function WorkOrderDialog({ isOpen, onClose, lead, replaceOrder = 
               </div>
               {replaceOrder && <div className="mt-1 text-xs text-gray-500">הזמנה מעודכנת יוצאת מאותו עסק של ההזמנה המקורית.</div>}
             </div>
+
+            {!signedOn && (
+              <div className="rounded-xl border border-amber-800/60 bg-amber-950/20 p-3">
+                <div className="mb-1 text-gray-200">תאריך קבלת ההזמנה (חתימת החוזה)</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    type="date"
+                    value={manualReceived}
+                    max={today}
+                    onChange={(e) => { const v = e.target.value; setManualReceived(v); setRemarks(buildRemarks({ receivedOn: v || null })); setPreview(null); }}
+                    className="w-44 border-gray-700 bg-gray-800 text-white"
+                    dir="ltr"
+                  />
+                  {depositInv?.date && (
+                    <button type="button" onClick={() => { const v = String(depositInv.date).slice(0, 10); setManualReceived(v); setRemarks(buildRemarks({ receivedOn: v })); setPreview(null); }}
+                      className="rounded-full border border-gray-600 px-2.5 py-1 text-xs text-gray-300 hover:bg-gray-800">
+                      כמו חשבונית המקדמה {fmtDate(depositInv.date)}
+                    </button>
+                  )}
+                </div>
+                <div className="mt-1 text-xs text-amber-200">
+                  {manualReceived
+                    ? "יודפס בהזמנה: \"ההזמנה התקבלה בתאריך …\"."
+                    : "הזוג נסגר מחוץ למערכת, אז אין תאריך חתימה. ספר ההזמנות דורש את תאריך קבלת ההזמנה — מלאו אותו אם ידוע (מהחוזה או מהמערכת הישנה)."}
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>

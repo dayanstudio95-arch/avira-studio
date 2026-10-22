@@ -277,7 +277,10 @@ Deno.serve(async (req) => {
     const docDate = dateOrNull(body.documentDate) || today;
     // never before the contract was signed (the receipt date the order book records)
     const signedOn = lead.signed_at ? israelDate(new Date(lead.signed_at)) : null;
-    const dateProblem = orderDateProblem(docDate, { today, lastDocumentDate, receivedOn: signedOn });
+    // the receipt day: the signature, else the one typed for a couple closed outside the system
+    const receivedDay = signedOn || receivedOn;
+    if (receivedDay && receivedDay > today) return jsonResponse({ error: 'תאריך קבלת ההזמנה לא יכול להיות בעתיד' }, { status: 400 });
+    const dateProblem = orderDateProblem(docDate, { today, lastDocumentDate, receivedOn: receivedDay });
     if (dateProblem) return jsonResponse({ error: dateProblem }, { status: 400 });
     const payload = buildOrderPayload({ coupleNames, eventDate, lines, remarks, clientId: replaced?.morning_client_id || null, date: docDate });
     // Morning's own date refusal (2405), with the window it allows
@@ -299,7 +302,7 @@ Deno.serve(async (req) => {
       p_business_type: businessType,
       p_replaces: replaced?.id || null,
       p_document_date: docDate,
-      p_received_on: signedOn || receivedOn,
+      p_received_on: receivedDay,
       p_couple_names: coupleNames,
       p_event_date: eventDate,
       p_lines: lines,
