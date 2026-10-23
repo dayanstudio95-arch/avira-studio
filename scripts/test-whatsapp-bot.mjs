@@ -3091,13 +3091,32 @@ console.log('\n— PART 66: orders with their invoices —');
   const ch = ob.orderChains(orders, leads);
   check('one card per couple+business, newest order first', ch.map((c) => c.current.morning_number), [10050, 10045, 10023]);
   const a = ch.find((c) => c.current.id === 'O1');
-  check('own business only, by date; linked / before-order tags', a.invoices.map((i) => [i.number, i.linked, i.beforeOrder]), [['31203', false, true], ['31890', true, false]]);
+  check('by date; the other business too when the couple has no order there; tags', a.invoices.map((i) => [i.number, i.otherBusiness, i.linked, i.beforeOrder]), [['777', true, false, true], ['31203', false, false, true], ['31890', false, true, false]]);
   check('paid in full', [a.balance, a.paid, a.covered], [0, true, 12500]);
   const b = ch.find((c) => c.current.id === 'O3');
   check('replaced order first, then the one replacing it; balance on the current', [b.orders.map((o) => o.id), b.balance, b.paid], [['O2', 'O3'], 7000, false]);
   const x = ch.find((c) => c.current.id === 'O4');
   check('couple not loaded → no invoices, balance unknown', [x.invoices.length, x.balance, x.coupleNames], [0, null, 'בלי ליד']);
   check('filters', [ob.filterChains(ch, 'due').map((c) => c.current.id), ob.filterChains(ch, 'paid').map((c) => c.current.id)], [['O3'], ['O1']]);
+  // שרי ואיתי (2026-10-24): a company order, the deposit an old invoice with no business (= sole proprietor)
+  const sh = ob.orderChains(
+    [{ id: 'S1', lead_id: 'LS', business_type: 'company', morning_number: 10002, document_date: '2026-10-20', total: 6000, status: 'active' }],
+    new Map([['LS', { id: 'LS', coupleNames: 'שרי ואיתי', eventDate: '2026-10-25', invoicesList: [{ number: '31205', description: 'מקדמה', amount: 500, date: '2026-04-19' }] }]]));
+  check('a deposit in the other business shows on the card, counted in the balance', [sh[0].invoices.map((i) => [i.number, i.otherBusiness, i.businessType]), sh[0].balance], [[['31205', true, 'sole_prop']], 5500]);
+  // a couple with orders in both businesses: each card keeps its own business's invoices
+  const both = ob.orderChains(
+    [{ id: 'B1', lead_id: 'LB', business_type: 'sole_prop', morning_number: 1, document_date: '2026-01-01', total: 1000, status: 'active' },
+     { id: 'B2', lead_id: 'LB', business_type: 'company', morning_number: 2, document_date: '2026-01-01', total: 1000, status: 'active' }],
+    new Map([['LB', { id: 'LB', coupleNames: 'x', invoicesList: [{ number: 'p', amount: 1, date: '2026-01-02', businessType: 'sole_prop' }, { number: 'c', amount: 1, date: '2026-01-02', businessType: 'company' }] }]]));
+  check('orders in both businesses → no crossing over', both.map((c) => [c.business, c.invoices.map((i) => i.number)]), [['company', ['c']], ['sole_prop', ['p']]]);
+  // "נשאר לגבות": by event date, oldest first (an event that is over and still owes comes first)
+  const due = ob.filterChains([
+    { current: { id: 'n' }, balance: 100, eventDate: '2026-12-01' },
+    { current: { id: 'o' }, balance: 100, eventDate: '2026-09-01' },
+    { current: { id: 'x' }, balance: 100, eventDate: null },
+    { current: { id: 'p' }, balance: 0, paid: true, eventDate: '2026-01-01' },
+  ], 'due');
+  check('due: by event date, oldest first, unknown date last; paid ones out', due.map((c) => c.current.id), ['o', 'n', 'x']);
   check('search: name part, order number, invoice number; empty = all', [
     ob.bookSearchMatch('שירה', ob.chainSearchValues(b)), ob.bookSearchMatch('10011', ob.chainSearchValues(b)),
     ob.bookSearchMatch('40112', ob.chainSearchValues(b)), ob.bookSearchMatch('31890', ob.chainSearchValues(b)), ob.bookSearchMatch('  ', ['x']),

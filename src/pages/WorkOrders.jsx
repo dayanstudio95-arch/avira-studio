@@ -128,6 +128,9 @@ function OrderChainCard({ c, orderNumber, onResolved }) {
             <Receipt className="h-4 w-4 shrink-0 text-amber-300" />
             <span className="text-gray-100">חשבונית מס קבלה {i.number || "—"}</span>
             <span className="text-xs text-gray-400">· {i.description || "—"} · {fmtDate(i.date)}</span>
+            {i.otherBusiness && (
+              <span className="flex items-center gap-1 rounded-full border border-amber-700/60 px-2 py-0.5 text-[11px] text-amber-200">בעסק השני {bizTag(i.businessType)}</span>
+            )}
             <span className="ms-auto tabular-nums text-gray-200">{shekel(i.amount)}</span>
             {i.linked ? (
               <span className="rounded-full bg-sky-900/60 px-2 py-0.5 text-[11px] text-sky-100">מקושרת להזמנה ✓</span>

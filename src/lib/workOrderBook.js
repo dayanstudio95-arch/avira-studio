@@ -98,10 +98,18 @@ export function issuedOrders(orders) {
 // its orders (a replaced one first, crossed out on screen, then the one that replaced it) and
 // the couple's invoices of that business by date. All of them, linked or not: most orders were
 // issued after the deposit had been paid (only 8 of 261 invoices are linked in Morning), so
-// "linked" and "before the order" are tags, not a filter. `leadsById`: id → camelCase lead.
-// Newest order first.
+// "linked" and "before the order" are tags, not a filter. Invoices of the OTHER business show
+// too (otherBusiness) when the couple has no order there — e.g. a deposit invoiced by the sole
+// proprietor before a company order (שרי ואיתי, 2026-10-24); with an order there they belong
+// to that card. `leadsById`: id → camelCase lead. Newest order first.
 export function orderChains(orders, leadsById) {
   const groups = new Map();
+  const businessesOf = new Map(); // lead id → the businesses it has orders in
+  for (const o of orders || []) {
+    const set = businessesOf.get(o.lead_id) || new Set();
+    set.add(o.business_type || "sole_prop");
+    businessesOf.set(o.lead_id, set);
+  }
   for (const o of orders || []) {
     const key = `${o.lead_id || o.id}|${o.business_type || "sole_prop"}`;
     if (!groups.has(key)) groups.set(key, []);
@@ -118,11 +126,12 @@ export function orderChains(orders, leadsById) {
     const business = current.business_type || "sole_prop";
     const ids = new Set(sorted.map((o) => o.id));
     const firstDate = sorted[0].document_date || null;
+    const ownBusinesses = businessesOf.get(current.lead_id) || new Set([business]);
     const invoices = coupleInvoices(lead?.invoicesList)
-      .filter((i) => i.businessType === business)
+      .filter((i) => i.businessType === business || !ownBusinesses.has(i.businessType))
       .map((i) => {
         const linked = !!i.workOrderId && ids.has(i.workOrderId);
-        return { ...i, linked, beforeOrder: !linked && !!firstDate && String(i.date || "") < firstDate };
+        return { ...i, linked, otherBusiness: i.businessType !== business, beforeOrder: !linked && !!firstDate && String(i.date || "") < firstDate };
       });
     const balance = lead ? orderBalance(current, lead.invoicesList) : null;
     const total = Number(current.total) || 0;
@@ -145,9 +154,15 @@ export function orderChains(orders, leadsById) {
   return chains.sort((a, b) => (num(b) - num(a)) || String(b.current.created_at || "").localeCompare(String(a.current.created_at || "")));
 }
 
-// 'all' | 'due' (something left to invoice) | 'paid'
+// 'all' | 'due' (something left to invoice) | 'paid'. "נשאר לגבות" is in event order, oldest
+// first (2026-10-24, the owner's choice): couples whose wedding is over and still owe come
+// first, then the coming ones; the others stay newest order first.
 export function filterChains(chains, filter) {
-  if (filter === "due") return chains.filter((c) => c.balance != null && c.balance > 0.5);
+  if (filter === "due") {
+    return chains
+      .filter((c) => c.balance != null && c.balance > 0.5)
+      .sort((a, b) => String(a.eventDate || "9999").localeCompare(String(b.eventDate || "9999")));
+  }
   if (filter === "paid") return chains.filter((c) => c.paid);
   return chains;
 }
