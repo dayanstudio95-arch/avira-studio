@@ -3067,5 +3067,42 @@ console.log('\n— PART 65: crew reminder message —');
     ['תזכורת לאירוע ב-30/10, ל-30/10 (מחרוזת)', 'תזכורת לאירוע מחר', 'לאירוע היום, להיום']);
 }
 
+// =====================================================================================
+// PART 66 — "הזמנות וחשבוניות" + search in the order book (2026-10-24)
+console.log('\n— PART 66: orders with their invoices —');
+{
+  const ob = await loadModule('src/lib/workOrderBook.js', 'ob66');
+  const leads = new Map([
+    ['L1', { id: 'L1', coupleNames: 'אנאל וגל', eventDate: '2026-10-22', invoicesList: [
+      { id: 'i1', number: '31203', description: 'מקדמה', amount: 500, date: '2026-03-15', businessType: 'sole_prop' },
+      { id: 'i2', number: '31890', description: 'תשלום יתרה', amount: 12000, date: '2026-10-23', businessType: 'sole_prop', workOrderId: 'O1' },
+      { id: 'i3', number: '777', description: 'מקדמה', amount: 300, date: '2026-01-01', businessType: 'company' },
+    ] }],
+    ['L2', { id: 'L2', coupleNames: 'שירה ועומר', eventDate: '2026-11-12', invoicesList: [
+      { id: 'j1', number: '40112', description: 'מקדמה', amount: 500, date: '2026-04-02', businessType: 'company' },
+    ] }],
+  ]);
+  const orders = [
+    { id: 'O1', lead_id: 'L1', business_type: 'sole_prop', morning_number: 10023, document_date: '2026-03-20', total: 12500, status: 'active', created_at: '2026-03-20T10:00:00Z' },
+    { id: 'O2', lead_id: 'L2', business_type: 'company', morning_number: 10011, document_date: '2026-04-02', total: 12500, status: 'replaced', created_at: '2026-04-02T10:00:00Z' },
+    { id: 'O3', lead_id: 'L2', business_type: 'company', morning_number: 10045, document_date: '2026-09-10', total: 7500, status: 'active', replaces_order_id: 'O2', created_at: '2026-09-10T10:00:00Z' },
+    { id: 'O4', lead_id: 'LX', business_type: 'sole_prop', morning_number: 10050, document_date: '2026-10-01', total: 9000, status: 'active', created_at: '2026-10-01T10:00:00Z', couple_names: 'בלי ליד' },
+  ];
+  const ch = ob.orderChains(orders, leads);
+  check('one card per couple+business, newest order first', ch.map((c) => c.current.morning_number), [10050, 10045, 10023]);
+  const a = ch.find((c) => c.current.id === 'O1');
+  check('own business only, by date; linked / before-order tags', a.invoices.map((i) => [i.number, i.linked, i.beforeOrder]), [['31203', false, true], ['31890', true, false]]);
+  check('paid in full', [a.balance, a.paid, a.covered], [0, true, 12500]);
+  const b = ch.find((c) => c.current.id === 'O3');
+  check('replaced order first, then the one replacing it; balance on the current', [b.orders.map((o) => o.id), b.balance, b.paid], [['O2', 'O3'], 7000, false]);
+  const x = ch.find((c) => c.current.id === 'O4');
+  check('couple not loaded → no invoices, balance unknown', [x.invoices.length, x.balance, x.coupleNames], [0, null, 'בלי ליד']);
+  check('filters', [ob.filterChains(ch, 'due').map((c) => c.current.id), ob.filterChains(ch, 'paid').map((c) => c.current.id)], [['O3'], ['O1']]);
+  check('search: name part, order number, invoice number; empty = all', [
+    ob.bookSearchMatch('שירה', ob.chainSearchValues(b)), ob.bookSearchMatch('10011', ob.chainSearchValues(b)),
+    ob.bookSearchMatch('40112', ob.chainSearchValues(b)), ob.bookSearchMatch('31890', ob.chainSearchValues(b)), ob.bookSearchMatch('  ', ['x']),
+  ], [true, true, true, false, true]);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

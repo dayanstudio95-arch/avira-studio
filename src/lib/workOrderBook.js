@@ -2,7 +2,7 @@
 // order was received (the signing day; else the deposit invoice's day), so issuing down the
 // list keeps Morning's order numbers in that order — and the orders already issued. Pure; the
 // page (src/pages/WorkOrders.jsx) loads the rows.
-import { coupleInvoices, depositInvoiceAny, israelDateOf } from "./workOrder";
+import { coupleInvoices, depositInvoiceAny, israelDateOf, orderBalance } from "./workOrder";
 
 // Statuses the page loads. Who counts (closedNeedsOrder):
 //   "נסגר/חתימה" — a closed deal, signed in the system or outside it (the couples imported
@@ -93,3 +93,74 @@ export function issuedOrders(orders) {
     return String(a.created_at || "").localeCompare(String(b.created_at || ""));
   });
 }
+
+// "הזמנות וחשבוניות" (2026-10-24, the owner's request): one card per couple and business —
+// its orders (a replaced one first, crossed out on screen, then the one that replaced it) and
+// the couple's invoices of that business by date. All of them, linked or not: most orders were
+// issued after the deposit had been paid (only 8 of 261 invoices are linked in Morning), so
+// "linked" and "before the order" are tags, not a filter. `leadsById`: id → camelCase lead.
+// Newest order first.
+export function orderChains(orders, leadsById) {
+  const groups = new Map();
+  for (const o of orders || []) {
+    const key = `${o.lead_id || o.id}|${o.business_type || "sole_prop"}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(o);
+  }
+  const byDate = (a, b) =>
+    String(a.document_date || a.created_at || "").localeCompare(String(b.document_date || b.created_at || "")) ||
+    String(a.created_at || "").localeCompare(String(b.created_at || ""));
+  const chains = [...groups.entries()].map(([key, list]) => {
+    const sorted = [...list].sort(byDate);
+    const live = sorted.filter((o) => o.status !== "replaced" && o.status !== "closed");
+    const current = live[live.length - 1] || sorted[sorted.length - 1];
+    const lead = leadsById?.get(current.lead_id) || null;
+    const business = current.business_type || "sole_prop";
+    const ids = new Set(sorted.map((o) => o.id));
+    const firstDate = sorted[0].document_date || null;
+    const invoices = coupleInvoices(lead?.invoicesList)
+      .filter((i) => i.businessType === business)
+      .map((i) => {
+        const linked = !!i.workOrderId && ids.has(i.workOrderId);
+        return { ...i, linked, beforeOrder: !linked && !!firstDate && String(i.date || "") < firstDate };
+      });
+    const balance = lead ? orderBalance(current, lead.invoicesList) : null;
+    const total = Number(current.total) || 0;
+    return {
+      key,
+      lead,
+      coupleNames: current.couple_names || lead?.coupleNames || "",
+      eventDate: lead?.eventDate || current.event_date || null,
+      business,
+      orders: sorted,
+      current,
+      invoices,
+      total,
+      covered: balance == null ? null : Math.round((total - balance) * 100) / 100,
+      balance,
+      paid: balance != null && balance <= 0.5,
+    };
+  });
+  const num = (c) => Number(c.current.morning_number) || 0;
+  return chains.sort((a, b) => (num(b) - num(a)) || String(b.current.created_at || "").localeCompare(String(a.current.created_at || "")));
+}
+
+// 'all' | 'due' (something left to invoice) | 'paid'
+export function filterChains(chains, filter) {
+  if (filter === "due") return chains.filter((c) => c.balance != null && c.balance > 0.5);
+  if (filter === "paid") return chains.filter((c) => c.paid);
+  return chains;
+}
+
+// The page's search box: couple names, order numbers, invoice numbers — any part, any case.
+export function bookSearchMatch(query, values) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return true;
+  return (values || []).some((v) => v != null && String(v).toLowerCase().includes(q));
+}
+
+export const chainSearchValues = (c) => [
+  c.coupleNames,
+  ...c.orders.map((o) => o.morning_number),
+  ...c.invoices.map((i) => i.number),
+];
