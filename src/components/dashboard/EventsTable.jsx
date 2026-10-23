@@ -18,6 +18,9 @@ import { missingCount as crewMissing, combinedNotes } from "@/lib/missingTeam";
 import { GAP_TYPES } from "@/lib/eventGaps";
 import { Link } from "react-router-dom";
 import DashTitleLink from "./DashTitleLink";
+import EventMobileCards from "../events/EventMobileCards";
+import EventExpensesEditor from "../eventDetails/EventExpensesEditor";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
 export const GAP_TONE = {
   red: "border-red-500/40 bg-red-500/15 text-red-300",
@@ -86,6 +89,9 @@ export default function EventsTable({ events, isLoading, onRefresh, gaps = null 
   // owner's request — same joining as the today card, combinedNotes).
   const [openNotes, setOpenNotes] = useState(() => new Set());
   const leadById = useMemo(() => new Map(leads.map((l) => [l.id, l])), [leads]);
+  // The phone cards (EventMobileCards, like the events page): "✅ חתם" and the הוצאות sheet.
+  const signedLeadIds = useMemo(() => new Set(leads.filter((l) => l.signedAt).map((l) => l.id)), [leads]);
+  const [expensesFor, setExpensesFor] = useState(null);
   const notesButton = (event) => {
     const notes = combinedNotes(event.notes, event.sourceLeadId ? leadById.get(event.sourceLeadId)?.notes : null);
     if (!notes) return null;
@@ -224,99 +230,64 @@ export default function EventsTable({ events, isLoading, onRefresh, gaps = null 
         </div>
       </CardHeader>
       <CardContent className="p-0">
-        {/* Mobile View - Cards */}
-        <div className="md:hidden p-3 space-y-3">
-          {events.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              <Heart className="w-12 h-12 mx-auto mb-4 text-gray-600" />
-              <p className="text-lg font-medium">אין אירועים עדיין</p>
-              <p className="text-sm">צור את האירוע הראשון שלך כדי להתחיל</p>
-            </div>
-          ) : (
-            events.map((event) => {
-              const clientPaymentStatus = event.clientPaymentStatus || "Unpaid";
-              // Same rule as the table below / the sidebar (src/lib/missingTeam.js).
-              const teamGap = crewMissing(event);
-              const isFullTeam = teamGap <= 0;
-              const progressStatus = getEventProgressStatus(event);
-
-              return (
-                <Card key={event.id} className="bg-gray-800/50 border-gray-700">
-                  <CardContent className="p-3 space-y-2">
-                    {gaps && gapChips(event)}
-                    <div className="flex justify-between items-start">
-                      <div onClick={() => openUnifiedPanelForEvent(event)} className="cursor-pointer">
-                        <div className="font-bold text-white text-base hover:text-yellow-400 transition-colors">{event.coupleNames}</div>
-                        <div className="text-gray-400 text-sm">{format(new Date(event.date), "d/M/yyyy")}{event.venue ? ` · ${event.venue}` : ""}</div>
-                      </div>
-                      <PaymentStatusSelector
-                        eventId={event.id}
-                        currentStatus={clientPaymentStatus}
-                        onStatusChange={onRefresh}
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div>
-                        <span className="text-gray-400">סכום:</span>
-                        <span className="text-yellow-400 font-semibold mr-2">₪{event.totalAmountGross?.toLocaleString()}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-400">רווח:</span>
-                        <span className={`font-semibold mr-2 ${calcProfit(event, staffMembers) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                           ₪{Math.round(calcProfit(event, staffMembers)).toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2 flex-wrap">
-                      <Badge
-                        variant="outline"
-                        onClick={(e) => openProgress(e, event)}
-                        title="לחצו לסימון בסטטוס עבודה"
-                        className={`${progressStatus.color} border text-xs cursor-pointer hover:opacity-80 min-h-[36px] px-2.5`}
-                      >
-                        {progressStatus.label}
-                      </Badge>
-                      <Badge
-                        variant="outline"
-                        onClick={(e) => openTeam(e, event)}
-                        title="לחצו לראות מי משובץ בכל תפקיד ולהחליף"
-                        className={`${isFullTeam ? 'bg-green-500/20 text-green-400 border-green-500/30 hover:bg-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/30'} cursor-pointer min-h-[36px] px-2.5 border text-xs`}
-                      >
-                        {isFullTeam ? <UserCheck className="w-3 h-3 mr-1 inline" /> : <AlertTriangle className="w-3 h-3 mr-1 inline" />}
-                        צוות {isFullTeam ? 'מלא' : `חסר ${teamGap}`}
-                      </Badge>
-                      <Badge variant="outline" className={`${event.albumStatus === 'sent' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-pink-500/20 text-pink-400 border-pink-500/30'} border text-xs`}>
-                        <Album className="w-3 h-3 mr-1 inline" />
-                        {event.albumStatus === 'sent' ? 'נשלח' : 'לא נשלח'}
-                      </Badge>
-                      {(() => {
-                        const filled = isQuestionnaireFilled(event);
-                        if (filled === null) return null;
-                        return (
-                          <Badge
-                            variant="outline"
-                            onClick={filled ? undefined : (e) => openQuestionnaireReminder(e, event)}
-                            title={filled ? undefined : "לחצו כדי לשלוח שוב את השאלון לזוג"}
-                            className={`${
-                              filled
-                                ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                                : 'bg-orange-500/20 text-orange-400 border-orange-500/30 cursor-pointer hover:bg-orange-500/30 min-h-[36px] px-2.5'
-                            } border text-xs`}
-                          >
-                            <ClipboardList className="w-3 h-3 mr-1 inline" />
-                            שאלון {filled ? 'מולא' : 'לא מולא · שלח שוב'}
-                          </Badge>
-                        );
-                      })()}
-                    </div>
-                    {notesButton(event)}
-                  </CardContent>
-                </Card>
-              );
-            })
-          )}
+        {/* Mobile View - Cards: the events page's card (2026-10-24, the owner's request —
+            month headers, crew names, פרטים / הוצאות / צוות / וואטסאפ), plus what only the
+            dashboard showed: amount + profit, work progress and the questionnaire, notes. */}
+        <div className="md:hidden">
+          <EventMobileCards
+            events={events}
+            isLoading={false}
+            signedLeadIds={signedLeadIds}
+            onOpenDetail={openUnifiedPanelForEvent}
+            onOpenTeamAssign={(event) => setTeamFor(event)}
+            onOpenExpenses={(event) => setExpensesFor(event)}
+            missingFor={crewMissing}
+            slots={{
+              top: gaps ? gapChips : undefined,
+              payment: (event) => (
+                <PaymentStatusSelector eventId={event.id} currentStatus={event.clientPaymentStatus || "Unpaid"} onStatusChange={onRefresh} />
+              ),
+              afterTeam: (event) => (
+                <div className="flex gap-4 text-sm">
+                  <span><span className="text-gray-400">סכום:</span> <span className="font-semibold text-yellow-400">₪{event.totalAmountGross?.toLocaleString()}</span></span>
+                  <span><span className="text-gray-400">רווח:</span> <span className={`font-semibold ${calcProfit(event, staffMembers) >= 0 ? 'text-green-400' : 'text-red-400'}`}>₪{Math.round(calcProfit(event, staffMembers)).toLocaleString()}</span></span>
+                </div>
+              ),
+              status: (event) => {
+                const progressStatus = getEventProgressStatus(event);
+                return (
+                  <Badge
+                    variant="outline"
+                    onClick={(e) => openProgress(e, event)}
+                    title="לחצו לסימון בסטטוס עבודה"
+                    className={`${progressStatus.color} border text-xs cursor-pointer hover:opacity-80 min-h-[32px] px-2.5`}
+                  >
+                    {progressStatus.label}
+                  </Badge>
+                );
+              },
+              chips: (event) => {
+                const filled = isQuestionnaireFilled(event);
+                if (filled === null) return null;
+                return (
+                  <Badge
+                    variant="outline"
+                    onClick={filled ? undefined : (e) => openQuestionnaireReminder(e, event)}
+                    title={filled ? undefined : "לחצו כדי לשלוח שוב את השאלון לזוג"}
+                    className={`${
+                      filled
+                        ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                        : 'bg-orange-500/20 text-orange-400 border-orange-500/30 cursor-pointer hover:bg-orange-500/30'
+                    } min-h-[32px] px-2.5 border text-xs`}
+                  >
+                    <ClipboardList className="w-3 h-3 mr-1 inline" />
+                    שאלון {filled ? 'מולא' : 'לא מולא · שלח שוב'}
+                  </Badge>
+                );
+              },
+              beforeActions: notesButton,
+            }}
+          />
         </div>
 
         {/* Desktop View - Table */}
@@ -534,6 +505,19 @@ export default function EventsTable({ events, isLoading, onRefresh, gaps = null 
       <ProgressEventDialog event={progressFor} staffMembers={staffMembers} onClose={() => setProgressFor(null)} onChanged={onRefresh} />
       <EventTeamDialog event={teamFor} staffMembers={staffMembers} onClose={() => setTeamFor(null)} onChanged={onRefresh} />
       <QuestionnaireReminderDialog target={questionnaireFor} onClose={() => setQuestionnaireFor(null)} />
+      <Sheet open={!!expensesFor} onOpenChange={(open) => { if (!open) setExpensesFor(null); }}>
+        <SheetContent className="bg-gray-900 border-gray-800 text-white w-full sm:max-w-2xl overflow-y-auto" dir="rtl">
+          <SheetHeader>
+            <SheetTitle className="text-white">עריכת הוצאות</SheetTitle>
+          </SheetHeader>
+          {expensesFor && (
+            <EventExpensesEditor
+              eventId={expensesFor.id}
+              onSave={() => { setExpensesFor(null); if (onRefresh) onRefresh(); }}
+            />
+          )}
+        </SheetContent>
+      </Sheet>
       <UnifiedSidePanel
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}

@@ -23,7 +23,11 @@ function getTeamSummary(event) {
   return members.map(m => m.staffMemberName).join(", ");
 }
 
-export default function EventMobileCards({ events, isLoading, onOpenDetail, onOpenTeamAssign, onOpenExpenses, signedLeadIds }) {
+// Also the dashboard's "אירועים אחרונים" on the phone (2026-10-24). Optional, all absent on
+// the events page: `slots` — { top, payment, afterTeam, status, chips, beforeActions }, each
+// (event) => node, where `payment` / `status` replace the default badge; `missingFor(event)`
+// — the crew gap by another rule (the dashboard uses missingCount from missingTeam.js).
+export default function EventMobileCards({ events, isLoading, onOpenDetail, onOpenTeamAssign, onOpenExpenses, signedLeadIds, slots, missingFor }) {
   if (isLoading) {
     return (
       <div className="space-y-3 p-4">
@@ -58,7 +62,8 @@ export default function EventMobileCards({ events, isLoading, onOpenDetail, onOp
         const teamSummary = getTeamSummary(event);
         const teamCount = (event.team || []).filter(m => m.staffMemberName).length;
         const required  = event.requiredCrew || 3;
-        const teamFull  = teamCount >= required;
+        const teamGap   = missingFor ? missingFor(event) : required - teamCount;
+        const teamFull  = teamGap <= 0;
 
         const waPhone = event.phoneNumber
           ? event.phoneNumber.replace(/\D/g, "").replace(/^0/, "972")
@@ -72,6 +77,7 @@ export default function EventMobileCards({ events, isLoading, onOpenDetail, onOp
               </div>
             )}
             <div id={`event-row-${event.id}`} className="dash-card p-3.5 space-y-2">
+              {slots?.top?.(event)}
               {/* Top row: name + payment badge */}
               <div className="flex items-start justify-between gap-2">
                 <button
@@ -80,9 +86,11 @@ export default function EventMobileCards({ events, isLoading, onOpenDetail, onOp
                 >
                   {event.coupleNames}
                 </button>
-                <Badge variant="outline" className={`${pay.cls} border text-[10px] font-medium px-2 py-0.5 whitespace-nowrap flex-shrink-0`}>
-                  {pay.label}
-                </Badge>
+                {slots?.payment ? <div className="flex-shrink-0">{slots.payment(event)}</div> : (
+                  <Badge variant="outline" className={`${pay.cls} border text-[10px] font-medium px-2 py-0.5 whitespace-nowrap flex-shrink-0`}>
+                    {pay.label}
+                  </Badge>
+                )}
               </div>
 
               {/* Date + Venue */}
@@ -101,20 +109,27 @@ export default function EventMobileCards({ events, isLoading, onOpenDetail, onOp
                 <Users className="w-3 h-3 text-gray-500 flex-shrink-0" />
                 <span className={`truncate ${teamFull ? "text-green-400" : "text-red-400"}`}>
                   {teamSummary}
-                  {!teamFull && <span className="ml-1 text-red-400">(חסר {required - teamCount})</span>}
+                  {!teamFull && <span className="ml-1 text-red-400">(חסר {teamGap})</span>}
                 </span>
               </div>
 
+              {slots?.afterTeam?.(event)}
+
               {/* Status badges */}
               <div className="flex flex-wrap gap-1.5">
-                <Badge variant="outline" className={`${ps.cls} border text-[10px] px-2 py-0.5`}>{ps.label}</Badge>
+                {slots?.status ? slots.status(event) : (
+                  <Badge variant="outline" className={`${ps.cls} border text-[10px] px-2 py-0.5`}>{ps.label}</Badge>
+                )}
                 {event.albumStatus === "sent" && (
                   <Badge variant="outline" className="bg-pink-500/20 text-pink-400 border-pink-500/30 border text-[10px] px-2 py-0.5">🖼️ אלבום נשלח</Badge>
                 )}
                 {signedLeadIds?.has(event.sourceLeadId || event.leadId) && (
                   <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500/30 border text-[10px] px-2 py-0.5">✅ חתם</Badge>
                 )}
+                {slots?.chips?.(event)}
               </div>
+
+              {slots?.beforeActions?.(event)}
 
               {/* Quick actions */}
               <div className="flex items-center gap-2 pt-1 border-t border-white/[0.06]">
