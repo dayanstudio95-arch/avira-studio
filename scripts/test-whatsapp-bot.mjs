@@ -3023,5 +3023,28 @@ console.log('\n— PART 63: work orders —');
   check('book: issued orders by number, reservations last', ob.issuedOrders([{ id: 'c', morning_number: null, created_at: '3' }, { id: 'b', morning_number: 10002 }, { id: 'a', morning_number: 10001 }]).map((o) => o.id), ['a', 'b', 'c']);
 }
 
+// =====================================================================================
+// PART 64 — crew cost ₪0 that shouldn't be (2026-10-23)
+console.log('\n— PART 64: crew cost warning —');
+{
+  const sr = await loadModule('src/lib/staffRates.js', 'sr64');
+  const staff = [
+    { name: 'אביהו', defaultRate: 0, ratesByRole: [{ role: 'photographer1', rate: 2500 }, { role: 'photographer2', rate: 1200 }] },
+    { name: 'זיו', defaultRate: 0, ratesByRole: [{ role: 'photographer2', rate: 1000 }] },
+    { name: 'אני (דניאל)', defaultRate: 0, ratesByRole: [] },
+    { name: 'רודי', defaultRate: 1800, ratesByRole: [] },
+  ];
+  check('₪0 with a price for the slot', sr.crewCostWarning({ role: 'photographer1', staffMemberName: 'אביהו', cost: 0 }, staff), { kind: 'zero', rate: 2500 });
+  check('₪0, name with a trailing space, default rate', sr.crewCostWarning({ role: 'videographer', staffMemberName: 'רודי ', cost: 0 }, staff), { kind: 'zero', rate: 1800 });
+  check('₪0, prices only for another slot', sr.crewCostWarning({ role: 'photographer1', staffMemberName: 'זיו', cost: '0' }, staff), { kind: 'no_rate' });
+  check('no warning: priced, the owner, one-time, unknown name, empty slot', [
+    sr.crewCostWarning({ role: 'photographer1', staffMemberName: 'אביהו', cost: 2500 }, staff),
+    sr.crewCostWarning({ role: 'photographer1', staffMemberName: 'אני (דניאל)', cost: 0 }, staff),
+    sr.crewCostWarning({ role: 'photographer1', staffMemberName: 'אביהו', cost: 0, isTemporary: true }, staff),
+    sr.crewCostWarning({ role: 'photographer1', staffMemberName: 'מישהו', cost: 0 }, staff),
+    sr.crewCostWarning(undefined, staff),
+  ], [null, null, null, null, null]);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

@@ -17,6 +17,8 @@ import { toast } from "sonner";
 import UnifiedSidePanel from "../unified/UnifiedSidePanel";
 import EventExpensesEditor from "../eventDetails/EventExpensesEditor";
 import { calculateNetProfit, getProfitColor } from "@/lib/profitCalculations";
+import { crewCostWarning } from "@/lib/staffRates";
+import { eventTeamRoleLabel } from "@/lib/staffRoles";
 import EventMobileCards from "./EventMobileCards";
 import MobileStaffAssignmentSheet from "./MobileStaffAssignmentSheet";
 import { sendCalendarInviteByName } from "@/lib/calendarInvites";
@@ -40,12 +42,28 @@ const statusLabels = {
 // selection/conflict-detection/cost-lookup logic as the desktop table.
 export function StaffPickerCell({ event, role, roleKey, label, color, icon, staffList, events, onRefresh, editingKey, setEditingKey, sendCalendarInviteByName, isWrapped }) {
   const member = event.team?.find(m => m.role === roleKey);
+  const costWarning = crewCostWarning(member, staffList);
 
   const removeMember = async (e) => {
     e.stopPropagation();
     const newTeam = event.team.filter(m => m.role !== roleKey);
     await base44.entities.Event.update(event.id, { team: newTeam });
     onRefresh?.();
+  };
+
+  // "₪0" on someone with a price for this slot: one click puts the price in (2026-10-23).
+  const fixZeroCost = async (e) => {
+    e.stopPropagation();
+    if (costWarning?.kind !== "zero") return;
+    try {
+      const newTeam = (event.team || []).map(m => (m.role === roleKey ? { ...m, cost: costWarning.rate } : m));
+      await base44.entities.Event.update(event.id, { team: newTeam });
+      toast.success(`העלות של ${member.staffMemberName} עודכנה ל-₪${costWarning.rate.toLocaleString()}`);
+      onRefresh?.();
+    } catch (error) {
+      console.error("Error fixing a zero crew cost:", error);
+      toast.error("שגיאה בעדכון העלות", { description: error?.message });
+    }
   };
 
   const content = (
@@ -57,6 +75,26 @@ export function StaffPickerCell({ event, role, roleKey, label, color, icon, staf
               <span>{icon}</span>
               <span className="truncate" title={member.isTemporary ? `${member.staffMemberName} — זמני (רק באירוע הזה)` : member.staffMemberName}>{member.staffMemberName}</span>
               {member.isTemporary && <span className="flex-shrink-0 rounded bg-amber-500/25 px-1 text-[9px] text-amber-200">זמני</span>}
+              {costWarning?.kind === "zero" && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={fixZeroCost}
+                  onKeyDown={(e) => { if (e.key === "Enter") fixZeroCost(e); }}
+                  title={`העלות שמורה ₪0, והמחיר ברשימת הצוות ₪${costWarning.rate.toLocaleString()} — הרווח מוצג גבוה מדי. לחיצה מעדכנת`}
+                  className="flex-shrink-0 rounded bg-red-500/30 px-1 text-[9px] font-semibold text-red-200 hover:bg-red-500/50"
+                >
+                  ₪0
+                </span>
+              )}
+              {costWarning?.kind === "no_rate" && (
+                <span
+                  title={`אין ל${member.staffMemberName} מחיר כ${eventTeamRoleLabel(roleKey)} ברשימת הצוות — העלות ₪0 והרווח מוצג גבוה מדי`}
+                  className="flex-shrink-0 rounded bg-red-500/30 px-1 text-[9px] font-semibold text-red-200"
+                >
+                  אין מחיר
+                </span>
+              )}
               <button onClick={removeMember} className="hover:text-red-400 text-sm leading-none flex-shrink-0">×</button>
             </div>
           ) : (
@@ -675,6 +713,9 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
                           <span className={`font-semibold text-[10px] ${getProfitColor(event, staffMembers)}`}>
                             ₪{Math.round(calculateNetProfit(event, staffMembers)).toLocaleString()}
                           </span>
+                          {(event.team || []).some(m => crewCostWarning(m, staffMembers)) && (
+                            <span title="יש איש צוות עם עלות ₪0 — הרווח מוצג גבוה מדי" className="ms-1 text-[10px] text-red-400">⚠️</span>
+                          )}
                         </TableCell>
 
                         {/* Payment Status */}
