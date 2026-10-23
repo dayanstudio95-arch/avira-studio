@@ -3046,5 +3046,26 @@ console.log('\n— PART 64: crew cost warning —');
   ], [null, null, null, null, null]);
 }
 
+// =====================================================================================
+// PART 65 — the crew reminder message, shared by the automation and "שלח לצוות" (2026-10-24)
+console.log('\n— PART 65: crew reminder message —');
+{
+  const eb = await loadModule('supabase/functions/_shared/eventBrief.ts', 'eb65');
+  const tpl = 'היי {staffName}! תזכורת לאירוע מחר:\n{coupleNames} · {date} · {venue}\n{photographer} צלם ראשי{photographer2} צלם ערב\n{videographer} וידאו\n{productionDetails}';
+  const staff = [{ name: 'אביהו', phone_number: '050-1' }, { name: 'איילון', phone_number: '050-2' }, { name: 'רודי', phone_number: '' }];
+  const ev = { couple_names: 'אנאל וגל', venue: 'אולם הגן', date: '2026-10-22', team: [{ role: 'photographer1', staffMemberName: 'אביהו' }, { role: 'photographer2', staffMemberName: 'איילון' }, { role: 'videographer', staffMemberName: 'רודי' }] };
+  const lead = { production_checkin_time: '18:30', production_chuppah_time: '19:30' };
+  const msg = eb.renderBriefTemplate(tpl, eb.dailyBriefVars({ member: staff[0], memberEvents: [ev], lead, allStaff: staff, dateStr: '2026-10-22' }));
+  check('message: names, date d/M/yy, crew with phones, production lines',
+    msg,
+    'היי אביהו! תזכורת לאירוע מחר:\nאנאל וגל · 22/10/26 · אולם הגן\nאביהו - 050-1 צלם ראשי\n• איילון - 050-2 צלם ערב\nרודי וידאו\n🕐 שעת הגעה / קבלת פנים: 18:30\n💍 שעת חופה משוערת: 19:30');
+  check('no questionnaire → summary, else the fixed line', [eb.briefProductionDetails({ final_technical_summary: 'סיכום' }), eb.briefProductionDetails(null)], ['סיכום', 'הזוג טרם מילא שאלון הפקה']);
+  check('"מחר" for another day → the date; tomorrow untouched; today → היום',
+    [eb.adjustTomorrowWording('תזכורת לאירוע מחר, למחר (מחרוזת)', '2026-10-30', '2026-10-24', '2026-10-25'),
+     eb.adjustTomorrowWording('תזכורת לאירוע מחר', '2026-10-25', '2026-10-24', '2026-10-25'),
+     eb.adjustTomorrowWording('לאירוע מחר, למחר', '2026-10-24', '2026-10-24', '2026-10-25')],
+    ['תזכורת לאירוע ב-30/10, ל-30/10 (מחרוזת)', 'תזכורת לאירוע מחר', 'לאירוע היום, להיום']);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

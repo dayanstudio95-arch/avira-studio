@@ -42,6 +42,7 @@ import { loadQuietHoursSettings, isInQuietHoursNow, wasAlreadySentToday, sentTod
 import { runWhatsAppHousekeeping } from '../_shared/whatsappHousekeeping.ts';
 import { loadOptOutList, isOptedOut, OPTED_OUT_REASON, type OptOutList } from '../_shared/whatsappOptOut.ts';
 import { alertStuckMessages, purgeOldMedia } from '../_shared/whatsappStatus.ts';
+import { DAILY_BRIEF_DEFAULT_TEMPLATE, findBriefLead, dailyBriefVars } from '../_shared/eventBrief.ts';
 import { sendPush } from '../_shared/webPush.ts';
 import { refreshAvatars } from '../_shared/whatsappAvatars.ts';
 
@@ -339,8 +340,7 @@ async function runDailyEventBrief(supabase: any, tenantId: string, automation: a
 
   const tomorrowEvents = (allEvents || []).filter((ev: any) => ev.date && ev.date.startsWith(tomorrowStr));
 
-  const DEFAULT_TEMPLATE = `שלום {staff_name}, להלן האירועים שלך למחר ({tomorrow_date}):\n\n{daily_events_summary}\n\nבהצלחה!`;
-  const template = automation.message_template || DEFAULT_TEMPLATE;
+  const template = automation.message_template || DAILY_BRIEF_DEFAULT_TEMPLATE;
 
   let sent = 0, failed = 0, skipped = 0;
   const logs: any[] = [];
@@ -364,97 +364,9 @@ async function runDailyEventBrief(supabase: any, tenantId: string, automation: a
     const memberEvents = tomorrowEvents.filter((ev: any) => Array.isArray(ev.team) && ev.team.some((t: any) => t.staffMemberName === member.name));
     if (memberEvents.length === 0) { skipped++; continue; }
 
-    const eventsSummary = memberEvents.map((ev: any) => `${ev.couple_names || ''} | ${ev.venue || ''} | ${ev.date || ''}`).join('\n');
-
-    const firstEvent = memberEvents[0];
-    const firstTeam = firstEvent?.team || [];
-
-    let lead: any = null;
-    const leadRef = firstEvent?.source_lead_id || firstEvent?.lead_id;
-    if (leadRef) {
-      const { data } = await supabase.from('leads').select('*').eq('id', leadRef).maybeSingle();
-      lead = data || null;
-    }
-    if (!lead && firstEvent?.couple_names) {
-      const { data } = await supabase.from('leads').select('*').eq('tenant_id', tenantId).eq('couple_names', firstEvent.couple_names).limit(1);
-      lead = data?.[0] || null;
-    }
-    if (!lead && firstEvent?.date) {
-      const { data } = await supabase.from('leads').select('*').eq('tenant_id', tenantId).eq('event_date', firstEvent.date).limit(1);
-      lead = data?.[0] || null;
-    }
-
-    const staffNameWithPhone = (name: string | undefined) => {
-      if (!name) return '';
-      const s = (allStaff || []).find((m: any) => m.name === name);
-      return s?.phone_number ? `${name} - ${s.phone_number}` : name;
-    };
-    const photographer = staffNameWithPhone(firstTeam.find((t: any) => t.role === 'photographer1')?.staffMemberName || firstTeam.find((t: any) => t.role === 'photographer2')?.staffMemberName || '');
-    const photographer2name = firstTeam.find((t: any) => t.role === 'photographer2')?.staffMemberName;
-    const photographer2 = photographer2name ? `\n• ${staffNameWithPhone(photographer2name)}` : '';
-    const videographer = staffNameWithPhone(firstTeam.find((t: any) => t.role === 'videographer')?.staffMemberName || firstTeam.find((t: any) => t.role === 'videographer2')?.staffMemberName || '');
-
-    // Full questionnaire field list — mirrors _shared/googleCalendarSync.ts's
-    // buildEventPayload leadDetails block exactly (same fields/labels/emoji,
-    // same skip-if-empty rule) so the WhatsApp reminder and the calendar
-    // description never drift out of sync. Keep both in sync manually if
-    // fields are added/removed in either place.
-    let computedProductionDetails = '';
-    if (lead) {
-      const lines: Array<string | false | null | undefined> = [
-        lead.production_bride_phone && `📱 נייד כלה: ${lead.production_bride_phone}`,
-        lead.production_groom_phone && `📱 נייד חתן: ${lead.production_groom_phone}`,
-        lead.production_companion_name && `🧑‍🤝‍🧑 שם מלווה: ${lead.production_companion_name}`,
-        lead.production_companion_phone && `📱 נייד מלווה: ${lead.production_companion_phone}`,
-        lead.production_bride_prep_location && `📍 מקום התארגנות הכלה: ${lead.production_bride_prep_location}`,
-        lead.production_checkin_time && `🕐 שעת הגעה / קבלת פנים: ${lead.production_checkin_time}`,
-        lead.production_chuppah_time && `💍 שעת חופה משוערת: ${lead.production_chuppah_time}`,
-        lead.production_bride_instagram && `📸 אינסטגרם כלה: ${lead.production_bride_instagram}`,
-        lead.production_groom_instagram && `📸 אינסטגרם חתן: ${lead.production_groom_instagram}`,
-        lead.production_has_social_creator &&
-          `📷 סושיאל קריאייטור באירוע: ${[lead.production_social_creator_name, lead.production_social_creator_phone].filter(Boolean).join(' — ') || '—'}`,
-        lead.production_has_external_planner &&
-          `🗂️ יש מנהל/ת אירוע חיצוני/ת: ${[lead.production_external_planner_name, lead.production_external_planner_phone].filter(Boolean).join(' — ') || '—'}`,
-        lead.production_family_bride && `👪 משפחת הכלה: ${lead.production_family_bride}`,
-        lead.production_family_groom && `👪 משפחת החתן: ${lead.production_family_groom}`,
-        lead.production_important_people && `⭐ אנשים חשובים במיוחד לצלם: ${lead.production_important_people}`,
-        lead.production_family_sensitivities && `⚠️ רגישויות משפחתיות: ${lead.production_family_sensitivities}`,
-        lead.production_planned_surprises && `🎁 הפתעות מתוכננות באירוע: ${lead.production_planned_surprises}`,
-        lead.production_special_requests && `💬 בקשות מיוחדות: ${lead.production_special_requests}`,
-      ];
-      computedProductionDetails = (lines.filter(Boolean) as string[]).join('\n');
-    }
-    if (!computedProductionDetails) {
-      computedProductionDetails = lead?.final_technical_summary || lead?.production_brief || 'הזוג טרם מילא שאלון הפקה';
-    }
-
-    const [ty, tm, td] = tomorrowStr.split('-');
-    const formattedDate = `${parseInt(td)}/${parseInt(tm)}/${ty.slice(2)}`;
-    const eventTime = lead?.production_checkin_time || lead?.production_chuppah_time || '';
-
-    const finalMessage = renderTemplate(template, {
-      staff_name: member.name,
-      staffName: member.name,
-      tomorrow_date: formattedDate,
-      date: formattedDate,
-      time: eventTime,
-      daily_events_summary: eventsSummary,
-      events_count: String(memberEvents.length),
-      coupleNames: firstEvent?.couple_names || '',
-      venue: firstEvent?.venue || '',
-      photographer,
-      photographer2,
-      videographer,
-      bridePhone: lead?.production_bride_phone || '',
-      groomPhone: lead?.production_groom_phone || '',
-      bridePrepLocation: lead?.production_bride_prep_location || '',
-      instagram: lead?.production_instagram || '',
-      specialRequests: lead?.production_special_requests || '',
-      phoneNumber: firstEvent?.phone_number || '',
-      productionDetails: computedProductionDetails,
-      productionBrief: computedProductionDetails,
-      finalTechnicalSummary: lead?.final_technical_summary || '',
-    });
+    // The message itself: _shared/eventBrief.ts (shared with the panel's "שלח לצוות").
+    const lead = await findBriefLead(supabase, tenantId, memberEvents[0]);
+    const finalMessage = renderTemplate(template, dailyBriefVars({ member, memberEvents, lead, allStaff: allStaff || [], dateStr: tomorrowStr }));
 
     const logEntry = {
       automation_run_id: runId,

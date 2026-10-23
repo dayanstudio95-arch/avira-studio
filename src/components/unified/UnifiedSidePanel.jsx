@@ -18,6 +18,7 @@ import { getEventVatAmount } from "@/lib/financialCalculations";
 import { openSignedContract } from "@/lib/signedContract";
 import InvoiceDialog from "@/components/invoice/InvoiceDialog";
 import StaffAvailabilityModal from "@/components/leads/StaffAvailabilityModal";
+import SendCrewBriefDialog from "@/components/events/SendCrewBriefDialog";
 import AvailabilityPills from "@/components/events/AvailabilityPills";
 import LeadFormDialog from "@/components/leads/LeadFormDialog";
 import { packagePrices } from "@/lib/packagePrices";
@@ -73,6 +74,7 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
   const [isSendingSchedule, setIsSendingSchedule] = useState(null); // 'summer' | 'winter' | 'friday' | null
   const [isEditLeadOpen, setIsEditLeadOpen] = useState(false);
   const [isSendingSignedContract, setIsSendingSignedContract] = useState(false);
+  const [crewBriefOpen, setCrewBriefOpen] = useState(false);
   const [isPostSignOpen, setIsPostSignOpen] = useState(false);
   const [isMeetingOpen, setIsMeetingOpen] = useState(false);
   const [isEditingNotes, setIsEditingNotes] = useState(false);
@@ -969,6 +971,16 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                           <Eye className="w-4 h-4" />
                           הצגת השאלון
                         </a>
+                        {/* "שלח לצוות" (2026-10-24): the day-before crew reminder for this event, now. */}
+                        <Button
+                          onClick={() => setCrewBriefOpen(true)}
+                          disabled={!(safeEvent?.id || lead?.linkedEventId)}
+                          title={(safeEvent?.id || lead?.linkedEventId) ? "שליחת הודעת התזכורת של יום לפני לצוות של האירוע" : "אין אירוע מקושר לליד"}
+                          className="w-full bg-violet-600 hover:bg-violet-700 text-white font-semibold py-2 rounded-lg gap-2 text-sm"
+                        >
+                          <Send className="w-4 h-4" />
+                          שלח לצוות
+                        </Button>
                       </div>
                     </div>
                   )}
@@ -1360,6 +1372,11 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
         </DialogContent>
       </Dialog>
 
+      <SendCrewBriefDialog
+        eventId={safeEvent?.id || lead?.linkedEventId}
+        isOpen={crewBriefOpen}
+        onClose={() => setCrewBriefOpen(false)}
+      />
       <StaffAvailabilityModal
         open={showAvailabilityModal}
         onClose={() => setShowAvailabilityModal(false)}

@@ -59,6 +59,8 @@ const FUNCTION_MAP = {
   sendToCouple: 'send-to-couple',
   sendWhatsAppMessage: 'send-whatsapp-message',
   sendSignedContract: 'send-signed-contract',
+  // "שלח לצוות" in the lead/event panel — the crew reminder for one event (2026-10-24)
+  sendEventCrewBrief: 'send-event-crew-brief',
   sendAlbumSketch: 'send-album-sketch',
   sendStaffScheduleMessage: 'send-staff-schedule-message',
   shareEventInfoWithTeam: 'share-event-info-with-team',
