@@ -21,6 +21,7 @@ import { GAP_TONE } from "../components/dashboard/EventsTable";
 import { calculateNetProfit } from "../lib/profitCalculations";
 import { calculateEventFinancials } from "../lib/financialCalculations";
 import YearPicker from "@/components/common/YearPicker";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function Dashboard() {
   const [events, setEvents] = useState([]);
@@ -30,6 +31,7 @@ export default function Dashboard() {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [timeFilter, setTimeFilter] = useState("thisMonth");
   const [gapFilter, setGapFilter] = useState(null); // one hole type inside "חורים השנה", null = all
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     loadEvents();
@@ -257,11 +259,8 @@ export default function Dashboard() {
     };
   }, [events, selectedYear]);
 
-  // Search bar + time filters — rendered twice: once right below the page
-  // header on mobile (md:hidden), once in its original spot on desktop
-  // (hidden md:block). Same searchTerm/timeFilter state either way, just
-  // moved higher up on mobile so it's reachable without scrolling past the
-  // ~8 stacked KPI/summary cards above it.
+  // Search bar + time filters, right above the events list — on the phone too since
+  // 2026-10-24 (the owner's order; it used to sit above the cards there).
   const searchAndFilterBar = (
     <div className="mb-4">
       <div className="flex flex-col gap-3">
@@ -376,36 +375,51 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Search bar, mobile-only, moved above the KPI cards so it's reachable
-            without scrolling — see searchAndFilterBar above. */}
-        <div className="md:hidden">{searchAndFilterBar}</div>
+        {isMobile ? (
+          // The phone, 2026-10-24 (the owner's order): today, the couples mid-process, money
+          // owed, crew and work (3 each, "הצג את כל N"), the latest leads with a status
+          // filter, then the other four tiles, and the search + events list last.
+          <div className="flex flex-col gap-3 mb-5">
+            <div className="min-h-[240px]"><TodayEventsCard events={events} /></div>
+            <PostSignCard />
+            <DashboardUnpaidCard events={events} onRefresh={loadEvents} />
+            <DashboardMissingTeamCard events={events} staffMembers={staffMembers} onChanged={() => loadEvents({ silent: true })} limit={3} />
+            <DashboardWorkStatusCard events={events} staffMembers={staffMembers} onRefresh={() => loadEvents({ silent: true })} limit={3} />
+            <RecentLeadsCard compact />
+            <FinanceCard stats={stats} year={selectedYear} pendingCollection={pendingCollection} events={events} />
+            <MeetingsTodayCard />
+            <WhatsAppPulseCard />
+            <FollowUpCard />
+            <div className="mt-2">{searchAndFilterBar}</div>
+          </div>
+        ) : (
+          <>
+            {/* Dashboard, 2026-10-07 (the owner's layout): today first — today's events with
+                every detail he needs on the day, and all the money in one tile. Then the four
+                "what do I do today" tiles, then the state of the work. "צריך טיפול" left: the
+                WhatsApp and follow-up tiles now say the same thing, each with its own door. */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-5 mb-5">
+              <div className="lg:col-span-2 min-h-[240px] lg:h-full"><TodayEventsCard events={events} /></div>
+              <FinanceCard stats={stats} year={selectedYear} pendingCollection={pendingCollection} events={events} />
+            </div>
 
-        {/* Dashboard, 2026-10-07 (the owner's layout): today first — today's events with
-            every detail he needs on the day, and all the money in one tile. Then the four
-            "what do I do today" tiles, then the state of the work. "צריך טיפול" left: the
-            WhatsApp and follow-up tiles now say the same thing, each with its own door. */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-5 mb-5">
-          <div className="lg:col-span-2 min-h-[240px] lg:h-full"><TodayEventsCard events={events} /></div>
-          <FinanceCard stats={stats} year={selectedYear} pendingCollection={pendingCollection} events={events} />
-        </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 sm:[&>*]:h-[245px] gap-3 sm:gap-4 md:gap-5 mb-5">
+              <MeetingsTodayCard />
+              <WhatsAppPulseCard />
+              <FollowUpCard />
+              <PostSignCard />
+            </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 sm:[&>*]:h-[245px] gap-3 sm:gap-4 md:gap-5 mb-5">
-          <MeetingsTodayCard />
-          <WhatsAppPulseCard />
-          <FollowUpCard />
-          <PostSignCard />
-        </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 sm:[&>*]:h-[305px] gap-3 sm:gap-4 md:gap-5 mb-6">
+              <DashboardMissingTeamCard events={events} staffMembers={staffMembers} onChanged={() => loadEvents({ silent: true })} />
+              <DashboardWorkStatusCard events={events} staffMembers={staffMembers} onRefresh={() => loadEvents({ silent: true })} />
+              <DashboardUnpaidCard events={events} onRefresh={loadEvents} />
+              <RecentLeadsCard />
+            </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 sm:[&>*]:h-[305px] gap-3 sm:gap-4 md:gap-5 mb-6">
-          <DashboardMissingTeamCard events={events} staffMembers={staffMembers} onChanged={() => loadEvents({ silent: true })} />
-          <DashboardWorkStatusCard events={events} staffMembers={staffMembers} onRefresh={() => loadEvents({ silent: true })} />
-          <DashboardUnpaidCard events={events} onRefresh={loadEvents} />
-          <RecentLeadsCard />
-        </div>
-
-        {/* Search Bar and Filters — desktop position (mobile renders this above
-            the KPI cards instead, see searchAndFilterBar above). */}
-        <div className="hidden md:block">{searchAndFilterBar}</div>
+            {searchAndFilterBar}
+          </>
+        )}
 
         {/* Events Table */}
         <EventsTable events={filteredEvents} isLoading={isLoading} onRefresh={loadEvents} gaps={timeFilter === "gaps" ? gapsMap : null} />

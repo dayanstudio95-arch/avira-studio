@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { format } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Heart, Album, UserCheck, AlertTriangle, MessageCircle, ClipboardList, RefreshCw, Send } from "lucide-react";
+import { Heart, Album, UserCheck, AlertTriangle, MessageCircle, ClipboardList, RefreshCw, Send, StickyNote } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { base44 } from "@/api/base44Client";
@@ -14,7 +14,7 @@ import UnifiedSidePanel from "../unified/UnifiedSidePanel";
 import QuestionnaireReminderDialog from "./QuestionnaireReminderDialog";
 import EventTeamDialog from "./EventTeamDialog";
 import ProgressEventDialog from "./ProgressEventDialog";
-import { missingCount as crewMissing } from "@/lib/missingTeam";
+import { missingCount as crewMissing, combinedNotes } from "@/lib/missingTeam";
 import { GAP_TYPES } from "@/lib/eventGaps";
 import { Link } from "react-router-dom";
 import DashTitleLink from "./DashTitleLink";
@@ -80,6 +80,30 @@ export default function EventsTable({ events, isLoading, onRefresh, gaps = null 
   const openTeam = (e, event) => {
     e?.stopPropagation?.();
     setTeamFor(event);
+  };
+
+  // The event's notes and the lead's, two lines; a tap shows all of it (2026-10-24, the
+  // owner's request — same joining as the today card, combinedNotes).
+  const [openNotes, setOpenNotes] = useState(() => new Set());
+  const leadById = useMemo(() => new Map(leads.map((l) => [l.id, l])), [leads]);
+  const notesButton = (event) => {
+    const notes = combinedNotes(event.notes, event.sourceLeadId ? leadById.get(event.sourceLeadId)?.notes : null);
+    if (!notes) return null;
+    const open = openNotes.has(event.id);
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpenNotes((s) => { const n = new Set(s); if (n.has(event.id)) n.delete(event.id); else n.add(event.id); return n; });
+        }}
+        title={open ? "לחצו לקיצור" : "לחצו לראות את כל ההערות"}
+        className="flex w-full gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/[0.07] px-2 py-1.5 text-right text-xs text-amber-100 transition-colors hover:bg-amber-500/[0.12]"
+      >
+        <StickyNote className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-300" />
+        <span className={`min-w-0 whitespace-pre-wrap break-words ${open ? "" : "line-clamp-2"}`}>{notes}</span>
+      </button>
+    );
   };
 
   useEffect(() => {
@@ -211,13 +235,9 @@ export default function EventsTable({ events, isLoading, onRefresh, gaps = null 
           ) : (
             events.map((event) => {
               const clientPaymentStatus = event.clientPaymentStatus || "Unpaid";
-              const assignedTeam = event.team?.filter(m => {
-                if (!m.staffMemberName) return false;
-                const staffMember = staffMembers.find(s => s.name === m.staffMemberName);
-                return staffMember?.role !== 'editor';
-              }) || [];
-              const requiredCrew = event.requiredCrew || 3;
-              const isFullTeam = assignedTeam.length >= requiredCrew;
+              // Same rule as the table below / the sidebar (src/lib/missingTeam.js).
+              const teamGap = crewMissing(event);
+              const isFullTeam = teamGap <= 0;
               const progressStatus = getEventProgressStatus(event);
 
               return (
@@ -227,7 +247,7 @@ export default function EventsTable({ events, isLoading, onRefresh, gaps = null 
                     <div className="flex justify-between items-start">
                       <div onClick={() => openUnifiedPanelForEvent(event)} className="cursor-pointer">
                         <div className="font-bold text-white text-base hover:text-yellow-400 transition-colors">{event.coupleNames}</div>
-                        <div className="text-gray-400 text-sm">{format(new Date(event.date), "d/M/yyyy")}</div>
+                        <div className="text-gray-400 text-sm">{format(new Date(event.date), "d/M/yyyy")}{event.venue ? ` · ${event.venue}` : ""}</div>
                       </div>
                       <PaymentStatusSelector
                         eventId={event.id}
@@ -260,11 +280,12 @@ export default function EventsTable({ events, isLoading, onRefresh, gaps = null 
                       </Badge>
                       <Badge
                         variant="outline"
-                        onClick={isFullTeam ? undefined : (e) => openTeam(e, event)}
-                        className={`${isFullTeam ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30 cursor-pointer hover:bg-red-500/30 min-h-[36px] px-2.5'} border text-xs`}
+                        onClick={(e) => openTeam(e, event)}
+                        title="לחצו לראות מי משובץ בכל תפקיד ולהחליף"
+                        className={`${isFullTeam ? 'bg-green-500/20 text-green-400 border-green-500/30 hover:bg-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/30'} cursor-pointer min-h-[36px] px-2.5 border text-xs`}
                       >
                         {isFullTeam ? <UserCheck className="w-3 h-3 mr-1 inline" /> : <AlertTriangle className="w-3 h-3 mr-1 inline" />}
-                        צוות {isFullTeam ? 'מלא' : `חסר ${requiredCrew - assignedTeam.length}`}
+                        צוות {isFullTeam ? 'מלא' : `חסר ${teamGap}`}
                       </Badge>
                       <Badge variant="outline" className={`${event.albumStatus === 'sent' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-pink-500/20 text-pink-400 border-pink-500/30'} border text-xs`}>
                         <Album className="w-3 h-3 mr-1 inline" />
@@ -290,6 +311,7 @@ export default function EventsTable({ events, isLoading, onRefresh, gaps = null 
                         );
                       })()}
                     </div>
+                    {notesButton(event)}
                   </CardContent>
                 </Card>
               );
@@ -311,6 +333,7 @@ export default function EventsTable({ events, isLoading, onRefresh, gaps = null 
                 <TableHead className="text-slate-400 font-medium">אלבום</TableHead>
                 <TableHead className="text-slate-400 font-medium">יומן</TableHead>
                 <TableHead className="text-slate-400 font-medium">שאלון</TableHead>
+                <TableHead className="text-slate-400 font-medium">הערות</TableHead>
                 <TableHead className="text-slate-400 font-medium">צוות</TableHead>
                 {gaps && <TableHead className="text-slate-400 font-medium">למה ברשימה</TableHead>}
               </TableRow>
@@ -318,7 +341,7 @@ export default function EventsTable({ events, isLoading, onRefresh, gaps = null 
             <TableBody>
               {events.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={gaps ? 11 : 10} className="text-center py-12">
+                  <TableCell colSpan={gaps ? 12 : 11} className="text-center py-12">
                     <div className="text-gray-500">
                       <Heart className="w-12 h-12 mx-auto mb-4 text-gray-600" />
                       <p className="text-lg font-medium">אין אירועים עדיין</p>
@@ -336,6 +359,7 @@ export default function EventsTable({ events, isLoading, onRefresh, gaps = null 
                     >
                       <TableCell className="text-gray-300">
                         {format(new Date(event.date), "d/M/yyyy")}
+                        {event.venue && <div className="max-w-[160px] truncate text-xs text-slate-400" title={event.venue}>{event.venue}</div>}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
@@ -468,6 +492,9 @@ export default function EventsTable({ events, isLoading, onRefresh, gaps = null 
                           );
                         })()}
                       </TableCell>
+                      <TableCell className="min-w-[180px] max-w-[260px]">
+                        {notesButton(event) || <span className="text-gray-500 text-xs">—</span>}
+                      </TableCell>
                       <TableCell className={gapCls(event, "team")}>
                         {(() => {
                           // Same rule as the events page / sidebar (src/lib/missingTeam.js).
@@ -482,9 +509,14 @@ export default function EventsTable({ events, isLoading, onRefresh, gaps = null 
                               <AlertTriangle className="h-3 w-3" /> חסר {gap}
                             </button>
                           ) : (
-                            <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500/30 border font-medium text-xs">
-                              <UserCheck className="w-3 h-3 mr-1 inline" /> מלא
-                            </Badge>
+                            <button
+                              type="button"
+                              onClick={(e) => openTeam(e, event)}
+                              title="לחצו לראות מי משובץ בכל תפקיד ולהחליף"
+                              className="inline-flex items-center gap-1 rounded-md border border-green-500/30 bg-green-500/20 px-2 py-0.5 text-xs font-medium text-green-400 transition-colors hover:bg-green-500/30"
+                            >
+                              <UserCheck className="h-3 w-3" /> מלא
+                            </button>
                           );
                         })()}
                       </TableCell>

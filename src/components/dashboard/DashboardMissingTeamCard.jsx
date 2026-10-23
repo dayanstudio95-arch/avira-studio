@@ -7,12 +7,15 @@ import { base44 } from "@/api/base44Client";
 import EventTeamDialog from "./EventTeamDialog";
 import { isMissingTeam, israelToday, assignedShooters, requiredShooters, eventDay, missingRoles } from "@/lib/missingTeam";
 import DashTitleLink from "./DashTitleLink";
+import ShowMoreButton from "./ShowMoreButton";
 
 // A row opens the event's team window right here (2026-10-09, the owner's request) — who is
 // booked and what is missing, availability check, direct assignment, the other weddings that
 // day — instead of jumping to the staff scheduling page.
-export default function DashboardMissingTeamCard({ events, staffMembers = [], onChanged }) {
+// `limit` (the phone, 2026-10-24): the nearest few, "הצג את כל N" opens the rest.
+export default function DashboardMissingTeamCard({ events, staffMembers = [], onChanged, limit }) {
   const [openEvent, setOpenEvent] = useState(null);
+  const [expanded, setExpanded] = useState(false);
   // The shared rule (src/lib/missingTeam.js) — same number as the sidebar and the staff page.
   const today = israelToday();
   // Packages say how many photographers / videographers each event needs (missingRoles).
@@ -21,6 +24,7 @@ export default function DashboardMissingTeamCard({ events, staffMembers = [], on
   const missingTeamEvents = events
     .filter((e) => isMissingTeam(e, today))
     .sort((a, b) => eventDay(a).localeCompare(eventDay(b)));
+  const shown = limit && !expanded ? missingTeamEvents.slice(0, limit) : missingTeamEvents;
 
   return (
     <Card className="dash-card flex flex-col h-full overflow-hidden">
@@ -40,7 +44,7 @@ export default function DashboardMissingTeamCard({ events, staffMembers = [], on
           <div className="py-8 text-center text-slate-400 text-sm">כל האירועים משובצים ✅</div>
         ) : (
           <div>
-            {missingTeamEvents.map((event) => {
+            {shown.map((event) => {
               const assigned = assignedShooters(event);
               const required = requiredShooters(event);
               return (
@@ -63,6 +67,7 @@ export default function DashboardMissingTeamCard({ events, staffMembers = [], on
                 </div>
               );
             })}
+            <ShowMoreButton total={missingTeamEvents.length} limit={limit} expanded={expanded} onToggle={() => setExpanded((v) => !v)} />
           </div>
         )}
       </CardContent>

@@ -398,7 +398,9 @@ function LayoutShell({ children }) {
         <Sidebar side="right" className="border-l border-[#22334B]/70 bg-[#08111F] [&>div]:bg-[#08111F]">
           <SidebarHeader className="px-4 pt-5 pb-3 gap-3">
             <div className="flex items-center justify-between gap-2 w-full">
-              <div className="flex items-center gap-2.5 shrink-0">
+              {/* The mark is a way home from any page (2026-10-24, the owner's request): "/"
+                  is each role's own start page (the dashboard for the studio). */}
+              <Link to="/" title="למסך הראשי" className="flex items-center gap-2.5 shrink-0 rounded-xl transition-opacity hover:opacity-80">
               {/* The studio's own mark (2026-10-07: the heart + camera looked cheap). A logo
                   uploaded for the studio (tenants.logo_url) wins; otherwise the AVIRA "A". */}
               <img
@@ -410,7 +412,7 @@ function LayoutShell({ children }) {
                   <h2 className="text-base font-semibold tracking-[0.18em] text-yellow-400 whitespace-nowrap">AVIRA</h2>
                   <p className="text-[9px] tracking-[0.3em] text-gray-400 whitespace-nowrap">STUDIO</p>
                 </div>
-              </div>
+              </Link>
               {isEditingMenu ? (
                 <div className="flex gap-1">
                   <Button
@@ -611,14 +613,16 @@ function LayoutShell({ children }) {
           <header className="bg-[#08111F]/90 backdrop-blur-sm border-b border-[#22334B]/70 px-6 py-4 md:hidden">
             <div className="flex items-center gap-4">
               <SidebarTrigger className="hover:bg-gray-800 p-2 rounded-lg transition-colors duration-200 text-gray-300" />
-              {tenantBranding?.logoUrl && (
-                <img
-                  src={tenantBranding.logoUrl}
-                  alt={tenantBranding?.name || 'Studio logo'}
-                  className="w-8 h-8 rounded-lg object-cover"
-                />
-              )}
-              <h1 className="text-xl font-semibold text-white flex-1">{tenantBranding?.name || 'Avira'}</h1>
+              <Link to="/" title="למסך הראשי" className="flex flex-1 min-w-0 items-center gap-4 rounded-lg active:opacity-70">
+                {tenantBranding?.logoUrl && (
+                  <img
+                    src={tenantBranding.logoUrl}
+                    alt={tenantBranding?.name || 'Studio logo'}
+                    className="w-8 h-8 rounded-lg object-cover"
+                  />
+                )}
+                <h1 className="text-xl font-semibold text-white truncate">{tenantBranding?.name || 'Avira'}</h1>
+              </Link>
               <NotificationBell />
               {!scopedRole && <GlobalSearch />}
             </div>

@@ -5,6 +5,7 @@ import { Clapperboard, ChevronDown, ChevronUp } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import DashTitleLink from "./DashTitleLink";
 import ProgressEventDialog from "./ProgressEventDialog";
+import ShowMoreButton from "./ShowMoreButton";
 
 // same fields as ProgressStatus
 const ROLE_DONE_FIELDS = {
@@ -150,15 +151,18 @@ function EventWorkRow({ event, onUpdated, onOpen }) {
   );
 }
 
-export default function DashboardWorkStatusCard({ events, onRefresh, staffMembers = [] }) {
+// `limit` (the phone, 2026-10-24): the latest few, "הצג את כל N" opens the rest.
+export default function DashboardWorkStatusCard({ events, onRefresh, staffMembers = [], limit }) {
   const now = new Date();
   const [progressFor, setProgressFor] = useState(null);
+  const [expanded, setExpanded] = useState(false);
 
   const incompleteEvents = events.filter((e) => {
     if (new Date(e.date) >= now) return false;
     const { pct } = getProgress(e);
     return pct < 100;
   });
+  const shown = limit && !expanded ? incompleteEvents.slice(0, limit) : incompleteEvents;
 
   return (
     <Card className="dash-card flex flex-col h-full overflow-hidden">
@@ -178,9 +182,10 @@ export default function DashboardWorkStatusCard({ events, onRefresh, staffMember
           <div className="py-8 text-center text-slate-400 text-sm">כל האירועים הושלמו ✅</div>
         ) : (
           <div>
-            {incompleteEvents.map((event) => (
+            {shown.map((event) => (
               <EventWorkRow key={event.id} event={event} onUpdated={onRefresh} onOpen={setProgressFor} />
             ))}
+            <ShowMoreButton total={incompleteEvents.length} limit={limit} expanded={expanded} onToggle={() => setExpanded((v) => !v)} />
           </div>
         )}
       </CardContent>
