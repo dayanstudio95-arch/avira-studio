@@ -6,13 +6,15 @@ import { getEventVatAmount, getEventTeamCost } from "../lib/financialCalculation
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Download, TrendingUp, Calendar, BarChart3, Users } from "lucide-react";
+import { Download, TrendingUp, Calendar, BarChart3, Users, CalendarRange, ChevronRight, ChevronLeft } from "lucide-react";
 import LeadsReport from "../components/reports/LeadsReport";
 
 import ReportsChart from "../components/reports/ReportsChart";
 import MonthlyChart from "../components/reports/MonthlyChart";
 import ReportsTable from "../components/reports/ReportsTable";
 import YearPicker from "@/components/common/YearPicker";
+import { todayInIsrael } from "@/lib/localDate";
+import { weekOf, inWeek, weekLabel, addDays } from "@/lib/reportWeek";
 
 const MONTHS = [
   { value: 0, label: "ינואר" },
@@ -36,6 +38,9 @@ export default function Reports() {
   const [activeTab, setActiveTab] = useState("monthly");
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  // The weekly report's week, Sunday–Saturday (2026-10-24); opens on this week.
+  const thisWeek = weekOf(todayInIsrael());
+  const [week, setWeek] = useState(thisWeek);
 
   useEffect(() => {
     loadEvents();
@@ -65,6 +70,8 @@ export default function Reports() {
           const eventDate = new Date(event.date);
           return eventDate.toDateString() === today.toDateString();
         });
+      case 'weekly':
+        return events.filter(event => inWeek(event.date, week));
       case 'monthly':
         return events.filter(event => {
           const eventDate = new Date(event.date);
@@ -111,6 +118,7 @@ export default function Reports() {
 
   const tabs = [
     { id: 'daily', label: 'יומי', icon: Calendar },
+    { id: 'weekly', label: 'שבועי', icon: CalendarRange },
     { id: 'monthly', label: 'חודשי', icon: TrendingUp },
     { id: 'annual', label: 'שנתי', icon: BarChart3 },
     // 2026-10-13: leads and signings per month (src/components/reports/LeadsReport.jsx).
@@ -134,14 +142,15 @@ export default function Reports() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 h-11 rounded-xl bg-[#0B1529] border border-[#2A3B57] p-1">
+          <TabsList className="grid w-full grid-cols-5 h-11 rounded-xl bg-[#0B1529] border border-[#2A3B57] p-1">
             {tabs.map((tab) => (
               <TabsTrigger 
                 key={tab.id}
                 value={tab.id} 
                 className="rounded-lg data-[state=active]:bg-gradient-to-b data-[state=active]:from-[#FFD84A] data-[state=active]:to-[#F5B800] data-[state=active]:text-gray-900 data-[state=active]:font-bold data-[state=active]:shadow-[0_0_18px_-4px_rgba(250,204,21,0.8)] text-slate-300 flex items-center gap-2"
               >
-                <tab.icon className="w-4 h-4" />
+                {/* five tabs on a phone: the words only (2026-10-24, "שבועי" added) */}
+                <tab.icon className="hidden sm:block w-4 h-4" />
                 {tab.label}
               </TabsTrigger>
             ))}
@@ -224,6 +233,54 @@ export default function Reports() {
                 isLoading={isLoading}
                 staffMembers={staffMembers}
                 periodLabel={new Date().toLocaleDateString("he-IL")}
+              />
+            </div>
+          </TabsContent>
+
+          {/* Weekly Tab (2026-10-24) — Sunday to Saturday, arrows move a week at a time */}
+          <TabsContent value="weekly" className="space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <h2 className="text-xl font-semibold text-white">דוח שבועי</h2>
+                <div className="flex items-center gap-1">
+                  <Button variant="outline" size="icon" onClick={() => setWeek((w) => weekOf(addDays(w.start, -7)))} title="שבוע קודם" className="h-10 w-10 rounded-xl border-[#2A3B57] bg-[#0B1529] text-slate-200 hover:bg-white/[0.06]">
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                  <span className="min-w-[150px] rounded-xl border border-[#2A3B57] bg-[#0B1529] px-3 py-2 text-center text-sm text-white tabular-nums">{weekLabel(week)}</span>
+                  <Button variant="outline" size="icon" onClick={() => setWeek((w) => weekOf(addDays(w.start, 7)))} title="שבוע הבא" className="h-10 w-10 rounded-xl border-[#2A3B57] bg-[#0B1529] text-slate-200 hover:bg-white/[0.06]">
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  {week.start !== thisWeek.start && (
+                    <Button variant="ghost" onClick={() => setWeek(thisWeek)} className="h-10 rounded-xl text-sm text-amber-300 hover:bg-white/[0.06]">
+                      השבוע
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <Button
+                onClick={() => exportToCSV('weekly')}
+                variant="outline"
+                className="h-10 rounded-xl border-[#3B5BA0]/70 bg-[#0B1529] text-slate-100 hover:bg-white/[0.06] shadow-[0_0_16px_-8px_rgba(96,130,240,0.8)]"
+                disabled={filterEventsByPeriod('weekly').length === 0}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                ייצא CSV
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <ReportsChart
+                events={filterEventsByPeriod('weekly')}
+                period="weekly"
+                isLoading={isLoading}
+                staffMembers={staffMembers}
+              />
+              <ReportsTable
+                events={filterEventsByPeriod('weekly')}
+                period="weekly"
+                isLoading={isLoading}
+                staffMembers={staffMembers}
+                periodLabel={`יום א׳–שבת · ${weekLabel(week)}`}
               />
             </div>
           </TabsContent>

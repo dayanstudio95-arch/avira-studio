@@ -3104,5 +3104,18 @@ console.log('\n— PART 66: orders with their invoices —');
   ], [true, true, true, false, true]);
 }
 
+// =====================================================================================
+// PART 67 — weekly report: Sunday–Saturday weeks (2026-10-24)
+console.log('\n— PART 67: weekly report —');
+{
+  const rw = await loadModule('src/lib/reportWeek.js', 'rw67');
+  check('a Saturday, a Sunday, a Wednesday → their Sunday–Saturday week', [rw.weekOf('2026-10-24'), rw.weekOf('2026-10-25'), rw.weekOf('2026-10-21')],
+    [{ start: '2026-10-18', end: '2026-10-24' }, { start: '2026-10-25', end: '2026-10-31' }, { start: '2026-10-18', end: '2026-10-24' }]);
+  const w = rw.weekOf('2026-10-21');
+  check('in the week: both ends, not outside, not empty', [rw.inWeek('2026-10-18', w), rw.inWeek('2026-10-24', w), rw.inWeek('2026-10-25', w), rw.inWeek('2026-10-17', w), rw.inWeek(null, w)], [true, true, false, false, false]);
+  check('labels, across a new year too', [rw.weekLabel(w), rw.weekLabel(rw.weekOf('2026-12-31'))], ['18.10 – 24.10.2026', '27.12.2026 – 2.1.2027']);
+  check('a week back / forward, across months', [rw.weekOf(rw.addDays(w.start, -7)).start, rw.weekOf(rw.addDays('2026-10-25', 7)).end], ['2026-10-11', '2026-11-07']);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

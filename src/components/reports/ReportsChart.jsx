@@ -74,7 +74,7 @@ export default function ReportsChart({ events, period, isLoading, staffMembers =
         <div className="flex flex-wrap items-center justify-between gap-3">
           <CardTitle className="text-white flex items-center gap-2 text-base">
             <TrendingUp className="w-6 h-6 text-amber-400" />
-            Income vs Expenses
+            הכנסות מול הוצאות — לפי אירוע
           </CardTitle>
           <Legend items={[["הכנסה", CHART_COLORS.income], ["הוצאה", CHART_COLORS.expenses]]} />
         </div>
