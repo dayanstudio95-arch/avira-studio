@@ -11,6 +11,7 @@ import { signedContractUrl } from '../_shared/signedContract.ts';
 import { getRequestUser } from '../_shared/supabaseClients.ts';
 import { shouldStampContractView, contractViewUpdate } from '../_shared/contractViews.ts';
 import { sendPush } from '../_shared/webPush.ts';
+import { loadQuestionnaireConfig } from '../_shared/questionnaireExtras.ts';
 
 Deno.serve(async (req) => {
   const preflight = handleOptions(req);
@@ -130,6 +131,9 @@ Deno.serve(async (req) => {
       productionImportantPeople: lead.production_important_people,
       productionFamilySensitivities: lead.production_family_sensitivities,
       productionPlannedSurprises: lead.production_planned_surprises,
+      // The studio's questionnaire wording + its own questions, and their answers (2026-10-24).
+      productionExtraAnswers: lead.production_extra_answers ?? [],
+      questionnaireConfig: await loadQuestionnaireConfig(supabase, lead.tenant_id),
     });
   } catch (error) {
     return jsonResponse({ error: error.message }, { status: 500 });

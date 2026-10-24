@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { DollarSign, Save, Users, Edit, Trash2, Plus, Upload, Download, FileText, Plug, MessageCircle, Building2, History, Bell, ShieldCheck, Loader2, Sparkles, Settings as SettingsIcon } from "lucide-react";
+import { DollarSign, Save, Users, Edit, Trash2, Plus, Upload, Download, FileText, Plug, MessageCircle, Building2, History, Bell, ShieldCheck, Loader2, Sparkles, ClipboardList, Settings as SettingsIcon } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/lib/SupabaseAuthContext";
@@ -45,6 +45,7 @@ import { toast } from "sonner";
 import { todayInIsrael } from "@/lib/localDate";
 import PageIcon from "@/components/layout/PageIcon";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import QuestionnaireSettingsTab from "@/components/settings/QuestionnaireSettingsTab";
 
 const VALID_SETTINGS_TABS = ["workspace", "users", "contract", "pricing", "team", "templates", "ai", "integrations", "notifications", "data", "audit"];
 
@@ -370,6 +371,11 @@ export default function Settings() {
             <TabsTrigger value="contract" className="data-[state=active]:bg-yellow-400 data-[state=active]:text-gray-900 text-gray-300">
               <FileText className="w-4 h-4 ml-1" />
               חוזה
+            </TabsTrigger>
+            {/* 2026-10-24: the production questionnaire's questions (QuestionnaireSettingsTab) */}
+            <TabsTrigger value="questionnaire" className="data-[state=active]:bg-yellow-400 data-[state=active]:text-gray-900 text-gray-300">
+              <ClipboardList className="w-4 h-4 ml-1" />
+              שאלון הפקה
             </TabsTrigger>
             <TabsTrigger value="pricing" className="data-[state=active]:bg-yellow-400 data-[state=active]:text-gray-900 text-gray-300">
               <DollarSign className="w-4 h-4 ml-1" />
@@ -703,6 +709,10 @@ export default function Settings() {
           </TabsContent>
 
           {/* תבניות הודעה */}
+          <TabsContent value="questionnaire">
+            <QuestionnaireSettingsTab />
+          </TabsContent>
+
           <TabsContent value="templates">
             <div className="space-y-6">
               <MessageTemplatesTab />

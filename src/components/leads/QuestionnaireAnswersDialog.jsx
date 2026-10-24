@@ -7,6 +7,7 @@ import {
   PRODUCTION_QUESTIONNAIRE_BOOLEAN_FIELDS,
   hasAnyProductionQuestionnaireAnswer,
 } from "@/lib/productionQuestionnaireFields";
+import { extraAnswerEntries } from "@/lib/questionnaireConfig";
 
 // Read-only viewer for a lead's *filled-in* production questionnaire answers,
 // opened from the Leads page's row-level "שאלון" button so the studio can review
@@ -55,6 +56,13 @@ export default function QuestionnaireAnswersDialog({ isOpen, onClose, lead }) {
                   <p className="mt-1 text-xs text-gray-300">{lead[key]}</p>
                 </div>
               ) : null
+            ))}
+            {/* the studio's own questions (Settings → שאלון הפקה, 2026-10-24) */}
+            {extraAnswerEntries(lead?.productionExtraAnswers).map((a) => (
+              <div key={a.id} className="text-gray-200">
+                <span className="text-gray-400">{a.label}:</span>
+                <p className="mt-1 whitespace-pre-wrap text-xs text-gray-300">{a.text}</p>
+              </div>
             ))}
           </div>
         )}

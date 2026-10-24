@@ -2,6 +2,7 @@
 // how its message is built. Moved out of automation-engine's runDailyEventBrief on
 // 2026-10-24 so the "שלח לצוות" button in the lead/event panel (send-event-crew-brief)
 // sends exactly the same message as the daily automation — one builder, no drift.
+import { extraAnswerLines } from './questionnaireExtras.ts';
 
 export const DAILY_BRIEF_DEFAULT_TEMPLATE = `שלום {staff_name}, להלן האירועים שלך למחר ({tomorrow_date}):\n\n{daily_events_summary}\n\nבהצלחה!`;
 
@@ -62,6 +63,8 @@ export function briefProductionDetails(lead: any): string {
       lead.production_family_sensitivities && `⚠️ רגישויות משפחתיות: ${lead.production_family_sensitivities}`,
       lead.production_planned_surprises && `🎁 הפתעות מתוכננות באירוע: ${lead.production_planned_surprises}`,
       lead.production_special_requests && `💬 בקשות מיוחדות: ${lead.production_special_requests}`,
+      // the studio's own questions (Settings → שאלון הפקה, 2026-10-24)
+      ...extraAnswerLines(lead),
     ];
     computedProductionDetails = (lines.filter(Boolean) as string[]).join('\n');
   }

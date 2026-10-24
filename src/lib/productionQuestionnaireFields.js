@@ -1,3 +1,5 @@
+import { extraAnswerEntries } from "./questionnaireConfig";
+
 // Canonical list of every production-questionnaire field a couple can fill in via
 // EventQuestionnaire.jsx, used to render a consistent, complete "פרטי הפקה" view
 // across every surface that shows it (UnifiedSidePanel.jsx's two questionnaire
@@ -59,6 +61,8 @@ export const PRODUCTION_QUESTIONNAIRE_BOOLEAN_FIELDS = [
 export function hasAnyProductionQuestionnaireAnswer(lead) {
   if (!lead) return false;
   return (
+    // the studio's own questions (2026-10-24, src/lib/questionnaireConfig.js)
+    extraAnswerEntries(lead.productionExtraAnswers).length > 0 ||
     PRODUCTION_QUESTIONNAIRE_FIELDS.some(({ key }) => !!lead[key]) ||
     PRODUCTION_QUESTIONNAIRE_LONG_TEXT_FIELDS.some(({ key }) => !!lead[key]) ||
     PRODUCTION_QUESTIONNAIRE_BOOLEAN_FIELDS.some(({ flagKey }) => !!lead[flagKey])

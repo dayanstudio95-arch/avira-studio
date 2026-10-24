@@ -3136,5 +3136,50 @@ console.log('\n— PART 67: weekly report —');
   check('a week back / forward, across months', [rw.weekOf(rw.addDays(w.start, -7)).start, rw.weekOf(rw.addDays('2026-10-25', 7)).end], ['2026-10-11', '2026-11-07']);
 }
 
+// =====================================================================================
+// PART 68 — the studio-editable questionnaire (2026-10-24)
+console.log('\n— PART 68: questionnaire editor —');
+{
+  const qc = await loadModule('src/lib/questionnaireConfig.js', 'qc68');
+  const qx = await loadModule('supabase/functions/_shared/questionnaireExtras.ts', 'qx68');
+  const raw = JSON.stringify({
+    builtins: { productionCompanionName: { label: 'שם המלווה ביום האירוע', hidden: false }, productionCompanionPhone: { hidden: true }, productionBridePhone: { required: false }, productionHasSocialCreator: { required: true }, nope: { label: 'x' } },
+    custom: [
+      { id: 'q1', section: 'logistics', type: 'short', label: '🎵 שיר כניסה לחופה', placeholder: 'Perfect', required: true },
+      { id: 'q2', section: 'logistics', type: 'yesno', label: '💃 יש קטע ריקוד מתוכנן?' },
+      { id: 'q1', section: 'team', type: 'short', label: 'duplicate id' },
+      { id: 'bad id!', label: 'x' }, { id: 'q3', label: '   ' }, { id: 'q4', section: 'nowhere', type: 'weird', label: 'הערה' },
+    ],
+  });
+  const c = qc.parseQuestionnaireConfig(raw);
+  check('parse: unknown built-ins, duplicate / bad ids, empty labels dropped; bad section / type fall back', [Object.keys(c.builtins).sort(), c.custom.map((q) => [q.id, q.section, q.type])],
+    [['productionBridePhone', 'productionCompanionName', 'productionCompanionPhone'], [['q1', 'logistics', 'short'], ['q2', 'logistics', 'yesno'], ['q4', 'team', 'short']]]);
+  check('parse: rubbish / nothing → empty config', [qc.parseQuestionnaireConfig('{oops'), qc.parseQuestionnaireConfig(null)], [{ builtins: {}, custom: [] }, { builtins: {}, custom: [] }]);
+  check('server parses the same as the screen (mirror)', qx.parseQuestionnaireConfig(raw).custom.map((q) => q.id), c.custom.map((q) => q.id));
+  const secs = qc.questionnaireSections(c);
+  const contact = secs.find((s) => s.id === 'contact').items;
+  check('sections: new wording, hidden left out, required changed', [contact.map((q) => q.label), contact[0].required], [['📱 נייד כלה', '📱 נייד חתן', 'שם המלווה ביום האירוע'], false]);
+  const log = secs.find((s) => s.id === 'logistics').items;
+  check('the studio\'s questions after the built-in ones of their section; a yes/no group is never required', [log.slice(-2).map((q) => q.key), log.find((q) => q.key === 'productionHasSocialCreator').required], [['q1', 'q2'], false]);
+  check('no config = today\'s form, word for word', qc.questionnaireSections(null).flatMap((s) => s.items.map((q) => qc.questionLabel(q))).slice(0, 5),
+    ['📱 נייד כלה *', '📱 נייד חתן *', '🧑‍🤝‍🧑 שם מלווה (אופציונלי)', '📱 נייד מלווה (אופציונלי)', '📍 מקום התארגנות הכלה *']);
+  check('editor sees hidden ones too', qc.questionnaireSections(c, { includeHidden: true }).find((s) => s.id === 'contact').items.length, 4);
+  check('required yes/no / text not answered', [qc.missingRequiredAnswers(c, {}), qc.missingRequiredAnswers(c, { q1: '  ' }), qc.missingRequiredAnswers(c, { q1: 'Perfect' })], [['🎵 שיר כניסה לחופה'], ['🎵 שיר כניסה לחופה'], []]);
+
+  const existing = [
+    { id: 'q2', label: 'ריקוד?', type: 'yesno', section: 'logistics', value: true },
+    { id: 'old', label: 'שאלה שנמחקה', type: 'short', section: 'team', value: 'נשאר' },
+  ];
+  const sc = qx.parseQuestionnaireConfig(raw);
+  const merged = qx.mergeExtraAnswers(existing, sc, { q1: '  Perfect  ', q2: false, q4: '', hacker: 'x' });
+  check('merge: shown answers now (trimmed, yes/no boolean, empty removed), unknown ignored, deleted question kept', merged.map((a) => [a.id, a.value]), [['q1', 'Perfect'], ['q2', false], ['old', 'נשאר']]);
+  const hiddenCfg = qx.parseQuestionnaireConfig({ custom: [{ id: 'q2', section: 'logistics', type: 'yesno', label: 'ריקוד?', hidden: true }] });
+  check('merge: a hidden question keeps its answer even if something is sent', qx.mergeExtraAnswers(existing, hiddenCfg, { q2: false }).find((a) => a.id === 'q2').value, true);
+  check('lines for calendar / crew reminder; entries for the panel', [qx.extraAnswerLines({ production_extra_answers: merged }), qc.extraAnswerEntries(merged).map((e) => e.text)],
+    [['🎵 שיר כניסה לחופה: Perfect', '💃 יש קטע ריקוד מתוכנן?: לא', 'שאלה שנמחקה: נשאר'], ['Perfect', 'לא', 'נשאר']]);
+  check('hidden built-in → its columns are not written', [qx.BUILTIN_COLUMNS.productionCompanionPhone, qx.BUILTIN_COLUMNS.productionHasExternalPlanner.length], [['production_companion_phone'], 3]);
+  check('new ids', [qc.newQuestionId([]), qc.newQuestionId([{ id: 'q1' }, { id: 'q3' }])], ['q1', 'q4']);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

@@ -2,11 +2,9 @@ import React, { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, CheckCircle2, Camera, Heart } from "lucide-react";
+import QuestionnaireFields from "@/components/questionnaire/QuestionnaireFields";
+import { questionnaireSections, extraAnswersById, missingRequiredAnswers } from "@/lib/questionnaireConfig";
 
 export default function EventQuestionnaire() {
   const { id: paramId } = useParams();
@@ -20,6 +18,10 @@ export default function EventQuestionnaire() {
   const [submitted, setSubmitted] = useState(false);
   const [justSubmitted, setJustSubmitted] = useState(false);
   const [error, setError] = useState(null);
+  // The studio's wording and its own questions (Settings → שאלון הפקה, 2026-10-24) — from
+  // get-lead-public; without it the form is the built-in one, as before.
+  const [config, setConfig] = useState(null);
+  const [extra, setExtra] = useState({});
 
   const [form, setForm] = useState({
     productionBridePhone: "",
@@ -80,6 +82,8 @@ export default function EventQuestionnaire() {
           productionPlannedSurprises: data.productionPlannedSurprises || "",
           productionSpecialRequests: data.productionSpecialRequests || "",
         }));
+        setConfig(data.questionnaireConfig || null);
+        setExtra(extraAnswersById(data.productionExtraAnswers));
         if (data.productionFormFilledAt) setSubmitted(true);
       }
     } catch (e) {
@@ -90,12 +94,19 @@ export default function EventQuestionnaire() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    // the browser checks the text boxes itself; a required yes/no is checked here
+    const missing = missingRequiredAnswers(config, extra);
+    if (missing.length) {
+      setError(`חסרה תשובה: ${missing.join(", ")}`);
+      return;
+    }
     setIsSubmitting(true);
     setError(null);
     try {
       await base44.functions.invoke("submitProductionQuestionnaire", {
         leadId,
         ...form,
+        extraAnswers: extra,
       });
       setSubmitted(true);
       setJustSubmitted(true);
@@ -105,8 +116,6 @@ export default function EventQuestionnaire() {
     setIsSubmitting(false);
   };
 
-  const set = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
-  const setChecked = (field) => (checked) => setForm((prev) => ({ ...prev, [field]: !!checked }));
 
   if (isLoading) {
     return (
@@ -179,276 +188,7 @@ export default function EventQuestionnaire() {
             </p>
           )}
 
-          {/* פרטי קשר */}
-          <div className="space-y-4">
-            <h3 className="text-white font-semibold text-sm">פרטי קשר ביום האירוע</h3>
-
-            <div>
-              <Label className="text-gray-300 mb-1.5 block">📱 נייד כלה *</Label>
-              <Input
-                type="tel"
-                value={form.productionBridePhone}
-                onChange={set("productionBridePhone")}
-                placeholder="050-0000000"
-                required
-                className="bg-gray-800 border-gray-700 text-white placeholder-gray-500"
-                dir="ltr"
-              />
-            </div>
-
-            <div>
-              <Label className="text-gray-300 mb-1.5 block">📱 נייד חתן *</Label>
-              <Input
-                type="tel"
-                value={form.productionGroomPhone}
-                onChange={set("productionGroomPhone")}
-                placeholder="050-0000000"
-                required
-                className="bg-gray-800 border-gray-700 text-white placeholder-gray-500"
-                dir="ltr"
-              />
-            </div>
-
-            <div>
-              <Label className="text-gray-300 mb-1.5 block">🧑‍🤝‍🧑 שם מלווה (אופציונלי)</Label>
-              <Input
-                type="text"
-                value={form.productionCompanionName}
-                onChange={set("productionCompanionName")}
-                placeholder="מי מלווה אתכם ביום האירוע"
-                className="bg-gray-800 border-gray-700 text-white placeholder-gray-500"
-              />
-            </div>
-
-            <div>
-              <Label className="text-gray-300 mb-1.5 block">📱 נייד מלווה (אופציונלי)</Label>
-              <Input
-                type="tel"
-                value={form.productionCompanionPhone}
-                onChange={set("productionCompanionPhone")}
-                placeholder="050-0000000"
-                className="bg-gray-800 border-gray-700 text-white placeholder-gray-500"
-                dir="ltr"
-              />
-            </div>
-          </div>
-
-          {/* לוגיסטיקה */}
-          <div className="space-y-4 pt-2 border-t border-gray-800">
-            <h3 className="text-white font-semibold text-sm pt-2">לוגיסטיקה</h3>
-
-            <div>
-              <Label className="text-gray-300 mb-1.5 block">📍 מקום התארגנות הכלה *</Label>
-              <Input
-                type="text"
-                value={form.productionBridePrepLocation}
-                onChange={set("productionBridePrepLocation")}
-                placeholder="לדוגמה: בית הורים — רחוב הרצל 12, תל אביב"
-                required
-                className="bg-gray-800 border-gray-700 text-white placeholder-gray-500"
-              />
-            </div>
-
-            <div>
-              <Label className="text-gray-300 mb-1.5 block">🕐 שעת הגעה / קבלת פנים (אופציונלי)</Label>
-              <Input
-                type="text"
-                value={form.productionCheckinTime}
-                onChange={set("productionCheckinTime")}
-                placeholder="לדוגמה: 18:00"
-                className="bg-gray-800 border-gray-700 text-white placeholder-gray-500"
-              />
-            </div>
-
-            <div>
-              <Label className="text-gray-300 mb-1.5 block">💍 שעת חופה משוערת (אופציונלי)</Label>
-              <Input
-                type="text"
-                value={form.productionChuppahTime}
-                onChange={set("productionChuppahTime")}
-                placeholder="לדוגמה: 19:30"
-                className="bg-gray-800 border-gray-700 text-white placeholder-gray-500"
-              />
-            </div>
-
-            <div>
-              <Label className="text-gray-300 mb-1.5 block">📸 אינסטגרם כלה (אופציונלי)</Label>
-              <Input
-                type="text"
-                value={form.productionBrideInstagram}
-                onChange={set("productionBrideInstagram")}
-                placeholder="@username או קישור לפרופיל"
-                className="bg-gray-800 border-gray-700 text-white placeholder-gray-500"
-                dir="ltr"
-              />
-            </div>
-
-            <div>
-              <Label className="text-gray-300 mb-1.5 block">📸 אינסטגרם חתן (אופציונלי)</Label>
-              <Input
-                type="text"
-                value={form.productionGroomInstagram}
-                onChange={set("productionGroomInstagram")}
-                placeholder="@username או קישור לפרופיל"
-                className="bg-gray-800 border-gray-700 text-white placeholder-gray-500"
-                dir="ltr"
-              />
-            </div>
-
-            <div className="space-y-3 pt-1">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="hasSocialCreator"
-                  checked={form.productionHasSocialCreator}
-                  onCheckedChange={setChecked("productionHasSocialCreator")}
-                  className="border-gray-500 data-[state=checked]:bg-yellow-400 data-[state=checked]:border-yellow-400 data-[state=checked]:text-gray-900"
-                />
-                <Label htmlFor="hasSocialCreator" className="text-gray-300 cursor-pointer">
-                  יש סושיאל קריאייטור/צלם/ת סושיאל באירוע
-                </Label>
-              </div>
-
-              {form.productionHasSocialCreator && (
-                <div className="grid grid-cols-1 gap-3 pr-6">
-                  <div>
-                    <Label className="text-gray-300 mb-1.5 block">שם הסושיאל קריאייטור</Label>
-                    <Input
-                      type="text"
-                      value={form.productionSocialCreatorName}
-                      onChange={set("productionSocialCreatorName")}
-                      className="bg-gray-800 border-gray-700 text-white placeholder-gray-500"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-gray-300 mb-1.5 block">נייד הסושיאל קריאייטור</Label>
-                    <Input
-                      type="tel"
-                      value={form.productionSocialCreatorPhone}
-                      onChange={set("productionSocialCreatorPhone")}
-                      placeholder="050-0000000"
-                      className="bg-gray-800 border-gray-700 text-white placeholder-gray-500"
-                      dir="ltr"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-3 pt-1">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="hasExternalPlanner"
-                  checked={form.productionHasExternalPlanner}
-                  onCheckedChange={setChecked("productionHasExternalPlanner")}
-                  className="border-gray-500 data-[state=checked]:bg-yellow-400 data-[state=checked]:border-yellow-400 data-[state=checked]:text-gray-900"
-                />
-                <Label htmlFor="hasExternalPlanner" className="text-gray-300 cursor-pointer">
-                  יש מנהל/ת אירוע חיצוני/ת
-                </Label>
-              </div>
-
-              {form.productionHasExternalPlanner && (
-                <div className="grid grid-cols-1 gap-3 pr-6">
-                  <div>
-                    <Label className="text-gray-300 mb-1.5 block">שם מנהל/ת האירוע</Label>
-                    <Input
-                      type="text"
-                      value={form.productionExternalPlannerName}
-                      onChange={set("productionExternalPlannerName")}
-                      className="bg-gray-800 border-gray-700 text-white placeholder-gray-500"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-gray-300 mb-1.5 block">נייד מנהל/ת האירוע</Label>
-                    <Input
-                      type="tel"
-                      value={form.productionExternalPlannerPhone}
-                      onChange={set("productionExternalPlannerPhone")}
-                      placeholder="050-0000000"
-                      className="bg-gray-800 border-gray-700 text-white placeholder-gray-500"
-                      dir="ltr"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* משפחה ואנשים חשובים */}
-          <div className="space-y-4 pt-2 border-t border-gray-800">
-            <h3 className="text-white font-semibold text-sm pt-2">משפחה ואנשים חשובים</h3>
-
-            <div>
-              <Label className="text-gray-300 mb-1.5 block">👪 משפחת הכלה (אופציונלי)</Label>
-              <Textarea
-                value={form.productionFamilyBride}
-                onChange={set("productionFamilyBride")}
-                placeholder="שמות ותפקידים חשובים במשפחת הכלה"
-                rows={3}
-                className="bg-gray-800 border-gray-700 text-white placeholder-gray-500 resize-none"
-              />
-            </div>
-
-            <div>
-              <Label className="text-gray-300 mb-1.5 block">👪 משפחת החתן (אופציונלי)</Label>
-              <Textarea
-                value={form.productionFamilyGroom}
-                onChange={set("productionFamilyGroom")}
-                placeholder="שמות ותפקידים חשובים במשפחת החתן"
-                rows={3}
-                className="bg-gray-800 border-gray-700 text-white placeholder-gray-500 resize-none"
-              />
-            </div>
-
-            <div>
-              <Label className="text-gray-300 mb-1.5 block">⭐ אנשים חשובים במיוחד לצלם (אופציונלי)</Label>
-              <Textarea
-                value={form.productionImportantPeople}
-                onChange={set("productionImportantPeople")}
-                placeholder="מי חשוב לכם שנקפיד לתעד"
-                rows={3}
-                className="bg-gray-800 border-gray-700 text-white placeholder-gray-500 resize-none"
-              />
-            </div>
-
-            <div>
-              <Label className="text-gray-300 mb-1.5 block">⚠️ רגישויות משפחתיות (אופציונלי)</Label>
-              <Textarea
-                value={form.productionFamilySensitivities}
-                onChange={set("productionFamilySensitivities")}
-                placeholder="אנשים שחשוב לדעת לא לצלם ביחד"
-                rows={3}
-                className="bg-gray-800 border-gray-700 text-white placeholder-gray-500 resize-none"
-              />
-            </div>
-          </div>
-
-          {/* לצוות שלנו */}
-          <div className="space-y-4 pt-2 border-t border-gray-800">
-            <h3 className="text-white font-semibold text-sm pt-2">לצוות שלנו</h3>
-
-            <div>
-              <Label className="text-gray-300 mb-1.5 block">🎁 הפתעות מתוכננות באירוע (אופציונלי)</Label>
-              <Textarea
-                value={form.productionPlannedSurprises}
-                onChange={set("productionPlannedSurprises")}
-                placeholder="לדוגמה: הפתעה לכלה/לחתן, ריקוד מיוחד..."
-                rows={3}
-                className="bg-gray-800 border-gray-700 text-white placeholder-gray-500 resize-none"
-              />
-            </div>
-
-            <div>
-              <Label className="text-gray-300 mb-1.5 block">💬 בקשות מיוחדות מהצוות (אופציונלי)</Label>
-              <Textarea
-                value={form.productionSpecialRequests}
-                onChange={set("productionSpecialRequests")}
-                placeholder="לדוגמה: רגעים חשובים שחשוב לכם לתעד, אנשים ספציפיים לצלם, משהו שחשוב לדעת..."
-                rows={4}
-                className="bg-gray-800 border-gray-700 text-white placeholder-gray-500 resize-none"
-              />
-            </div>
-          </div>
+          <QuestionnaireFields sections={questionnaireSections(config)} form={form} setForm={setForm} extra={extra} setExtra={setExtra} />
 
           {error && (
             <p className="text-red-400 text-sm text-center">{error}</p>

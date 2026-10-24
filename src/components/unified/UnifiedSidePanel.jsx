@@ -19,6 +19,7 @@ import { openSignedContract } from "@/lib/signedContract";
 import InvoiceDialog from "@/components/invoice/InvoiceDialog";
 import StaffAvailabilityModal from "@/components/leads/StaffAvailabilityModal";
 import SendCrewBriefDialog from "@/components/events/SendCrewBriefDialog";
+import { extraAnswerEntries } from "@/lib/questionnaireConfig";
 import AvailabilityPills from "@/components/events/AvailabilityPills";
 import LeadFormDialog from "@/components/leads/LeadFormDialog";
 import { packagePrices } from "@/lib/packagePrices";
@@ -928,6 +929,13 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                           </div>
                         ) : null
                       ))}
+                      {/* the studio's own questions (Settings → שאלון הפקה, 2026-10-24) */}
+                      {extraAnswerEntries(lead?.productionExtraAnswers).map((a) => (
+                        <div key={a.id} className="flex justify-between gap-3 text-gray-200 text-sm">
+                          <span className="text-gray-400 flex-shrink-0">{a.label}:</span>
+                          <span className="text-left whitespace-pre-wrap break-words">{a.text}</span>
+                        </div>
+                      ))}
 
                       {/* כפתורים לניהול השאלון */}
                       <div className="pt-3 space-y-2 border-t border-gray-700/50">
@@ -1284,6 +1292,12 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                       <p className="mt-1 text-xs text-gray-300">{lead[key]}</p>
                     </div>
                   ) : null
+                ))}
+                {extraAnswerEntries(lead?.productionExtraAnswers).map((a) => (
+                  <div key={a.id} className="text-gray-200">
+                    <span className="text-gray-400">{a.label}:</span>
+                    <p className="mt-1 whitespace-pre-wrap text-xs text-gray-300">{a.text}</p>
+                  </div>
                 ))}
               </div>
             )}

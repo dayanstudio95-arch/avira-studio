@@ -18,6 +18,7 @@ import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createServiceRoleClient } from '../_shared/supabaseClients.ts';
 import { syncEventToAllAccounts } from '../_shared/googleCalendarSync.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
+import { loadQuestionnaireConfig, mergeExtraAnswers, extraAnswerLines, BUILTIN_COLUMNS } from '../_shared/questionnaireExtras.ts';
 
 Deno.serve(async (req) => {
   const preflight = handleOptions(req);
@@ -59,6 +60,8 @@ Deno.serve(async (req) => {
       productionImportantPeople,
       productionFamilySensitivities,
       productionPlannedSurprises,
+      // The studio's own questions (2026-10-24): { [questionId]: text | boolean }.
+      extraAnswers,
     } = body;
 
     if (!leadId) return jsonResponse({ error: 'leadId required' }, { status: 400 });
@@ -70,30 +73,65 @@ Deno.serve(async (req) => {
     const lead = leads?.[0];
     if (!lead) return jsonResponse({ error: 'Lead not found' }, { status: 404 });
 
+    // The studio's questionnaire (Settings → שאלון הפקה, 2026-10-24). A built-in question the
+    // studio hid is not on the form, so it is not written here: the answer it has stays.
+    const config = await loadQuestionnaireConfig(supabase, lead.tenant_id);
+    const hiddenColumns = new Set(
+      Object.entries(config.builtins).filter(([, o]) => o.hidden).flatMap(([key]) => BUILTIN_COLUMNS[key] || [])
+    );
+    // What the summaries below should say for a hidden question: what the lead already has.
+    const kept = (column: string, sent: unknown) => (hiddenColumns.has(column) ? lead[column] : sent);
+    const extra = mergeExtraAnswers(lead.production_extra_answers, config, extraAnswers);
+    const extraLines = extraAnswerLines({ production_extra_answers: extra });
+
+    // The values as they will stand after this save (a hidden question keeps its answer).
+    const v_productionBridePrepLocation = kept('production_bride_prep_location', productionBridePrepLocation);
+    const v_productionBridePhone = kept('production_bride_phone', productionBridePhone);
+    const v_productionGroomPhone = kept('production_groom_phone', productionGroomPhone);
+    const v_productionCompanionName = kept('production_companion_name', productionCompanionName);
+    const v_productionCompanionPhone = kept('production_companion_phone', productionCompanionPhone);
+    const v_productionCheckinTime = kept('production_checkin_time', productionCheckinTime);
+    const v_productionChuppahTime = kept('production_chuppah_time', productionChuppahTime);
+    const v_productionBrideInstagram = kept('production_bride_instagram', productionBrideInstagram);
+    const v_productionGroomInstagram = kept('production_groom_instagram', productionGroomInstagram);
+    const v_productionHasSocialCreator = kept('production_has_social_creator', productionHasSocialCreator);
+    const v_productionSocialCreatorName = kept('production_social_creator_name', productionSocialCreatorName);
+    const v_productionSocialCreatorPhone = kept('production_social_creator_phone', productionSocialCreatorPhone);
+    const v_productionHasExternalPlanner = kept('production_has_external_planner', productionHasExternalPlanner);
+    const v_productionExternalPlannerName = kept('production_external_planner_name', productionExternalPlannerName);
+    const v_productionExternalPlannerPhone = kept('production_external_planner_phone', productionExternalPlannerPhone);
+    const v_productionFamilyBride = kept('production_family_bride', productionFamilyBride);
+    const v_productionFamilyGroom = kept('production_family_groom', productionFamilyGroom);
+    const v_productionImportantPeople = kept('production_important_people', productionImportantPeople);
+    const v_productionFamilySensitivities = kept('production_family_sensitivities', productionFamilySensitivities);
+    const v_productionPlannedSurprises = kept('production_planned_surprises', productionPlannedSurprises);
+    const v_productionSpecialRequests = kept('production_special_requests', productionSpecialRequests);
+
     const finalTechnicalSummary = [
-      `📍 מקום התארגנות: ${productionBridePrepLocation || 'הזוג טרם מילא את השאלון'}`,
-      `📱 נייד כלה: ${productionBridePhone || 'הזוג טרם מילא את השאלון'}`,
-      `📱 נייד חתן: ${productionGroomPhone || 'הזוג טרם מילא את השאלון'}`,
-      productionCompanionName || productionCompanionPhone
-        ? `🧑‍🤝‍🧑 מלווה: ${productionCompanionName || '—'}${productionCompanionPhone ? ` (${productionCompanionPhone})` : ''}`
+      `📍 מקום התארגנות: ${v_productionBridePrepLocation || 'הזוג טרם מילא את השאלון'}`,
+      `📱 נייד כלה: ${v_productionBridePhone || 'הזוג טרם מילא את השאלון'}`,
+      `📱 נייד חתן: ${v_productionGroomPhone || 'הזוג טרם מילא את השאלון'}`,
+      v_productionCompanionName || v_productionCompanionPhone
+        ? `🧑‍🤝‍🧑 מלווה: ${v_productionCompanionName || '—'}${v_productionCompanionPhone ? ` (${v_productionCompanionPhone})` : ''}`
         : null,
-      productionCheckinTime ? `🕐 שעת הגעה/קבלת פנים: ${productionCheckinTime}` : null,
-      productionChuppahTime ? `💍 שעת חופה משוערת: ${productionChuppahTime}` : null,
-      productionBrideInstagram ? `📸 אינסטגרם כלה: ${productionBrideInstagram}` : null,
-      productionGroomInstagram ? `📸 אינסטגרם חתן: ${productionGroomInstagram}` : null,
-      productionHasSocialCreator
-        ? `🎥 סושיאל קריאייטור/צלם/ת סושיאל: ${productionSocialCreatorName || '—'}${productionSocialCreatorPhone ? ` (${productionSocialCreatorPhone})` : ''}`
+      v_productionCheckinTime ? `🕐 שעת הגעה/קבלת פנים: ${v_productionCheckinTime}` : null,
+      v_productionChuppahTime ? `💍 שעת חופה משוערת: ${v_productionChuppahTime}` : null,
+      v_productionBrideInstagram ? `📸 אינסטגרם כלה: ${v_productionBrideInstagram}` : null,
+      v_productionGroomInstagram ? `📸 אינסטגרם חתן: ${v_productionGroomInstagram}` : null,
+      v_productionHasSocialCreator
+        ? `🎥 סושיאל קריאייטור/צלם/ת סושיאל: ${v_productionSocialCreatorName || '—'}${v_productionSocialCreatorPhone ? ` (${v_productionSocialCreatorPhone})` : ''}`
         : null,
-      productionHasExternalPlanner
-        ? `📋 מנהל/ת אירוע חיצוני/ת: ${productionExternalPlannerName || '—'}${productionExternalPlannerPhone ? ` (${productionExternalPlannerPhone})` : ''}`
+      v_productionHasExternalPlanner
+        ? `📋 מנהל/ת אירוע חיצוני/ת: ${v_productionExternalPlannerName || '—'}${v_productionExternalPlannerPhone ? ` (${v_productionExternalPlannerPhone})` : ''}`
         : null,
-      productionFamilyBride ? `👪 משפחת הכלה: ${productionFamilyBride}` : null,
-      productionFamilyGroom ? `👪 משפחת החתן: ${productionFamilyGroom}` : null,
-      productionImportantPeople ? `⭐ אנשים חשובים לצלם: ${productionImportantPeople}` : null,
-      productionFamilySensitivities ? `⚠️ רגישויות משפחתיות: ${productionFamilySensitivities}` : null,
-      productionPlannedSurprises ? `🎁 הפתעות מתוכננות: ${productionPlannedSurprises}` : null,
+      v_productionFamilyBride ? `👪 משפחת הכלה: ${v_productionFamilyBride}` : null,
+      v_productionFamilyGroom ? `👪 משפחת החתן: ${v_productionFamilyGroom}` : null,
+      v_productionImportantPeople ? `⭐ אנשים חשובים לצלם: ${v_productionImportantPeople}` : null,
+      v_productionFamilySensitivities ? `⚠️ רגישויות משפחתיות: ${v_productionFamilySensitivities}` : null,
+      v_productionPlannedSurprises ? `🎁 הפתעות מתוכננות: ${v_productionPlannedSurprises}` : null,
       productionInstagram ? `📸 אינסטגרם: ${productionInstagram}` : null,
-      productionSpecialRequests ? `💬 בקשות מיוחדות: ${productionSpecialRequests}` : null,
+      v_productionSpecialRequests ? `💬 בקשות מיוחדות: ${v_productionSpecialRequests}` : null,
+      ...extraLines,
     ].filter(Boolean).join('\n');
 
     const productionBrief = [
@@ -107,9 +145,7 @@ Deno.serve(async (req) => {
       finalTechnicalSummary,
     ].filter(Boolean).join('\n');
 
-    const { error: updateErr } = await supabase
-      .from('leads')
-      .update({
+    const update: Record<string, unknown> = {
         production_bride_phone: productionBridePhone || '',
         production_groom_phone: productionGroomPhone || '',
         production_bride_prep_location: productionBridePrepLocation || '',
@@ -136,8 +172,20 @@ Deno.serve(async (req) => {
         production_important_people: productionImportantPeople || '',
         production_family_sensitivities: productionFamilySensitivities || '',
         production_planned_surprises: productionPlannedSurprises || '',
-      })
+        production_extra_answers: extra,
+      };
+    for (const column of hiddenColumns) delete update[column];
+
+    let { error: updateErr } = await supabase
+      .from('leads')
+      .update(update)
       .eq('id', leadId);
+    // Deployed before migration 0093? Save the built-in answers rather than nothing.
+    if (updateErr && /production_extra_answers/.test(updateErr.message || '')) {
+      console.error('submit-production-questionnaire: production_extra_answers missing — run migration 0093');
+      delete update.production_extra_answers;
+      ({ error: updateErr } = await supabase.from('leads').update(update).eq('id', leadId));
+    }
 
     if (updateErr) return jsonResponse({ error: updateErr.message }, { status: 500 });
 

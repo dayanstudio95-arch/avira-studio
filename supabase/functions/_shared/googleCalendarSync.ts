@@ -13,6 +13,7 @@
 // forever).
 import { getConnectedAccounts, getValidAccessToken, type AccountRole } from './googleCalendarAuth.ts';
 import { fetchWithRetry } from './retry.ts';
+import { extraAnswerLines } from './questionnaireExtras.ts';
 
 interface CalendarPayload {
   summary: string;
@@ -92,6 +93,8 @@ export async function buildEventPayload(supabase: any, event: any, accountRole: 
           lead.production_family_sensitivities && `⚠️ רגישויות משפחתיות: ${lead.production_family_sensitivities}`,
           lead.production_planned_surprises && `🎁 הפתעות מתוכננות באירוע: ${lead.production_planned_surprises}`,
           lead.production_special_requests && `💬 בקשות מיוחדות: ${lead.production_special_requests}`,
+          // the studio's own questions (Settings → שאלון הפקה, 2026-10-24)
+          ...extraAnswerLines(lead),
         ];
         const filled = lines.filter(Boolean) as string[];
         if (filled.length > 0) {
