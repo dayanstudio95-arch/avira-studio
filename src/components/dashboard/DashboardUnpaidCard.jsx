@@ -11,10 +11,26 @@ import { CreditCard, MessageCircle, Receipt } from "lucide-react";
 import PaymentStatusSelector from "@/components/common/PaymentStatusSelector";
 import PaymentRequestDialog from "@/components/dashboard/PaymentRequestDialog";
 import DashTitleLink from "./DashTitleLink";
+import UnifiedSidePanel from "@/components/unified/UnifiedSidePanel";
+import { base44 } from "@/api/base44Client";
 
-export default function DashboardUnpaidCard({ events, onRefresh }) {
+export default function DashboardUnpaidCard({ events, staffMembers, onRefresh }) {
   const now = new Date();
   const [paymentRequestEvent, setPaymentRequestEvent] = useState(null);
+
+  // The couple's name opens the lead/event window (2026-10-25, the owner's request), like the
+  // name in the events table. The whole lead is read first — the panel needs every field.
+  const [panel, setPanel] = useState(null); // { event, lead }
+  const [opening, setOpening] = useState(null);
+  const openPanel = async (event) => {
+    if (opening) return;
+    setOpening(event.id);
+    const lead = event.sourceLeadId
+      ? await base44.entities.Lead.filter({ id: event.sourceLeadId }).then((r) => r?.[0] || null).catch(() => null)
+      : null;
+    setOpening(null);
+    setPanel({ event, lead });
+  };
 
   const allUnpaid = events.filter(
     (e) => new Date(e.date) < now && e.clientPaymentStatus === "Unpaid"
@@ -108,7 +124,15 @@ export default function DashboardUnpaidCard({ events, onRefresh }) {
               >
                 <div className="flex items-baseline justify-between gap-2">
                   <p className="text-sm font-medium text-white truncate">
-                    {event.coupleNames}
+                    <button
+                      type="button"
+                      onClick={() => openPanel(event)}
+                      disabled={!!opening}
+                      title="פתח את פרטי הזוג"
+                      className={`text-start hover:text-amber-200 hover:underline ${opening === event.id ? "opacity-50" : ""}`}
+                    >
+                      {event.coupleNames}
+                    </button>
                     {entityOf(event) && (
                       <span className={`ms-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${entityOf(event) === "company" ? "bg-purple-500/20 text-purple-200" : "bg-emerald-500/20 text-emerald-200"}`}>
                         {ENTITIES[entityOf(event)].short}
@@ -147,6 +171,17 @@ export default function DashboardUnpaidCard({ events, onRefresh }) {
           </div>
         )}
       </CardContent>
+      {panel && (
+        <UnifiedSidePanel
+          isOpen
+          onClose={() => setPanel(null)}
+          lead={panel.lead}
+          event={panel.event}
+          staffMembers={staffMembers || []}
+          onLeadUpdated={() => { entityQ.refetch(); onRefresh?.(); }}
+          onEventUpdated={onRefresh}
+        />
+      )}
       <PaymentRequestDialog
         event={paymentRequestEvent}
         open={!!paymentRequestEvent}

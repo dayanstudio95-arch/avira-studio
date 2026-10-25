@@ -382,7 +382,7 @@ export default function Dashboard() {
           <div className="flex flex-col gap-3 mb-5">
             <div className="min-h-[240px]"><TodayEventsCard events={events} /></div>
             <PostSignCard />
-            <DashboardUnpaidCard events={events} onRefresh={loadEvents} />
+            <DashboardUnpaidCard events={events} staffMembers={staffMembers} onRefresh={loadEvents} />
             <DashboardMissingTeamCard events={events} staffMembers={staffMembers} onChanged={() => loadEvents({ silent: true })} limit={3} />
             <DashboardWorkStatusCard events={events} staffMembers={staffMembers} onRefresh={() => loadEvents({ silent: true })} limit={3} />
             <RecentLeadsCard compact />
@@ -413,7 +413,7 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 sm:[&>*]:h-[305px] gap-3 sm:gap-4 md:gap-5 mb-6">
               <DashboardMissingTeamCard events={events} staffMembers={staffMembers} onChanged={() => loadEvents({ silent: true })} />
               <DashboardWorkStatusCard events={events} staffMembers={staffMembers} onRefresh={() => loadEvents({ silent: true })} />
-              <DashboardUnpaidCard events={events} onRefresh={loadEvents} />
+              <DashboardUnpaidCard events={events} staffMembers={staffMembers} onRefresh={loadEvents} />
               <RecentLeadsCard />
             </div>
 
