@@ -9,6 +9,8 @@ import { format } from "date-fns";
 import { STAFF_JOB_ROLES, AVAILABILITY_SLOT_LABELS, teamRoleSlotsForJobRole } from "@/lib/staffRoles";
 import { generateRawToken, hashToken } from "@/lib/albumTokens";
 import { pickReplacementCandidates } from "@/lib/staffReplacement";
+import SameDayEventsCard from "@/components/events/SameDayEventsCard";
+import { sameDayOthers, bookingsByName, bookingText, freeFirst } from "@/lib/sameDayCrew";
 
 // Only these two job roles are relevant for an "is a crew member free on this
 // date" check — editors/graphic designers aren't booked per-event-date the
@@ -119,15 +121,16 @@ export default function StaffAvailabilityModal({
   // may pass `eventsOnDate`; otherwise fetched here, once per open.
   const [fetchedEventsOnDate, setFetchedEventsOnDate] = useState(null);
 
+  // The other weddings that day are shown in every mode since 2026-10-25 (who is booked where).
   useEffect(() => {
-    if (!open || !isReplacement || eventsOnDate || !eventDate) return;
+    if (!open || eventsOnDate || !eventDate) return;
     let mounted = true;
     base44.entities.Event.filter({ date: eventDate })
       .then((rows) => { if (mounted) setFetchedEventsOnDate(rows || []); })
       .catch(() => { if (mounted) setFetchedEventsOnDate([]); });
     return () => { mounted = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, isReplacement, eventDate]);
+  }, [open, eventDate]);
 
   // Jump straight to the role when the caller already knows it.
   useEffect(() => {
@@ -157,6 +160,9 @@ export default function StaffAvailabilityModal({
     () => staffMembersWithFavorites.filter((s) => AVAILABILITY_ROLES.some((r) => r.value === s.role)),
     [staffMembersWithFavorites]
   );
+
+  const sameDay = useMemo(() => sameDayOthers(eventsOnDate || fetchedEventsOnDate || [], { date: eventDate, eventId }), [eventsOnDate, fetchedEventsOnDate, eventDate, eventId]);
+  const bookings = useMemo(() => bookingsByName(sameDay), [sameDay]);
 
   const roleStaff = useMemo(() => {
     if (!selectedRole || selectedRole === "manage-favorites") return [];
@@ -389,6 +395,7 @@ export default function StaffAvailabilityModal({
               </p>
             ) : (
               <>
+                <SameDayEventsCard others={sameDay} />
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-400">
                     {selectedIds.size} מתוך {roleStaff.filter((s) => s.phoneNumber).length} נבחרו
@@ -398,8 +405,13 @@ export default function StaffAvailabilityModal({
                   </button>
                 </div>
                 <div className="max-h-52 overflow-y-auto space-y-1.5 border border-gray-700/50 rounded-xl p-2">
-                  {roleStaff.map((s) => (
+                  {freeFirst(roleStaff, bookings).map((s, i, list) => {
+                    // the people booked elsewhere that day come last, under a heading (2026-10-25)
+                    const busyText = bookingText(bookings, s.name);
+                    const firstBusy = busyText && (i === 0 || !bookingText(bookings, list[i - 1].name));
+                    return (
                     <div key={s.id}>
+                    {firstBusy && <div className="px-2 pt-1 text-[11px] text-gray-500">כבר משובצים באותו יום:</div>}
                     <label
                       className={`flex items-center justify-between gap-2 p-2 rounded-lg ${
                         s.phoneNumber ? "hover:bg-gray-800 cursor-pointer" : "opacity-50 cursor-not-allowed"
@@ -413,12 +425,15 @@ export default function StaffAvailabilityModal({
                           onChange={() => toggleStaff(s.id)}
                           className="w-4 h-4 accent-pink-600"
                         />
-                        <span className="text-sm text-white">{s.name}</span>
+                        <span className="text-sm text-white">
+                          {s.name}
+                          {busyText && <span className="block text-[11px] text-amber-400/90">{busyText}</span>}
+                        </span>
                         {s.isFavorite && <Star className="w-3 h-3 text-amber-400 fill-amber-400 shrink-0" />}
                       </div>
                       {!s.phoneNumber ? (
                         <span className="text-xs text-gray-500">אין טלפון</span>
-                      ) : reasonFor(s.id) && !selectedIds.has(s.id) ? (
+                      ) : reasonFor(s.id) && !selectedIds.has(s.id) && !busyText ? (
                         <span className="text-xs text-amber-400/90">{reasonFor(s.id)}</span>
                       ) : (
                         latestStatusFor(s.id) && (
@@ -449,7 +464,8 @@ export default function StaffAvailabilityModal({
                       </div>
                     )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
                 <div>
                   <label className="text-xs text-gray-400 mb-1 block">תוכן ההודעה שתישלח</label>

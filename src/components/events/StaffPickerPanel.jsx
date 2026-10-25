@@ -73,7 +73,7 @@ export default function StaffPickerPanel({
         {rows.length === 0 ? (
           <div className="py-4 text-center text-sm text-gray-500">{search ? "לא נמצא" : `אין ${label} זמינים`}</div>
         ) : (
-          rows.map(({ staff, isSelected, isBooked }) => (
+          rows.map(({ staff, isSelected, isBooked, bookedText }) => (
             <div key={staff.id} className={`flex items-center gap-3 rounded p-2 ${isBooked ? "opacity-60" : "hover:bg-gray-800/50"}`}>
               <button
                 type="button"
@@ -94,7 +94,10 @@ export default function StaffPickerPanel({
                   {staff.name.charAt(0).toUpperCase()}
                 </div>
                 <span className="text-sm">
-                  {staff.isFavorite ? "⭐ " : ""}{staff.name}{isBooked && " (כבר משובץ)"}
+                  {staff.isFavorite ? "⭐ " : ""}{staff.name}
+                  {bookedText
+                    ? <span className="block text-[11px] text-amber-400/90">{bookedText}</span>
+                    : isBooked && " (כבר משובץ)"}
                 </span>
               </div>
             </div>

@@ -1,6 +1,7 @@
 // The crew picker in the events list (2026-10-15, the owner's request): one scroll, a
 // search box, a sensible order, and a one-time ("זמני") crew member saved on the event
 // only. Pure — PART 61.
+import { sameDayOthers, bookingsByName, bookingText } from "./sameDayCrew";
 
 // Which staff_members.role fills an event-team slot.
 export function jobRoleForSlot(roleKey) {
@@ -13,9 +14,12 @@ export function jobRoleForSlot(roleKey) {
 const norm = (s) => String(s || "").trim().toLowerCase();
 
 // Rows to show: filtered by the search, favourites first, then א-ב, and anyone already
-// booked that day (for this slot type) at the end.
+// booked that day (for this slot type) at the end. `bookedText` (2026-10-25): where the person
+// is booked that day in any role — "משובץ: נועה ואיתי · צלם 2" — shown under the name, those
+// rows after the free ones; only the same slot type blocks picking (isBooked), as before.
 export function pickerRows({ staffList, event, events, roleKey, member, search, checkBooked = true }) {
   const q = norm(search);
+  const bookings = checkBooked ? bookingsByName(sameDayOthers(events, { date: event?.date, eventId: event?.id })) : new Map();
   const rows = (staffList || [])
     .filter((s) => !q || norm(s.name).includes(q))
     .map((s) => {
@@ -24,10 +28,11 @@ export function pickerRows({ staffList, event, events, roleKey, member, search, 
         e.id !== event?.id && e.date === event?.date &&
         (e.team || []).some((m) => m.staffMemberName === s.name && m.role === roleKey)
       );
-      return { staff: s, isSelected, isBooked: isBooked && !isSelected };
+      return { staff: s, isSelected, isBooked: isBooked && !isSelected, bookedText: isSelected ? null : bookingText(bookings, s.name) };
     });
   return rows.sort((a, b) =>
     (a.isBooked - b.isBooked) ||
+    (Number(!!a.bookedText) - Number(!!b.bookedText)) ||
     (Number(!!b.staff.isFavorite) - Number(!!a.staff.isFavorite)) ||
     String(a.staff.name).localeCompare(String(b.staff.name), "he")
   );

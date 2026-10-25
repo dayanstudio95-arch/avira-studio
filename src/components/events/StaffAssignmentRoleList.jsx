@@ -4,6 +4,8 @@ import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
 import { getStaffRateForRole } from "@/lib/staffRates";
 import { StaffPickerCell } from "./EventsTableWithBulkDelete";
+import SameDayEventsCard from "./SameDayEventsCard";
+import { sameDayOthers } from "@/lib/sameDayCrew";
 
 // Shared per-role staff-assignment list -- 5 fixed role slots (photographer1/2,
 // videographer/2, editor), each with a gold "בחר" popover picker. Originally
@@ -246,6 +248,8 @@ export default function StaffAssignmentRoleList({ event, staffMembers, events, o
         )}
         </div>
       </div>
+      {/* the other weddings that day and their crew (2026-10-25) */}
+      <SameDayEventsCard others={sameDayOthers(events, { date: liveEvent.date, eventId: liveEvent.id })} />
     </div>
   );
 }

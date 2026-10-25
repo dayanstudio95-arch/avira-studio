@@ -3181,5 +3181,33 @@ console.log('\n— PART 68: questionnaire editor —');
   check('new ids', [qc.newQuestionId([]), qc.newQuestionId([{ id: 'q1' }, { id: 'q3' }])], ['q1', 'q4']);
 }
 
+// =====================================================================================
+// PART 69 — the other weddings that day and who is booked there (2026-10-25)
+console.log('\n— PART 69: same-day crew —');
+{
+  const sd = await loadModule('src/lib/sameDayCrew.js', 'sd69');
+  const sp = await loadModule('src/lib/staffPicker.js', 'sp69');
+  const me = { id: 'E0', date: '2027-06-23', coupleNames: 'שובל ושלו', team: [{ role: 'photographer1', staffMemberName: 'אביהו' }] };
+  const events = [
+    me,
+    { id: 'E1', date: '2027-06-23', coupleNames: 'נועה ואיתי', venue: 'אולם הגן', team: [{ role: 'videographer', staffMemberName: 'רודי' }, { role: 'photographer1', staffMemberName: 'יריב' }, { role: 'editor', staffMemberName: 'דרור' }, { role: 'photographer2', staffMemberName: ' ' }] },
+    { id: 'E2', date: '2027-06-23T00:00:00', coupleNames: 'שירה ועומר', team: [{ role: 'photographer1', staffMemberName: 'סלבה' }] },
+    { id: 'E3', date: '2027-06-24', coupleNames: 'מחרתיים', team: [{ role: 'photographer1', staffMemberName: 'ג׳וני' }] },
+  ];
+  const others = sd.sameDayOthers(events, { date: me.date, eventId: me.id });
+  check('the other events that day (not this one, not the next day)', others.map((e) => e.id), ['E1', 'E2']);
+  check('no date → none; a lead without an event sees them all', [sd.sameDayOthers(events, {}).length, sd.sameDayOthers(events, { date: '2027-06-23' }).length], [0, 3]);
+  check('crew in role order, empty names out', sd.crewByRole(events[1]).map((m) => m.staffMemberName), ['יריב', 'רודי', 'דרור']);
+  const bk = sd.bookingsByName(others);
+  check('who is booked where (the editor is not busy)', [sd.bookingText(bk, 'יריב'), sd.bookingText(bk, ' סלבה '), sd.bookingText(bk, 'דרור'), sd.bookingText(bk, 'אביהו')],
+    ['משובץ: נועה ואיתי · צלם 1', 'משובץ: שירה ועומר · צלם 1', null, null]);
+  check('free first, booked after, each in their order', sd.freeFirst([{ name: 'יריב' }, { name: 'אביהו' }, { name: 'סלבה' }, { name: 'ג׳וני' }], bk).map((s) => s.name), ['אביהו', 'ג׳וני', 'יריב', 'סלבה']);
+  const rows = sp.pickerRows({ staffList: [{ id: 1, name: 'יריב' }, { id: 2, name: 'ג׳וני' }, { id: 3, name: 'סלבה' }], event: me, events, roleKey: 'photographer2', search: '' });
+  check('picker: booked elsewhere in another role → text, still pickable, after the free ones', rows.map((r) => [r.staff.name, r.isBooked, r.bookedText]),
+    [['ג׳וני', false, null], ['יריב', false, 'משובץ: נועה ואיתי · צלם 1'], ['סלבה', false, 'משובץ: שירה ועומר · צלם 1']]);
+  const same = sp.pickerRows({ staffList: [{ id: 1, name: 'יריב' }], event: me, events, roleKey: 'photographer1', search: '' });
+  check('picker: same slot type elsewhere → blocked as before, with the text', [same[0].isBooked, same[0].bookedText], [true, 'משובץ: נועה ואיתי · צלם 1']);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

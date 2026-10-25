@@ -19,6 +19,8 @@ import StaffAssignmentRoleList from "@/components/events/StaffAssignmentRoleList
 import { sendCalendarInviteByName } from "@/lib/calendarInvites";
 import { leadSyncOutcome } from "@/lib/actionOutcome";
 import { applyLeadTemplateVariables, loadScheduleTemplates, SCHEDULE_OPTIONS } from "@/lib/leadMessages";
+import SameDayEventsCard from "@/components/events/SameDayEventsCard";
+import { sameDayOthers } from "@/lib/sameDayCrew";
 import {
   STEPS, CLOSED_STATUS, SNOOZE_OPTIONS, snoozeUntil, currentStep, advance, finish, formatEventDateHe,
 } from "@/lib/postSignFlow";
@@ -109,8 +111,10 @@ export default function PostSignWizard({ lead: initialLead, isOpen, onClose, onC
       ev = rows?.[0] || null;
       if (!ev && forLead.linkedEventId) ev = await base44.entities.Event.get(forLead.linkedEventId).catch(() => null);
       setEvent(ev);
-      if (ev?.date) {
-        const sameDay = await base44.entities.Event.filter({ date: ev.date });
+      // the other weddings that day — by the lead's date too while there is no event yet
+      const date = ev?.date || (forLead.eventDate ? String(forLead.eventDate).slice(0, 10) : null);
+      if (date) {
+        const sameDay = await base44.entities.Event.filter({ date });
         setEventsOnDate(sameDay || []);
       }
       loadRequests(forLead.id, ev?.id);
@@ -405,6 +409,8 @@ export default function PostSignWizard({ lead: initialLead, isOpen, onClose, onC
                 <Button onClick={() => setShowAvailability(true)} className="bg-pink-600 hover:bg-pink-700 text-white">
                   <Users className="w-4 h-4 ml-2" /> בחר למי לשלוח
                 </Button>
+                {/* who is already booked at the other weddings that day (2026-10-25) */}
+                <SameDayEventsCard others={sameDayOthers(eventsOnDate, { date: event?.date || lead.eventDate, eventId: event?.id })} />
                 {requests.length > 0 && (
                   <div className="space-y-1">
                     <p className="text-xs text-gray-400">תשובות עד עכשיו:</p>
