@@ -119,7 +119,11 @@ export default function StaffScheduling() {
       setOrderedStaff(sorted.filter(s => s.role !== 'editor'));
       // ?eventId=… (from "חסר צוות" on the dashboard) opens that event; otherwise the
       // nearest upcoming one rather than the latest-dated event in the list.
-      if (!selectedEvent && eventsData.length > 0) {
+      if (selectedEvent) {
+        // the header above the role list ("צוות משובץ", the counter) follows what was just
+        // changed below it — a move between same-day events (2026-10-25) changes the team
+        setSelectedEvent((cur) => (cur && eventsData.find((e) => e.id === cur.id)) || cur);
+      } else if (eventsData.length > 0) {
         const wanted = new URLSearchParams(window.location.search).get("eventId");
         const today0 = israelToday();
         const next = eventsData.filter((e) => eventDay(e) >= today0).sort((a, b) => eventDay(a).localeCompare(eventDay(b)))[0];
@@ -268,7 +272,7 @@ export default function StaffScheduling() {
           event={event}
           staffMembers={staffMembers}
           events={events}
-          onRefresh={loadData}
+          onRefresh={() => loadData({ silent: true })}
           sendCalendarInviteByName={sendCalendarInviteByName}
           onFindReplacement={openReplacement}
         />
@@ -775,7 +779,7 @@ export default function StaffScheduling() {
           onClose={() => setMobileSheetOpen(false)}
           staffMembers={staffMembers}
           events={events}
-          onRefresh={loadData}
+          onRefresh={() => loadData({ silent: true })}
           sendCalendarInviteByName={sendCalendarInviteByName}
           onFindReplacement={openReplacement}
           onCheckAvailability={openAvailability}

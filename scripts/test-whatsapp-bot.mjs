@@ -3209,5 +3209,77 @@ console.log('\n— PART 69: same-day crew —');
   check('picker: same slot type elsewhere → blocked as before, with the text', [same[0].isBooked, same[0].bookedText], [true, 'משובץ: נועה ואיתי · צלם 1']);
 }
 
+// =====================================================================================
+// PART 70 — moving a crew member between two weddings on the same day (2026-10-25)
+console.log('\n— PART 70: crew move between same-day events —');
+{
+  const cm = await loadModule('src/lib/crewMove.js', 'cm70');
+  const staff = [
+    { id: 's1', name: 'סלבה', role: 'photographer', defaultRate: 900, ratesByRole: [{ role: 'photographer1', rate: 1200 }] },
+    { id: 's2', name: 'דודו', role: 'photographer', defaultRate: 800, ratesByRole: [{ role: 'photographer2', rate: 700 }] },
+    { id: 's3', name: 'רודי', role: 'videographer', defaultRate: 1500 },
+    { id: 's4', name: 'יריב', role: 'photographer', defaultRate: 1000 },
+  ];
+  const source = { id: 'A', date: '2027-06-23T00:00:00', coupleNames: 'חושן ולידור', venue: 'אחוזה', team: [
+    { role: 'photographer1', staffMemberName: 'יריב', cost: 1000, isPaid: false, progressStatus: 'pending' },
+    { role: 'photographer2', staffMemberName: 'סלבה', cost: 900, isPaid: true, progressStatus: 'done' },
+    { role: 'videographer', staffMemberName: 'רודי', cost: 1500 },
+  ] };
+  const free = { id: 'B', date: '2027-06-23', coupleNames: 'רון ויונתן', venue: 'גן אירועים', team: [{ role: 'photographer2', staffMemberName: 'דודו', cost: 700 }] };
+  const opts = cm.moveOptions({ source, fromSlot: 'photographer2', target: free, staffMembers: staff });
+  check('options: his kind of slots — the free one, and the taken one as a swap',
+    opts.map((o) => [o.slot, o.occupant, o.canMove, o.swap]), [['photographer1', null, true, false], ['photographer2', 'דודו', true, true]]);
+  const odd = { ...free, team: [{ role: 'photographer1', staffMemberName: 'רודי' }] };
+  check('a swap that would put a videographer in צלם 2 → not offered, with why',
+    cm.moveOptions({ source, fromSlot: 'photographer2', target: odd, staffMembers: staff }).find((o) => o.slot === 'photographer1'),
+    { slot: 'photographer1', label: 'צלם 1', occupant: 'רודי', canMove: false, reason: 'רודי לא יכול להיות צלם 2', swap: false });
+  const already = { ...free, team: [{ role: 'photographer2', staffMemberName: ' סלבה ' }] };
+  check('already on this event → nothing movable', cm.moveOptions({ source, fromSlot: 'photographer2', target: already, staffMembers: staff }).map((o) => [o.canMove, o.reason]),
+    [[false, 'כבר משובץ באירוע הזה'], [false, 'כבר משובץ באירוע הזה']]);
+  const both = { ...free, team: [{ role: 'photographer1', staffMemberName: 'יריב' }] };
+  check('a swap with someone already on the other event → not offered', cm.moveOptions({ source, fromSlot: 'photographer2', target: both, staffMembers: staff })[0].reason,
+    'יריב כבר משובץ באירוע של חושן ולידור');
+  check('an empty slot on the source → no options', cm.moveOptions({ source, fromSlot: 'videographer2', target: free, staffMembers: staff }), []);
+
+  const p = cm.planCrewMove({ source, fromSlot: 'photographer2', target: free, toSlot: 'photographer1', staffMembers: staff });
+  check('move to a free slot: the new event gets him at his price for that slot, unpaid',
+    p.targetTeam, [{ role: 'photographer2', staffMemberName: 'דודו', cost: 700 }, { role: 'photographer1', staffMemberName: 'סלבה', cost: 1200, isPaid: false, progressStatus: 'pending' }]);
+  check('…and the old event keeps everyone else', p.sourceTeam.map((m) => [m.role, m.staffMemberName]), [['photographer1', 'יריב'], ['videographer', 'רודי']]);
+  check('…moved / not swapped', [p.moved.name, p.moved.staff.id, p.moved.fromSlot, p.moved.toSlot, p.moved.toEvent.id, p.swapped], ['סלבה', 's1', 'photographer2', 'photographer1', 'B', null]);
+
+  const sw = cm.planCrewMove({ source, fromSlot: 'photographer2', target: free, toSlot: 'photographer2', staffMembers: staff });
+  check('swap: each one in the other\'s slot, each at his own price',
+    [sw.targetTeam.map((m) => [m.role, m.staffMemberName, m.cost]), sw.sourceTeam.map((m) => [m.role, m.staffMemberName, m.cost])],
+    [[['photographer2', 'סלבה', 900]], [['photographer1', 'יריב', 1000], ['videographer', 'רודי', 1500], ['photographer2', 'דודו', 700]]]);
+  check('…the swapped one is described the other way round', [sw.swapped.name, sw.swapped.fromEvent.id, sw.swapped.fromSlot, sw.swapped.toEvent.id, sw.swapped.toSlot], ['דודו', 'B', 'photographer2', 'A', 'photographer2']);
+
+  const temp = { ...source, team: [{ role: 'photographer2', staffMemberName: 'מישהו חד פעמי', cost: 650, isTemporary: true, phone: '0501234567' }] };
+  check('a one-time member keeps the price that was typed (and his phone)',
+    cm.planCrewMove({ source: temp, fromSlot: 'photographer2', target: free, toSlot: 'photographer1', staffMembers: staff }).targetTeam[1],
+    { role: 'photographer1', staffMemberName: 'מישהו חד פעמי', cost: 650, isPaid: false, progressStatus: 'pending', isTemporary: true, phone: '0501234567' });
+
+  const err = (fn) => { try { fn(); return null; } catch (e) { return e.message; } };
+  check('refuses: another day / the same event / a slot not his kind / a swap that does not fit', [
+    err(() => cm.planCrewMove({ source, fromSlot: 'photographer2', target: { ...free, date: '2027-06-24' }, toSlot: 'photographer1', staffMembers: staff })),
+    err(() => cm.planCrewMove({ source, fromSlot: 'photographer2', target: source, toSlot: 'photographer1', staffMembers: staff })),
+    err(() => cm.planCrewMove({ source, fromSlot: 'photographer2', target: free, toSlot: 'videographer', staffMembers: staff })),
+    err(() => cm.planCrewMove({ source, fromSlot: 'photographer2', target: odd, toSlot: 'photographer1', staffMembers: staff })),
+  ], ['האירועים לא באותו יום', 'צריך שני אירועים שונים', 'התפקיד לא מתאים לאיש הצוות', 'רודי לא יכול להיות צלם 2']);
+
+  const lead = { productionBridePrepLocation: '', productionCheckinTime: '19:30', productionChuppahTime: '20:15' };
+  const msg = cm.moveMessage('', p.moved, lead);
+  const lines = msg.split('\n');
+  check('message: first name, from where to where, the new event\'s details, an empty line dropped', [
+    lines[0], lines[2], lines[3], lines.includes('📍 גן אירועים'), lines.some((l) => l.startsWith('💄')), lines.includes('🕐 קבלת פנים: 19:30'), lines.includes('💍 חופה: 20:15'),
+  ], ['היי סלבה 👋', 'עברת מהאירוע של חושן ולידור (צלם 2)', 'לאירוע של רון ויונתן — צלם 1', true, false, true, true]);
+  check('a failed send never shows the gateway URL (it carries the token)', [
+    cm.friendlySendError('Network error sending request for url (https://x.api.green-api.com/waInstance77/sendMessage/SECRET): dns error'),
+    cm.friendlySendError('POST https://x.api.green-api.com/waInstance77/sendMessage/SECRET 500'),
+    cm.friendlySendError('לא נמצא מספר טלפון עבור סלבה'),
+    cm.friendlySendError(undefined),
+  ], ['אין חיבור לשירות הוואטסאפ — נסו שוב בעוד רגע', 'שליחת הוואטסאפ נכשלה', 'לא נמצא מספר טלפון עבור סלבה', 'שליחת הוואטסאפ נכשלה']);
+  check('message: the date has the weekday; a studio template wins', [/יום/.test(lines[1]), cm.moveMessage('{{name}} → {{names}} ({{role}})', sw.swapped, null)], [true, 'דודו → חושן ולידור (צלם 2)']);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

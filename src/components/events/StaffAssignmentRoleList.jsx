@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { getStaffRateForRole } from "@/lib/staffRates";
 import { StaffPickerCell } from "./EventsTableWithBulkDelete";
 import SameDayEventsCard from "./SameDayEventsCard";
+import MoveCrewDialog from "./MoveCrewDialog";
 import { sameDayOthers } from "@/lib/sameDayCrew";
 
 // Shared per-role staff-assignment list -- 5 fixed role slots (photographer1/2,
@@ -19,6 +20,9 @@ export default function StaffAssignmentRoleList({ event, staffMembers, events, o
   const [editingKey, setEditingKey] = useState(null);
   const [editingEditor, setEditingEditor] = useState(false);
   const [removingKey, setRemovingKey] = useState(null);
+  // { source, fromSlot, open } — a name picked in "באותו יום"; kept after closing so the
+  // window doesn't flash empty while it fades out
+  const [moving, setMoving] = useState(null);
 
   if (!event) return null;
 
@@ -249,7 +253,19 @@ export default function StaffAssignmentRoleList({ event, staffMembers, events, o
         </div>
       </div>
       {/* the other weddings that day and their crew (2026-10-25) */}
-      <SameDayEventsCard others={sameDayOthers(events, { date: liveEvent.date, eventId: liveEvent.id })} />
+      <SameDayEventsCard
+        others={sameDayOthers(events, { date: liveEvent.date, eventId: liveEvent.id })}
+        onPickMember={(source, member) => setMoving({ source, fromSlot: member.role, open: true })}
+      />
+      <MoveCrewDialog
+        open={!!moving?.open}
+        source={moving?.source}
+        fromSlot={moving?.fromSlot}
+        target={liveEvent}
+        staffMembers={staffMembers}
+        onClose={() => setMoving((m) => m && { ...m, open: false })}
+        onMoved={() => onRefresh?.()}
+      />
     </div>
   );
 }

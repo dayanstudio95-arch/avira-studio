@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { DEFAULT_WORK_ORDER_NOTE } from "@/lib/workOrder";
+import { MOVE_TEMPLATE_KEY, DEFAULT_MOVE_TEMPLATE } from "@/lib/crewMove";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -175,6 +176,13 @@ const TEMPLATES = [
     description: "ההודעה שמוצעת לשליחה לאיש צוות מיד אחרי ששיבצת אותו מפיל הזמינות (\"פנוי\") בכרטיס הליד/אירוע. שורה שהמשתנה שלה ריק (למשל אין מקום התארגנות) לא תופיע.",
     defaultValue: `היי {{name}} 👋\nשובצת כ{{role}} באירוע של {{names}}\n📅 {{event_date}}\n📍 {{venue}}\n💄 התארגנות: {{prep_location}}\n🕐 קבלת פנים: {{checkin_time}}\n💍 חופה: {{chuppah_time}}\nתאשר/י ב-👍 בבקשה`,
     variables: ["{{name}}", "{{role}}", "{{names}}", "{{event_date}}", "{{venue}}", "{{prep_location}}", "{{checkin_time}}", "{{chuppah_time}}"],
+  },
+  {
+    key: MOVE_TEMPLATE_KEY,
+    label: "הודעת העברה בין אירועים",
+    description: "ההודעה שמוצעת לשליחה לאיש צוות אחרי שהעברת אותו מאירוע אחר באותו יום (\"באותו יום\" ← לחיצה על השם). בהחלפה — גם למי שעבר במקומו. שורה שהמשתנה שלה ריק לא תופיע.",
+    defaultValue: DEFAULT_MOVE_TEMPLATE,
+    variables: ["{{name}}", "{{role}}", "{{names}}", "{{from_names}}", "{{from_role}}", "{{event_date}}", "{{venue}}", "{{prep_location}}", "{{checkin_time}}", "{{chuppah_time}}"],
   },
   {
     key: "template_staff_payment_detail",
