@@ -35,10 +35,15 @@ function rowToMessage(row) {
   };
 }
 
-export default function AIAssistant() {
+// `open` / `onOpenChange` / `showLauncher` (2026-10-27): the yellow corner button is now the
+// "+" menu (QuickActionsFab), which opens the assistant from its "עוזר אישי" item. Without
+// those props the assistant keeps its own launcher, as before.
+export default function AIAssistant({ open, onOpenChange, showLauncher = true } = {}) {
   const { pathname } = useLocation();
   const hideOnMobile = pathname.toLowerCase().includes('whatsappinbox');
-  const [isOpen, setIsOpen] = useState(false);
+  const [ownOpen, setOwnOpen] = useState(false);
+  const isOpen = open ?? ownOpen;
+  const setIsOpen = onOpenChange ?? setOwnOpen;
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -155,7 +160,7 @@ export default function AIAssistant() {
 
   return (
     <>
-      {!isOpen && (
+      {showLauncher && !isOpen && (
         <motion.div
           initial={{ x: -100, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}

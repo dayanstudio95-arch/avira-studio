@@ -5,6 +5,7 @@ import { getStaffRateForRole } from "./staffRates";
 import { teamRoleSlotsForJobRole, eventTeamRoleLabel } from "./staffRoles";
 import { formatDateWithWeekday } from "./chatModel";
 import { renderBookingMessage } from "./staffBooking";
+export { friendlySendError } from "./sendErrors";
 
 export const MOVE_TEMPLATE_KEY = "template_staff_moved";
 export const DEFAULT_MOVE_TEMPLATE = `היי {{name}} 👋
@@ -96,14 +97,4 @@ export function moveMessage(template, move, lead) {
     checkin_time: lead?.productionCheckinTime || "",
     chuppah_time: lead?.productionChuppahTime || "",
   });
-}
-
-// What the person sees when the WhatsApp send fails — never the raw gateway error, which
-// carries the Green API URL with the token in it. Mirrors send-event-crew-brief's mapping.
-export function friendlySendError(raw) {
-  const t = String(raw || "");
-  if (/network error|dns|connect|timed? ?out/i.test(t)) return "אין חיבור לשירות הוואטסאפ — נסו שוב בעוד רגע";
-  if (/required|settings/i.test(t)) return "הוואטסאפ לא מחובר בהגדרות";
-  if (/https?:|waInstance|api\.green-api/i.test(t) || !t) return "שליחת הוואטסאפ נכשלה";
-  return t;
 }

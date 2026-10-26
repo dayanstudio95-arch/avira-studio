@@ -4,12 +4,11 @@ import { toast } from "sonner";
 import { Loader2, Send } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { base44 } from "@/api/base44Client";
-import { generateRawToken, hashToken } from "@/lib/albumTokens";
 import { israelToday, eventDay, combinedNotes } from "@/lib/missingTeam";
 import { formatDateWithWeekday } from "@/lib/chatModel";
-import { slotOption, SLOT_OPTIONS, eventsMissingSlot, batchAvailabilityMessage } from "@/lib/staffAvailabilityBatch";
-
-const LINK_MARK = "{{link}}";
+import { SLOT_OPTIONS, eventsMissingSlot, batchAvailabilityMessage } from "@/lib/staffAvailabilityBatch";
+import { sendAvailabilityBatch, LINK_MARK } from "@/lib/availabilityBatchSend";
+import { friendlySendError } from "@/lib/sendErrors";
 
 // "בדיקת זמינות" from a crew member's chat (2026-10-09): the upcoming events whose package
 // needs his slot and nobody holds it; tick some, read the message, send. One WhatsApp with
@@ -48,40 +47,12 @@ export default function StaffBatchAvailabilityDialog({ staff, onClose }) {
     if (!staff.phoneNumber) return toast.error("אין מספר טלפון לאיש הצוות");
     if (!chosen.length) return;
     setSending(true);
-    let batch = null;
-    const created = [];
     try {
-      const raw = generateRawToken();
-      batch = await base44.entities.StaffAvailabilityBatch.create({ staffMemberId: staff.id, teamRole: slot, tokenHash: await hashToken(raw) });
-      for (const e of chosen) {
-        created.push(await base44.entities.StaffAvailabilityRequest.create({
-          leadId: e.sourceLeadId || null,
-          eventId: e.id,
-          staffMemberId: staff.id,
-          staffNameSnapshot: staff.name,
-          // The slot decides the job (QA 2026-10-09): a photographer asked for "וידאו 1" is a
-          // videographer request, and editors never break the photo/video CHECK.
-          role: slotOption(slot)?.jobRole || staff.role,
-          teamRole: slot,
-          eventDateSnapshot: eventDay(e),
-          venueSnapshot: e.venue || null,
-          coupleNamesSnapshot: e.coupleNames || null,
-          tokenHash: await hashToken(generateRawToken()), // unused — the batch link is the credential
-          batchId: batch.id,
-        }));
-      }
-      const link = `${window.location.origin}/staff-availability/b/${raw}`;
-      const message = text.includes(LINK_MARK) ? text.replace(LINK_MARK, link) : `${text.trim()}\n\n${link}`;
-      const res = await base44.functions.invoke("sendWhatsAppMessage", { to: staff.phoneNumber, message });
-      if (res?.data?.error) throw new Error(res.data.error);
+      await sendAvailabilityBatch({ staff, slot, events: chosen, text });
       toast.success(`נשלחה בדיקת זמינות ל${staff.name} · ${chosen.length} אירועים`);
       onClose();
     } catch (e) {
-      // nobody got the link → nothing stays half-open
-      const now = new Date().toISOString();
-      if (batch) await base44.entities.StaffAvailabilityBatch.update(batch.id, { revokedAt: now }).catch(() => {});
-      for (const r of created) await base44.entities.StaffAvailabilityRequest.update(r.id, { revokedAt: now }).catch(() => {});
-      toast.error("השליחה נכשלה", { description: e?.message });
+      toast.error("השליחה נכשלה", { description: friendlySendError(e?.message) });
     }
     setSending(false);
   };

@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { getVatPercent } from "@/lib/financialCalculations";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { eventTeamRoleLabel } from "@/lib/staffRoles";
 
 export default function EventExpensesEditor({ eventId, onSave }) {
   const [event, setEvent] = useState(null);
@@ -15,6 +17,15 @@ export default function EventExpensesEditor({ eventId, onSave }) {
   const [editingTeamId, setEditingTeamId] = useState(null);
   const [editValues, setEditValues] = useState({});
   const [vatableAmountInput, setVatableAmountInput] = useState(0);
+  // On a phone the five-column table is wider than the screen and the edit pencil column
+  // was cut off — the owner couldn't change a price there (2026-10-27). The phone gets one
+  // row per person with the price as a field you tap straight into; the computer keeps the table.
+  const isMobile = useIsMobile();
+  const setMember = (index, patch) => {
+    const newTeam = [...event.team];
+    newTeam[index] = { ...newTeam[index], ...patch };
+    setEvent({ ...event, team: newTeam });
+  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -186,7 +197,42 @@ export default function EventExpensesEditor({ eventId, onSave }) {
         <h3 className="text-lg font-semibold text-white">הוצאות צוות</h3>
 
         {/* Team Table */}
-        {(event.team || []).length > 0 ? (
+        {(event.team || []).length > 0 && isMobile ? (
+          <div className="space-y-2">
+            {event.team.map((member, idx) => (
+              <div key={idx} className="rounded-lg border border-gray-700/40 bg-gray-800/30 px-3 py-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm text-gray-100">{member.staffMemberName || "—"}</div>
+                    <div className="text-xs text-gray-400">{eventTeamRoleLabel(member.role) || member.role}</div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm text-gray-400">₪</span>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      min="0"
+                      step="50"
+                      placeholder="0"
+                      aria-label={`עלות ${member.staffMemberName || ""}`}
+                      value={member.cost ? String(member.cost) : ""}
+                      onChange={(e) => setMember(idx, { cost: e.target.value === "" ? 0 : Number(e.target.value) || 0 })}
+                      className="w-28 bg-gray-700 border-gray-600 text-white text-base font-semibold"
+                    />
+                  </div>
+                </div>
+                <label className="mt-2 flex items-center gap-2 text-xs text-gray-300">
+                  <Checkbox
+                    checked={!!member.isPaid}
+                    onCheckedChange={(checked) => setMember(idx, { isPaid: !!checked })}
+                    className="data-[state=checked]:bg-green-500 border-gray-600"
+                  />
+                  שולם ל{member.staffMemberName || "איש הצוות"}
+                </label>
+              </div>
+            ))}
+          </div>
+        ) : (event.team || []).length > 0 ? (
           <div className="bg-gray-800/30 border border-gray-700/40 rounded-lg overflow-hidden">
             <table className="w-full text-sm">
               <thead>

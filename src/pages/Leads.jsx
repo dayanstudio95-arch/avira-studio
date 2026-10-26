@@ -131,6 +131,12 @@ export default function Leads() {
   };
 
   useEffect(() => { loadData(); }, []);
+  // A lead made from the "+" menu (QuickActionsFab, 2026-10-27) while this page is open.
+  useEffect(() => {
+    const onSaved = () => loadData();
+    window.addEventListener("avira:lead-saved", onSaved);
+    return () => window.removeEventListener("avira:lead-saved", onSaved);
+  }, []);
 
   // Global search "jump to" support (2026-08-21) -- src/components/layout/GlobalSearch.jsx
   // navigates here with ?openLeadId=<id>; once leads are loaded, auto-open that lead's

@@ -47,7 +47,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import AIAssistant from "@/components/AIAssistant";
+import QuickActionsFab from "@/components/QuickActionsFab";
 import PostSignWizardHost from "@/components/postSign/PostSignWizardHost";
 import { isMissingTeam, israelToday, eventDay, yearProgress } from "@/lib/missingTeam";
 import { progressPct } from "@/lib/eventProgress";
@@ -633,7 +633,7 @@ function LayoutShell({ children }) {
           </div>
         </main>
 
-        {!scopedRole && <AIAssistant />}
+        {!scopedRole && <QuickActionsFab />}
         {!scopedRole && <PostSignWizardHost />}
       </div>
     </SidebarProvider>

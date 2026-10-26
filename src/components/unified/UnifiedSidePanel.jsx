@@ -35,6 +35,8 @@ import {
   hasAnyProductionQuestionnaireAnswer,
 } from "@/lib/productionQuestionnaireFields";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import ScheduleSendDialog from "./ScheduleSendDialog";
+import { scheduleRecipients } from "@/lib/scheduleRecipients";
 
 export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMembers, onLeadUpdated, onEventUpdated, onStaffMembersChanged }) {
   // Hard stop: if event.sourceLeadId points to a different lead, discard the event entirely
@@ -72,7 +74,7 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
   const [scheduleSummerTemplate, setScheduleSummerTemplate] = useState('');
   const [scheduleWinterTemplate, setScheduleWinterTemplate] = useState('');
   const [scheduleFridayTemplate, setScheduleFridayTemplate] = useState('');
-  const [isSendingSchedule, setIsSendingSchedule] = useState(null); // 'summer' | 'winter' | 'friday' | null
+  const [scheduleDialog, setScheduleDialog] = useState(null); // { season, label, text }
   const [isEditLeadOpen, setIsEditLeadOpen] = useState(false);
   const [isSendingSignedContract, setIsSendingSignedContract] = useState(false);
   const [crewBriefOpen, setCrewBriefOpen] = useState(false);
@@ -372,27 +374,16 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
   // fallback text on purpose: the whole point is the studio fills in its own
   // schedule wording, so an empty template should surface as an explicit
   // error rather than silently sending a placeholder.
-  const handleSendSchedule = async (season) => {
-    if (!lead?.phoneNumber) {
-      toast.error('אין מספר טלפון');
-      return;
-    }
+  // A schedule button opens ScheduleSendDialog (2026-10-27): the text, then the bride / the
+  // groom / both / the lead's phone, or "העתק טקסט" — nothing is sent from the button itself.
+  const handleSendSchedule = (season) => {
     const seasonLabel = { summer: 'לוז קיץ', winter: 'לוז חורף', friday: 'לוז שישי' }[season];
     const rawTemplate = { summer: scheduleSummerTemplate, winter: scheduleWinterTemplate, friday: scheduleFridayTemplate }[season];
     if (!rawTemplate?.trim()) {
       toast.error(`יש להגדיר קודם את תבנית "${seasonLabel}" בהגדרות → תבניות הודעה`);
       return;
     }
-    setIsSendingSchedule(season);
-    try {
-      const message_text = applyVariables(rawTemplate, lead);
-      await sendViaWebhook(`schedule_${season}`, lead.phoneNumber, message_text);
-      toast.success(`${seasonLabel} נשלח בהצלחה`);
-    } catch (error) {
-      toast.error('שגיאה בשליחה');
-    } finally {
-      setIsSendingSchedule(null);
-    }
+    setScheduleDialog({ season, label: seasonLabel, text: applyVariables(rawTemplate, lead) });
   };
 
   // "שלח לזוג" next to the signed-PDF button: the couple gets their signed contract as a
@@ -721,38 +712,23 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
               <div className="flex gap-2">
                 <Button
                   onClick={() => handleSendSchedule('summer')}
-                  disabled={isSendingSchedule === 'summer'}
                   className="flex-1 flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-800 text-white font-semibold py-3 rounded-xl text-sm"
                 >
-                  {isSendingSchedule === 'summer' ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Send className="w-4 h-4" />
-                  )}
+                  <Send className="w-4 h-4" />
                   לוז קיץ
                 </Button>
                 <Button
                   onClick={() => handleSendSchedule('winter')}
-                  disabled={isSendingSchedule === 'winter'}
                   className="flex-1 flex items-center justify-center gap-2 bg-sky-600 hover:bg-sky-700 disabled:bg-sky-800 text-white font-semibold py-3 rounded-xl text-sm"
                 >
-                  {isSendingSchedule === 'winter' ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Send className="w-4 h-4" />
-                  )}
+                  <Send className="w-4 h-4" />
                   לוז חורף
                 </Button>
                 <Button
                   onClick={() => handleSendSchedule('friday')}
-                  disabled={isSendingSchedule === 'friday'}
                   className="flex-1 flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-700 disabled:bg-violet-800 text-white font-semibold py-3 rounded-xl text-sm"
                 >
-                  {isSendingSchedule === 'friday' ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Send className="w-4 h-4" />
-                  )}
+                  <Send className="w-4 h-4" />
                   לוז שישי
                 </Button>
               </div>
@@ -1442,6 +1418,17 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
             if (onLeadUpdated) onLeadUpdated();
             onClose();
           }}
+        />
+      )}
+      {lead && (
+        <ScheduleSendDialog
+          open={!!scheduleDialog}
+          title={scheduleDialog?.label || ""}
+          subtitle={[lead.coupleNames, eventDate ? format(new Date(eventDate), "d/M/yyyy") : null].filter(Boolean).join(" · ")}
+          initialText={scheduleDialog?.text || ""}
+          recipients={scheduleRecipients(lead)}
+          onSend={(phone, text) => sendViaWebhook(`schedule_${scheduleDialog?.season}`, phone, text)}
+          onClose={() => setScheduleDialog(null)}
         />
       )}
     </>

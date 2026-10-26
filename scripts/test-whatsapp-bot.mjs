@@ -3281,5 +3281,53 @@ console.log('\n— PART 70: crew move between same-day events —');
   check('message: the date has the weekday; a studio template wins', [/יום/.test(lines[1]), cm.moveMessage('{{name}} → {{names}} ({{role}})', sw.swapped, null)], [true, 'דודו → חושן ולידור (צלם 2)']);
 }
 
+// =====================================================================================
+// PART 71 — schedule recipients, "+ → זמינות צוות", send errors (2026-10-27)
+console.log('\n— PART 71: schedule recipients + crew availability —');
+{
+  const sr = await loadModule('src/lib/scheduleRecipients.js', 'sr71');
+  check('bride + groom from the questionnaire, the lead phone when it is another number',
+    sr.scheduleRecipients({ productionBridePhone: '050-123-4567', productionGroomPhone: '0527654321', phoneNumber: '+972 54 111 2222' }).map((r) => [r.key, r.label, r.phone]),
+    [['bride', 'כלה', '050-123-4567'], ['groom', 'חתן', '0527654321'], ['lead', 'הטלפון בליד', '+972 54 111 2222']]);
+  check('the same number twice shows once (the lead phone is the bride\'s)',
+    sr.scheduleRecipients({ productionBridePhone: '0501234567', productionGroomPhone: '', phoneNumber: '972501234567' }).map((r) => r.key), ['bride']);
+  check('no questionnaire yet → only the lead phone; nothing at all → none',
+    [sr.scheduleRecipients({ phoneNumber: '0541112222' }).map((r) => r.key), sr.scheduleRecipients({}), sr.scheduleRecipients(null)], [['lead'], [], []]);
+
+  const ca = await loadModule('src/lib/crewAvailability.js', 'ca71');
+  const pkg = { P2: { id: 'P2', photographers: 2, videographers: 1 }, P1: { id: 'P1', photographers: 1, videographers: 0 } };
+  const events = [
+    { id: 'A', date: '2027-01-06', coupleNames: 'נאור ושילת', packageId: 'P2', team: [{ role: 'photographer1', staffMemberName: 'אני' }] },
+    { id: 'B', date: '2027-01-06', coupleNames: "אנג'לינה ודבי", packageId: 'P2', team: [{ role: 'photographer1', staffMemberName: 'יוסי' }, { role: 'videographer', staffMemberName: 'רודי' }] },
+    { id: 'C', date: '2027-02-11', coupleNames: 'סיון ומאור', packageId: 'P1', team: [] },
+    { id: 'D', date: '2026-01-01', coupleNames: 'עבר', packageId: 'P2', team: [] },
+  ];
+  const by = ca.missingBySlot({ events, today: '2026-10-27', packagesById: pkg });
+  check('missing per slot by package, upcoming only, oldest first', [by.photographer1.map((e) => e.id), by.photographer2.map((e) => e.id), by.videographer.map((e) => e.id), by.videographer2.map((e) => e.id)],
+    [['C'], ['A', 'B'], ['A'], []]);
+  const staff = [
+    { id: 's1', name: 'רודי', role: 'videographer', orderIndex: 1 },
+    { id: 's2', name: 'דודו', role: 'videographer', orderIndex: 2, teamSlots: ['videographer'] },
+    { id: 's3', name: 'יוסי', role: 'photographer', orderIndex: 0 },
+  ];
+  check('who can be asked: his job, his own slots first, then the studio order', ca.staffForSlot(staff, 'videographer').map((s) => s.name), ['דודו', 'רודי']);
+  const reqs = [
+    { staffMemberId: 's2', eventId: 'A', status: 'pending', requestedAt: '2026-10-20', teamRole: 'videographer', staffNameSnapshot: 'דודו' },
+    { staffMemberId: 's2', eventId: 'A', status: 'available', requestedAt: '2026-10-21', revokedAt: '2026-10-22' },
+    { staffMemberId: 's1', eventId: 'A', status: 'declined', requestedAt: '2026-10-20', teamRole: 'videographer', staffNameSnapshot: 'רודי' },
+    { staffMemberId: 's2', eventId: 'A', status: 'pending', requestedAt: '2026-10-19', teamRole: 'videographer', staffNameSnapshot: 'דודו' },
+  ];
+  const sel = [events[0], events[2]];
+  const pr = ca.planForStaff({ staff: staff[0], selected: sel, allEvents: events, requests: reqs });
+  check('a date he works another wedding is left out of his message', [pr.send.map((e) => e.id), pr.busy.map((b) => [b.event.id, b.where])], [['C'], [['A', "אנג'לינה ודבי"]]]);
+  const pd = ca.planForStaff({ staff: staff[1], selected: sel, allEvents: events, requests: reqs });
+  check('free on both → both; asked before (not revoked, not declined) → noted', [pd.send.map((e) => e.id), pd.asked.map((a) => [a.event.id, a.status])], [['A', 'C'], [['A', 'pending']]]);
+  check('already asked about this event for this slot — latest per person', ca.askedForEvent(reqs, 'A', 'videographer'), [{ name: 'דודו', status: 'pending' }, { name: 'רודי', status: 'declined' }]);
+
+  const se = await loadModule('src/lib/sendErrors.js', 'se71');
+  check('send errors: shared helper, never the gateway URL', [se.friendlySendError('POST https://x.api.green-api.com/waInstance1/sendMessage/T 500'), se.friendlySendError('Network error: dns')],
+    ['שליחת הוואטסאפ נכשלה', 'אין חיבור לשירות הוואטסאפ — נסו שוב בעוד רגע']);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
