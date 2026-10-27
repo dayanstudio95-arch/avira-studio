@@ -60,7 +60,8 @@ export default function ChatSidebar({
     // and its bottom links unreachable). The header's button goes back to the full system.
     <nav aria-label="תיבות" className={`flex flex-col border-l border-gray-800 bg-gray-950 ${className}`}>
       <div className="flex shrink-0 items-center gap-2 px-4 pb-3 pt-3">
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-yellow-400 text-lg font-bold text-gray-900">א</span>
+        {/* the app's gold "A" (2026-10-27), the same as its home-screen icon */}
+        <img src="/brand/chat-192.png" alt="" className="h-9 w-9 shrink-0 rounded-xl" />
         <span className="min-w-0 flex-1 whitespace-nowrap text-[15px] font-bold text-white">אווירה צ'אט</span>
         <Link to="/" title="חזרה למערכת המלאה" className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-gray-700 px-2 py-1 text-xs text-gray-300 hover:border-yellow-500 hover:text-white">
           <LayoutGrid className="h-3.5 w-3.5" /> למערכת
