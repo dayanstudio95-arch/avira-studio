@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { redactGatewaySecrets } from '../lib/sendErrors';
 
 // Drop-in replacement for the Base44 SDK's `base44.functions.invoke(name, payload)`
 // interface, routing calls to the ported Supabase Edge Functions under
@@ -184,8 +185,8 @@ export const functions = {
     }
 
     if (!res.ok) {
-      const message = body?.error || `${name} failed (HTTP ${res.status})`;
-      throw new Error(message);
+      const message = redactGatewaySecrets(body?.error || `${name} failed (HTTP ${res.status})`);
+      throw new Error(typeof message === 'string' ? message : `${name} failed (HTTP ${res.status})`);
     }
 
     // A 2xx response whose body isn't valid JSON (e.g. a gateway/CDN error page
@@ -198,6 +199,7 @@ export const functions = {
       throw new Error(`${name} returned an unexpected non-JSON response (HTTP ${res.status})`);
     }
 
-    return { data: body };
+    // Never hand the screen a WhatsApp gateway URL with its token in it (sendErrors.js).
+    return { data: redactGatewaySecrets(body) };
   },
 };

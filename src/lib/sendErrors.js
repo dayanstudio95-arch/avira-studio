@@ -8,3 +8,20 @@ export function friendlySendError(raw) {
   if (/https?:|waInstance|api\.green-api/i.test(t) || !t) return "שליחת הוואטסאפ נכשלה";
   return t;
 }
+
+// A Green API request URL carries the instance token in its path
+// (…/waInstance<id>/<method>/<token>). Deno puts that URL into network-error messages, and
+// several functions pass such messages straight back — so every functions.invoke() response
+// and error goes through this (2026-10-27, the owner's request): any string holding such a
+// URL becomes the Hebrew message instead. Anything else (the bare api URL in the settings
+// screen, ordinary errors) is left as it is.
+const GATEWAY_URL_WITH_TOKEN = /waInstance\d+\/\w+\/[A-Za-z0-9_-]{8,}/;
+
+export function redactGatewaySecrets(value) {
+  if (typeof value === "string") return GATEWAY_URL_WITH_TOKEN.test(value) ? friendlySendError(value) : value;
+  if (Array.isArray(value)) return value.map(redactGatewaySecrets);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, redactGatewaySecrets(v)]));
+  }
+  return value;
+}

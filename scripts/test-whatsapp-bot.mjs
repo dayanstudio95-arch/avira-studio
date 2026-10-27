@@ -3329,5 +3329,20 @@ console.log('\n— PART 71: schedule recipients + crew availability —');
     ['שליחת הוואטסאפ נכשלה', 'אין חיבור לשירות הוואטסאפ — נסו שוב בעוד רגע']);
 }
 
+// =====================================================================================
+// PART 72 — no Green API token ever reaches the screen through functions.invoke (2026-10-27)
+console.log('\n— PART 72: gateway token redaction —');
+{
+  const se = await loadModule('src/lib/sendErrors.js', 'se72');
+  const net = 'Network error: error sending request for url (https://7107.api.green-api.com/waInstance7107558672/sendMessage/abcdef0123456789abcdef): dns error';
+  check('a network error with the token URL → Hebrew', se.redactGatewaySecrets(net), 'אין חיבור לשירות הוואטסאפ — נסו שוב בעוד רגע');
+  check('nested in a response body (results array, error field) → replaced; the rest untouched',
+    se.redactGatewaySecrets({ success: false, error: 'x https://h/waInstance1/sendFileByUrl/TOKEN123456 y', results: [{ name: 'דודו', error: net }, { name: 'רודי', ok: true }], count: 2 }),
+    { success: false, error: 'שליחת הוואטסאפ נכשלה', results: [{ name: 'דודו', error: 'אין חיבור לשירות הוואטסאפ — נסו שוב בעוד רגע' }, { name: 'רודי', ok: true }], count: 2 });
+  check('left alone: the bare api URL (settings screen), ordinary errors, non-strings',
+    [se.redactGatewaySecrets('https://7107.api.green-api.com'), se.redactGatewaySecrets('לא נמצא מספר טלפון'), se.redactGatewaySecrets(null), se.redactGatewaySecrets(5)],
+    ['https://7107.api.green-api.com', 'לא נמצא מספר טלפון', null, 5]);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
