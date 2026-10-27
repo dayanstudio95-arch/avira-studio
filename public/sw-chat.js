@@ -15,8 +15,8 @@ self.addEventListener('push', (event) => {
     renotify: !!data.tag,
     // Meeting reminders: stay on screen until tapped (where the platform supports it).
     requireInteraction: !!data.requireInteraction,
-    icon: '/logo-192.png',
-    badge: '/logo-192.png',
+    icon: '/brand/chat-192.png',
+    badge: '/brand/chat-192.png',
     dir: 'rtl',
     lang: 'he',
     data: { url: data.url || '/chat' },

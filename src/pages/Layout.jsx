@@ -401,17 +401,23 @@ function LayoutShell({ children }) {
               {/* The mark is a way home from any page (2026-10-24, the owner's request): "/"
                   is each role's own start page (the dashboard for the studio). */}
               <Link to="/" title="למסך הראשי" className="flex items-center gap-2.5 shrink-0 rounded-xl transition-opacity hover:opacity-80">
-              {/* The studio's own mark (2026-10-07: the heart + camera looked cheap). A logo
-                  uploaded for the studio (tenants.logo_url) wins; otherwise the AVIRA "A". */}
-              <img
-                src={tenantBranding?.logoUrl || '/logo-192.png'}
-                alt={tenantBranding?.name || 'AVIRA'}
-                className="w-10 h-10 rounded-xl object-cover ring-1 ring-yellow-500/30"
-              />
-              <div className="leading-tight shrink-0">
-                  <h2 className="text-base font-semibold tracking-[0.18em] text-yellow-400 whitespace-nowrap">AVIRA</h2>
-                  <p className="text-[9px] tracking-[0.3em] text-gray-400 whitespace-nowrap">STUDIO</p>
-                </div>
+              {/* A logo uploaded for the studio (tenants.logo_url) wins, with the name next to it;
+                  otherwise the AVIRA wordmark from the owner's AVIRA MEDIA logo (2026-10-27). */}
+              {tenantBranding?.logoUrl ? (
+                <>
+                  <img
+                    src={tenantBranding.logoUrl}
+                    alt={tenantBranding?.name || 'AVIRA'}
+                    className="w-10 h-10 rounded-xl object-cover ring-1 ring-yellow-500/30"
+                  />
+                  <div className="leading-tight shrink-0">
+                    <h2 className="text-base font-semibold tracking-[0.18em] text-yellow-400 whitespace-nowrap">AVIRA</h2>
+                    <p className="text-[9px] tracking-[0.3em] text-gray-400 whitespace-nowrap">STUDIO</p>
+                  </div>
+                </>
+              ) : (
+                <img src="/brand/avira-wordmark.png" alt="AVIRA" className="h-7 w-auto" />
+              )}
               </Link>
               {isEditingMenu ? (
                 <div className="flex gap-1">
