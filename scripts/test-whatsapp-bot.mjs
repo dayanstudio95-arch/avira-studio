@@ -3344,5 +3344,43 @@ console.log('\n— PART 72: gateway token redaction —');
     ['https://7107.api.green-api.com', 'לא נמצא מספר טלפון', null, 5]);
 }
 
+// =====================================================================================
+// PART 73 — Pixieset "send to photographer" email → WhatsApp to the album group (2026-10-29)
+console.log('\n— PART 73: pixieset favorites done —');
+{
+  const px = await loadModule('supabase/functions/_shared/pixiesetFavorites.ts', 'px73');
+  const inner = JSON.stringify({ u: 30039548, v: 1, url: 'https://gallery.pixieset.com/collection/favoriteview/31830330/', id: 'x' });
+  const p = Buffer.from(JSON.stringify({ s: 'abc', v: 1, p: inner })).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const tracked = `https://mandrillapp.com/track/click/30039548/gallery.pixieset.com?p=${p}`;
+  // the body as Gmail's plain text renders the real email (table pipes and all)
+  const body = ` View Favorites by couple@example.com\n\n| |\n| Check out these favorites |\n\n| |\n| couple@example.com wants to share their favorite photos from Alon & Inbar with you. |\n\n| |\n| Message: |\n\n| |\n| היי סיימנו לבחור 150 תמונות מועדפים, בחרנו 2 כריכות לאלבומים. |\n\n| |\n| View Favorites[](${tracked}) |\n\n| Have a question? Visit our Knowledge Base[](https://help.pixieset.com) |`;
+  const r = px.parsePixiesetFavoritesEmail('[Pixieset] Check out favorites from Alon & Inbar', body);
+  check('the real "send to photographer" email: couple, client, message, the unwrapped Pixieset link', r,
+    { couple: 'Alon & Inbar', clientEmail: 'couple@example.com', message: 'היי סיימנו לבחור 150 תמונות מועדפים, בחרנו 2 כריכות לאלבומים.', link: 'https://gallery.pixieset.com/collection/favoriteview/31830330/' });
+  check('"New favorites list created" (they only STARTED) and other emails → not a done', [
+    px.parsePixiesetFavoritesEmail('[Pixieset] New favorites list created for קורל & נתנאל', 'x'),
+    px.parsePixiesetFavoritesEmail('Your Photos for רחלי & אמיר are ready for download', 'x'),
+  ], [null, null]);
+  check('the link also from the HTML, no message → empty', px.parsePixiesetFavoritesEmail('Check out favorites from קורל & נתנאל', 'no message here', `<a href="${tracked.replace(/&/g, '&amp;')}">View Favorites</a>`),
+    { couple: 'קורל & נתנאל', clientEmail: null, message: '', link: 'https://gallery.pixieset.com/collection/favoriteview/31830330/' });
+  check('same couple: & / ו / order / case', [px.sameCouple('קורל & נתנאל', 'קורל ונתנאל'), px.sameCouple('נתנאל וקורל', 'קורל & נתנאל'), px.sameCouple('Alon & Inbar', 'alon and inbar'), px.sameCouple('קורל & נתנאל', 'קורל ושניר'), px.sameCouple('ויקי & ורד', 'ויקי וורד')],
+    [true, true, true, false, true]);
+  const evs = [{ id: 1, couple_names: 'קורל ונתנאל', date: '2024-11-20' }, { id: 2, couple_names: 'קורל ונתנאל', date: '2026-09-01' }, { id: 3, couple_names: 'קורל ושניר', date: '2026-10-01' }];
+  check('the event: the same couple, closest to today', [px.matchEvent(evs, 'קורל & נתנאל', '2026-10-29')?.id, px.matchEvent(evs, 'דנה & יוסי', '2026-10-29')], [2, null]);
+  check('date with the weekday', [px.hebrewDay('2027-01-06'), px.hebrewDay(''), px.hebrewDay(null)], ['יום רביעי, 6.1.2027', '', '']);
+  check('the message: empty lines dropped, a studio template wins', [
+    px.renderPixiesetDone('', { names: 'קורל ונתנאל', event_date: '', message: 'סיימנו!', link: 'https://x' }),
+    px.renderPixiesetDone('{{names}} — {{link}}', { names: 'א וב', link: 'L' }),
+  ], ['✅ קורל ונתנאל סיימו לבחור תמונות בפיקסיסט\n💬 סיימנו!\n🔗 המועדפים: https://x', 'א וב — L']);
+
+  const sc = await loadModule('src/lib/pixiesetScript.js', 'sc73');
+  const script = sc.pixiesetAppsScript({ url: 'https://example.supabase.co/functions/v1/pixieset-favorites-notify', token: 'T0KEN"x' });
+  let parses = true; try { new Function(script); } catch { parses = false; }
+  check('the Apps Script parses, carries the url and the token (escaped), and setup() labels before it triggers', [
+    parses, script.includes('"https://example.supabase.co/functions/v1/pixieset-favorites-notify"'), script.includes('"T0KEN\\"x"'),
+    script.indexOf('t.addLabel(label); });') < script.indexOf('ScriptApp.newTrigger'),
+  ], [true, true, true, true]);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

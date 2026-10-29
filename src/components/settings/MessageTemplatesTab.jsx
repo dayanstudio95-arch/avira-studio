@@ -185,6 +185,14 @@ const TEMPLATES = [
     variables: ["{{name}}", "{{role}}", "{{names}}", "{{from_names}}", "{{from_role}}", "{{event_date}}", "{{venue}}", "{{prep_location}}", "{{checkin_time}}", "{{chuppah_time}}"],
   },
   {
+    // Mirrors DEFAULT_PIXIESET_DONE_TEMPLATE in supabase/functions/_shared/pixiesetFavorites.ts
+    key: "template_pixieset_done",
+    label: "זוג סיים לבחור תמונות (פיקסיסט)",
+    description: "ההודעה לקבוצת האלבומים כשזוג לוחץ \"שלח לצלם\" על המועדפים בפיקסיסט (הגדרות ← חיבורים ← פיקסיסט). שורה שהמשתנה שלה ריק לא תופיע — למשל אין תאריך כשהאירוע לא נמצא.",
+    defaultValue: `✅ {{names}} סיימו לבחור תמונות בפיקסיסט\n📅 חתונה: {{event_date}}\n💬 {{message}}\n🔗 המועדפים: {{link}}`,
+    variables: ["{{names}}", "{{event_date}}", "{{message}}", "{{link}}"],
+  },
+  {
     key: "template_staff_payment_detail",
     label: "פירוט תשלום לאיש צוות",
     description: "ההודעה שתישלח לאיש/אשת צוות כשלוחצים על כפתור 'שלח פירוט' בדף התשלומים — כוללת רשימת אירועים עם תאריך/מיקום/סכום, ואת הסכום הכולל לתשלום (כולל וללא מע\"מ)",

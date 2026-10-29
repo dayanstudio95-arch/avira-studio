@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Save, CheckCircle, MessageCircle, Calendar, FileText, Eye, EyeOff, ArrowLeft, Bot } from "lucide-react";
 import WhatsAppPanel from "./WhatsAppPanel";
 import WhatsAppBotCard from "./WhatsAppBotCard";
+import PixiesetNotifyCard from "./PixiesetNotifyCard";
 import { toast } from "sonner";
 
 // CHANGED: Make.com was fully retired (site-wide decision — every WhatsApp send now
@@ -256,6 +257,8 @@ export default function IntegrationsTab() {
           it do on its own. It has its own save button — the bot's master switch must
           never be flipped as a side effect of saving an unrelated API key. */}
       <WhatsAppBotCard />
+
+      <PixiesetNotifyCard />
 
       {/* Google Calendar — connect/manage/sync-health now lives on its own dedicated page */}
       <Card className="bg-gray-900/50 border-gray-800">

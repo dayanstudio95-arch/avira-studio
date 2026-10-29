@@ -70,3 +70,10 @@ verify_jwt = false
 # monthly-events-backup.
 [functions.meeting-reminders]
 verify_jwt = false
+
+# "The couple finished choosing in Pixieset" (2026-10-29), called by a Google Apps Script in
+# the studio's Gmail, which has no Supabase session. Authenticates itself via the
+# x-avira-token header, whose SHA-256 is app_settings.pixieset_notify_token_hash (also how
+# the studio is found).
+[functions.pixieset-favorites-notify]
+verify_jwt = false

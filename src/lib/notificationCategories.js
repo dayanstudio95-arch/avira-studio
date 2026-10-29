@@ -21,6 +21,7 @@ export const NAV_ROUTE_BY_NOTIFICATION_TYPE = {
   album_revision_requested: "/AlbumOrders",
   album_transfer_proof_uploaded: "/AlbumOrders",
   album_design_client_edits: "/AlbumOrders",
+  album_pixieset_favorites_done: "/AlbumOrders", // pixieset-favorites-notify (2026-10-29)
   staff_availability_response: "/StaffScheduling",
   meeting_reminder: "/Meetings",
   whatsapp_return_reminder: "/chat",
