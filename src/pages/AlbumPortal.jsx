@@ -630,7 +630,8 @@ function PurchaseWizard({ token, order, onReloaded }) {
   const [selectedAddons, setSelectedAddons] = useState({}); // addonId -> quantity
   const [addonImages, setAddonImages] = useState({}); // addonId -> [{path, previewUrl, uploading}]
   const [addonUploadError, setAddonUploadError] = useState({}); // addonId -> message
-  const [shipping, setShipping] = useState({ name: "", phone: "", address: "", notes: "" });
+  // City and street separately (2026-10-29) — the print shop's order form wants them apart.
+  const [shipping, setShipping] = useState({ name: "", phone: "", city: "", street: "", notes: "" });
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
@@ -1289,9 +1290,15 @@ function PurchaseWizard({ token, order, onReloaded }) {
             className="bg-gray-800 border-gray-700 text-white"
           />
           <Input
-            placeholder="כתובת מלאה"
-            value={shipping.address}
-            onChange={(e) => setShipping((s) => ({ ...s, address: e.target.value }))}
+            placeholder="עיר"
+            value={shipping.city}
+            onChange={(e) => setShipping((s) => ({ ...s, city: e.target.value }))}
+            className="bg-gray-800 border-gray-700 text-white"
+          />
+          <Input
+            placeholder="רחוב ומספר בית"
+            value={shipping.street}
+            onChange={(e) => setShipping((s) => ({ ...s, street: e.target.value }))}
             className="bg-gray-800 border-gray-700 text-white"
           />
           <Textarea

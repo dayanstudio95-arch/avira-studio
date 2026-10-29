@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { DEFAULT_WORK_ORDER_NOTE } from "@/lib/workOrder";
 import { MOVE_TEMPLATE_KEY, DEFAULT_MOVE_TEMPLATE } from "@/lib/crewMove";
+import { REVIEW_REMINDER_TEMPLATE_KEY, DEFAULT_REVIEW_REMINDER } from "@/lib/albumPrintDetails";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -183,6 +184,13 @@ const TEMPLATES = [
     description: "ההודעה שמוצעת לשליחה לאיש צוות אחרי שהעברת אותו מאירוע אחר באותו יום (\"באותו יום\" ← לחיצה על השם). בהחלפה — גם למי שעבר במקומו. שורה שהמשתנה שלה ריק לא תופיע.",
     defaultValue: DEFAULT_MOVE_TEMPLATE,
     variables: ["{{name}}", "{{role}}", "{{names}}", "{{from_names}}", "{{from_role}}", "{{event_date}}", "{{venue}}", "{{prep_location}}", "{{checkin_time}}", "{{chuppah_time}}"],
+  },
+  {
+    key: REVIEW_REMINDER_TEMPLATE_KEY,
+    label: "תזכורת לבדיקת סקיצה (אלבום)",
+    description: "ההודעה מהכפתור \"תזכורת\" ליד \"בבדיקת הזוג\" בהזמנות אלבומים. {{link}} מוחלף בקישור לזוג (הקיים אם הוא שמור בדפדפן, אחרת קישור חדש).",
+    defaultValue: DEFAULT_REVIEW_REMINDER,
+    variables: ["{{names}}", "{{link}}"],
   },
   {
     // Mirrors DEFAULT_PIXIESET_DONE_TEMPLATE in supabase/functions/_shared/pixiesetFavorites.ts

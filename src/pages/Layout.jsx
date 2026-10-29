@@ -48,6 +48,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import QuickActionsFab from "@/components/QuickActionsFab";
+import { isAwaitingPayment } from "@/lib/albumPrintDetails";
 import PostSignWizardHost from "@/components/postSign/PostSignWizardHost";
 import { isMissingTeam, israelToday, eventDay, yearProgress } from "@/lib/missingTeam";
 import { progressPct } from "@/lib/eventProgress";
@@ -255,12 +256,14 @@ function LayoutShell({ children }) {
     let alive = true;
     const loadStats = async () => {
       try {
-        const [events, convs, newLeads, meetings, availability] = await Promise.all([
+        const [events, convs, newLeads, meetings, availability, albumOrders] = await Promise.all([
           base44.entities.Event.list(),
           base44.entities.WhatsAppConversation.list("-lastMessageAt", 600).catch(() => []),
           base44.entities.Lead.filter({ status: "חדש" }, undefined, 500, "id").catch(() => []),
           base44.entities.SalesMeeting.filter({ status: "scheduled" }, "startsAt", 200).catch(() => []),
           base44.entities.StaffAvailabilityRequest.filter({ eventDateSnapshot: { $gte: israelToday() } }, "-requestedAt", 1000).catch(() => []),
+          // album orders waiting for payment (2026-10-29) — only the two status columns
+          base44.entities.AlbumOrder.filter({ paymentStatus: { $ne: "paid" } }, undefined, 500, "id, workflow_status, payment_status").catch(() => []),
         ]);
         const today = israelToday();
         const year = yearProgress(events);
@@ -274,6 +277,7 @@ function LayoutShell({ children }) {
           newLeads: (newLeads || []).length,
           meetingsToday: (meetings || []).filter((m) => utcToIsraelParts(m.startsAt).date === today).length,
           availabilityToDecide: buildAvailabilityInbox({ requests: availability || [], events, today }).toDecide,
+          albumsAwaitingPayment: (albumOrders || []).filter(isAwaitingPayment).length,
         });
       } catch (error) {
         console.error('Failed to load stats:', error);
@@ -477,6 +481,7 @@ function LayoutShell({ children }) {
                 '/Meetings': { value: stats.meetingsToday ? `${stats.meetingsToday} היום` : 0, tone: 'amber' },
                 [createPageUrl("StaffScheduling")]: { value: stats.urgentStaffing, tone: 'red', extra: stats.availabilityToDecide ? { value: `✋${stats.availabilityToDecide}`, tone: 'green', title: 'תשובות "פנוי" שמחכות להחלטה' } : null },
                 [createPageUrl("ProgressStatus")]: { value: stats.editingBacklog, tone: 'amber' },
+                [createPageUrl("AlbumOrders")]: { value: stats.albumsAwaitingPayment, tone: 'amber' },
               }[url] || {});
               const row = (item) => {
                 const on = isActive(item);

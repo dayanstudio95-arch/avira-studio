@@ -3382,5 +3382,54 @@ console.log('\n— PART 73: pixieset favorites done —');
   ], [true, true, true, true]);
 }
 
+// =====================================================================================
+// PART 74 — album orders: print-shop details, shipping split, reminder, awaiting payment (2026-10-29)
+console.log('\n— PART 74: album print details —');
+{
+  const ap = await loadModule('src/lib/albumPrintDetails.js', 'ap74');
+  check('address split after the house number; no number / number last → whole street', [
+    ap.splitAddress('שוחט ישראל 12 הרצליה'), ap.splitAddress('הרצל 5, תל אביב'), ap.splitAddress('בן גוריון 10/3 רמת גן'),
+    ap.splitAddress('תל אביב, הרצל 5'), ap.splitAddress('מושב בית יצחק'), ap.splitAddress(''),
+  ], [
+    { street: 'שוחט ישראל 12', city: 'הרצליה' }, { street: 'הרצל 5', city: 'תל אביב' }, { street: 'בן גוריון 10/3', city: 'רמת גן' },
+    { street: 'תל אביב, הרצל 5', city: '' }, { street: 'מושב בית יצחק', city: '' }, { street: '', city: '' },
+  ]);
+  check('separate city/street win over the old one-line address', ap.shippingParts({ shippingCity: 'חיפה', shippingStreet: 'הנמל 3', shippingAddress: 'x 1 y' }), { street: 'הנמל 3', city: 'חיפה' });
+
+  const selection = { productNameSnapshot: 'סט 3 אלבומים ', coverNameSnapshot: 'HM404', engravingText: 'יובל & דניאל', engravingTextLine2: '17.09.2026', engravingType: 'colored', engravingColorNameSnapshot: 'זהב', engravingFontNameSnapshot: 'Classic', engravingScope: 'full_set' };
+  const addons = [
+    { addonId: 'p', addonNameSnapshot: 'תוספת אלבום הורים', quantity: 1 },
+    { addonId: 'm', addonNameSnapshot: 'תוספת משביצון', quantity: 2 },
+    { addonId: 'x', addonNameSnapshot: 'עמוד נוסף לאלבום', quantity: 2 },
+    { addonId: 'g', addonNameSnapshot: 'הגדלה זכוכית 30/45', quantity: 1 },
+  ];
+  const cat = { p: { category: 'parent_album' }, m: { category: 'mini_album' }, x: { category: 'extra_pages' }, g: { category: 'glass' } };
+  const rows = ap.printDetailRows({ order: {}, selection, cover: { previewImageUrl: 'https://img/hm404.jpg' }, addons, addonCatalogById: cat, spreadsCount: 32, coupleNames: 'יובל ודניאל', printLink: 'https://x/print/abc' });
+  check('the owner\'s order, nothing else (an enlargement is not a print-form field)', rows.map((r) => [r.key, r.value]), [
+    ['product', 'סט 3 אלבומים'], ['names', 'יובל ודניאל'], ['link', 'https://x/print/abc'], ['pages', '32 כפולות (30 + 2 נוספות)'], ['cover', 'HM404'],
+    ['engraving', '"יובל & דניאל" · שורה 2: "17.09.2026" · צבעונית · צבע: זהב · גופן: Classic · כל הסט'], ['parents', 'כן'], ['mini', 'כן × 2'],
+  ]);
+  check('the cover row carries its picture', rows.find((r) => r.key === 'cover').image, 'https://img/hm404.jpg');
+  const bare = ap.printDetailRows({ order: {}, selection: { productNameSnapshot: 'אלבום זוג', coverNameSnapshot: 'אגם' }, addons: [{ addonNameSnapshot: 'תוספת אלבום הורים', quantity: 1 }], spreadsCount: 30, coupleNames: 'א וב' });
+  check('no link yet, no engraving, no mini album → those rows are left out; a missing catalog falls back to the name', bare.map((r) => r.key), ['product', 'names', 'pages', 'cover', 'parents']);
+  const ship = ap.shippingRows({ shippingName: 'יובל נוף', shippingPhone: '0548050650', shippingAddress: 'שוחט ישראל 12 הרצליה' });
+  check('shipping: name, city, street, phone', ship.map((r) => [r.label, r.value]), [['שם', 'יובל נוף'], ['עיר', 'הרצליה'], ['רחוב', 'שוחט ישראל 12'], ['טלפון', '0548050650']]);
+  check('"copy all": one line per field, shipping after an empty line', ap.printDetailsText(bare.slice(0, 2), ship.slice(0, 2)), 'מוצר: אלבום זוג\nשמות הזוג: א וב\n\nמשלוח:\nשם: יובל נוף\nעיר: הרצליה');
+
+  check('waiting for payment: chose & unpaid, or a transfer to approve — not paid', [
+    ap.isAwaitingPayment({ workflowStatus: 'awaiting_payment', paymentStatus: 'unpaid' }),
+    ap.isAwaitingPayment({ workflowStatus: 'awaiting_payment', paymentStatus: 'transfer_pending_review' }),
+    ap.isAwaitingPayment({ workflowStatus: 'paid', paymentStatus: 'paid' }),
+    ap.isAwaitingPayment({ workflowStatus: 'in_review', paymentStatus: 'unpaid' }),
+  ], [true, true, false, false]);
+  const now = new Date('2026-10-29T12:00:00Z');
+  check('last opened: today / yesterday / a date, Israel time (DST until 25.10); none → null', [
+    ap.lastOpenedText('2026-10-29T08:05:00Z', now), ap.lastOpenedText('2026-10-28T18:40:00Z', now), ap.lastOpenedText('2026-10-12T06:15:00Z', now), ap.lastOpenedText(null, now),
+  ], ['היום 10:05', 'אתמול 20:40', '12/10 09:15', null]);
+  check('the reminder: names and link; a studio template wins', [
+    ap.renderReviewReminder('', { names: 'שקד ורוני', link: 'L' }).split('\n')[0], ap.renderReviewReminder('{{names}}: {{link}}', { names: 'א', link: 'L' }),
+  ], ['היי שקד ורוני 😊', 'א: L']);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

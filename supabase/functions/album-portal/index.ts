@@ -175,6 +175,11 @@ Deno.serve(async (req) => {
     const order = resolved.order;
 
     if (action === 'getOrder') {
+      // "הזוג צפה לאחרונה" in the studio's list (2026-10-29, migration 0094). Best effort —
+      // a failure here (or the column not there yet) never blocks the couple's page.
+      await supabase.from('album_orders').update({ portal_last_opened_at: new Date().toISOString() }).eq('id', order.id)
+        .then(({ error }: any) => { if (error) console.error('[album-portal] last-opened stamp failed:', error.message); });
+
       let currentVersion: any = null;
       if (order.current_version_id) {
         const { data: versionRow } = await supabase
@@ -241,6 +246,8 @@ Deno.serve(async (req) => {
         shippingName: order.shipping_name,
         shippingPhone: order.shipping_phone,
         shippingAddress: order.shipping_address,
+        shippingCity: order.shipping_city ?? null,
+        shippingStreet: order.shipping_street ?? null,
         shippingNotes: order.shipping_notes,
         currentVersion,
         latestRound: openRound,
@@ -552,17 +559,28 @@ Deno.serve(async (req) => {
         if (addonsError) return jsonResponse({ error: addonsError.message }, { status: 500 });
       }
 
-      const { error: updateError } = await supabase
-        .from('album_orders')
-        .update({
-          workflow_status: 'awaiting_payment',
-          total_amount: total,
-          shipping_name: shipping?.name || null,
-          shipping_phone: shipping?.phone || null,
-          shipping_address: shipping?.address || null,
-          shipping_notes: shipping?.notes || null,
-        })
-        .eq('id', order.id);
+      // City and street come separately from 2026-10-29 (the print shop's form wants them
+      // apart); shipping_address keeps the joined text for everything that reads it.
+      const city = String(shipping?.city || '').trim() || null;
+      const street = String(shipping?.street || '').trim() || null;
+      const joined = [street, city].filter(Boolean).join(', ') || shipping?.address || null;
+      const orderUpdate: Record<string, unknown> = {
+        workflow_status: 'awaiting_payment',
+        total_amount: total,
+        shipping_name: shipping?.name || null,
+        shipping_phone: shipping?.phone || null,
+        shipping_address: joined,
+        shipping_notes: shipping?.notes || null,
+        shipping_city: city,
+        shipping_street: street,
+      };
+      let { error: updateError } = await supabase.from('album_orders').update(orderUpdate).eq('id', order.id);
+      // Before migration 0094 is applied the two columns don't exist — save without them.
+      if (updateError && /shipping_(city|street)/.test(updateError.message || '')) {
+        delete orderUpdate.shipping_city;
+        delete orderUpdate.shipping_street;
+        ({ error: updateError } = await supabase.from('album_orders').update(orderUpdate).eq('id', order.id));
+      }
       if (updateError) return jsonResponse({ error: updateError.message }, { status: 500 });
 
       return jsonResponse({ workflowStatus: 'awaiting_payment', totalAmount: total });

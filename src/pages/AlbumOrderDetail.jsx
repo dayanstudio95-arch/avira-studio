@@ -23,6 +23,8 @@ import {
 import SpreadReviewViewer, { SPREAD_STATUS_STYLES } from "@/components/albums/SpreadReviewViewer";
 import { WORKFLOW_STATUS_LABELS, WORKFLOW_STATUS_COLORS, PAYMENT_STATUS_LABELS, PAYMENT_STATUS_COLORS, getOrderNameColorClass } from "./AlbumOrders";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import PrintOrderDetailsCard from "@/components/albums/PrintOrderDetailsCard";
+import { printDetailRows, shippingRows, shippingParts } from "@/lib/albumPrintDetails";
 
 // Wedding Albums module -- single order's full lifecycle control: upload sketch
 // versions, generate/revoke the couple's portal link, view review-round history,
@@ -162,6 +164,13 @@ export default function AlbumOrderDetail() {
   const { data: orderAddons = [] } = useQuery({
     queryKey: ["albumOrderAddons", orderId],
     queryFn: () => base44.entities.AlbumOrderAddon.filter({ albumOrderId: orderId }),
+  });
+  // the catalog's categories tell which add-on is the parents' album / mini album / extra
+  // pages for the print-shop details card (snapshots keep only the name)
+  const { data: addonCatalog = [] } = useQuery({
+    queryKey: ["albumAddonCatalog"],
+    queryFn: () => base44.entities.AlbumAddon.list(),
+    staleTime: 10 * 60 * 1000,
   });
 
   const displayName = order?.eventId ? event?.coupleNames : order?.coupleNamesManual;
@@ -1442,7 +1451,10 @@ export default function AlbumOrderDetail() {
               <div className="bg-gray-800/50 p-3 rounded-lg text-sm text-gray-300 space-y-1 mt-2">
                 {order.shippingName && <p>נמען: {order.shippingName}</p>}
                 {order.shippingPhone && <p>טלפון: {order.shippingPhone}</p>}
-                {order.shippingAddress && <p>כתובת: {order.shippingAddress}</p>}
+                {(() => {
+                  const { city, street } = shippingParts(order);
+                  return city ? <><p>עיר: {city}</p>{street && <p>רחוב: {street}</p>}</> : order.shippingAddress && <p>כתובת: {order.shippingAddress}</p>;
+                })()}
                 {order.shippingNotes && <p>הערות: {order.shippingNotes}</p>}
               </div>
             )}
@@ -1460,6 +1472,24 @@ export default function AlbumOrderDetail() {
           <CardContent className="space-y-3">
             {!order.approvedVersionId && (
               <p className="text-amber-400 text-sm">יש לאשר גרסה לפני יצירת קישור למעבדת הדפסה.</p>
+            )}
+            {selection ? (
+              <PrintOrderDetailsCard
+                rows={printDetailRows({
+                  order,
+                  selection,
+                  cover: selectedCover,
+                  addons: orderAddons,
+                  addonCatalogById: Object.fromEntries(addonCatalog.map((a) => [a.id, a])),
+                  spreadsCount: order.approvedVersionId ? (spreadCounts[order.approvedVersionId] || []).length : 0,
+                  coupleNames: displayName,
+                  printLink,
+                })}
+                ship={shippingRows(order)}
+                hasLink={!!printLink}
+              />
+            ) : (
+              <p className="text-gray-500 text-sm">פרטים להזמנה בבית הדפוס יופיעו כאן אחרי שהזוג יבחר מוצר.</p>
             )}
             {printLink && (
               <div className="bg-gray-800/50 p-3 rounded-lg space-y-2">

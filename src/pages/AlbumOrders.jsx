@@ -11,10 +11,16 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { BookImage, Plus, Search, Link2, PenLine, Trash2 } from "lucide-react";
+import { BookImage, Plus, Search, Link2, PenLine, Trash2, BellRing } from "lucide-react";
 import { format } from "date-fns";
 import PageIcon from "@/components/layout/PageIcon";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import AlbumReminderDialog from "@/components/albums/AlbumReminderDialog";
+import { lastOpenedText } from "@/lib/albumPrintDetails";
+
+// The couple's visits are recorded from this day on (migration 0094); an order made before
+// it with no visit simply has no data, which is not the same as "never opened".
+const OPENS_TRACKED_SINCE = "2026-10-29";
 
 const BUCKET = "album-files";
 
@@ -83,6 +89,7 @@ export default function AlbumOrders() {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [reminderFor, setReminderFor] = useState(null); // an order in review — the reminder window
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [linkMode, setLinkMode] = useState("event"); // 'event' | 'manual'
   const [eventSearch, setEventSearch] = useState("");
@@ -302,7 +309,11 @@ export default function AlbumOrders() {
           </Card>
         ) : (
           <div className="space-y-3">
-            {filteredOrders.map((order) => (
+            {filteredOrders.map((order) => {
+              const opened = lastOpenedText(order.portalLastOpenedAt);
+              const neverOpened = !opened && order.portalTokenHash && !order.portalTokenRevokedAt && String(order.createdDate || "") >= OPENS_TRACKED_SINCE;
+              const reminded = lastOpenedText(order.reviewReminderSentAt);
+              return (
               <Link key={order.id} to={createPageUrl(`AlbumOrders/${order.id}`)}>
                 <Card className="bg-gray-900/50 border-gray-800 hover:border-yellow-400/30 transition-all duration-200 p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                   <div className="min-w-0">
@@ -321,11 +332,29 @@ export default function AlbumOrders() {
                       {displayDate(order) || "ללא תאריך"}
                       {order.totalAmount ? ` · ₪${Number(order.totalAmount).toLocaleString()}` : ""}
                     </p>
+                    {/* when the couple last opened their link, and the last reminder (2026-10-29) */}
+                    {(opened || neverOpened || reminded) && (
+                      <p className="text-xs mt-1 flex flex-wrap gap-x-3">
+                        {opened && <span className="text-emerald-300">הזוג צפה לאחרונה: {opened}</span>}
+                        {neverOpened && <span className="text-rose-300">הזוג עוד לא פתח את הקישור</span>}
+                        {reminded && <span className="text-gray-400">תזכורת נשלחה: {reminded}</span>}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <Badge className={WORKFLOW_STATUS_COLORS[order.workflowStatus] || "bg-gray-500/20 text-gray-400 border-gray-500/30"}>
                       {WORKFLOW_STATUS_LABELS[order.workflowStatus] || order.workflowStatus}
                     </Badge>
+                    {order.workflowStatus === "in_review" && (
+                      <Button
+                        size="sm"
+                        title="שלח לזוג תזכורת לבדוק את הסקיצה"
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setReminderFor(order); }}
+                        className="h-7 gap-1 bg-green-600 px-2.5 text-xs text-white hover:bg-green-700"
+                      >
+                        <BellRing className="w-3.5 h-3.5" /> תזכורת
+                      </Button>
+                    )}
                     {order.paymentStatus !== "unpaid" && (
                       <Badge
                         variant="outline"
@@ -347,8 +376,18 @@ export default function AlbumOrders() {
                   </div>
                 </Card>
               </Link>
-            ))}
+              );
+            })}
           </div>
+        )}
+        {reminderFor && (
+          <AlbumReminderDialog
+            order={reminderFor}
+            names={displayName(reminderFor)}
+            phone={reminderFor.eventId ? eventsById[reminderFor.eventId]?.phoneNumber : reminderFor.phoneManual}
+            onClose={() => setReminderFor(null)}
+            onSent={() => queryClient.invalidateQueries({ queryKey: ["albumOrders"] })}
+          />
         )}
 
         <Dialog open={isDialogOpen} onOpenChange={(open) => (open ? setIsDialogOpen(true) : handleCloseDialog())}>
