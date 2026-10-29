@@ -3426,6 +3426,12 @@ console.log('\n— PART 74: album print details —');
   check('last opened: today / yesterday / a date, Israel time (DST until 25.10); none → null', [
     ap.lastOpenedText('2026-10-29T08:05:00Z', now), ap.lastOpenedText('2026-10-28T18:40:00Z', now), ap.lastOpenedText('2026-10-12T06:15:00Z', now), ap.lastOpenedText(null, now),
   ], ['היום 10:05', 'אתמול 20:40', '12/10 09:15', null]);
+  check('which reminder: in review → check the sketch; approved & unpaid → finish the order; others none', [
+    ap.reminderKind({ workflowStatus: 'in_review', paymentStatus: 'unpaid' }), ap.reminderKind({ workflowStatus: 'approved', paymentStatus: 'unpaid' }),
+    ap.reminderKind({ workflowStatus: 'approved', paymentStatus: 'paid' }), ap.reminderKind({ workflowStatus: 'awaiting_payment', paymentStatus: 'unpaid' }), ap.reminderKind(null),
+  ], ['review', 'purchase', null, null, null]);
+  check('the "finish the order" reminder has its own default text', ap.renderAlbumReminder('purchase', '', { names: 'שיר ורון', link: 'L' }).split('\n'),
+    ['היי שיר ורון 😊', 'האלבום שלכם אושר 💛', 'נשאר רק לבחור כריכה, תוספות ופרטי משלוח — ולסיים את ההזמנה:', 'L']);
   check('the reminder: names and link; a studio template wins', [
     ap.renderReviewReminder('', { names: 'שקד ורוני', link: 'L' }).split('\n')[0], ap.renderReviewReminder('{{names}}: {{link}}', { names: 'א', link: 'L' }),
   ], ['היי שקד ורוני 😊', 'א: L']);

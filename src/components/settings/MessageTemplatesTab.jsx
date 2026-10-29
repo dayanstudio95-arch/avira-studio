@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { DEFAULT_WORK_ORDER_NOTE } from "@/lib/workOrder";
 import { MOVE_TEMPLATE_KEY, DEFAULT_MOVE_TEMPLATE } from "@/lib/crewMove";
-import { REVIEW_REMINDER_TEMPLATE_KEY, DEFAULT_REVIEW_REMINDER } from "@/lib/albumPrintDetails";
+import { REVIEW_REMINDER_TEMPLATE_KEY, DEFAULT_REVIEW_REMINDER, PURCHASE_REMINDER_TEMPLATE_KEY, DEFAULT_PURCHASE_REMINDER } from "@/lib/albumPrintDetails";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -190,6 +190,13 @@ const TEMPLATES = [
     label: "תזכורת לבדיקת סקיצה (אלבום)",
     description: "ההודעה מהכפתור \"תזכורת\" ליד \"בבדיקת הזוג\" בהזמנות אלבומים. {{link}} מוחלף בקישור לזוג (הקיים אם הוא שמור בדפדפן, אחרת קישור חדש).",
     defaultValue: DEFAULT_REVIEW_REMINDER,
+    variables: ["{{names}}", "{{link}}"],
+  },
+  {
+    key: PURCHASE_REMINDER_TEMPLATE_KEY,
+    label: "תזכורת להשלמת ההזמנה (אלבום)",
+    description: "ההודעה מהכפתור \"תזכורת\" ליד \"אושר\" בהזמנות אלבומים — הזוג אישר את הסקיצה ועוד לא בחר כריכה ומשלוח ולא שילם. {{link}} מוחלף בקישור לזוג.",
+    defaultValue: DEFAULT_PURCHASE_REMINDER,
     variables: ["{{names}}", "{{link}}"],
   },
   {

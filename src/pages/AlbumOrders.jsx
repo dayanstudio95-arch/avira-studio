@@ -16,7 +16,7 @@ import { format } from "date-fns";
 import PageIcon from "@/components/layout/PageIcon";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import AlbumReminderDialog from "@/components/albums/AlbumReminderDialog";
-import { lastOpenedText } from "@/lib/albumPrintDetails";
+import { lastOpenedText, reminderKind, REMINDERS } from "@/lib/albumPrintDetails";
 
 // The couple's visits are recorded from this day on (migration 0094); an order made before
 // it with no visit simply has no data, which is not the same as "never opened".
@@ -345,10 +345,10 @@ export default function AlbumOrders() {
                     <Badge className={WORKFLOW_STATUS_COLORS[order.workflowStatus] || "bg-gray-500/20 text-gray-400 border-gray-500/30"}>
                       {WORKFLOW_STATUS_LABELS[order.workflowStatus] || order.workflowStatus}
                     </Badge>
-                    {order.workflowStatus === "in_review" && (
+                    {reminderKind(order) && (
                       <Button
                         size="sm"
-                        title="שלח לזוג תזכורת לבדוק את הסקיצה"
+                        title={REMINDERS[reminderKind(order)].hint}
                         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setReminderFor(order); }}
                         className="h-7 gap-1 bg-green-600 px-2.5 text-xs text-white hover:bg-green-700"
                       >
@@ -383,6 +383,7 @@ export default function AlbumOrders() {
         {reminderFor && (
           <AlbumReminderDialog
             order={reminderFor}
+            kind={reminderKind(reminderFor) || "review"}
             names={displayName(reminderFor)}
             phone={reminderFor.eventId ? eventsById[reminderFor.eventId]?.phoneNumber : reminderFor.phoneManual}
             onClose={() => setReminderFor(null)}

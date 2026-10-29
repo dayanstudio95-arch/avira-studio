@@ -105,7 +105,32 @@ export const DEFAULT_REVIEW_REMINDER = `היי {{names}} 😊
 אפשר לסמן הערות על כל עמוד, ולאשר כשמוכן:
 {{link}}`;
 
-export function renderReviewReminder(template, { names, link }) {
-  const tpl = String(template || "").trim() ? template : DEFAULT_REVIEW_REMINDER;
+// After "אושר" the couple still has to choose the cover, add-ons and shipping, and pay — an
+// order can sit there for days (the owner, 2026-10-29), so it gets its own reminder.
+export const PURCHASE_REMINDER_TEMPLATE_KEY = "template_album_purchase_reminder";
+export const DEFAULT_PURCHASE_REMINDER = `היי {{names}} 😊
+האלבום שלכם אושר 💛
+נשאר רק לבחור כריכה, תוספות ופרטי משלוח — ולסיים את ההזמנה:
+{{link}}`;
+
+// Which reminder an order gets in the list: "review" (in the couple's review), "purchase"
+// (approved, nothing chosen yet), or null.
+export function reminderKind(order) {
+  if (order?.workflowStatus === "in_review") return "review";
+  if (order?.workflowStatus === "approved" && order?.paymentStatus !== "paid") return "purchase";
+  return null;
+}
+
+export const REMINDERS = {
+  review: { key: REVIEW_REMINDER_TEMPLATE_KEY, fallback: DEFAULT_REVIEW_REMINDER, title: "תזכורת לבדיקת סקיצה", hint: "שלח לזוג תזכורת לבדוק את הסקיצה" },
+  purchase: { key: PURCHASE_REMINDER_TEMPLATE_KEY, fallback: DEFAULT_PURCHASE_REMINDER, title: "תזכורת להשלמת ההזמנה", hint: "שלח לזוג תזכורת לבחור כריכה ומשלוח ולסיים את ההזמנה" },
+};
+
+export function renderAlbumReminder(kind, template, { names, link }) {
+  const tpl = String(template || "").trim() ? template : (REMINDERS[kind] || REMINDERS.review).fallback;
   return tpl.replace(/\{\{names\}\}/g, names || "").replace(/\{\{link\}\}/g, link || "").trim();
+}
+
+export function renderReviewReminder(template, vars) {
+  return renderAlbumReminder("review", template, vars);
 }
