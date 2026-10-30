@@ -11,7 +11,7 @@ const refuse = (why) => {
   process.exit(1)
 }
 if (name !== 'avira-gallery') refuse(`worker name is "${name}", expected "avira-gallery".`)
-if (cfg.includes('AVIRA_ACCOUNT_ID_PLACEHOLDER')) refuse('set Avira\'s Cloudflare account_id in wrangler.jsonc first (npx wrangler whoami).')
+if (!cfg.includes('"account_id": "8bb26787282909eb714db5d7d4d5d69f"')) refuse('wrangler.jsonc must pin Avira\'s Cloudflare account (8bb26787…).')
 if (cfg.includes('c59e01f9f4e70a3205affcf2b6eec18f')) refuse('wrangler.jsonc has Studio Plan\'s Cloudflare account.')
 if (cfg.includes('AVIRA_KV_PLACEHOLDER')) refuse('set the KV namespace id in wrangler.jsonc first (npx wrangler kv namespace create KV).')
 if (cfg.includes('63ffc89396cf49069da9c2d77e4b46a2')) refuse('wrangler.jsonc has the ORIGINAL films app\'s KV namespace.')

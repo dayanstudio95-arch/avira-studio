@@ -7,7 +7,7 @@
   // Avira's own Cloudflare account (the one with the original films app, 8bb2678…). Pinned so a deploy can never
   // land in Studio Plan's account (c59e01f9…), whatever login wrangler happens to have. Set on the first deploy
   // (`npx wrangler whoami` lists the accounts); scripts/deploy.mjs refuses while it is the placeholder.
-  "account_id": "AVIRA_ACCOUNT_ID_PLACEHOLDER",
+  "account_id": "8bb26787282909eb714db5d7d4d5d69f",
   "main": "worker/index.ts",
   // The couples' address: gallery.avira-studio.com — added once avira-studio.com's DNS is in this Cloudflare
   // account (today it is at IONOS). Until then the Worker answers on its workers.dev address.
