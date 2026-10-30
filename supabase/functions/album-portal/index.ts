@@ -16,6 +16,12 @@ import { createServiceRoleClient } from '../_shared/supabaseClients.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { hashToken } from '../_shared/albumTokens.ts';
 import { sanitizeClientDoc, clientAssets, safeUploadName, MAX_PAGES, sanitizeSource, sanitizeEnlargements } from '../_shared/albumDesignSanitize.ts';
+import { sendWhatsApp } from '../_shared/whatsapp.ts';
+import { hebrewDay } from '../_shared/pixiesetFavorites.ts';
+import {
+  ALBUM_GROUP_CHAT_KEY, ALBUM_GROUP_ENABLED_KEYS, ALBUM_GROUP_TEMPLATE_KEYS, renderAlbumGroupMessage,
+  spreadNumbersText, formatShekels, addonsText, type AlbumGroupKind,
+} from '../_shared/albumGroupNotify.ts';
 
 const BUCKET = 'album-files';
 const SIGNED_URL_TTL_SECONDS = 60 * 30; // 30 min — long enough to browse a full gallery
@@ -120,6 +126,34 @@ async function insertNotification(supabase: any, order: any, type: string, title
   }
 }
 
+// The album group on WhatsApp hears what the couple did (2026-10-30, the owner's request — see
+// _shared/albumGroupNotify.ts). Runs after the couple's response, never in its way: the group
+// not chosen, the message switched off or a failed send only ends here, with a log line.
+function notifyAlbumGroup(supabase: any, order: any, kind: AlbumGroupKind, vars: Record<string, string>) {
+  const job = (async () => {
+    try {
+      const keys = [ALBUM_GROUP_CHAT_KEY, ALBUM_GROUP_ENABLED_KEYS[kind], ALBUM_GROUP_TEMPLATE_KEYS[kind]];
+      const { data: rows } = await supabase.from('app_settings').select('key, value').eq('tenant_id', order.tenant_id).in('key', keys);
+      const s: Record<string, string> = Object.fromEntries((rows || []).map((r: any) => [r.key, r.value]));
+      if (s[ALBUM_GROUP_ENABLED_KEYS[kind]] === 'false') return;
+      const chatId = s[ALBUM_GROUP_CHAT_KEY];
+      if (!chatId || !/@g\.us$/.test(chatId)) return;
+      let names = order.couple_names_manual || '';
+      let day = order.wedding_date_manual || '';
+      if (order.event_id) {
+        const { data: ev } = await supabase.from('events').select('couple_names, date').eq('id', order.event_id).eq('tenant_id', order.tenant_id).maybeSingle();
+        if (ev) { names = ev.couple_names || names; day = ev.date || day; }
+      }
+      const text = renderAlbumGroupMessage(kind, s[ALBUM_GROUP_TEMPLATE_KEYS[kind]], { ...vars, names: names || 'זוג', event_date: hebrewDay(day) });
+      const sent = await sendWhatsApp(supabase, chatId, text, order.tenant_id, { linkPreview: false });
+      if (!sent.success) console.error(`[album-portal] album group (${kind}) send failed`);
+    } catch (e) {
+      console.error(`[album-portal] album group (${kind}) failed:`, (e as any)?.message || e);
+    }
+  })();
+  const runtime = (globalThis as any).EdgeRuntime;
+  if (runtime?.waitUntil) runtime.waitUntil(job);
+}
 
 // ---- Couple editing of the album design (stage 4, 2026-10-08) ------------------------------
 // The design row of this order — only when the studio switched "הזוג יכול לערוך" on.
@@ -268,7 +302,7 @@ Deno.serve(async (req) => {
       // spreadIds the client sent beyond checking they belong here.
       const { data: realSpreads } = await supabase
         .from('album_spreads')
-        .select('id')
+        .select('id, sequence_number')
         .eq('version_id', order.current_version_id);
       const realSpreadIds = new Set((realSpreads ?? []).map((s: any) => s.id));
 
@@ -323,6 +357,9 @@ Deno.serve(async (req) => {
         await insertNotification(supabase, order, 'album_round_approved', `סקיצת אלבום אושרה: ${displayName}`, 'הזוג אישר את כל העמודים בסבב הביקורת.');
       } else {
         await insertNotification(supabase, order, 'album_revision_requested', `נדרש תיקון בסקיצה: ${displayName}`, 'הזוג ביקש תיקונים באחד או יותר מהעמודים (סבב חינם ראשון / מידע בלבד בסבבים הבאים).');
+        const numberOf = new Map((realSpreads ?? []).map((s: any) => [s.id, s.sequence_number]));
+        const marked = rows.filter((r: any) => r.decision === 'needs_revision').map((r: any) => numberOf.get(r.spread_id));
+        notifyAlbumGroup(supabase, order, 'revision', { round: String(nextRoundNumber), count: String(marked.length), spreads: spreadNumbersText(marked) });
       }
 
       return jsonResponse({ workflowStatus: newStatus });
@@ -583,6 +620,17 @@ Deno.serve(async (req) => {
       }
       if (updateError) return jsonResponse({ error: updateError.message }, { status: 500 });
 
+      // Once, when the order first reaches "ממתין לתשלום" — not again if the couple changes
+      // their choice before paying.
+      if (order.workflow_status !== 'awaiting_payment') {
+        notifyAlbumGroup(supabase, order, 'payment', {
+          product: String(product.name || ''),
+          cover: String(cover.name || ''),
+          addons: addonsText(insertableAddonRows.map((r: any) => ({ name: r.addon_name_snapshot, quantity: r.quantity })), !!engravingText),
+          total: formatShekels(total),
+        });
+      }
+
       return jsonResponse({ workflowStatus: 'awaiting_payment', totalAmount: total });
     }
 
@@ -627,6 +675,7 @@ Deno.serve(async (req) => {
 
       const displayName = order.couple_names_manual || 'הזמנת אלבום';
       await insertNotification(supabase, order, 'album_transfer_proof_uploaded', `אישור העברה הועלה: ${displayName}`, 'הזוג העלה אסמכתת העברה בנקאית — ממתין לאישור ידני של הסטודיו.');
+      if (order.payment_status !== 'transfer_pending_review') notifyAlbumGroup(supabase, order, 'transfer', {});
 
       return jsonResponse({ paymentStatus: 'transfer_pending_review' });
     }

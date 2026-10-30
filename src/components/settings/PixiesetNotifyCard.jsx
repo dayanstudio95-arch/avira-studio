@@ -8,13 +8,24 @@ import { toast } from "sonner";
 import { generateRawToken, hashToken } from "@/lib/albumTokens";
 import { pixiesetAppsScript } from "@/lib/pixiesetScript";
 
-const KEYS = ["pixieset_notify_enabled", "pixieset_notify_group_chat_id", "pixieset_notify_group_name", "pixieset_notify_token_hash", "pixieset_notify_last_at"];
+// What the album group hears, each with its own switch ('false' = off, no row = on). The last
+// three come from the couple's album portal (2026-10-30, album-portal + _shared/albumGroupNotify.ts).
+const MESSAGES = [
+  { key: "pixieset_notify_enabled", label: "זוג סיים לבחור תמונות בפיקסיסט", hint: "צריך את הסקריפט למטה" },
+  { key: "album_group_notify_revision", label: "הזוג ביקש תיקון בסקיצה", hint: "עם מספרי הכפולות" },
+  { key: "album_group_notify_payment", label: "הזוג סיים לבחור — ממתין לתשלום", hint: "מוצר, כריכה, תוספות וסכום" },
+  { key: "album_group_notify_transfer", label: "הזוג העלה אישור העברה", hint: "לבדוק שהכסף נכנס" },
+];
 
-// "פיקסיסט ← וואטסאפ" (2026-10-29, the owner's request): when a couple presses "send to
-// photographer" on their Pixieset favorites, the album group gets a WhatsApp. Pixieset has no
-// API — a Google Apps Script in the Gmail it emails (avira.media1) posts the email to
-// pixieset-favorites-notify. Here: the group, on/off, and the script with its own token (only
-// the token's SHA-256 is saved; the script text is shown once — making a new one cancels the old).
+const KEYS = [...MESSAGES.map((m) => m.key), "pixieset_notify_group_chat_id", "pixieset_notify_group_name", "pixieset_notify_token_hash", "pixieset_notify_last_at"];
+
+// "קבוצת האלבומים בוואטסאפ". Born 2026-10-29 for Pixieset: when a couple presses "send to
+// photographer" on their favorites, the album group gets a WhatsApp. Pixieset has no API — a
+// Google Apps Script in the Gmail it emails (avira.media1) posts the email to
+// pixieset-favorites-notify. From 2026-10-30 the same group also hears the album portal (asked
+// for corrections / waiting for payment / transfer proof). Here: the group, a switch for each
+// message, and the script with its own token (only the token's SHA-256 is saved; the script
+// text is shown once — making a new one cancels the old).
 export default function PixiesetNotifyCard() {
   const [vals, setVals] = useState({});
   const [ids, setIds] = useState({});
@@ -54,7 +65,6 @@ export default function PixiesetNotifyCard() {
     return groups.filter((g) => !q || String(g.display_name || "").includes(q));
   }, [groups, search]);
 
-  const enabled = vals.pixieset_notify_enabled !== "false";
   const chosen = vals.pixieset_notify_group_chat_id;
 
   const pickGroup = async (g) => {
@@ -69,9 +79,9 @@ export default function PixiesetNotifyCard() {
     setSaving(false);
   };
 
-  const toggle = async () => {
+  const toggle = async (key) => {
     setSaving(true);
-    try { await upsert("pixieset_notify_enabled", enabled ? "false" : "true"); } catch (e) { toast.error("השמירה נכשלה", { description: e?.message }); }
+    try { await upsert(key, vals[key] === "false" ? "true" : "false"); } catch (e) { toast.error("השמירה נכשלה", { description: e?.message }); }
     setSaving(false);
   };
 
@@ -101,10 +111,10 @@ export default function PixiesetNotifyCard() {
           <div className="w-8 h-8 bg-amber-500/20 rounded-lg flex items-center justify-center">
             <Camera className="w-4 h-4 text-amber-300" />
           </div>
-          פיקסיסט ← קבוצת וואטסאפ
+          קבוצת האלבומים בוואטסאפ
         </CardTitle>
         <p className="text-sm text-gray-400">
-          כשזוג לוחץ "שלח לצלם" ✈️ על המועדפים בפיקסיסט — הודעה לקבוצה, עם מה שהם כתבו והקישור. נוסח ההודעה: הגדרות ← תבניות ← "זוג סיים לבחור תמונות".
+          הודעה לקבוצה כשזוג מסיים לבחור תמונות בפיקסיסט, ועל מה שהזוג עושה בפורטל האלבום. רק פעולות של הזוג שולחות — שינוי סטטוס שאתם עושים במערכת לא. נוסח ההודעות: הגדרות ← תבניות.
         </p>
       </CardHeader>
       <CardContent className="space-y-5 pt-5 text-sm" dir="rtl">
@@ -112,18 +122,33 @@ export default function PixiesetNotifyCard() {
           <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-gray-500" /></div>
         ) : (
           <>
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-gray-300">
-                {chosen ? <>קבוצה: <b className="text-white">{vals.pixieset_notify_group_name || chosen}</b></> : <span className="text-amber-300">עוד לא נבחרה קבוצה</span>}
-                {vals.pixieset_notify_last_at && <span className="block text-xs text-gray-500">הודעה אחרונה: {new Date(vals.pixieset_notify_last_at).toLocaleString("he-IL")}</span>}
-              </div>
-              <button type="button" onClick={toggle} disabled={saving} className={`rounded-full px-3 py-1 text-xs font-semibold ${enabled ? "bg-green-600 text-white" : "bg-gray-700 text-gray-300"}`}>
-                {enabled ? "פעיל" : "כבוי"}
-              </button>
+            <div className="text-gray-300">
+              {chosen ? <>קבוצה: <b className="text-white">{vals.pixieset_notify_group_name || chosen}</b></> : <span className="text-amber-300">עוד לא נבחרה קבוצה — לא נשלחת אף הודעה</span>}
+              {vals.pixieset_notify_last_at && <span className="block text-xs text-gray-500">הודעה אחרונה מפיקסיסט: {new Date(vals.pixieset_notify_last_at).toLocaleString("he-IL")}</span>}
             </div>
 
             <div className="space-y-2">
-              <div className="text-gray-400">1. בחר את הקבוצה</div>
+              <div className="text-gray-400">מה נשלח לקבוצה</div>
+              <div className="divide-y divide-gray-800 rounded-lg border border-gray-800">
+                {MESSAGES.map((m) => {
+                  const on = vals[m.key] !== "false";
+                  return (
+                    <div key={m.key} className="flex items-center justify-between gap-3 px-3 py-2">
+                      <div className="min-w-0">
+                        <div className="text-gray-200">{m.label}</div>
+                        <div className="text-xs text-gray-500">{m.hint}</div>
+                      </div>
+                      <button type="button" onClick={() => toggle(m.key)} disabled={saving} className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${on ? "bg-green-600 text-white" : "bg-gray-700 text-gray-300"}`}>
+                        {on ? "פעיל" : "כבוי"}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-gray-400">הקבוצה</div>
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="חיפוש קבוצה…" className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-white" />
               <div className="max-h-48 space-y-1 overflow-y-auto rounded-lg border border-gray-800 p-1">
                 {shown.length === 0 && <div className="py-3 text-center text-xs text-gray-500">לא נמצאו קבוצות</div>}
@@ -143,7 +168,7 @@ export default function PixiesetNotifyCard() {
             </div>
 
             <div className="space-y-2">
-              <div className="text-gray-400">2. הסקריפט לג'ימייל (avira.media1)</div>
+              <div className="text-gray-400">הסקריפט לג'ימייל (avira.media1) — רק בשביל פיקסיסט</div>
               <Button onClick={makeScript} disabled={saving} variant="outline" className="gap-2 border-gray-700 bg-gray-800 text-gray-200">
                 <KeyRound className="h-4 w-4" /> {vals.pixieset_notify_token_hash ? "צור סקריפט חדש" : "צור סקריפט"}
               </Button>

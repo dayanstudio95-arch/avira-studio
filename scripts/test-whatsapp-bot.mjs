@@ -3437,5 +3437,44 @@ console.log('\n— PART 74: album print details —');
   ], ['היי שקד ורוני 😊', 'א: L']);
 }
 
+// =====================================================================================
+// PART 75 — the album group hears the couple's portal actions; the list order (2026-10-30)
+console.log('\n— PART 75: album group messages + list order —');
+{
+  const g = await loadModule('supabase/functions/_shared/albumGroupNotify.ts', 'ag75');
+  check('spread numbers: in order, each once, gaps skipped', [g.spreadNumbersText([18, 3, 7, null, 12, 3]), g.spreadNumbersText([])], ['3, 7, 12, 18', '']);
+  check('shekels and add-ons (engraving first, quantities)', [
+    g.formatShekels(3450), g.formatShekels('1200.4'), g.formatShekels(null), g.formatShekels('x'),
+    g.addonsText([{ name: 'אלבום הורים', quantity: 1 }, { name: 'עמוד נוסף', quantity: 2 }, { name: '' }], true),
+    g.addonsText([], false),
+  ], ['3,450', '1,200', '0', '', 'הטבעת שמות, אלבום הורים, עמוד נוסף × 2', '']);
+  check('revision: the default, as the owner approved it', g.renderAlbumGroupMessage('revision', '', { names: 'נועה ואיתי', event_date: 'יום חמישי, 14.8.2026', round: '1', count: '4', spreads: '3, 7, 12, 18' }),
+    '✏️ נועה ואיתי ביקשו תיקונים בסקיצת האלבום\n📅 חתונה: יום חמישי, 14.8.2026\n🔁 סבב 1 · 4 כפולות לתיקון: 3, 7, 12, 18');
+  check('payment: no date, no add-ons → those lines dropped; the amount stays', g.renderAlbumGroupMessage('payment', null, { names: 'א וב', event_date: '', product: 'סט 3 אלבומים', cover: 'HM404', addons: '', total: '3,450' }),
+    '💳 א וב סיימו לבחור — ממתין לתשלום\n📖 סט 3 אלבומים · כריכה: HM404\n💰 סה"כ לתשלום: ₪3,450');
+  check('transfer default; a studio template wins', [
+    g.renderAlbumGroupMessage('transfer', '  ', { names: 'א וב', event_date: '' }),
+    g.renderAlbumGroupMessage('transfer', '{{names}} שילמו', { names: 'א וב' }),
+  ], ['🏦 א וב העלו אישור העברה בנקאית\nצריך לבדוק שהכסף נכנס ולסמן "שולם" במערכת', 'א וב שילמו']);
+  check('the keys: one group (Pixieset\'s), a switch and a template per message', [g.ALBUM_GROUP_CHAT_KEY, g.ALBUM_GROUP_ENABLED_KEYS.payment, g.ALBUM_GROUP_TEMPLATE_KEYS.revision],
+    ['pixieset_notify_group_chat_id', 'album_group_notify_payment', 'template_album_revision_group']);
+
+  const ap = await loadModule('src/lib/albumPrintDetails.js', 'ap75');
+  const list = [
+    { id: 'a', workflowStatus: 'in_review' },
+    { id: 'b', workflowStatus: 'in_print' },
+    { id: 'c', workflowStatus: 'awaiting_payment', paymentStatus: 'unpaid' },
+    { id: 'd', workflowStatus: 'revision_requested' },
+    { id: 'e', workflowStatus: 'approved' },
+    { id: 'f', workflowStatus: 'awaiting_payment', paymentStatus: 'transfer_pending_review' },
+    { id: 'g', workflowStatus: 'revision_requested' },
+    { id: 'h', workflowStatus: 'awaiting_payment', paymentStatus: 'paid' },
+    { id: 'i', workflowStatus: 'delivered' },
+  ];
+  check('the list: corrections, then waiting for payment, then open, print shop and past it last — newest-first kept inside each',
+    ap.sortOrdersForList(list).map((o) => o.id), ['d', 'g', 'c', 'f', 'a', 'e', 'h', 'b', 'i']);
+  check('sorting leaves the given list alone', list.map((o) => o.id).join(''), 'abcdefghi');
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

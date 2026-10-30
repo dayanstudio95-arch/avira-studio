@@ -16,7 +16,7 @@ import { format } from "date-fns";
 import PageIcon from "@/components/layout/PageIcon";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import AlbumReminderDialog from "@/components/albums/AlbumReminderDialog";
-import { lastOpenedText, reminderKind, REMINDERS } from "@/lib/albumPrintDetails";
+import { lastOpenedText, reminderKind, REMINDERS, sortOrdersForList } from "@/lib/albumPrintDetails";
 
 // The couple's visits are recorded from this day on (migration 0094); an order made before
 // it with no visit simply has no data, which is not the same as "never opened".
@@ -221,9 +221,8 @@ export default function AlbumOrders() {
     return isNaN(d.getTime()) ? null : format(d, "d/M/yy");
   };
 
-  // Orders already at the print shop (or past it) go to the bottom (2026-10-07, the owner:
-  // "so I see what's left"). Within each part the server's newest-first order is kept.
-  const DONE_STATUSES = ["in_print", "delivered", "completed"];
+  // "נדרש תיקון" on top, then waiting for payment, the print shop and past it at the bottom
+  // (albumPrintDetails.sortOrdersForList).
   const filteredOrders = useMemo(() => {
     const list = orders.filter((order) => {
       if (statusFilter !== "all" && order.workflowStatus !== statusFilter) return false;
@@ -235,10 +234,7 @@ export default function AlbumOrders() {
       }
       return true;
     });
-    return [
-      ...list.filter((o) => !DONE_STATUSES.includes(o.workflowStatus)),
-      ...list.filter((o) => DONE_STATUSES.includes(o.workflowStatus)),
-    ];
+    return sortOrdersForList(list);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orders, statusFilter, searchTerm, eventsById]);
 

@@ -83,6 +83,21 @@ export function isAwaitingPayment(order) {
   return order.workflowStatus === "awaiting_payment" || order.paymentStatus === "transfer_pending_review";
 }
 
+// The order of the list (2026-10-30, the owner): "נדרש תיקון" first, then waiting for
+// payment, then everything still open, and what is at the print shop or past it last
+// (2026-10-07). Within each part the server's newest-first order is kept (the sort is stable).
+const DONE_STATUSES = ["in_print", "delivered", "completed"];
+export function orderListRank(order) {
+  if (DONE_STATUSES.includes(order?.workflowStatus)) return 3;
+  if (order?.workflowStatus === "revision_requested") return 0;
+  if (isAwaitingPayment(order)) return 1;
+  return 2;
+}
+
+export function sortOrdersForList(orders) {
+  return [...(orders || [])].sort((a, b) => orderListRank(a) - orderListRank(b));
+}
+
 // "היום 14:20" / "אתמול 21:40" / "12/10 09:15" — in Israel time.
 export function lastOpenedText(iso, now = new Date()) {
   if (!iso) return null;

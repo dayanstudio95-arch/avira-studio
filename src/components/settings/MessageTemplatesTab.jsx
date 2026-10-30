@@ -207,6 +207,28 @@ const TEMPLATES = [
     defaultValue: `✅ {{names}} סיימו לבחור תמונות בפיקסיסט\n📅 חתונה: {{event_date}}\n💬 {{message}}\n🔗 המועדפים: {{link}}`,
     variables: ["{{names}}", "{{event_date}}", "{{message}}", "{{link}}"],
   },
+  // The next three mirror DEFAULT_ALBUM_GROUP_TEMPLATES in supabase/functions/_shared/albumGroupNotify.ts
+  {
+    key: "template_album_revision_group",
+    label: "הזוג ביקש תיקון בסקיצה (לקבוצת האלבומים)",
+    description: "ההודעה לקבוצת האלבומים כשהזוג שולח סבב בדיקה עם בקשות תיקון. {{spreads}} = מספרי הכפולות שסומנו. שורה שהמשתנה שלה ריק לא תופיע.",
+    defaultValue: `✏️ {{names}} ביקשו תיקונים בסקיצת האלבום\n📅 חתונה: {{event_date}}\n🔁 סבב {{round}} · {{count}} כפולות לתיקון: {{spreads}}`,
+    variables: ["{{names}}", "{{event_date}}", "{{round}}", "{{count}}", "{{spreads}}"],
+  },
+  {
+    key: "template_album_payment_group",
+    label: "הזוג סיים לבחור — ממתין לתשלום (לקבוצת האלבומים)",
+    description: "ההודעה לקבוצת האלבומים כשהזוג מסיים לבחור מוצר, כריכה ומשלוח וההזמנה עוברת ל\"ממתין לתשלום\" (פעם אחת). שורה שהמשתנה שלה ריק לא תופיע — למשל בלי תוספות.",
+    defaultValue: `💳 {{names}} סיימו לבחור — ממתין לתשלום\n📅 חתונה: {{event_date}}\n📖 {{product}} · כריכה: {{cover}}\n➕ {{addons}}\n💰 סה"כ לתשלום: ₪{{total}}`,
+    variables: ["{{names}}", "{{event_date}}", "{{product}}", "{{cover}}", "{{addons}}", "{{total}}"],
+  },
+  {
+    key: "template_album_transfer_group",
+    label: "הזוג העלה אישור העברה (לקבוצת האלבומים)",
+    description: "ההודעה לקבוצת האלבומים כשהזוג מעלה אסמכתת העברה בנקאית בפורטל האלבום.",
+    defaultValue: `🏦 {{names}} העלו אישור העברה בנקאית\n📅 חתונה: {{event_date}}\nצריך לבדוק שהכסף נכנס ולסמן "שולם" במערכת`,
+    variables: ["{{names}}", "{{event_date}}"],
+  },
   {
     key: "template_staff_payment_detail",
     label: "פירוט תשלום לאיש צוות",
