@@ -14,8 +14,8 @@ import { MemoryStore } from '../worker/store-memory';
 import { SupabaseStore } from '../worker/store-supabase';
 import type { Gallery } from '../worker/types';
 
-// Avira, phase 1: the gallery album's order functions come with phase 3.
-const ALBUM_ORDERS_PORTED = false;
+// Avira: the gallery album's order functions came with 0096 (phase 3).
+const ALBUM_ORDERS_PORTED = true;
 const STUDIO_PAGE_LEADS = false;
 import { buildDb, supabaseFetchFor } from './pglite-supabase';
 

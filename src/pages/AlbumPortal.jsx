@@ -271,8 +271,23 @@ function PortalHeader({ order }) {
             {versionNumber && <span>גרסה {versionNumber}</span>}
           </div>
         )}
+        <DesignedAlbumLink order={order} />
       </div>
     </div>
+  );
+}
+
+// The couple designed this album in their photo gallery (2026-10-30, from Studio Plan): a way back to look at it.
+const FILMS_BASE_URL = (import.meta.env.VITE_FILMS_BASE_URL || "").replace(/\/$/, "");
+function DesignedAlbumLink({ order }) {
+  if (order.source !== "couple_designer" || !order.filmsGalleryId || !FILMS_BASE_URL) return null;
+  const href = `${FILMS_BASE_URL}/${order.studio?.slug || "watch"}/${order.filmsGalleryId}/album`;
+  return (
+    <p className="text-sm pt-1">
+      <a href={href} className="text-yellow-400 hover:underline" data-testid="designed-album-link">
+        האלבום שעיצבתם ←
+      </a>
+    </p>
   );
 }
 
@@ -665,7 +680,10 @@ function PurchaseWizard({ token, order, onReloaded }) {
 
   // Real page count comes from the order's current (approved-by-purchase-time)
   // version's actual uploaded spreads -- never from anything the couple enters.
-  const spreadCount = order.currentVersion?.spreads?.length || 0;
+  // An album the couple designed in their gallery has no uploaded spreads: the count is their design's, as the
+  // gallery Worker recorded it (the server charges by the same number — album-portal submitPurchase).
+  const designed = order.source === "couple_designer";
+  const spreadCount = designed ? Number(order.designedSpreadCount) || 0 : order.currentVersion?.spreads?.length || 0;
   const extraPagesCount = Math.max(0, spreadCount - PAGE_BASELINE);
 
   const coverTypesPresent = COVER_TYPE_ORDER.filter((t) => catalog.covers.some((c) => c.coverType === t));

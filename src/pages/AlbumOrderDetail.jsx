@@ -12,6 +12,7 @@ import { format } from "date-fns";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import DesignedAlbumCard from "@/components/albums/DesignedAlbumCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -84,6 +85,9 @@ export default function AlbumOrderDetail() {
   const [showOnlyFlagged, setShowOnlyFlagged] = useState({}); // versionId -> bool
   const [viewer, setViewer] = useState(null); // {versionId, index} -- open spread in SpreadReviewViewer
   const [newPortalToken, setNewPortalToken] = useState(null); // raw token, shown once
+  // An album the couple designed in their gallery: the couple's order link comes from the gallery Worker (the card
+  // "עוצב על ידי הזוג"), never made here — a new link would break the gallery's "להמשך ההזמנה" button.
+  const [designedLink, setDesignedLink] = useState("");
   const [newPrintToken, setNewPrintToken] = useState(null);
   const replaceFileInputRef = useRef(null);
   const [replaceTarget, setReplaceTarget] = useState(null); // {spreadId, versionId, sequenceNumber, oldFileKey}
@@ -96,6 +100,8 @@ export default function AlbumOrderDetail() {
     queryKey: ["albumOrder", orderId],
     queryFn: () => base44.entities.AlbumOrder.get(orderId),
   });
+  // An album the couple designed in their photo gallery (album_orders.source, migrations 0095/0096).
+  const isDesignedOrder = order?.source === "couple_designer";
 
   const { data: event } = useQuery({
     queryKey: ["albumOrderEvent", order?.eventId],
@@ -808,7 +814,7 @@ export default function AlbumOrderDetail() {
     );
   }
 
-  const portalLink = newPortalToken ? `${window.location.origin}/album/${newPortalToken}` : null;
+  const portalLink = newPortalToken ? `${window.location.origin}/album/${newPortalToken}` : isDesignedOrder && designedLink ? designedLink : null;
   const printLink = newPrintToken ? `${window.location.origin}/print-access/${newPrintToken}` : null;
 
   // The couple's latest verdict per spread, per version -- drives the status
@@ -900,13 +906,14 @@ export default function AlbumOrderDetail() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {/* Album design editor, stage 1 (2026-10-08) — desktop only, nothing reaches the couple yet. */}
-            <Link
+            {/* Album design editor, stage 1 (2026-10-08) — desktop only, nothing reaches the couple yet. Not for an album
+                the couple designed in their gallery: its pages are their design (as in Studio Plan). */}
+            {!isDesignedOrder && <Link
               to={`/AlbumOrders/${orderId}/design`}
               className="hidden md:inline-flex items-center gap-1.5 rounded-lg border border-amber-400/50 bg-amber-400/10 px-3 py-1.5 text-sm font-medium text-amber-200 hover:bg-amber-400/20"
             >
               🎨 עורך סקיצה <span className="text-[10px] text-amber-300/80">בטא</span>
-            </Link>
+            </Link>}
             <Badge className={WORKFLOW_STATUS_COLORS[order.workflowStatus] || "bg-gray-500/20 text-gray-400 border-gray-500/30"}>
               {WORKFLOW_STATUS_LABELS[order.workflowStatus] || order.workflowStatus}
             </Badge>
@@ -919,7 +926,12 @@ export default function AlbumOrderDetail() {
           </div>
         </div>
 
+        {/* An album the couple designed in their photo gallery (2026-10-30, from Studio Plan): no sketch to upload —
+            the card opens their design and the print files on the gallery site. */}
+        {isDesignedOrder && <DesignedAlbumCard order={order} onCoupleLink={setDesignedLink} onChanged={invalidateOrder} />}
+
         {/* Sketch versions */}
+        {!isDesignedOrder && (
         <Card className="bg-gray-900/50 border-gray-800">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-white text-lg flex items-center gap-2">
@@ -1141,6 +1153,7 @@ export default function AlbumOrderDetail() {
             )}
           </CardContent>
         </Card>
+        )}
 
         {/* Portal link */}
         <Card className="bg-gray-900/50 border-gray-800">
@@ -1151,9 +1164,14 @@ export default function AlbumOrderDetail() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            {isDesignedOrder && (
+              <p className="text-amber-400 text-sm" data-testid="designed-portal-warning">
+                הזוג עיצב את האלבום בגלריה, והכפתור "להמשך ההזמנה" שם משתמש בקישור משלו. קישור חדש כאן יחליף אותו והכפתור בגלריה יפסיק לעבוד. את הקישור של הזוג להזמנה אפשר להעתיק מהכרטיס "עוצב על ידי הזוג".
+              </p>
+            )}
             {portalLink && (
               <div className="bg-gray-800/50 p-3 rounded-lg space-y-2">
-                <p className="text-amber-400 text-sm">הקישור נשמר בדפדפן הזה ויישאר זמין גם אחרי רענון -- אך לא יופיע במכשיר/דפדפן אחר. העתק ושלח לזוג.</p>
+                {newPortalToken && <p className="text-amber-400 text-sm">הקישור נשמר בדפדפן הזה ויישאר זמין גם אחרי רענון -- אך לא יופיע במכשיר/דפדפן אחר. העתק ושלח לזוג.</p>}
                 <div className="flex gap-2">
                   <Input readOnly value={portalLink} className="bg-gray-900 border-gray-700 text-white text-sm" />
                   <Button size="icon" variant="outline" onClick={() => window.open(portalLink, "_blank")} title="פתח קישור" className="border-gray-700 bg-gray-800 hover:bg-gray-700 shrink-0">
@@ -1461,7 +1479,13 @@ export default function AlbumOrderDetail() {
           </CardContent>
         </Card>
 
-        {/* Print-shop access */}
+        {/* Print-shop access. An album the couple designed in their gallery has no uploaded sketch: its print files and
+            the print shop's link are on the "עוצב על ידי הזוג" card (and in the gallery). */}
+        {isDesignedOrder ? (
+          <p className="text-sm text-gray-500" data-testid="designed-print-note">
+            האלבום עוצב על ידי הזוג: קבצי הדפוס והקישור לבית הדפוס נמצאים בכרטיס "עוצב על ידי הזוג" ובגלריית התמונות.
+          </p>
+        ) : (
         <Card className="bg-gray-900/50 border-gray-800">
           <CardHeader>
             <CardTitle className="text-white text-lg flex items-center gap-2">
@@ -1571,6 +1595,7 @@ export default function AlbumOrderDetail() {
             </div>
           </CardContent>
         </Card>
+        )}
       </div>
 
       {viewer && (

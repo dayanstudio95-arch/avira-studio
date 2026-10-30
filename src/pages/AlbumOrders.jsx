@@ -323,6 +323,9 @@ export default function AlbumOrders() {
                       {!order.eventId && (
                         <Badge variant="outline" className="border-gray-700 bg-gray-800 text-gray-500 text-xs">ללא אירוע מקושר</Badge>
                       )}
+                      {order.source === "couple_designer" && (
+                        <Badge variant="outline" className="border-yellow-500/40 bg-yellow-500/10 text-yellow-300 text-xs">עוצב על ידי הזוג</Badge>
+                      )}
                     </div>
                     <p className="text-gray-500 text-sm mt-1">
                       {displayDate(order) || "ללא תאריך"}

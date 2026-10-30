@@ -22,6 +22,9 @@ export const NAV_ROUTE_BY_NOTIFICATION_TYPE = {
   album_transfer_proof_uploaded: "/AlbumOrders",
   album_design_client_edits: "/AlbumOrders",
   album_pixieset_favorites_done: "/AlbumOrders", // pixieset-favorites-notify (2026-10-29)
+  album_designed_by_couple: "/AlbumOrders", // the couple sent the album they designed in their gallery (0096)
+  films_gallery_locked: "/photos", // a gallery locked after too many wrong passwords (gallery Worker)
+  films_link_broken: "/photos", // Studio Plan's film-link check (films are off in Avira; kept for the same code)
   staff_availability_response: "/StaffScheduling",
   meeting_reminder: "/Meetings",
   whatsapp_return_reminder: "/chat",

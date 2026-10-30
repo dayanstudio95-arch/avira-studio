@@ -248,8 +248,7 @@ describe('reading capture times (photos/dates)', () => {
   });
 });
 
-// Phase 3 (the album, with Avira's album portal): the print link reads the album order (films_album_order_state).
-describe.skip('the print shop', () => {
+describe('the print shop', () => {
   it('album and photo list are kept a minute; the link itself is checked on every request', async () => {
     const one = await counted(() => call('GET', `/api/print/${PRINT}/photo/${key(1)}?s=l`));
     expect(one.res.status).toBe(200);

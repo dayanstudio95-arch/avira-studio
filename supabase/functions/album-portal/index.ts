@@ -259,6 +259,14 @@ Deno.serve(async (req) => {
         .select('bank_name, bank_branch_number, bank_account_number, bank_account_holder_name, bank_transfer_notes')
         .eq('id', order.tenant_id)
         .maybeSingle();
+      // An album the couple designed in their photo gallery (2026-10-30, migration 0096): the portal links back to it,
+      // at <gallery site>/<studio address>/<gallery>/album. The address is read on its own, so a database without
+      // 0095 (no tenants.slug) answers exactly as before.
+      let studioSlug: string | null = null;
+      if (order.source === 'couple_designer' && order.films_gallery_id) {
+        const { data: slugRow } = await supabase.from('tenants').select('slug').eq('id', order.tenant_id).maybeSingle();
+        studioSlug = slugRow?.slug ?? null;
+      }
       const hasBankDetails = !!(tenantRow && (tenantRow.bank_name || tenantRow.bank_account_number));
       const bankDetails = hasBankDetails
         ? {
@@ -286,6 +294,10 @@ Deno.serve(async (req) => {
         currentVersion,
         latestRound: openRound,
         bankDetails,
+        source: order.source || 'studio',
+        designedSpreadCount: order.designed_spread_count ?? null,
+        filmsGalleryId: order.films_gallery_id || null,
+        studio: { slug: studioSlug },
       });
     }
 
@@ -490,7 +502,11 @@ Deno.serve(async (req) => {
       // still sent for this specific catalog row is dropped below (defense in depth).
       const PAGE_BASELINE = 30;
       let spreadCount = 0;
-      if (order.current_version_id) {
+      // An album the couple designed in their gallery has no uploaded spreads: its page count is the design's, as the
+      // gallery Worker recorded it on the order (0096) — never a number from the client.
+      if (order.source === 'couple_designer') {
+        spreadCount = Math.max(0, Number(order.designed_spread_count) || 0);
+      } else if (order.current_version_id) {
         const { count } = await supabase
           .from('album_spreads')
           .select('id', { count: 'exact', head: true })
