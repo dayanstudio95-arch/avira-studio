@@ -26,6 +26,7 @@ import {
   EyeOff,
   GripVertical,
   CalendarClock,
+  Images,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -119,6 +120,8 @@ const primaryNavItems = [
   { title: "רשימת אירועים",   url: createPageUrl("Events"),          icon: Calendar, section: "events" },
   { title: "שיבוץ צוות",      url: createPageUrl("StaffScheduling"), icon: Users, section: "events" },
   { title: "סטטוס עבודה",     url: createPageUrl("ProgressStatus"),  icon: CheckSquare, section: "events" },
+  // 2026-10-30: the photo galleries (from Studio Plan) — the couples' galleries, face search, the couple's album.
+  { title: "🖼️ גלריות",        url: "/photos",                         icon: Images, section: "events", label: "גלריות" },
   { title: "📅 יומן Google",   url: "/GoogleCalendarSync",           icon: Calendar, section: "events", label: "יומן Google" },
   { title: "תשלומים",         url: createPageUrl("Payments"),        icon: WalletCards, section: "studio" },
   { title: "📒 ספר הזמנות",    url: "/WorkOrders",                    icon: ClipboardList, section: "studio", label: "ספר הזמנות" },
@@ -136,6 +139,7 @@ const secondaryNavItems = [
   { title: "חבילות ומחירים",    url: createPageUrl("Packages"),            icon: Camera },
   { title: "קטלוג אלבומים",     url: "/AlbumCatalogSettings",              icon: Settings },
   { title: "מדריך אלבום",       url: "/AlbumGuideSettings",                icon: FileText },
+  { title: "הגדרות גלריות",     url: "/photos/settings",                   icon: Images },
   { title: "ניהול חשבוניות",    url: createPageUrl("AllInvoicesPage"),     icon: FileText },
   // B4 (owner's decision, 2026-10-07): "אישור הודעות" removed from the menu — nothing queues there
   // (the two approval automations are off) and the page breaks when something does. Put it

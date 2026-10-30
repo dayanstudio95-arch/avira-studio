@@ -7,6 +7,10 @@ import { supabase } from '@/api/supabaseClient';
 // `logout`, `navigateToLogin`, `checkAppState`) so the swap is a one-line import change.
 const AuthContext = createContext();
 
+// The modules Studio Plan sells one by one; Avira has these on (films/video galleries off). Same list as
+// tenant_has_module in migration 0095.
+const AVIRA_MODULES = ['photos', 'crm'];
+
 const isPublicRoute = () => {
   const path = window.location.pathname;
   return path.startsWith('/questionnaire') || path.startsWith('/contract');
@@ -57,6 +61,9 @@ export const AuthProvider = ({ children }) => {
   // Read-at-use-time only -- see FinancialDefaultsCard.jsx's own comment for the
   // snapshot-discipline rationale (never joined back live into existing records).
   const [tenantDefaults, setTenantDefaults] = useState({ defaultVatPercent: 18, defaultDepositAmount: 500 });
+  // The studio row the photo galleries' screens read (src/pages/films, from Studio Plan): name, address in links
+  // (slug), logo and colour. Its own query, so a failure here never touches the financial defaults above.
+  const [tenant, setTenant] = useState(null);
 
   useEffect(() => {
     if (isPublicRoute()) {
@@ -128,6 +135,13 @@ export const AuthProvider = ({ children }) => {
             });
           })
           .catch(() => {});
+        supabase
+          .from('tenants')
+          .select('id, name, display_name_to_clients, logo_url, slug, accent_color')
+          .eq('id', profile.tenant_id)
+          .maybeSingle()
+          .then(({ data }) => { if (mounted && data) setTenant(data); })
+          .catch(() => {});
       }
     };
 
@@ -189,6 +203,9 @@ export const AuthProvider = ({ children }) => {
       isLoadingPublicSettings: false,
       authError,
       tenantDefaults,
+      tenant,
+      // Studio Plan's per-studio modules, fixed for Avira: photo galleries and the CRM on, films off.
+      hasModule: (key) => AVIRA_MODULES.includes(key),
       appPublicSettings: null,
       logout,
       navigateToLogin,

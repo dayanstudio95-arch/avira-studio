@@ -1,3 +1,5 @@
+const twColors = require('tailwindcss/colors');
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
     darkMode: ["class"],
@@ -10,6 +12,10 @@ module.exports = {
   			sm: 'calc(var(--radius) - 4px)'
   		},
   		colors: {
+  			// The photo galleries' screens (src/pages/films, from Studio Plan) paint with `brand-*` — there it is each
+  			// studio's colour, by default exactly Avira's yellow. Avira has one studio: brand = Tailwind's yellow, and
+  			// brand-fg the dark text on it (#111827).
+  			brand: { ...twColors.yellow, fg: '#111827' },
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',
   			card: {

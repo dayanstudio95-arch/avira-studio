@@ -18,6 +18,11 @@ export default defineConfig({
     }),
     react(),
   ],
+  // The photo galleries' screens (src/pages/films, from Studio Plan) share code with the gallery Worker:
+  // '@films-shared/x' is gallery-worker/shared/x, the same alias Studio Plan's hub uses.
+  resolve: {
+    alias: [{ find: '@films-shared', replacement: resolve(__dirname, 'gallery-worker/shared') }],
+  },
   // Two entry pages, one app (2026-10-05): chat.html is the iPhone-installable
   // "אווירה צ'אט" (its own manifest and home-screen name); index.html is the system.
   build: {

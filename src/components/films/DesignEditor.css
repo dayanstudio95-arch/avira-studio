@@ -1,0 +1,30 @@
+/* The photo gallery's design screen (ported from the Avira films app, 2026-09-27): mini covers on the tiles.
+   The same layouts as the couple's page, drawn small with this gallery's cover photo. */
+/* Mini covers on the tiles: the same layouts, drawn small with this gallery's cover photo. */
+.mini-cover { position: relative; width: 100%; aspect-ratio: 16 / 10; overflow: hidden; border-radius: 6px; background: #efece6; color: #fff; display: flex; align-items: flex-end; justify-content: center; }
+.mini-cover .mc-img { position: absolute; inset: 0; background: #555 var(--mc-img) center / cover no-repeat; }
+.mini-cover .mc-img::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 40%, rgba(0,0,0,0.5)); }
+.mini-cover b { position: relative; z-index: 1; font-size: 0.62rem; font-weight: 600; letter-spacing: 0.08em; margin: 0 0.4rem 0.5rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90%; }
+.mc-side { justify-content: flex-start; }
+.mc-novel { align-items: center; justify-content: flex-start; color: #2b2622; }
+.mc-novel .mc-img { inset-inline-start: 50%; }
+.mc-novel b { width: 44%; text-align: center; margin: 0; }
+.mc-vintage { color: #2b2622; }
+.mc-vintage .mc-img { bottom: 32%; }
+.mc-vintage .mc-img::after, .mc-novel .mc-img::after, .mc-journal .mc-img::after, .mc-stamp .mc-img::after { display: none; }
+.mc-frame, .mc-outline { align-items: center; }
+.mc-frame::after { content: ''; position: absolute; inset: 5px; border: 1px solid rgba(255,255,255,0.85); }
+.mc-frame b, .mc-outline b { margin: 0; }
+.mc-outline b { padding: 0.35rem 0.6rem; border: 1px solid rgba(255,255,255,0.85); }
+.mc-stripe { align-items: center; justify-content: flex-start; }
+.mc-stripe b { margin: 0 0.6rem; padding: 0.3rem 0; border-top: 1px solid #fff; border-bottom: 1px solid #fff; }
+.mc-divider { align-items: center; justify-content: flex-start; }
+.mc-divider::after { content: ''; position: absolute; top: 14%; bottom: 14%; inset-inline-start: 44%; width: 1px; background: rgba(255,255,255,0.85); }
+.mc-divider b { width: 44%; text-align: center; margin: 0; }
+.mc-journal { justify-content: flex-start; color: #2b2622; }
+.mc-journal .mc-img { inset: 8% 8% 28% 28%; }
+.mc-journal b { margin: 0 8% 0.4rem; }
+.mc-stamp { color: #2b2622; }
+.mc-stamp .mc-img { inset: 12% 34% 32% 34%; }
+.mc-stamp b { margin-bottom: 0.45rem; }
+.ds-frame iframe { border: 0; display: block; transform-origin: top right; }

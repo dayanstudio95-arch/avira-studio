@@ -1,0 +1,37 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Avira's photo galleries (2026-10-30, Studio Plan's films Worker brought over — docs/galleries-port/).
+  // Deliberately NOT "films" (the original films app, live in Avira's Cloudflare account) and NOT
+  // "studio-os-films" (Studio Plan's): deploying this must never overwrite either of them.
+  "name": "avira-gallery",
+  // Avira's own Cloudflare account (the one with the original films app, 8bb2678…). Pinned so a deploy can never
+  // land in Studio Plan's account (c59e01f9…), whatever login wrangler happens to have. Set on the first deploy
+  // (`npx wrangler whoami` lists the accounts); scripts/deploy.mjs refuses while it is the placeholder.
+  "account_id": "AVIRA_ACCOUNT_ID_PLACEHOLDER",
+  "main": "worker/index.ts",
+  // The couples' address: gallery.avira-studio.com — added once avira-studio.com's DNS is in this Cloudflare
+  // account (today it is at IONOS). Until then the Worker answers on its workers.dev address.
+  // "routes": [{ "pattern": "gallery.avira-studio.com", "custom_domain": true }],
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    // Couple pages go through the Worker too, for the WhatsApp preview card (worker/pages.ts).
+    "run_worker_first": ["/*", "!/assets/*", "!/models/*", "!/demo/*", "!/favicon.svg"]
+  },
+  // The clean-up, every hour (worker/cleanup.ts `nightly`): face data that must go, galleries 30 days in the
+  // trash, old rate-limit rows. Each run keeps to CLEANUP_MAX_SUBREQUESTS. The second line is Studio Plan's nightly
+  // film-link check (films are off here, so it finds nothing) — kept so the two Workers stay the same code.
+  "triggers": { "crons": ["0 * * * *", "20 0-3,22-23 * * *"] },
+  // Made on the first deploy (`npx wrangler kv namespace create KV`). Neither the original films app's namespace
+  // (63ffc8…) nor Studio Plan's (a38f86…) may ever appear here — scripts/deploy.mjs checks.
+  "kv_namespaces": [
+    { "binding": "KV", "id": "AVIRA_KV_PLACEHOLDER" }
+  ],
+  // CLEANUP_MAX_SUBREQUESTS: 45 fits the free Workers plan (50 per run); on the paid plan up to ~900.
+  "vars": { "CLOUD_MOCK": "", "CLEANUP_MAX_SUBREQUESTS": "45" },
+  // Errors and the Worker's own console lines stay; the per-request log (full URLs with the couples' and studio's
+  // link tokens, and headers) is off — as in Studio Plan (its fix plan P07).
+  "observability": { "enabled": true, "logs": { "enabled": true, "invocation_logs": false } }
+}

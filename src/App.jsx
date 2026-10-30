@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/sonner';
 import { ConfirmHost } from '@/components/ui/confirm-dialog';
@@ -61,6 +61,19 @@ const WorkOrders = lazy(() => import('./pages/WorkOrders'));
 // pages for the album_manager scoped role + full admin access, and the two public
 // no-login pages (portal + print-shop delivery), lazy-loaded like every other route.
 const AlbumOrders = lazy(() => import('./pages/AlbumOrders'));
+// Photo galleries (2026-10-30, from Studio Plan's films module — docs/galleries-port/). The couple's pages are
+// served by the gallery Worker (gallery-worker/); these are the studio's screens.
+const FilmsGalleries = lazy(() => import('./pages/films/FilmsGalleries'));
+const FilmsGalleryForm = lazy(() => import('./pages/films/FilmsGalleryForm'));
+const FilmsSettings = lazy(() => import('./pages/films/FilmsSettings'));
+
+// Avira has photo galleries only. Studio Plan's code links some places to /films (the Dropbox answer to
+// /films/settings, the bell's "gallery locked", the face-off notice's /films/<id>): each lands on the same
+// place under /photos, query and all.
+function FilmsToPhotos() {
+  const { pathname, search } = useLocation();
+  return <Navigate to={`${pathname.replace(/^\/films/, '/photos')}${search}`} replace />;
+}
 const AlbumOrderDetail = lazy(() => import('./pages/AlbumOrderDetail'));
 const AlbumDesignEditor = lazy(() => import('./pages/AlbumDesignEditor'));
 const AlbumCatalogSettings = lazy(() => import('./pages/AlbumCatalogSettings'));
@@ -274,6 +287,14 @@ const AuthenticatedApp = () => {
           <Route path="/AlbumOrders/:orderId/design" element={<AlbumDesignEditor />} />
           <Route path="/AlbumCatalogSettings" element={<AlbumCatalogSettings />} />
           <Route path="/AlbumGuideSettings" element={<AlbumGuideSettings />} />
+
+          {/* Photo galleries (owner/admin/studio_manager, like in Studio Plan). */}
+          <Route path="/photos" element={<FilmsGalleries key="pg" />} />
+          <Route path="/photos/new" element={<FilmsGalleryForm key="pn" />} />
+          <Route path="/photos/settings" element={<FilmsSettings key="ps" />} />
+          <Route path="/photos/:id" element={<FilmsGalleryForm key="pe" />} />
+          <Route path="/films" element={<FilmsToPhotos />} />
+          <Route path="/films/*" element={<FilmsToPhotos />} />
 
           <Route path="*" element={<PageNotFound />} />
         </Routes>

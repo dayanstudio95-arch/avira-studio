@@ -22,6 +22,8 @@ import { calculateNetProfit } from "../lib/profitCalculations";
 import { calculateEventFinancials } from "../lib/financialCalculations";
 import YearPicker from "@/components/common/YearPicker";
 import { useIsMobile } from "@/hooks/use-mobile";
+import GalleriesSummary from "@/components/films/GalleriesSummary";
+import { filmsConfigured } from "@/lib/filmsApi";
 
 export default function Dashboard() {
   const [events, setEvents] = useState([]);
@@ -416,6 +418,14 @@ export default function Dashboard() {
               <DashboardUnpaidCard events={events} staffMembers={staffMembers} onRefresh={loadEvents} />
               <RecentLeadsCard />
             </div>
+
+            {/* The photo galleries (2026-10-30, Studio Plan's 4th row): open, closing this week (extend right there),
+                albums the couples sent, the money of album orders. Only once the gallery site is set up. */}
+            {filmsConfigured() && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 sm:[&>*]:h-[245px] gap-3 sm:gap-4 md:gap-5 mb-6 empty:hidden" data-testid="dash-row-galleries">
+                <GalleriesSummary compact embed />
+              </div>
+            )}
 
             {searchAndFilterBar}
           </>

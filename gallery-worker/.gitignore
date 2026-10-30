@@ -1,0 +1,14 @@
+node_modules
+dist
+.wrangler
+test-results
+playwright-report
+.DS_Store
+dist-demo
+demo-films.json
+# copied from node_modules at build time (vite.config.ts)
+public/models/*.bin
+public/models/*-weights_manifest.json
+# local worker settings (secrets) — never committed
+.dev.vars
+.dev.vars.*
