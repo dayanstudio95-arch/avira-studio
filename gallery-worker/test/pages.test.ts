@@ -86,6 +86,15 @@ describe('the preview card of a gallery', () => {
     expect(r?.text).toContain('<link rel="apple-touch-icon" href="https://cdn.test/logo.png">');
     expect(r?.text).toContain('name="robots"');
   });
+  it('a date or venue the studio hid stays off the card (Avira, 0097)', async () => {
+    setup();
+    await store.putGallery(gallery('0123456789abcdef', { hideVenue: true }));
+    expect((await html('/watch/0123456789abcdef'))?.text).toContain('<title>Noa &amp; Tom · 18.9.26</title>');
+    await store.putGallery(gallery('0123456789abcde1', { hideDate: true }));
+    expect((await html('/watch/0123456789abcde1'))?.text).toContain('<title>Noa &amp; Tom · Test hall</title>');
+    await store.putGallery(gallery('0123456789abcde2', { hideDate: true, hideVenue: true }));
+    expect((await html('/watch/0123456789abcde2'))?.text).toContain('<title>Noa &amp; Tom</title>');
+  });
   it("the couple's own studio name for this gallery wins", async () => {
     setup();
     await store.putGallery(gallery('0123456789abcdef', { studioName: 'Other name' }));

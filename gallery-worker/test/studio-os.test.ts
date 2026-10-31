@@ -186,6 +186,19 @@ describe('what the couple receives', () => {
     expect(view.folderDownloadUrl).toBe('');
   });
 
+  it('a date or venue the studio hid is not sent; showing it again brings it back (Avira, 0097)', async () => {
+    const { store, env } = setup();
+    const s = await getSettings(env, store, A);
+    const g = await createGallery(store, env, s, { coupleName: 'Dana & Avi', date: '2026-10-19', venue: 'שפיים', hideVenue: true }, A);
+    expect(coupleView(g, s, env)).toMatchObject({ date: '2026-10-19', venue: '' });
+    const both = await updateGallery(store, env, s, g, { hideDate: true });
+    expect(coupleView(both, s, env)).toMatchObject({ date: '', venue: '' });
+    // The studio still has them.
+    expect(both).toMatchObject({ date: '2026-10-19', venue: 'שפיים', hideDate: true, hideVenue: true });
+    const shown = await updateGallery(store, env, s, both, { hideDate: false, hideVenue: false });
+    expect(coupleView(shown, s, env)).toMatchObject({ date: '2026-10-19', venue: 'שפיים' });
+  });
+
   it('the Dropbox "download all" goes through our route too', async () => {
     const { store, env } = setup();
     const s = await getSettings(env, store, A);

@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useLocation } from "react-router-dom";
-import { Clapperboard, Copy, ExternalLink, Images, LayoutGrid, List, Loader2, Pencil, Plus, RotateCcw, Search, Timer, Trash2, Upload } from "lucide-react";
+import { Clapperboard, Copy, ExternalLink, Images, LayoutGrid, List, Loader2, Pencil, Plus, RotateCcw, Search, Send, Timer, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { parseEventList } from "@films-shared/event";
 import { withAmpersand } from "@films-shared/names";
@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { confirmDialog } from "@/lib/confirmDialog";
+import { eventsSentState, sendGalleryToCouple } from "@/lib/gallerySend";
 
 // The couples' galleries: photo galleries under "גלריות" (/photos), film galleries under "סרטים" (/films).
 // Ported from the films app's admin: same filters, month grouping and actions; data from the
@@ -137,6 +138,27 @@ export default function FilmsGalleries() {
   // Reopened galleries (extended, restored) whose face search went off when its data was deleted (fix plan P68).
   const [faceOff, setFaceOff] = useState([]);
   const slug = tenant?.slug;
+  // "שליחה לזוג" (Avira, 2026-10-31): whether each linked event's couple already got their final link, by event id.
+  const canEvents = hasModule("crm");
+  const [sentByEvent, setSentByEvent] = useState({});
+  const [sending, setSending] = useState("");
+  const eventKey = (list || []).map((g) => g.eventId || "").join(",");
+  useEffect(() => {
+    if (!canEvents || !eventKey) return;
+    let live = true;
+    eventsSentState(eventKey.split(",")).then((m) => live && setSentByEvent(m));
+    return () => {
+      live = false;
+    };
+  }, [canEvents, eventKey]);
+  const sendToCouple = async (g) => {
+    setSending(g.id);
+    try {
+      if (await sendGalleryToCouple(g.eventId, coupleLink(slug, g.id))) setSentByEvent((m) => ({ ...m, [g.eventId]: true }));
+    } finally {
+      setSending("");
+    }
+  };
   // Table or cards (like Pixieset's collections), remembered on this computer.
   const [cards, setCards] = useState(readCards);
   const toggleCards = (on) => {
@@ -429,6 +451,9 @@ export default function FilmsGalleries() {
                         </Button>
                       ) : (
                         <div className="flex gap-1">
+                          {canEvents && g.eventId && !isEmpty(g) && (
+                            <IconButton onClick={() => sending !== g.id && sendToCouple(g)} title={sentByEvent[g.eventId] ? "נשלח לזוג (לחיצה שולחת שוב, אחרי אישור)" : "שליחת הקישור לזוג בוואטסאפ"} icon={Send} />
+                          )}
                           <IconButton onClick={() => copyText(link).then((ok) => ok && toast.success("הקישור הועתק"))} title="העתקת הקישור לזוג" icon={Copy} />
                           <IconButton onClick={() => openAsCouple(g)} title="פתיחה כמו הזוג" icon={ExternalLink} />
                         </div>
@@ -524,10 +549,26 @@ export default function FilmsGalleries() {
                                 <Link to={galleryPath(g)}>{kindOf(g) === "photos" ? "הוספת תמונות" : "הוספת סרטים"}</Link>
                               </Button>
                             ) : (
-                              <Button size="sm" className="bg-brand-400 hover:bg-brand-500 text-brand-fg" onClick={() => copyText(link).then((ok) => ok && toast.success("הקישור הועתק"))}>
-                                <Copy className="w-3.5 h-3.5 ml-1" />
-                                קישור לזוג
-                              </Button>
+                              <>
+                                {canEvents && g.eventId && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={sending === g.id}
+                                    onClick={() => sendToCouple(g)}
+                                    className={sentByEvent[g.eventId] ? "border-green-500/50 bg-green-500/20 text-green-300 hover:bg-green-500/30" : "border-purple-500/40 bg-purple-600/20 text-purple-300 hover:bg-purple-600/30"}
+                                    title={sentByEvent[g.eventId] ? "הזוג כבר קיבל את הקישור. לחיצה שולחת שוב (אחרי אישור)" : "הקישור לזוג בוואטסאפ, עם ההודעה של סטטוס עבודה"}
+                                    data-testid="row-send-to-couple"
+                                  >
+                                    <Send className="w-3.5 h-3.5 ml-1" />
+                                    {sending === g.id ? "שולח…" : sentByEvent[g.eventId] ? "✓ נשלח" : "לזוג"}
+                                  </Button>
+                                )}
+                                <Button size="sm" className="bg-brand-400 hover:bg-brand-500 text-brand-fg" onClick={() => copyText(link).then((ok) => ok && toast.success("הקישור הועתק"))}>
+                                  <Copy className="w-3.5 h-3.5 ml-1" />
+                                  קישור לזוג
+                                </Button>
+                              </>
                             )}
                             <IconButton onClick={() => openAsCouple(g)} title="פתיחה כמו הזוג" icon={ExternalLink} />
                             <IconButton onClick={() => setExtending([g])} title="הארכה" icon={Timer} />

@@ -656,7 +656,7 @@ export type GalleryGuard = Partial<Record<'guestId' | 'printToken' | 'linkedId' 
 const GALLERY_WRITABLE: (keyof GalleryFields)[] = [
   'coupleName', 'studioName', 'date', 'venue', 'days', 'expiresAt', 'hasCover', 'folderUrl', 'folderProvider', 'films',
   'photoCount', 'linkedId', 'music', 'guestId', 'password', 'downloadPin', 'printToken', 'printTokenAt', 'deletedAt', 'coverKey', 'hasThumb',
-  'coverVersion', 'eventId',
+  'coverVersion', 'eventId', 'hideDate', 'hideVenue',
 ];
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);

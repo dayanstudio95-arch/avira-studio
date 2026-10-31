@@ -117,6 +117,16 @@ async function scenario(s: Store): Promise<Step[]> {
   await step('patch with a guard that holds', async () => (await s.patchGallery(T1, G.films, { guestId: 'd000000000000002' }, { guestId: null }))?.guestId);
   await step('patch with a guard that fails', () => s.patchGallery(T1, G.films, { guestId: 'd000000000000003' }, { guestId: null }));
   await step('patch nothing', async () => (await s.patchGallery(T1, G.films, {}))?.coupleName);
+  // Avira 0097: the date and venue kept off the couple's page, and shown again.
+  await step('hide the date and venue', async () => {
+    const g = await s.patchGallery(T1, G.films, { hideDate: true, hideVenue: true });
+    return [g?.hideDate === true, g?.hideVenue === true];
+  });
+  await step('show the date and venue again', async () => {
+    await s.patchGallery(T1, G.films, { hideDate: false, hideVenue: false });
+    const g = await s.getGallery(G.films);
+    return [g?.hideDate === true, g?.hideVenue === true];
+  });
   await s.countEvent(G.films, 'view');
   await s.countEvent(G.films, 'view');
   await s.countEvent(G.films, 'guest_view');
@@ -475,6 +485,8 @@ describe('MemoryStore and SupabaseStore (on the migrations) give the same answer
     expect(at('mit4mit: read back')).toEqual({ mit4mitBizId: '71071', mit4mitRemoved: ['id:9'], mit4mitLinkedAt: '2026-09-30T10:00:00.000Z' });
     expect(at('patch from another studio')).toBeNull();
     expect(at('patch with a guard that fails')).toBeNull();
+    expect(at('hide the date and venue')).toEqual([true, true]);
+    expect(at('show the date and venue again')).toEqual([false, false]);
     expect(at('counters')).toEqual([2, 1, 1]);
     expect(at('photos: a stale version is refused')).toBe(false);
     expect(at('photos: read back')).toEqual({ n: 3, version: 2 });

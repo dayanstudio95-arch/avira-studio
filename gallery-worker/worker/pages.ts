@@ -57,7 +57,7 @@ async function galleryMeta(store: Store, id: string): Promise<Meta | null> {
   const studio = g.studioName || studioNameOf(tenant);
   const app = { manifest: `/api/manifest/${id}`, appTitle: g.coupleName, icon: tenant.logoUrl || '/favicon.svg' };
   if (isExpired(g)) return { title: `${g.coupleName} · ${studio}`, description: 'הגלריה נסגרה', ...app };
-  const when = [shortDate(g.date), g.venue].filter(Boolean).join(' · ');
+  const when = [g.hideDate ? '' : shortDate(g.date), g.hideVenue ? '' : g.venue].filter(Boolean).join(' · ');
   return {
     title: `${g.coupleName}${when ? ` · ${when}` : ''}`,
     description: `${kindOf(g) === 'photos' ? 'גלריית התמונות' : 'הסרטים מהחתונה'} · ${studio}`,

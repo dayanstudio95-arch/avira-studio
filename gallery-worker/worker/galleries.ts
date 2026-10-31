@@ -37,6 +37,8 @@ export interface GalleryInput {
   studioName?: string;
   date?: string;
   venue?: string;
+  hideDate?: boolean;
+  hideVenue?: boolean;
   days?: number;
   expiresAt?: string;
   folderUrl?: string;
@@ -153,6 +155,8 @@ function applyInput(g: Gallery, input: GalleryInput, settings: Settings, env: En
     g.date = date;
   }
   if (input.venue !== undefined) g.venue = String(input.venue).trim() || undefined;
+  if (input.hideDate !== undefined) g.hideDate = input.hideDate === true;
+  if (input.hideVenue !== undefined) g.hideVenue = input.hideVenue === true;
   if (input.eventId !== undefined) g.eventId = input.eventId ? String(input.eventId) : undefined;
   if (input.folderUrl !== undefined) {
     const raw = String(input.folderUrl).trim();
@@ -418,8 +422,8 @@ export function coupleView(g: Gallery, settings: Settings, env: Env, download = 
     id: g.id,
     kind: kindOf(g),
     coupleName: g.coupleName,
-    date: g.date,
-    venue: g.venue ?? '',
+    date: g.hideDate ? '' : g.date,
+    venue: g.hideVenue ? '' : (g.venue ?? ''),
     expiresAt: g.expiresAt,
     daysLeft: daysLeft(g),
     expired,

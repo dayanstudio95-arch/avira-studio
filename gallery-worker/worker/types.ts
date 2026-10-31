@@ -142,6 +142,9 @@ export interface Gallery {
   date: string;
   /** Where the wedding was, shown under the date. */
   venue?: string;
+  /** Kept off the couple's and the guests' pages (Avira, 0097); the studio's screens still show it. */
+  hideDate?: boolean;
+  hideVenue?: boolean;
   /**
    * The studio's event (the hub's events, crm studios) this gallery belongs to (fix plan P57): set from the hub's
    * gallery form only after the Worker checked the event is this studio's (the database checks it too, 0139). The

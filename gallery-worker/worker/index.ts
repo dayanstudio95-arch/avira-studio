@@ -1113,7 +1113,7 @@ route('GET', '/api/watch/:id', async ({ request, env, store, params, url }) => {
     // Behind a password: only the names, until it's typed.
     return json(
       {
-        id: view.id, kind: view.kind, coupleName: g.coupleName, date: g.date, venue: view.venue, studioName: view.studioName, logoUrl: view.logoUrl, accentColor: view.accentColor, expired: view.expired, daysLeft: view.daysLeft, slug: tenant.slug, locked: true, role,
+        id: view.id, kind: view.kind, coupleName: g.coupleName, date: view.date, venue: view.venue, studioName: view.studioName, logoUrl: view.logoUrl, accentColor: view.accentColor, expired: view.expired, daysLeft: view.daysLeft, slug: tenant.slug, locked: true, role,
         // Avira fix (2026-10-30): a closed gallery shows "הגלריה נסגרה" before the password, so it needs its closing
         // day and the studio's contact — without them it read "הסתיימה ב־." with no date and no way to reach the studio.
         // Neither is secret; no photo, film or link is given.

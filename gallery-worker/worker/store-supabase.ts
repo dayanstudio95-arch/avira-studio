@@ -925,6 +925,8 @@ function toGallery(r: Row): Gallery {
     studioName: (r.studio_name_override as string) || undefined,
     date: String(r.event_date ?? ''),
     venue: (r.venue as string) || undefined,
+    ...(r.hide_date === true ? { hideDate: true } : {}),
+    ...(r.hide_venue === true ? { hideVenue: true } : {}),
     ...(r.event_id ? { eventId: String(r.event_id) } : {}),
     days: Number(r.days ?? 0),
     createdAt: String(r.created_at),
@@ -993,10 +995,12 @@ const GALLERY_COLUMNS: Record<keyof GalleryFields, [string, (v: never) => unknow
   hasThumb: ['has_thumb', (v?: boolean) => v === true],
   coverVersion: ['cover_version', (v?: number) => v ?? null],
   eventId: ['event_id', (v?: string) => v ?? null],
+  hideDate: ['hide_date', (v?: boolean) => v === true],
+  hideVenue: ['hide_venue', (v?: boolean) => v === true],
 };
 
 /** Written only when it has a value: a copy read before the column existed never clears it. */
-const ONLY_WHEN_SET = new Set<keyof GalleryFields>(['coverVersion']);
+const ONLY_WHEN_SET = new Set<keyof GalleryFields>(['coverVersion', 'hideDate', 'hideVenue']);
 
 /** Only the fields present in `fields` (a field set to undefined is cleared, never skipped). */
 function galleryColumns(fields: GalleryFields): Row {

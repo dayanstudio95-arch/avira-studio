@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { Copy, ExternalLink, Loader2 } from "lucide-react";
+import { Copy, ExternalLink, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 import { sortByTag } from "@films-shared/dropbox";
 import { detectLink, PROVIDER_NAMES } from "@films-shared/providers";
@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDateShort, formatDateTime, israelToday } from "@/lib/dates";
 import { confirmDialog } from "@/lib/confirmDialog";
+import { sendGalleryToCouple } from "@/lib/gallerySend";
 
 // Create / edit one couple's gallery (/films/new, /films/:id): films or photos. Ported from
 // the films app's admin: folder loading fills names/date/venue from the folder name,
@@ -52,18 +53,49 @@ function Field({ label, hint, children }) {
 
 const inputCls = "bg-gray-800 border-gray-700 text-white";
 
+// The date and venue can stay off the couple's and guests' pages (Avira, 0097); the studio still sees them.
+function ShowOnPage({ checked, onChange, testId }) {
+  return (
+    <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} data-testid={testId} />
+      להציג בקישור לזוג
+    </label>
+  );
+}
+
 // The event search (an ilike pattern): % * and \ become "_" (one character), so typing them never matches everything.
 const cleanEventSearch = (text) => String(text || "").replace(/[%*\\]/g, "_").replace(/\s+/g, " ").trim().slice(0, 60);
+
+const EVENT_FIELDS = "id, couple_names, date, venue";
 
 /**
  * The studio's event this gallery belongs to (crm studios; fix plan P57): the couple's album order then joins the
  * order the studio opened for that wedding instead of making a second one. The films Worker checks the event is
- * this studio's.
+ * this studio's. Avira (2026-10-31, the owner's request): before anything is typed it lists the weddings that
+ * already happened and didn't get their final link yet (work status: "לינק סופי" empty, "→ זוג" not sent);
+ * picking one fills the names, date and venue, and "שליחה לזוג" sends through it.
  */
 function EventPicker({ eventId, label, onPick }) {
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [found, setFound] = useState([]);
+  const [waiting, setWaiting] = useState([]);
+  useEffect(() => {
+    if (eventId) return;
+    let live = true;
+    supabase
+      .from("events")
+      .select(`${EVENT_FIELDS}, final_link, final_done_manual`)
+      .lte("date", israelToday())
+      .order("date", { ascending: false })
+      .limit(300)
+      .then(({ data, error }) => {
+        if (live && !error) setWaiting((data || []).filter((ev) => !String(ev.final_link || "").trim() && ev.final_done_manual !== true).slice(0, 40));
+      });
+    return () => {
+      live = false;
+    };
+  }, [eventId]);
   useEffect(() => {
     const t = setTimeout(() => setQuery(cleanEventSearch(search)), 250);
     return () => clearTimeout(t);
@@ -76,7 +108,7 @@ function EventPicker({ eventId, label, onPick }) {
     let live = true;
     supabase
       .from("events")
-      .select("id, couple_names, date")
+      .select(EVENT_FIELDS)
       .ilike("couple_names", `%${query}%`)
       .order("date", { ascending: false })
       .limit(10)
@@ -98,21 +130,23 @@ function EventPicker({ eventId, label, onPick }) {
         </div>
       ) : (
         <>
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="חיפוש לפי שם הזוג" className={inputCls} data-testid="gallery-event-search" />
-          {found.length > 0 && (
-            <div className="max-h-40 overflow-y-auto rounded-lg border border-gray-800 p-1">
-              {found.map((ev) => (
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="חיפוש לפי שם הזוג (בכל האירועים)" className={inputCls} data-testid="gallery-event-search" />
+          {!query && waiting.length > 0 && <p className="text-xs text-gray-400">אירועים שעוד לא קיבלו את הלינק הסופי:</p>}
+          {(query ? found : waiting).length > 0 && (
+            <div className="max-h-48 overflow-y-auto rounded-lg border border-gray-800 p-1">
+              {(query ? found : waiting).map((ev) => (
                 <button
                   key={ev.id}
                   type="button"
                   className="block w-full rounded p-1.5 text-right text-sm text-gray-300 hover:bg-gray-800"
                   onClick={() => {
-                    onPick(ev.id, `${ev.couple_names || ""}${ev.date ? ` · ${formatDateShort(ev.date)}` : ""}`);
+                    onPick(ev.id, `${ev.couple_names || ""}${ev.date ? ` · ${formatDateShort(ev.date)}` : ""}`, ev);
                     setSearch("");
                   }}
                   data-testid="gallery-event-option"
                 >
                   {ev.couple_names} {ev.date ? `· ${formatDateShort(ev.date)}` : ""}
+                  {ev.venue ? <span className="text-gray-500"> · {ev.venue}</span> : null}
                 </button>
               ))}
             </div>
@@ -159,6 +193,9 @@ export default function FilmsGalleryForm() {
   const [ampDeclined, setAmpDeclined] = useState("");
   const [studioName, setStudioName] = useState("");
   const [venue, setVenue] = useState("");
+  // Kept off the couple's page (Avira, 0097); the studio's screens still show them.
+  const [hideDate, setHideDate] = useState(false);
+  const [hideVenue, setHideVenue] = useState(false);
   const [dateTouched, setDateTouched] = useState(false);
   const [date, setDate] = useState(todayIso());
   const [days, setDays] = useState(30);
@@ -169,6 +206,8 @@ export default function FilmsGalleryForm() {
   const [eventId, setEventId] = useState("");
   const [eventLabel, setEventLabel] = useState("");
   const [eventTouched, setEventTouched] = useState(false);
+  // Whether the linked event's couple already got their final link (work status "→ זוג").
+  const [eventSent, setEventSent] = useState(false);
   const [folderUrl, setFolderUrl] = useState("");
   const [films, setFilms] = useState([]);
   const [cover, setCover] = useState("");
@@ -203,6 +242,8 @@ export default function FilmsGalleryForm() {
         setCoupleName(g.coupleName);
         setStudioName(g.studioName || "");
         setVenue(g.venue || "");
+        setHideDate(g.hideDate === true);
+        setHideVenue(g.hideVenue === true);
         setDateTouched(true);
         setDate(g.date || todayIso());
         setDays(g.days);
@@ -215,10 +256,14 @@ export default function FilmsGalleryForm() {
         if (g.eventId) {
           supabase
             .from("events")
-            .select("id, couple_names, date")
+            .select("id, couple_names, date, final_done_manual")
             .eq("id", g.eventId)
             .maybeSingle()
-            .then(({ data }) => data && setEventLabel(`${data.couple_names || ""}${data.date ? ` · ${formatDateShort(data.date)}` : ""}`));
+            .then(({ data }) => {
+              if (!data) return;
+              setEventLabel(`${data.couple_names || ""}${data.date ? ` · ${formatDateShort(data.date)}` : ""}`);
+              setEventSent(data.final_done_manual === true);
+            });
         }
         setPassword(g.password || "");
         setDownloadPin(g.downloadPin || "");
@@ -317,6 +362,8 @@ export default function FilmsGalleryForm() {
         studioName,
         date,
         venue,
+        hideDate,
+        hideVenue,
         ...(isNew || daysTouched ? { days } : {}),
         ...(seesSecrets ? { password, downloadPin } : {}),
         ...(canEvents && eventTouched ? { eventId } : {}),
@@ -371,6 +418,34 @@ export default function FilmsGalleryForm() {
   // "Open as the couple" skips the password and the download code (a 12-hour studio pass).
   const previewLink = gallery ? studioPreviewLink(slug, gallery.id, gallery.previewToken) : "";
   const guestLink = gallery?.guestId ? coupleLink(slug, gallery.guestId) : "";
+  // "שליחה לזוג" (Avira, 2026-10-31): through the event saved with the gallery.
+  const sendToCouple = async () => {
+    if (eventTouched && eventId !== (gallery?.eventId || "")) {
+      toast.error("קודם לשמור את הגלריה עם האירוע שנבחר");
+      return;
+    }
+    setBusy("send");
+    try {
+      if (await sendGalleryToCouple(gallery?.eventId, link)) setEventSent(true);
+    } finally {
+      setBusy("");
+    }
+  };
+  const pickEvent = (idPicked, labelPicked, ev) => {
+    setEventId(idPicked);
+    setEventLabel(labelPicked);
+    setEventTouched(true);
+    setEventSent(false);
+    if (!ev) return;
+    // A new gallery takes the event's names, date and venue; an existing one only fills what is empty.
+    if (ev.couple_names && (isNew || !coupleName.trim())) setCoupleName(withAmpersand(ev.couple_names));
+    const d = String(ev.date || "").slice(0, 10);
+    if (d && (isNew || !date)) {
+      setDate(d);
+      setDateTouched(true);
+    }
+    if (ev.venue && (isNew || !venue.trim())) setVenue(ev.venue);
+  };
 
   return (
     <div className="min-h-screen bg-gray-950 p-4 md:p-8" dir="rtl">
@@ -378,7 +453,21 @@ export default function FilmsGalleryForm() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-bold text-white">{isNew ? (kind === "photos" ? "גלריית תמונות חדשה" : "גלריית סרטים חדשה") : coupleName || "עריכת גלריה"}</h1>
           {gallery && (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              {canEvents && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy === "send"}
+                  onClick={sendToCouple}
+                  className={eventSent ? "border-green-500/50 bg-green-500/20 text-green-300 hover:bg-green-500/30" : "border-purple-500/40 bg-purple-600/20 text-purple-300 hover:bg-purple-600/30"}
+                  title={gallery.eventId ? "הקישור לזוג בוואטסאפ, עם ההודעה של סטטוס עבודה" : "קודם לבחור את האירוע של הזוג"}
+                  data-testid="send-to-couple"
+                >
+                  <Send className="w-4 h-4 ml-2" />
+                  {busy === "send" ? "שולח…" : eventSent ? "✓ נשלח לזוג" : "שליחה לזוג"}
+                </Button>
+              )}
               <Button type="button" className="bg-brand-400 hover:bg-brand-500 text-brand-fg" onClick={() => copyText(link).then((ok) => ok && toast.success("הקישור הועתק"))}>
                 <Copy className="w-4 h-4 ml-2" />
                 העתקת קישור לזוג
@@ -411,6 +500,16 @@ export default function FilmsGalleryForm() {
 
         <Section title="פרטי הזוג">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {canEvents && (
+              <div className="md:col-span-2">
+                <Field
+                  label="האירוע של הזוג"
+                  hint='בחירת האירוע ממלאת את השמות, התאריך והאולם. דרכו "שליחה לזוג" שולח את הקישור בוואטסאפ, כמו בסטטוס עבודה, והשורה שם מתעדכנת. גם אלבום שהזוג מעצב מצטרף להזמנה של האירוע.'
+                >
+                  <EventPicker eventId={eventId} label={eventLabel} onPick={pickEvent} />
+                </Field>
+              </div>
+            )}
             <Field label="שמות הזוג (כפי שיופיע על השער)">
               <Input value={coupleName} onChange={(e) => setCoupleName(e.target.value)} placeholder="נועה & תומר" required className={inputCls} />
               {ampSuggestion && (
@@ -428,6 +527,7 @@ export default function FilmsGalleryForm() {
             </Field>
             <Field label="אולם / מקום (מוצג מתחת לתאריך)">
               <Input value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="חוות אלבני" className={inputCls} />
+              <ShowOnPage checked={!hideVenue} onChange={(on) => setHideVenue(!on)} testId="show-venue" />
             </Field>
             <Field label="תאריך החתונה">
               <Input
@@ -439,6 +539,7 @@ export default function FilmsGalleryForm() {
                 }}
                 className={inputCls}
               />
+              <ShowOnPage checked={!hideDate} onChange={(on) => setHideDate(!on)} testId="show-date" />
             </Field>
             <Field label="ימי גישה" hint={gallery ? `נסגרת ב־${formatDateShort(gallery.expiresAt)}` : "נספר מרגע היצירה"}>
               <Input
@@ -457,19 +558,6 @@ export default function FilmsGalleryForm() {
             <Field label="שם סטודיו אחר לזוג הזה (לא חובה)" hint={`ריק = שם הסטודיו מפרטי הסטודיו (${defaultStudio}).`}>
               <Input value={studioName} onChange={(e) => setStudioName(e.target.value)} placeholder={defaultStudio} className={inputCls} />
             </Field>
-            {canEvents && (
-              <Field label="האירוע של הזוג (לא חובה)" hint="כשהזוג שולח אלבום שעיצב, הוא מצטרף להזמנת האלבום הפתוחה של האירוע, בלי הזמנה שנייה.">
-                <EventPicker
-                  eventId={eventId}
-                  label={eventLabel}
-                  onPick={(idPicked, labelPicked) => {
-                    setEventId(idPicked);
-                    setEventLabel(labelPicked);
-                    setEventTouched(true);
-                  }}
-                />
-              </Field>
-            )}
           </div>
         </Section>
 
