@@ -516,7 +516,11 @@ test('photos: the couple browses sets, opens photos, hearts by name, downloads; 
   await expect(couple.getByTestId('pg-title')).toHaveText('נועה & איתי');
   await expect(couple.getByTestId('pg-cover')).toHaveAttribute('style', new RegExp(`${loaded.items[2].key}\\?s=l`));
   await couple.getByTestId('pg-enter').click();
-  await expect(couple.getByTestId('pg-photo')).toHaveCount(29);
+  // Avira: no "everything" tab — the page opens on the first set (התארגנות, 10 photos).
+  await expect(couple.getByTestId('pg-tabs').getByText('הכל', { exact: true })).toHaveCount(0);
+  await expect(couple.getByTestId('pg-tab').first()).toHaveClass(/on/);
+  await expect(couple.getByTestId('pg-other-tab')).toHaveCount(0);
+  await expect(couple.getByTestId('pg-photo')).toHaveCount(10);
   await expect(couple.getByTestId('pg-expiry')).toContainText('פתוחה');
   // Every photo's address has the gallery's generation (P66): the browser keeps it a year, a new file is a new address.
   const srcs = await couple.getByTestId('pg-photo').locator('img').evaluateAll((els) => els.map((e) => e.getAttribute('src') ?? ''));
@@ -530,14 +534,15 @@ test('photos: the couple browses sets, opens photos, hearts by name, downloads; 
   await couple.getByTestId('pg-tab').filter({ hasText: 'מסיבה' }).click();
   await expect(couple.getByTestId('pg-photo')).toHaveCount(9);
   expect(couple.url()).toContain('set=');
-  await couple.getByTestId('pg-tabs').getByText('הכל').click();
+  await couple.getByTestId('pg-tab').first().click();
+  await expect(couple.getByTestId('pg-photo')).toHaveCount(10);
 
   // Full screen: moves with the arrows; Back closes it and the gallery stays.
   await couple.getByTestId('pg-photo').first().locator('img').click();
-  await expect(couple.getByTestId('lb-count')).toHaveText('1 / 29');
+  await expect(couple.getByTestId('lb-count')).toHaveText('1 / 10');
   expect(couple.url()).toContain('photo=');
   await couple.keyboard.press('ArrowLeft');
-  await expect(couple.getByTestId('lb-count')).toHaveText('2 / 29');
+  await expect(couple.getByTestId('lb-count')).toHaveText('2 / 10');
   // The first heart asks who is choosing.
   await couple.getByTestId('lb-fav').click();
   await couple.getByTestId('who-name').fill('מאי');
@@ -570,11 +575,25 @@ test('photos: the couple browses sets, opens photos, hearts by name, downloads; 
   expect(admin.favorites).toHaveLength(3);
   expect(Object.values(admin.favBy).flat()).toEqual(['מאי', 'מאי', 'מאי']);
 
-  // A link to one photo opens it (the terms are remembered on this device).
+  // A link to one photo opens it, in its own set even when the link has no set (the terms are remembered on this device).
   await couple.goto(`/friend/${g.id}?photo=${loaded.items[4].key}`);
-  await expect(couple.getByTestId('lb-count')).toHaveText('5 / 29');
+  await expect(couple.getByTestId('lb-count')).toHaveText('5 / 10');
   await couple.keyboard.press('Escape');
   await expect(couple.getByTestId('lightbox')).toHaveCount(0);
+
+  // Photos in no set have their own tab at the end; it goes when the last of them is put in a set.
+  await request.put(`/api/admin/galleries/${g.id}/photos`, { headers: OWNER, data: { items: { [loaded.items[0].key]: { set: null }, [loaded.items[1].key]: { set: null } } } });
+  await couple.goto(`/friend/${g.id}?set=more`);
+  await expect(couple.getByTestId('pg-other-tab')).toHaveText('תמונות נוספות');
+  await expect(couple.getByTestId('pg-other-tab')).toHaveClass(/on/);
+  await expect(couple.getByTestId('pg-photo')).toHaveCount(2);
+  await couple.getByTestId('pg-tab').first().click();
+  await expect(couple.getByTestId('pg-photo')).toHaveCount(8);
+  const firstSet = admin.items.find((i: { key: string; set?: string }) => i.key === loaded.items[2].key).set;
+  await request.put(`/api/admin/galleries/${g.id}/photos`, { headers: OWNER, data: { items: { [loaded.items[0].key]: { set: firstSet }, [loaded.items[1].key]: { set: firstSet } } } });
+  await couple.goto(`/friend/${g.id}?set=more`);
+  await expect(couple.getByTestId('pg-other-tab')).toHaveCount(0);
+  await expect(couple.getByTestId('pg-photo')).toHaveCount(10);
 
   // Closed: the couple is told, and the photos stop.
   await request.put(`/api/admin/galleries/${g.id}`, { headers: OWNER, data: { expiresAt: '2026-01-01T00:00:00.000Z' } });
@@ -660,14 +679,14 @@ test('photos: people heart by name, the studio song plays in the slideshow, a ZI
   await mom.p.getByTestId('pg-person').filter({ hasText: 'מאי' }).click();
   await expect(mom.p.getByTestId('pg-photo')).toHaveCount(2);
 
-  // Slideshow of the whole gallery, with the song.
+  // Slideshow of the open set (Avira: the page opens on the first set, 10 photos), with the song.
   const p = bride.p;
   await p.getByTestId('pg-slideshow').click();
   await expect(p.getByTestId('slideshow')).toBeVisible();
-  await expect(p.getByTestId('ss-count')).toHaveText('1 / 30');
+  await expect(p.getByTestId('ss-count')).toHaveText('1 / 10');
   await expect(p.locator('.slideshow audio')).toHaveAttribute('src', withMusic.photos.music);
   await p.getByTestId('ss-next').click();
-  await expect(p.getByTestId('ss-count')).toHaveText('2 / 30');
+  await expect(p.getByTestId('ss-count')).toHaveText('2 / 10');
   await p.keyboard.press('Escape');
   await expect(p.getByTestId('slideshow')).toHaveCount(0);
 
@@ -1429,8 +1448,8 @@ test('choose several photos: hearts, Instagram and a personal list at once; keys
   await expect(p.getByTestId('pg-list-tab')).toContainText('התמונות של אופק');
   await expect(p.getByTestId('pg-list-tab')).toContainText('2');
 
-  // Full screen: 1 = heart, 2 = Instagram, 3 = the list in use.
-  await p.getByTestId('pg-photo').nth(10).locator('img').click();
+  // Full screen: 1 = heart, 2 = Instagram, 3 = the list in use (photo 9 of the first set's 10, the page opens on it).
+  await p.getByTestId('pg-photo').nth(8).locator('img').click();
   await expect(p.getByTestId('lightbox')).toBeVisible();
   await p.keyboard.press('1');
   await expect(p.getByTestId('pg-fav-count')).toHaveText('5');

@@ -31,6 +31,8 @@ async function inParts<T>(keys: string[], send: (part: string[]) => Promise<T>):
 }
 
 const ALL = '__all';
+/** The photos in no set, in a gallery that has sets (there is no "everything" tab then). */
+const OTHER = '__other';
 const INSTA = '__insta';
 const FAV = '__fav';
 /** A personal list's tab: "list:<id>". */
@@ -492,15 +494,29 @@ export function Grid({
   );
 }
 
-const TAB_WORD: Record<string, string> = { [FAV]: 'favorites', [INSTA]: 'instagram' };
+const TAB_WORD: Record<string, string> = { [FAV]: 'favorites', [INSTA]: 'instagram', [OTHER]: 'more' };
 
-function tabFromUrl(sets: { id: string }[]): string {
-  const v = new URLSearchParams(window.location.search).get('set');
-  if (!v) return ALL;
+type TabPhotos = { sets: { id: string }[]; items: { key: string; set: string }[] };
+
+/**
+ * Where the couple's page opens (Avira, 2026-10-31, the owner's request): on the first set — there is no "everything"
+ * tab; photos in no set get their own tab ("תמונות נוספות") at the end. A gallery without sets shows everything.
+ */
+const homeTab = (photos: TabPhotos) => photos.sets[0]?.id ?? ALL;
+
+function tabFromUrl(photos: TabPhotos): string {
+  const q = new URLSearchParams(window.location.search);
+  const v = q.get('set');
+  if (!v) {
+    // A link to one photo without its set (made before there were only sets): the photo's own set.
+    const p = photos.items.find((i) => i.key === q.get('photo'));
+    return p ? p.set || (photos.sets.length ? OTHER : ALL) : homeTab(photos);
+  }
   if (v === 'favorites') return FAV;
   if (v === 'instagram') return INSTA;
+  if (v === 'more') return photos.sets.length ? OTHER : ALL;
   if (v.startsWith(LIST)) return v;
-  return sets.some((x) => x.id === v) ? v : ALL;
+  return photos.sets.some((x) => x.id === v) ? v : homeTab(photos);
 }
 
 /** Puts the open set and photo in the address; `push` adds a Back step (opening a photo). */
@@ -749,7 +765,7 @@ export function PhotoGallery({ data, preview = false }: { data: WatchData; previ
   };
   // The open set and photo live in the address (?set=…&photo=…): links to a photo work, and the
   // phone's Back button closes a photo instead of leaving the gallery.
-  const [tab, setTabState] = useState<string>(() => tabFromUrl(photos.sets));
+  const [tab, setTabState] = useState<string>(() => tabFromUrl(photos));
   // The open photo, by its key (not its place in the list: the list changes under it, e.g. a heart
   // taken off in the favourites). `open` is where it is now in `shown`.
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -769,6 +785,7 @@ export function PhotoGallery({ data, preview = false }: { data: WatchData; previ
     if (tab === FAV) return photos.items.filter((p) => favs.has(p.key) && (person === null || (favBy[p.key] ?? ['']).includes(person)));
     if (tab === INSTA) return photos.items.filter((p) => insta.has(p.key));
     if (tab === ALL) return photos.items;
+    if (tab === OTHER) return photos.items.filter((p) => !p.set);
     if (tab.startsWith(LIST)) {
       const inList = new Set(lists.find((l) => l.id === tab.slice(LIST.length))?.keys ?? []);
       return photos.items.filter((p) => inList.has(p.key));
@@ -789,6 +806,14 @@ export function PhotoGallery({ data, preview = false }: { data: WatchData; previ
     setPicked(new Set());
     lastPick.current = null;
   };
+  const home = homeTab(photos);
+  // The studio sorted while the page was open: sets appeared (no "everything" tab any more), or the last photo in no
+  // set went into one (no "more photos" tab).
+  const tabGone = (tab === ALL && photos.sets.length > 0) || (tab === OTHER && !photos.items.some((p) => !p.set));
+  useEffect(() => {
+    if (tabGone && openKey === null) setTab(home);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabGone, openKey, home]);
   const pick = (i: number, range: boolean) => {
     const next = new Set(picked);
     if (range && lastPick.current !== null) {
@@ -844,7 +869,7 @@ export function PhotoGallery({ data, preview = false }: { data: WatchData; previ
     const onPop = () => {
       const q = new URLSearchParams(window.location.search);
       const key = q.get('photo');
-      setTabState(tabFromUrl(photos.sets));
+      setTabState(tabFromUrl(photos));
       if (!key) {
         pushed.current = false;
         setOpenKey(null);
@@ -974,7 +999,7 @@ export function PhotoGallery({ data, preview = false }: { data: WatchData; previ
     if (!openList || !window.confirm(`למחוק את הרשימה "${openList.name}"? התמונות עצמן נשארות בגלריה.`)) return;
     try {
       setLists((await api<{ lists: PhotoList[] }>('DELETE', `/api/watch/${data.id}/lists/${openList.id}`)).lists);
-      setTab(ALL);
+      setTab(home);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -1081,14 +1106,21 @@ export function PhotoGallery({ data, preview = false }: { data: WatchData; previ
             <span>{data.studioName}</span>
           </div>
           <nav className="pg-tabs" data-testid="pg-tabs">
-            <button type="button" className={tab === ALL ? 'on' : ''} onClick={() => setTab(ALL)}>
-              הכל
-            </button>
+            {photos.sets.length === 0 && (
+              <button type="button" className={tab === ALL ? 'on' : ''} onClick={() => setTab(ALL)}>
+                הכל
+              </button>
+            )}
             {photos.sets.map((s) => (
               <button type="button" key={s.id} className={tab === s.id ? 'on' : ''} onClick={() => setTab(s.id)} data-testid="pg-tab">
                 {s.name}
               </button>
             ))}
+            {photos.sets.length > 0 && photos.items.some((p) => !p.set) && (
+              <button type="button" className={tab === OTHER ? 'on' : ''} onClick={() => setTab(OTHER)} data-testid="pg-other-tab">
+                תמונות נוספות
+              </button>
+            )}
             {!guest &&
               lists.map((l) => (
                 <button type="button" key={l.id} className={`pg-list-tab${tab === LIST + l.id ? ' on' : ''}`} onClick={() => setTab(LIST + l.id)} data-testid="pg-list-tab">
@@ -1099,10 +1131,10 @@ export function PhotoGallery({ data, preview = false }: { data: WatchData; previ
           <div className="pg-bar-actions">
             {!guest && (
               <>
-                <button type="button" className={`pg-fav-tab${tab === FAV ? ' on' : ''}`} onClick={() => setTab(tab === FAV ? ALL : FAV)} data-testid="pg-fav-tab">
+                <button type="button" className={`pg-fav-tab${tab === FAV ? ' on' : ''}`} onClick={() => setTab(tab === FAV ? home : FAV)} data-testid="pg-fav-tab">
                   <Heart on={favs.size > 0} /> <span data-testid="pg-fav-count">{favs.size}</span>
                 </button>
-                <button type="button" className={`pg-fav-tab${tab === INSTA ? ' on' : ''}`} onClick={() => setTab(tab === INSTA ? ALL : INSTA)} title="התמונות שסימנתם לאינסטגרם" data-testid="pg-insta-tab">
+                <button type="button" className={`pg-fav-tab${tab === INSTA ? ' on' : ''}`} onClick={() => setTab(tab === INSTA ? home : INSTA)} title="התמונות שסימנתם לאינסטגרם" data-testid="pg-insta-tab">
                   <InstaIcon on={insta.size > 0} /> <span data-testid="pg-insta-count">{insta.size}</span>
                 </button>
               </>
