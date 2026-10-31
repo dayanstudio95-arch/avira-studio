@@ -103,5 +103,8 @@ export function normalizeLabel(label: string): string {
   return map[l] ?? '';
 }
 
-/** The owner's colours: yellow = getting ready, red = outdoor, blue = families, purple = party. */
-export const DEFAULT_LABEL_MAP: Record<string, string> = { yellow: 'התארגנות', red: 'צילומי חוץ', blue: 'משפחות', purple: 'מסיבה', green: '' };
+/**
+ * The owner's colours (Avira, 2026-10-31): red = getting ready, yellow = outdoor, green = families, blue = the
+ * ceremony, purple = party — and a photo with no colour at all ("none") is the hall, which has no colour left.
+ */
+export const DEFAULT_LABEL_MAP: Record<string, string> = { red: 'התארגנות', yellow: 'צילומי חוץ', green: 'משפחות', blue: 'טקס חופה', purple: 'מסיבה', none: 'אולם' };

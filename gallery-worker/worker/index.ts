@@ -181,7 +181,7 @@ route('PUT', '/api/admin/settings', async ({ request, env, store, url }) => {
   if (typeof input.labelSetsOn === 'boolean') f.labelSetsOn = input.labelSetsOn;
   if (input.labelMap && typeof input.labelMap === 'object') {
     const map: Record<string, string> = {};
-    for (const c of ['yellow', 'red', 'blue', 'purple', 'green']) {
+    for (const c of ['yellow', 'red', 'blue', 'purple', 'green', 'none']) {
       const v = (input.labelMap as Record<string, unknown>)[c];
       if (typeof v === 'string') map[c] = v.trim().slice(0, 40);
     }

@@ -21,6 +21,9 @@ describe('reading a photo folder', () => {
     expect(setNameFromFolder('מסיבה')).toBe('מסיבה');
     expect(presetForFolder('03_צילומי-חוץ')).toBe('צילומי חוץ');
     expect(presetForFolder('מאי ואופק 1')).toBe('');
+    // Avira: the owner's price-list folder is the album choice; his per-part and per-photographer folders are no set.
+    expect(presetForFolder('מחירון 2027 אלבומים')).toBe('בחירת אלבום');
+    for (const n of ['דניאלה ודן 1', 'דניאלה ודן 2 ערב', 'דניאלה ודן 3 סלבה', 'דניאלה ודן טופ2']) expect(presetForFolder(n), n).toBe('');
     const d = buildPhotoData('https://x', 'dropbox-link', found);
     expect(d.sets.map((s) => s.name)).toEqual([...PRESET_SETS]);
     expect(d.items.map((i) => i.name)).toEqual(['loose.JPG', 'IMG_1.jpg', 'IMG_2.jpg', 'IMG_10.jpg']);
@@ -180,6 +183,11 @@ describe('teaser folders, Lightroom colours and the time-order switch', () => {
     expect(normalizeLabel(xmpLabel(enc('<x:xmpmeta><rdf:Description xmp:Label="Yellow" xmp:Rating="3"/>')))).toBe('yellow');
     expect(normalizeLabel(xmpLabel(enc('<xmp:Label>סגול</xmp:Label>')))).toBe('purple');
     expect(xmpLabel(enc('no label here'))).toBe('');
+  });
+  it("the owner's colours by default, and an unmarked photo is the hall (Avira)", async () => {
+    const { DEFAULT_LABEL_MAP } = await import('../shared/exif');
+    expect(DEFAULT_LABEL_MAP).toEqual({ red: 'התארגנות', yellow: 'צילומי חוץ', green: 'משפחות', blue: 'טקס חופה', purple: 'מסיבה', none: 'אולם' });
+    for (const set of Object.values(DEFAULT_LABEL_MAP)) expect(PRESET_SETS as readonly string[]).toContain(set);
   });
   it('turning time order off goes back to folder and file-name order', () => {
     const d = buildPhotoData('https://x', 'dropbox-link', [

@@ -15,9 +15,13 @@ import { confirmDialog, isConfirmOpen } from "@/lib/confirmDialog";
 // couple's hearts and Instagram marks. Ported from the Avira films app's admin (PhotosEditor.tsx,
 // 2026-09-26). Not here yet (later phases): face search, the album card.
 
-const LABELS = ["yellow", "red", "blue", "purple", "green"];
-const LABEL_NAMES = { yellow: "צהוב", red: "אדום", blue: "כחול", purple: "סגול", green: "ירוק" };
-const LABEL_DOT = { yellow: "bg-yellow-400", red: "bg-red-500", blue: "bg-blue-500", purple: "bg-purple-500", green: "bg-green-500" };
+// Lightroom's order (keys 6–9, then purple). "none" = a photo read with no colour at all (Avira, 2026-10-31: the
+// owner's hall has no colour left, so an unmarked photo is the hall).
+const LABELS = ["red", "yellow", "green", "blue", "purple", "none"];
+const LABEL_NAMES = { yellow: "צהוב", red: "אדום", blue: "כחול", purple: "סגול", green: "ירוק", none: "בלי צבע" };
+const LABEL_DOT = { yellow: "bg-yellow-400", red: "bg-red-500", blue: "bg-blue-500", purple: "bg-purple-500", green: "bg-green-500", none: "border border-gray-400" };
+/** A photo read with no colour, outside the teaser ("top") folders — those go to the teaser instead. */
+const isUnmarked = (it) => it.label === "" && !(it.folder && isTopFolder(it.folder));
 
 const card = "rounded-xl border border-gray-800 bg-gray-900 p-5 space-y-3";
 const chip = (on) => `rounded-full border px-3 py-1 text-sm transition-colors ${on ? "border-brand-400 bg-brand-400/15 text-brand-300" : "border-gray-700 text-gray-300 hover:text-white"}`;
@@ -124,13 +128,13 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
     return run;
   };
 
-  /** Puts photos that have no set yet into the set their Lightroom colour stands for. */
+  /** Puts photos that have no set yet into the set their Lightroom colour stands for (no colour: the "none" set). */
   const applyLabels = async (d, map = labelMap) => {
     const idByName = new Map(d.sets.map((x) => [x.name, x.id]));
     const items = {};
     for (const it of d.items) {
-      if (it.set || !it.label) continue;
-      const id = idByName.get(map[it.label] || "");
+      if (it.set || !(it.label || isUnmarked(it))) continue;
+      const id = idByName.get(map[it.label || "none"] || "");
       if (id) items[it.key] = { set: id };
     }
     const n = Object.keys(items).length;
@@ -458,8 +462,11 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
 
   // Lightroom colours.
   const labelCounts = {};
-  for (const it of data.items) if (it.label) labelCounts[it.label] = (labelCounts[it.label] || 0) + 1;
-  const labeled = Object.values(labelCounts).reduce((a, b) => a + b, 0);
+  for (const it of data.items) {
+    const c = it.label || (isUnmarked(it) ? "none" : "");
+    if (c) labelCounts[c] = (labelCounts[c] || 0) + 1;
+  }
+  const labeled = data.items.filter((it) => it.label).length;
   const saveLabelMap = async (map) => {
     setLabelMap(map);
     await filmsApi("PUT", "/api/admin/settings", { labelMap: map }).catch((e) => setError(e.message));
@@ -564,7 +571,7 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
         <label className="flex items-start gap-3 cursor-pointer">
           <input type="checkbox" className="mt-1 w-4 h-4" checked={labelsOn} onChange={(e) => toggleLabels(e.target.checked)} data-testid="labels-on" />
           <span className="text-sm text-gray-300">
-            <b className="text-white">שיוך לסטים לפי צבע מלייטרום</b> · תמונה שסומנה בצבע בלייטרום נכנסת לסט של הצבע (רק תמונות שעוד אין להן סט).
+            <b className="text-white">שיוך לסטים לפי צבע מלייטרום</b> · תמונה שסומנה בצבע בלייטרום נכנסת לסט של הצבע, ותמונה בלי צבע לסט של "בלי צבע" (רק תמונות שעוד אין להן סט, ולא תיקיות הטופ).
           </span>
         </label>
         {labelsOn && (

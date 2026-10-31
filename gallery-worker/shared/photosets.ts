@@ -4,10 +4,14 @@ export const PRESET_SETS = ['טיזר', 'התארגנות', 'צילומי חוץ
 
 const norm = (s: string) => s.replace(/[\s_\-.]+/g, ' ').trim();
 
-/** The preset a folder name refers to, or '' ("02_צילומי-חוץ" → "צילומי חוץ"; "מאי ואופק 1" → ""). */
+// Avira (2026-10-31, the owner's request): his price-list folder ("מחירון 2027 אלבומים", copied into every event)
+// is the album-choice set.
+const FOLDER_ALIASES: [string, (typeof PRESET_SETS)[number]][] = [['מחירון', 'בחירת אלבום']];
+
+/** The preset a folder name refers to, or '' ("02_צילומי-חוץ" → "צילומי חוץ"; "מחירון 2027 אלבומים" → "בחירת אלבום"; "מאי ואופק 1" → ""). */
 export function presetForFolder(folder: string): string {
   const n = norm(folder.replace(/^\s*\d+\s*[-_.)]*\s*/, ''));
-  return PRESET_SETS.find((p) => n === p || n.includes(p)) ?? '';
+  return PRESET_SETS.find((p) => n === p || n.includes(p)) ?? FOLDER_ALIASES.find(([word]) => n.includes(word))?.[1] ?? '';
 }
 
 /** "טופ1", "top 2", "2top", "מאי ואופק טופ2"… — the folders that hold the teaser photos. */
