@@ -569,6 +569,8 @@ input, select, textarea { font: inherit; }
 .pg-share { border-color: var(--pg-accent); }
 .guest-note { text-align: center; font-size: 0.82rem; color: var(--pg-muted); padding: 0.3rem 1rem 0; }
 .pg-favbar[hidden] { display: none; }
+/* "סיימנו לבחור" (Avira, 0099). */
+.pg-favbar .pg-done { font-weight: 600; color: #2f6b3a; }
 
 /* ---------- album designer (ported from the Avira films app, 2026-09-27) ---------- */
 .album-editor { min-height: 100dvh; background: #16161a; color: var(--text); display: flex; flex-direction: column; }

@@ -136,6 +136,11 @@ export class MemoryStore implements Store {
     return null;
   }
 
+  async getGalleryByChoiceToken(token: string) {
+    for (const g of this.galleries.values()) if (g.choiceToken === token) return structuredClone(g);
+    return null;
+  }
+
   /** The studio's galleries, newest first (created_at desc, id desc: SupabaseStore's order). */
   private newest(tenantId: string): Gallery[] {
     return [...this.galleries.values()]
@@ -928,6 +933,13 @@ export class MemoryStore implements Store {
     this.calls++;
     if (this.failNotify) throw new Error('notifications unavailable');
     this.notices.push({ tenantId, ...n });
+  }
+
+  /** The galleries gallery-choice-notify would have been called for (Avira, 0099). */
+  choiceNotified: string[] = [];
+  async notifyChoice(galleryId: string): Promise<'sent' | 'skipped' | 'failed'> {
+    this.choiceNotified.push(galleryId);
+    return 'sent';
   }
 
   /** Mails films-link-alert would have sent. `mailSender`: the platform's verified sender is set up (else 'skipped'). */

@@ -148,6 +148,15 @@ export interface Gallery {
   /** Photo galleries: set ids the guests' link doesn't show (Avira, 0098); the couple's link shows every set. */
   guestHiddenSets?: string[];
   /**
+   * The couple's "we finished choosing" (Avira, 0099): when, and how many photos then. While it is set their hearts
+   * are locked; the studio reopens them. `choiceToken`: the private link to just those photos (/choice/<token>), for
+   * the album designer; `choiceGroupSentAt`: the last time the album group on WhatsApp got it.
+   */
+  choiceDoneAt?: string;
+  choiceDoneCount?: number;
+  choiceToken?: string;
+  choiceGroupSentAt?: string;
+  /**
    * The studio's event (the hub's events, crm studios) this gallery belongs to (fix plan P57): set from the hub's
    * gallery form only after the Worker checked the event is this studio's (the database checks it too, 0139). The
    * couple's album order joins that event's open order.

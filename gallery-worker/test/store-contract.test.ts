@@ -127,6 +127,20 @@ async function scenario(s: Store): Promise<Step[]> {
     await s.patchGallery(T1, G.films, { guestHiddenSets: [] });
     return [a?.guestHiddenSets ?? [], (await s.getGallery(G.films))?.guestHiddenSets ?? []];
   });
+  // Avira 0099: the couple's "we finished choosing" — set once (a second press finds it set), found by its link, cleared.
+  await step('choice: done once, by its link, reopened', async () => {
+    const at = '2026-10-31T10:00:00.000Z';
+    const first = await s.patchGallery(T1, G.films, { choiceDoneAt: at, choiceDoneCount: 3, choiceToken: 'choice-token-0123456789abcdef' }, { choiceDoneAt: null });
+    const second = await s.patchGallery(T1, G.films, { choiceDoneAt: at, choiceDoneCount: 9 }, { choiceDoneAt: null });
+    const found = await s.getGalleryByChoiceToken('choice-token-0123456789abcdef');
+    const listed = (await s.listGalleries(T1)).find((g) => g.id === G.films);
+    await s.patchGallery(T1, G.films, { choiceDoneAt: undefined, choiceDoneCount: undefined, choiceToken: undefined });
+    const after = await s.getGallery(G.films);
+    return [
+      first?.choiceDoneCount, new Date(first?.choiceDoneAt ?? 0).toISOString(), second, found?.id, listed?.choiceDoneCount,
+      after?.choiceDoneAt ?? null, after?.choiceToken ?? null, await s.getGalleryByChoiceToken('choice-token-0123456789abcdef'),
+    ];
+  });
   await step('show the date and venue again', async () => {
     await s.patchGallery(T1, G.films, { hideDate: false, hideVenue: false });
     const g = await s.getGallery(G.films);
@@ -493,6 +507,7 @@ describe('MemoryStore and SupabaseStore (on the migrations) give the same answer
     expect(at('hide the date and venue')).toEqual([true, true]);
     expect(at('show the date and venue again')).toEqual([false, false]);
     expect(at('sets kept from the guests, then none')).toEqual([['s1', 's2'], []]);
+    expect(at('choice: done once, by its link, reopened')).toEqual([3, '2026-10-31T10:00:00.000Z', null, G.films, 3, null, null, null]);
     expect(at('counters')).toEqual([2, 1, 1]);
     expect(at('photos: a stale version is refused')).toBe(false);
     expect(at('photos: read back')).toEqual({ n: 3, version: 2 });

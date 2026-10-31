@@ -220,6 +220,8 @@ export interface Store {
   getGallery(id: string): Promise<Gallery | null>;
   getGalleryByGuestId(guestId: string): Promise<Gallery | null>;
   getGalleryByPrintToken(token: string): Promise<Gallery | null>;
+  /** The gallery whose couple's-choice link is this token (Avira, 0099). */
+  getGalleryByChoiceToken(token: string): Promise<Gallery | null>;
   /**
    * Every gallery of the studio for its list, newest first, with the list's fields only (listView: no
    * password, download code, print token or guests' id), read page by page (fix plan P70).
@@ -451,6 +453,11 @@ export interface Store {
   /** A bell notification for the studio's managers in the hub. */
   notifyStudio(tenantId: string, n: { type: string; title: string; body: string }): Promise<void>;
   /**
+   * The couple finished choosing (Avira, 0099): gallery-choice-notify sends the album group on WhatsApp the link to
+   * their photos and rings the studio's bell. Never throws; 'sent', 'skipped' (no group chosen, turned off) or 'failed'.
+   */
+  notifyChoice(galleryId: string): Promise<'sent' | 'skipped' | 'failed'>;
+  /**
    * An email to the studio's active owners through the platform's own mail (the films-link-alert function, which
    * sends only from the verified sender of fix plan P11-b): 'sent', 'skipped' (no verified sender, or no owner email)
    * or 'failed'. Never throws. The bell is written apart and first (notifyStudio).
@@ -510,6 +517,8 @@ export const GALLERY_LIST_FIELDS = [
   'photoCount', 'linkedId', 'deletedAt', 'coverKey', 'hasThumb', 'views', 'guestViews', 'downloads', 'coverVersion', 'photosGen',
   // The hub event the gallery belongs to (the album sketch editor finds the event's photos by it — port B9).
   'eventId',
+  // Avira 0099: the list's "בחירה לאלבום" column.
+  'choiceDoneAt', 'choiceDoneCount',
 ] as const satisfies readonly (keyof Gallery)[];
 
 /** A gallery as the list reads it (MemoryStore's copy of SupabaseStore's column list). */
@@ -651,12 +660,12 @@ export const SLUG_CHANGES_PER_30_DAYS = 3;
 /** A mit4mit business page is one studio's (the unique index of 0135). */
 export const MIT4MIT_TAKEN = 'דף העסק הזה ב-mit4mit כבר מקושר לסטודיו אחר. אם זה הדף שלכם, פנו אלינו.';
 
-export type GalleryGuard = Partial<Record<'guestId' | 'printToken' | 'linkedId' | 'deletedAt', string | null>>;
+export type GalleryGuard = Partial<Record<'guestId' | 'printToken' | 'linkedId' | 'deletedAt' | 'choiceToken' | 'choiceDoneAt', string | null>>;
 
 const GALLERY_WRITABLE: (keyof GalleryFields)[] = [
   'coupleName', 'studioName', 'date', 'venue', 'days', 'expiresAt', 'hasCover', 'folderUrl', 'folderProvider', 'films',
   'photoCount', 'linkedId', 'music', 'guestId', 'password', 'downloadPin', 'printToken', 'printTokenAt', 'deletedAt', 'coverKey', 'hasThumb',
-  'coverVersion', 'eventId', 'hideDate', 'hideVenue', 'guestHiddenSets',
+  'coverVersion', 'eventId', 'hideDate', 'hideVenue', 'guestHiddenSets', 'choiceDoneAt', 'choiceDoneCount', 'choiceToken', 'choiceGroupSentAt',
 ];
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);

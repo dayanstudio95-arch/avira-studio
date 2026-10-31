@@ -35,7 +35,7 @@ import {
   type AlbumBlock,
 } from './galleries';
 import { applyPhotoEdits, cachedPreview, cachedSize, chosenLost, cleanWho, coverOf, downloadFailedPage, editPhotos, favoritesFrom, fetchOriginalStart, heartsFor, listPhotos, mergePhotoData, nextGen, photoDoc, photoResponse, publicPhotos, readsThroughDropbox, sharedLinkReplaced, withoutPreviewWarning } from './photos';
-import { askedVersion, photoBase, photoPath, printPhotoBase } from '../shared/photoUrl';
+import { askedVersion, choicePhotoBase, photoBase, photoPath, printPhotoBase } from '../shared/photoUrl';
 import { exifTakenAt, normalizeLabel, pictureKind, xmpLabel } from '../shared/exif';
 import { datesBatchSize } from '../shared/photosets';
 import { resolveFile, resolveFolder } from './providers';
@@ -50,7 +50,7 @@ import { DROPBOX_SECRET, MAX_LISTS, storeFor, studioChanges, type FilmsStudio, t
 import { READ_ONLY_REDUCE_WORDS, requireKind, requireStudioAdmin } from './supabaseAuth';
 import { PRINT_BLOCK_WORDS, PRINT_EXPIRED_WORDS, printBlock, printLinkExpiresAt, printLinkExpired } from './printLink';
 import { sealSecret } from './secretBox';
-import type { Env, Gallery, PhotoData } from './types';
+import type { Env, Gallery, PhotoData, PhotoItem } from './types';
 import { HttpError } from './types';
 
 /** `waitUntil`: work that may finish after the answer was sent (the edge-cache writes, P66). */
@@ -1141,7 +1141,9 @@ route('GET', '/api/watch/:id', async ({ request, env, store, params, url }) => {
     // Only hearts and marks of photos the couple can see (P70): the counter never counts a hidden or gone photo.
     const { favBy, insta } = heartsFor(data, allHearts, allInsta);
     const guestPath = g.guestId ? pathOf(g.guestId) : '';
-    return json({ ...view, ...locks, slug: tenant.slug, role, guestPath, linked, photos, favorites: favoritesFrom(favBy), favBy, insta, lists }, { headers });
+    // "סיימנו לבחור" (Avira, 0099): their hearts are locked until the studio reopens them.
+    const choice = { choiceDoneAt: g.choiceDoneAt ?? '', choiceDoneCount: g.choiceDoneCount ?? 0 };
+    return json({ ...view, ...locks, slug: tenant.slug, role, guestPath, linked, photos, favorites: favoritesFrom(favBy), favBy, insta, lists, ...choice }, { headers });
   }
   return json({ ...view, ...locks, slug: tenant.slug, role, linked }, { headers });
 });
@@ -1816,6 +1818,112 @@ async function printPhoto({ request, env, store, params, url, waitUntil }: Ctx):
 route('GET', '/api/print/:token/photo/:key', printPhoto);
 route('GET', '/api/print/:token/photo/:ver/:key', printPhoto);
 
+// ---------- the couple's "we finished choosing" (Avira, 2026-10-31, the owner's request; 0099) ----------
+// The couple presses "סיימנו לבחור": their hearts lock (the studio reopens them), the studio's list shows how many, and
+// the album group on WhatsApp gets a private link to just those photos (gallery-choice-notify), which the album
+// designer opens without logging in, until the gallery closes; the studio can renew or stop it.
+
+const CHOICE_DONE_WORDS = 'שלחתם את הבחירה לסטודיו. לשינויים פנו לסטודיו.';
+
+/** The couple's favourites as the studio sees them: photos still shown, in the gallery's order. */
+function chosenItems(data: PhotoData | null, hearts: Record<string, string[]>): PhotoItem[] {
+  const { favBy } = heartsFor(data, hearts, []);
+  return (data?.items ?? []).filter((i) => !i.hidden && favBy[i.key]);
+}
+
+route('POST', '/api/watch/:id/choice', async ({ request, env, store, params, url, waitUntil }) => {
+  const { g, tenant } = await coupleGallery(store, params.id, url);
+  await requireView(request, stateSecret(env), g, 'couple', { version: versionOf(tenant) });
+  if (kindOf(g) !== 'photos') throw new HttpError(404, 'הגלריה לא נמצאה');
+  if (isExpired(g)) throw new HttpError(410, 'הגלריה נסגרה');
+  await rateLimit(store, `choice:${g.id}:${clientIp(request)}`, 30, 'יותר מדי ניסיונות בזמן קצר. נסו שוב בעוד כמה דקות.');
+  if (g.choiceDoneAt) return json({ choiceDoneAt: g.choiceDoneAt, choiceDoneCount: g.choiceDoneCount ?? 0 });
+  const data = (await photoDoc(store, g))?.data ?? null;
+  const count = chosenItems(data, await store.listHearts(g.id)).length;
+  if (count === 0) throw new HttpError(400, 'עוד לא בחרתם תמונות. סמנו לב על התמונות לאלבום, ואז "סיימנו לבחור".');
+  // Only while they are still choosing: two presses (two phones) send the album group one message.
+  const fields = { choiceDoneAt: new Date().toISOString(), choiceDoneCount: count, ...(g.choiceToken ? {} : { choiceToken: randomToken(24) }) };
+  const saved = await store.patchGallery(g.tenantId, g.id, fields, { choiceDoneAt: null });
+  if (!saved) {
+    const now = await store.getGallery(g.id);
+    return json({ choiceDoneAt: now?.choiceDoneAt ?? fields.choiceDoneAt, choiceDoneCount: now?.choiceDoneCount ?? count });
+  }
+  // The message goes after the answer (never fails the couple's press); without a waitUntil (tests), before it.
+  const notifying = store.notifyChoice(g.id);
+  if (waitUntil) waitUntil(notifying);
+  else await notifying;
+  return json({ choiceDoneAt: saved.choiceDoneAt, choiceDoneCount: saved.choiceDoneCount });
+});
+
+/** The studio reopens the couple's choice: the hearts are theirs to change again (the link stays). */
+route('POST', '/api/admin/galleries/:id/choice/reopen', async ({ request, store, params }) => {
+  const { me, g } = await ownedPhotoGallery(request, store, params.id, true);
+  const saved = await store.patchGallery(g.tenantId, g.id, { choiceDoneAt: undefined, choiceDoneCount: undefined });
+  return json(adminGallery(saved ?? g, me));
+});
+
+/** The private link to the couple's chosen photos (made with "סיימנו לבחור", or here); `renew`: a new one, the old stops. */
+route('POST', '/api/admin/galleries/:id/choice-link', async ({ request, store, params }) => {
+  const { me, g } = await ownedPhotoGallery(request, store, params.id, true);
+  const input = request.headers.get('Content-Type')?.includes('json') ? await body<{ renew?: unknown }>(request).catch(() => ({}) as { renew?: unknown }) : {};
+  if (g.choiceToken && input.renew !== true) return json(adminGallery(g, me));
+  // Only while the link is the one read: two clicks give one link.
+  const made = (await store.patchGallery(g.tenantId, g.id, { choiceToken: randomToken(24) }, { choiceToken: g.choiceToken ?? null })) ?? (await store.getGallery(g.id));
+  if (!made) throw new HttpError(404, 'הגלריה לא נמצאה');
+  return json(adminGallery(made, me));
+});
+
+// Stopping lowers exposure: also for a read-only studio.
+route('DELETE', '/api/admin/galleries/:id/choice-link', async ({ request, store, params }) => {
+  const { me, g } = await ownedPhotoGallery(request, store, params.id, true, true);
+  const saved = await store.patchGallery(g.tenantId, g.id, { choiceToken: undefined });
+  return json(adminGallery(saved ?? g, me));
+});
+
+/** The link, its gallery, studio and photos — checked on every request: a stopped link, a trashed or closed gallery stop at once. */
+async function choiceTarget(store: Store, token: string) {
+  const g = /^[A-Za-z0-9_-]{20,64}$/.test(token) ? await store.getGalleryByChoiceToken(token) : null;
+  const tenant = g ? await store.getTenant(g.tenantId) : null;
+  if (!g || g.deletedAt || g.choiceToken !== token || kindOf(g) !== 'photos' || !tenant || tenant.access === 'blocked' || !tenant.photos) {
+    throw new HttpError(404, 'הקישור לא בתוקף. בקשו קישור חדש מהסטודיו.');
+  }
+  if (isExpired(g)) throw new HttpError(410, 'הגלריה נסגרה. בקשו את התמונות מהסטודיו.');
+  const doc = await photoDoc(store, g);
+  const data = doc?.data ?? null;
+  // The list read now is the one the gallery row names: its previews may use the edge cache (visible ones only).
+  const cache = doc && doc.version === g.photosVersion ? { visible: g.photosVisibleVersion ?? 0, gen: g.photosGen ?? 0 } : undefined;
+  return { g, tenant, data, chosen: chosenItems(data, await store.listHearts(g.id)), cache };
+}
+
+route('GET', '/api/choice/:token', async ({ store, params }) => {
+  const { g, tenant, data, chosen } = await choiceTarget(store, params.token);
+  const setName = new Map((data?.sets ?? []).map((s) => [s.id, s.name]));
+  return json(
+    {
+      coupleName: g.coupleName,
+      studioName: g.studioName || studioNameOf(tenant),
+      date: g.date,
+      doneAt: g.choiceDoneAt ?? '',
+      items: chosen.map((i) => ({ key: i.key, name: i.name, ar: i.ar ?? 1.5, set: setName.get(i.set ?? '') ?? '' })),
+      base: choicePhotoBase(params.token, data?.gen),
+    },
+    { headers: { 'Cache-Control': 'no-store' } },
+  );
+});
+
+/** One chosen photo, any size (the link is the designer's credential); nothing else from the gallery. */
+async function choicePhoto({ request, env, store, params, url, waitUntil }: Ctx): Promise<Response> {
+  const asked = addressVersion(params);
+  const { g, tenant, data, chosen, cache } = await choiceTarget(store, params.token);
+  const item = chosen.find((i) => i.key === params.key);
+  if (!data || !item) throw new HttpError(404, 'התמונה לא בבחירה של הזוג');
+  const s = url.searchParams.get('s');
+  const size = s === 'l' || s === 'md' || s === 'full' ? s : 'm';
+  return photoResponse(env, () => getSettings(env, store, g.tenantId, tenant), data, item, size, request, url.searchParams.get('dl') === '1', g.id, { includeHidden: false, cache, current: asked === (data.gen ?? 0), waitUntil });
+}
+route('GET', '/api/choice/:token/photo/:key', choicePhoto);
+route('GET', '/api/choice/:token/photo/:ver/:key', choicePhoto);
+
 // ---------- slideshow songs (per studio, up to 3) ----------
 const MUSIC_TYPES = /^audio\/(mpeg|mp3|mp4|x-m4a|aac|ogg|wav|x-wav)$/;
 const MUSIC_MAX = 10 * 1024 * 1024;
@@ -1886,6 +1994,7 @@ route('POST', '/api/watch/:id/fav', async ({ request, env, store, params, url })
   await requireView(request, stateSecret(env), g, 'couple', { version: versionOf(tenant) });
   if (kindOf(g) !== 'photos') throw new HttpError(404, 'הגלריה לא נמצאה');
   if (isExpired(g)) throw new HttpError(410, 'הגלריה נסגרה');
+  if (g.choiceDoneAt) throw new HttpError(409, CHOICE_DONE_WORDS, 'choice_done');
   const ip = clientIp(request);
   await rateLimit(store, `fav:${g.id}:${ip}`, 1500, 'יותר מדי סימונים בזמן קצר. נסו שוב בעוד כמה דקות.');
   const { key, keys, on, who } = await body<{ key?: string; keys?: string[]; on: boolean; who?: string }>(request);

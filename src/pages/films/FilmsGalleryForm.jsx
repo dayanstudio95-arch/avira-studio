@@ -21,6 +21,7 @@ import { Label } from "@/components/ui/label";
 import { formatDateShort, formatDateTime, israelToday } from "@/lib/dates";
 import { confirmDialog } from "@/lib/confirmDialog";
 import { sendGalleryToCouple } from "@/lib/gallerySend";
+import ChoiceDialog from "@/components/films/ChoiceDialog";
 
 // Create / edit one couple's gallery (/films/new, /films/:id): films or photos. Ported from
 // the films app's admin: folder loading fills names/date/venue from the folder name,
@@ -208,6 +209,8 @@ export default function FilmsGalleryForm() {
   const [eventTouched, setEventTouched] = useState(false);
   // Whether the linked event's couple already got their final link (work status "→ זוג").
   const [eventSent, setEventSent] = useState(false);
+  // The couple's choice for the album (Avira, 0099).
+  const [choiceOpen, setChoiceOpen] = useState(false);
   const [folderUrl, setFolderUrl] = useState("");
   const [films, setFilms] = useState([]);
   const [cover, setCover] = useState("");
@@ -449,6 +452,14 @@ export default function FilmsGalleryForm() {
 
   return (
     <div className="min-h-screen bg-gray-950 p-4 md:p-8" dir="rtl">
+      {choiceOpen && gallery && (
+        <ChoiceDialog
+          galleryId={gallery.id}
+          coupleName={coupleName}
+          onClose={() => setChoiceOpen(false)}
+          onChanged={(fields) => setGallery((prev) => ({ ...prev, ...fields }))}
+        />
+      )}
       <form className="max-w-4xl mx-auto space-y-5" onSubmit={save}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-bold text-white">{isNew ? (kind === "photos" ? "גלריית תמונות חדשה" : "גלריית סרטים חדשה") : coupleName || "עריכת גלריה"}</h1>
@@ -466,6 +477,17 @@ export default function FilmsGalleryForm() {
                 >
                   <Send className="w-4 h-4 ml-2" />
                   {busy === "send" ? "שולח…" : eventSent ? "✓ נשלח לזוג" : "שליחה לזוג"}
+                </Button>
+              )}
+              {kind === "photos" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setChoiceOpen(true)}
+                  className={gallery.choiceDoneAt ? "border-green-500/50 bg-green-500/20 text-green-300 hover:bg-green-500/30" : "border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700"}
+                  data-testid="open-choice"
+                >
+                  {gallery.choiceDoneAt ? `✓ הבחירה לאלבום (${(gallery.choiceDoneCount || 0).toLocaleString("he-IL")})` : "הבחירה לאלבום"}
                 </Button>
               )}
               <Button type="button" className="bg-brand-400 hover:bg-brand-500 text-brand-fg" onClick={() => copyText(link).then((ok) => ok && toast.success("הקישור הועתק"))}>

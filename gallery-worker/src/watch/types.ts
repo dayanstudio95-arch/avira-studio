@@ -70,6 +70,9 @@ export interface WatchData {
   role?: 'couple' | 'guest';
   /** The couple's photo gallery: the address to send to guests. */
   guestPath?: string;
+  /** "סיימנו לבחור" (Avira, 0099): when they sent their hearts to the studio ('' = still choosing), and how many. */
+  choiceDoneAt?: string;
+  choiceDoneCount?: number;
   /** Behind a password: only the names came. */
   locked?: boolean;
   /** Full-quality downloads need the studio's code. */

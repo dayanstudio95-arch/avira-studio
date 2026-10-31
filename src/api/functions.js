@@ -58,6 +58,8 @@ const FUNCTION_MAP = {
   // WhatsApp sends (all via the shared Green API helper server-side)
   sendToEditor: 'send-to-editor',
   sendToCouple: 'send-to-couple',
+  // The galleries' "שליחה לקבוצת אלבומים": the couple's chosen photos to the album group (Avira, 0099).
+  galleryChoiceNotify: 'gallery-choice-notify',
   sendWhatsAppMessage: 'send-whatsapp-message',
   sendSignedContract: 'send-signed-contract',
   // "שלח לצוות" in the lead/event panel — the crew reminder for one event (2026-10-24)

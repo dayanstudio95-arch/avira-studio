@@ -13,6 +13,8 @@ const StudioPrint = lazy(() => import('./print/StudioPrint').then((m) => ({ defa
 const GuestPage = lazy(() => import('./faces/GuestPage').then((m) => ({ default: m.GuestPage })));
 const StudioFaces = lazy(() => import('./faces/StudioFaces').then((m) => ({ default: m.StudioFaces })));
 const Accessibility = lazy(() => import('./Accessibility').then((m) => ({ default: m.Accessibility })));
+// The couple's chosen photos for the album designer (Avira, 0099).
+const ChoicePage = lazy(() => import('./choice/ChoicePage').then((m) => ({ default: m.ChoicePage })));
 
 export function App() {
   return (
@@ -24,6 +26,8 @@ export function App() {
           <Route path="/accessibility" element={<Accessibility />} />
           {/* The print shop's private link. */}
           <Route path="/print/:token" element={<PrintPage />} />
+          {/* The album designer's private link to the couple's chosen photos. */}
+          <Route path="/choice/:token" element={<ChoicePage />} />
           <Route path="/watch/:id/print" element={<StudioPrint />} />
           <Route path="/watch/:id/me" element={<GuestPage />} />
           <Route path="/watch/:id/faces" element={<StudioFaces />} />

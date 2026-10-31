@@ -14,6 +14,11 @@ export function printPhotoBase(token: string, gen: number | undefined): string {
   return `/api/print/${token}/photo/v${versionOf(gen)}`;
 }
 
+/** The couple's chosen photos, for the album designer (the private choice link, Avira 0099). */
+export function choicePhotoBase(token: string, gen: number | undefined): string {
+  return `/api/choice/${token}/photo/v${versionOf(gen)}`;
+}
+
 /** One photo: a preview (m, md, l) or the original (full); `extra` = more query, e.g. `pt=…`. */
 export function photoPath(id: string, gen: number | undefined, key: string, size: string, extra = ''): string {
   return `${photoBase(id, gen)}/${key}?s=${size}${extra ? `&${extra}` : ''}`;

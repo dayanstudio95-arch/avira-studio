@@ -3476,5 +3476,19 @@ console.log('\n— PART 75: album group messages + list order —');
   check('sorting leaves the given list alone', list.map((o) => o.id).join(''), 'abcdefghi');
 }
 
+{
+  section('gallery "סיימנו לבחור" → the album group (2026-10-31, 0099)');
+  const gc = await loadModule('supabase/functions/_shared/galleryChoice.ts', 'gc76');
+  const token = 'AbCdEfGhIjKlMnOpQrStUvWx';
+  check('the link', gc.galleryChoiceLink('https://gallery.avira-studio.com/', token), `https://gallery.avira-studio.com/choice/${token}`);
+  check('no link for a token that is not one', [gc.galleryChoiceLink('https://g', ''), gc.galleryChoiceLink('https://g', 'short'), gc.galleryChoiceLink('https://g', 'a/b'.repeat(10))], ['', '', '']);
+  check('a phone for people', [gc.phoneForPeople('0501234567'), gc.phoneForPeople('+972501234567'), gc.phoneForPeople(null)], ['050-1234567', '+972501234567', '']);
+  check('every line', gc.renderGalleryChoice('', { names: 'דניאלה ודן', event_date: 'יום ראשון, 19.10.2026', venue: 'שפיים', phone: '050-1234567', count: '152', link: 'https://x/choice/t' }),
+    '✅ דניאלה ודן סיימו לבחור תמונות לאלבום\n📅 חתונה: יום ראשון, 19.10.2026\n📍 שפיים\n📞 050-1234567\n🖼️ נבחרו 152 תמונות\n🔗 להורדה: https://x/choice/t');
+  check('a gallery without an event: no date, venue or phone lines', gc.renderGalleryChoice(null, { names: 'נועה & תומר', event_date: '', venue: '', phone: '', count: '80', link: 'https://x/choice/t' }),
+    '✅ נועה & תומר סיימו לבחור תמונות לאלבום\n🖼️ נבחרו 80 תמונות\n🔗 להורדה: https://x/choice/t');
+  check('the studio\'s own words', gc.renderGalleryChoice('{{names}} — {{link}}', { names: 'א', link: 'L' }), 'א — L');
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

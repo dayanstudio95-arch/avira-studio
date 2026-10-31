@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { confirmDialog } from "@/lib/confirmDialog";
 import { eventsSentState, sendGalleryToCouple } from "@/lib/gallerySend";
+import ChoiceDialog from "@/components/films/ChoiceDialog";
 
 // The couples' galleries: photo galleries under "גלריות" (/photos), film galleries under "סרטים" (/films).
 // Ported from the films app's admin: same filters, month grouping and actions; data from the
@@ -135,6 +136,8 @@ export default function FilmsGalleries() {
   const [importing, setImporting] = useState(false);
   const [picked, setPicked] = useState(() => new Set());
   const [extending, setExtending] = useState(null); // galleries to extend (one, or the picked ones)
+  // The couple's choice for the album (Avira, 0099): the gallery whose choice window is open.
+  const [choiceOf, setChoiceOf] = useState(null);
   // Reopened galleries (extended, restored) whose face search went off when its data was deleted (fix plan P68).
   const [faceOff, setFaceOff] = useState([]);
   const slug = tenant?.slug;
@@ -486,6 +489,7 @@ export default function FilmsGalleries() {
                   <th className="p-3 text-right font-medium">תאריך</th>
                   <th className="p-3 text-right font-medium">מצב</th>
                   <th className="p-3 text-right font-medium">{kind === "photos" ? "תמונות" : "סרטים"}</th>
+                  {kind === "photos" && <th className="p-3 text-right font-medium">בחירה לאלבום</th>}
                   <th className="p-3 text-right font-medium">צפיות / הורדות</th>
                   <th className="p-3" />
                 </tr>
@@ -500,7 +504,7 @@ export default function FilmsGalleries() {
                     <Fragment key={g.id}>
                       {newMonth && (
                         <tr className="bg-gray-950/60">
-                          <td colSpan={8} className="px-3 py-2 text-xs text-gray-400">
+                          <td colSpan={kind === "photos" ? 9 : 8} className="px-3 py-2 text-xs text-gray-400">
                             <bdi className="font-semibold text-gray-300">{month}</bdi> · {inMonth === 1 ? "אירוע אחד" : `${inMonth} אירועים`}
                           </td>
                         </tr>
@@ -526,6 +530,28 @@ export default function FilmsGalleries() {
                           {g.deletedAt ? <TrashState g={g} /> : <State g={g} />}
                         </td>
                         <td className="p-3">{contentCount(g).toLocaleString("he-IL")}</td>
+                        {kind === "photos" && (
+                          <td className="p-3">
+                            {g.choiceDoneAt ? (
+                              <button
+                                type="button"
+                                onClick={() => setChoiceOf(g)}
+                                className="rounded-full border border-green-500/50 bg-green-500/20 px-2.5 py-0.5 text-xs text-green-300 whitespace-nowrap hover:bg-green-500/30"
+                                title="הזוג סיים לבחור. לחיצה: התמונות, הורדה, קישור ושליחה לקבוצת האלבומים"
+                                data-testid="choice-pill"
+                              >
+                                ✓ סיימו · {(g.choiceDoneCount || 0).toLocaleString("he-IL")}
+                              </button>
+                            ) : (
+                              !isEmpty(g) &&
+                              !g.deletedAt && (
+                                <button type="button" onClick={() => setChoiceOf(g)} className="text-xs text-gray-500 hover:text-gray-300 whitespace-nowrap" title="הזוג עוד לא לחץ 'סיימנו לבחור'. לחיצה מציגה מה סימנו עד עכשיו" data-testid="choice-pending">
+                                  עוד בוחרים
+                                </button>
+                              )
+                            )}
+                          </td>
+                        )}
                         <td className="p-3">
                           <span title={g.guestViews ? `הזוג: ${g.views} · אורחים: ${g.guestViews}` : undefined}>
                             {g.views}
@@ -644,6 +670,14 @@ export default function FilmsGalleries() {
         </>
       )}
 
+      {choiceOf && (
+        <ChoiceDialog
+          galleryId={choiceOf.id}
+          coupleName={choiceOf.coupleName}
+          onClose={() => setChoiceOf(null)}
+          onChanged={(fields) => setList((l) => l?.map((x) => (x.id === choiceOf.id ? { ...x, ...fields } : x)) ?? l)}
+        />
+      )}
       {extending && (
         <ExtendDialog
           galleries={extending}

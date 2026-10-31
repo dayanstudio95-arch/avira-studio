@@ -828,6 +828,62 @@ test("guests' link: the sets the couple keeps from the guests are not shown, and
 });
 
 
+test('the couple presses "סיימנו לבחור": hearts lock, the album designer\'s link shows and downloads just those photos (Avira, 0099)', async ({ browser, request }) => {
+  const g = await (await request.post('/api/admin/galleries', { headers: OWNER, data: { kind: 'photos', coupleName: 'בחירה & אלבום', date: '2026-07-01' } })).json();
+  const loaded = await (await request.post(`/api/admin/galleries/${g.id}/photos/load`, { headers: OWNER, data: { url: FOLDER } })).json();
+  const ctx = await browser.newContext({ baseURL: 'http://localhost:8789', locale: 'he-IL', viewport: { width: 1280, height: 860 } });
+  await ctx.addInitScript(() => delete (window as { showSaveFilePicker?: unknown }).showSaveFilePicker);
+  const couple = await ctx.newPage();
+  await couple.goto(`/friend/${g.id}`);
+  await couple.getByTestId('agree').check();
+  await couple.getByTestId('enter').click();
+  await couple.getByTestId('pg-enter').click();
+  // Nothing chosen yet: no button.
+  await expect(couple.getByTestId('pg-choice-done')).toHaveCount(0);
+  for (const n of [0, 1]) {
+    await couple.getByTestId('pg-photo').nth(n).hover();
+    await couple.getByTestId('pg-photo').nth(n).getByTestId('pg-heart').click();
+    if (n === 0) {
+      await couple.getByTestId('who-name').fill('מאי');
+      await couple.getByTestId('who-save').click();
+    }
+  }
+  await expect(couple.getByTestId('pg-fav-count')).toHaveText('2');
+  // "Not yet" keeps choosing; "yes" sends.
+  await couple.getByTestId('pg-choice-done').click();
+  await expect(couple.getByTestId('choice-dialog')).toContainText('לשלוח לסטודיו את 2 התמונות שבחרתם?');
+  await couple.getByTestId('choice-dialog').getByText('עוד לא').click();
+  await expect(couple.getByTestId('choice-dialog')).toHaveCount(0);
+  await couple.getByTestId('pg-choice-done').click();
+  await couple.getByTestId('choice-yes').click();
+  await expect(couple.getByTestId('pg-favbar')).toContainText('שלחתם לסטודיו 2 תמונות לאלבום');
+  await expect(couple.getByTestId('pg-choice-done')).toHaveCount(0);
+  // Locked: a heart only says so.
+  await couple.getByTestId('pg-photo').nth(2).hover();
+  await couple.getByTestId('pg-photo').nth(2).getByTestId('pg-heart').click();
+  await expect(couple.getByTestId('pg-toast')).toContainText('שלחתם את הבחירה לסטודיו');
+  await expect(couple.getByTestId('pg-fav-count')).toHaveText('2');
+  // After a reload too.
+  await couple.reload();
+  await couple.getByTestId('pg-enter').click();
+  await expect(couple.getByTestId('pg-favbar')).toContainText('שלחתם לסטודיו 2 תמונות לאלבום');
+
+  // The studio's list shows it; the album designer's link.
+  const listed = (await (await request.get('/api/admin/galleries', { headers: OWNER })).json()) as { id: string; choiceDoneCount?: number }[] | { items: { id: string; choiceDoneCount?: number }[] };
+  const rows = Array.isArray(listed) ? listed : listed.items;
+  expect(rows.find((x) => x.id === g.id)?.choiceDoneCount).toBe(2);
+  const { choiceToken } = await (await request.get(`/api/admin/galleries/${g.id}`, { headers: OWNER })).json();
+  const designer = await ctx.newPage();
+  await designer.goto(`/choice/${choiceToken}`);
+  await expect(designer.getByTestId('choice-page')).toContainText('בחירה & אלבום · 2 תמונות לאלבום');
+  await expect(designer.getByTestId('choice-photo')).toHaveCount(2);
+  await expect(designer.getByTestId('choice-photo').first()).toContainText(loaded.items[0].name);
+  const [zip] = await Promise.all([designer.waitForEvent('download'), designer.getByTestId('choice-download').click()]);
+  expect(zip.suggestedFilename()).toContain('הבחירה לאלבום');
+  await expect(designer.getByTestId('choice-done')).toContainText('ירדו 2 תמונות');
+});
+
+
 // ---------- phase 5a: the album designer (ported from the Avira films app) ----------
 
 async function quickPhotoGallery(request: APIRequestContext, coupleName: string, headers = OWNER): Promise<string> {

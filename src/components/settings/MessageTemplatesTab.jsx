@@ -207,6 +207,14 @@ const TEMPLATES = [
     defaultValue: `✅ {{names}} סיימו לבחור תמונות בפיקסיסט\n📅 חתונה: {{event_date}}\n💬 {{message}}\n🔗 המועדפים: {{link}}`,
     variables: ["{{names}}", "{{event_date}}", "{{message}}", "{{link}}"],
   },
+  {
+    // Mirrors DEFAULT_GALLERY_CHOICE_TEMPLATE in supabase/functions/_shared/galleryChoice.ts
+    key: "template_gallery_choice_group",
+    label: "זוג סיים לבחור תמונות לאלבום (בגלריה שלנו)",
+    description: "ההודעה לקבוצת האלבומים כשהזוג לוחץ \"סיימנו לבחור\" בגלריה, וגם מהכפתור \"שליחה לקבוצת אלבומים\" בחלון הבחירה. {{link}} = הדף שבו רואים ומורידים את התמונות שבחרו. שורה שהמשתנה שלה ריק לא תופיע — למשל אין טלפון כשהגלריה לא מקושרת לאירוע.",
+    defaultValue: `✅ {{names}} סיימו לבחור תמונות לאלבום\n📅 חתונה: {{event_date}}\n📍 {{venue}}\n📞 {{phone}}\n🖼️ נבחרו {{count}} תמונות\n🔗 להורדה: {{link}}`,
+    variables: ["{{names}}", "{{event_date}}", "{{venue}}", "{{phone}}", "{{count}}", "{{link}}"],
+  },
   // The next three mirror DEFAULT_ALBUM_GROUP_TEMPLATES in supabase/functions/_shared/albumGroupNotify.ts
   {
     key: "template_album_revision_group",

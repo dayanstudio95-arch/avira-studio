@@ -660,6 +660,32 @@ function Ico({ d }: { d: string }) {
 }
 
 /** Pixieset-style photo gallery for the couple. */
+/** "סיימנו לבחור": one question before the hearts go to the studio and lock (Avira, 0099). */
+function ChoiceDoneDialog({ count, onYes, onClose }: { count: number; onYes: () => void; onClose: () => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  useDialog(box, onClose);
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div ref={box} className="modal who-dialog" role="dialog" aria-modal="true" aria-labelledby="choice-title" onClick={(e) => e.stopPropagation()} data-testid="choice-dialog">
+        <h2 id="choice-title" style={{ margin: 0 }}>
+          {count === 1 ? 'לשלוח לסטודיו את התמונה שבחרתם?' : `לשלוח לסטודיו את ${count.toLocaleString('he-IL')} התמונות שבחרתם?`}
+        </h2>
+        <p style={{ margin: 0, color: '#6c675e' }}>אחרי השליחה הבחירה ננעלת, והסטודיו מתחיל לעבוד על האלבום. כדי לשנות משהו אחר כך, פנו לסטודיו.</p>
+        <div className="row" style={{ gap: '0.5rem' }}>
+          <button type="button" className="zip-btn" onClick={onYes} data-autofocus data-testid="choice-yes">
+            כן, לשלוח
+          </button>
+          <button type="button" className="zip-btn ghost" onClick={onClose}>
+            עוד לא
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const CHOICE_LOCKED_WORDS = 'שלחתם את הבחירה לסטודיו. לשינויים פנו לסטודיו.';
+
 export function PhotoGallery({ data, preview = false }: { data: WatchData; preview?: boolean }) {
   const photos = data.photos!;
   // The gallery's look. In the studio's design screen (preview) changes arrive live from the page around it.
@@ -890,8 +916,27 @@ export function PhotoGallery({ data, preview = false }: { data: WatchData; previ
   const setNames = useMemo(() => new Map(photos.sets.map((x) => [x.id, x.name])), [photos.sets]);
   const photoLabel = (item: PublicPhoto, i: number) => `תמונה ${i + 1} מתוך ${shown.length}${setNames.get(item.set) ? ` · ${setNames.get(item.set)}` : ''}`;
 
+  // "סיימנו לבחור" (Avira, 0099): the hearts go to the studio and lock until the studio reopens them.
+  const [choice, setChoice] = useState({ at: data.choiceDoneAt ?? '', count: data.choiceDoneCount ?? 0 });
+  const [askDone, setAskDone] = useState(false);
+  const choiceLocked = Boolean(choice.at);
+  const finishChoice = async () => {
+    setAskDone(false);
+    try {
+      const r = await api<{ choiceDoneAt: string; choiceDoneCount: number }>('POST', `/api/watch/${data.id}/choice`, {});
+      setChoice({ at: r.choiceDoneAt, count: r.choiceDoneCount });
+      setError('הבחירה נשלחה לסטודיו. תודה!');
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
   /** The first heart asks who is choosing (one tap to skip); later hearts go straight through. */
   const toggleFav = (key: string) => {
+    if (choiceLocked) {
+      setError(CHOICE_LOCKED_WORDS);
+      return;
+    }
     if (who === null) setAsking({ keys: [key], bulk: false });
     else heart(key, who);
   };
@@ -922,6 +967,11 @@ export function PhotoGallery({ data, preview = false }: { data: WatchData; previ
     }
   };
   const favPicked = (on: boolean) => {
+    if (choiceLocked) {
+      setError(CHOICE_LOCKED_WORDS);
+      stopPicking();
+      return;
+    }
     const keys = [...picked];
     if (who === null && on) setAsking({ keys, bulk: true });
     else heartMany(keys, on, who ?? '');
@@ -1291,9 +1341,14 @@ export function PhotoGallery({ data, preview = false }: { data: WatchData; previ
             </button>
           </div>
         )}
-        <div className={`pg-favbar ${msg.level}`} data-testid="pg-favbar" hidden={guest || picking}>
-          <Heart on /> {msg.text}
-          {who !== null && (
+        <div className={`pg-favbar ${choiceLocked ? 'reached' : msg.level}`} data-testid="pg-favbar" hidden={guest || picking}>
+          <Heart on /> {choiceLocked ? `שלחתם לסטודיו ${choice.count === 1 ? 'תמונה אחת' : `${choice.count.toLocaleString('he-IL')} תמונות`} לאלבום ✓` : msg.text}
+          {!choiceLocked && favs.size > 0 && !preview && (
+            <button type="button" className="pg-me pg-done" onClick={() => setAskDone(true)} data-testid="pg-choice-done">
+              סיימנו לבחור ✓
+            </button>
+          )}
+          {!choiceLocked && who !== null && (
             <button type="button" className="pg-me" onClick={() => setAsking({ keys: [], bulk: false })} data-testid="pg-me">
               {who ? `מסמנים בשם ${who} · החלפה` : 'מי מסמן?'}
             </button>
@@ -1306,6 +1361,7 @@ export function PhotoGallery({ data, preview = false }: { data: WatchData; previ
         )}
       </div>
 
+      {askDone && <ChoiceDoneDialog count={favs.size} onYes={finishChoice} onClose={() => setAskDone(false)} />}
       {listAsk !== null && <ListDialog lists={listAsk.fresh ? [] : lists} count={listAsk.keys.length} fresh={listAsk.fresh} onChoose={chooseList} onClose={() => setListAsk(null)} />}
       {zipPicked && (
         <ZipDialog

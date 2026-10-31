@@ -239,6 +239,11 @@ export class SupabaseStore implements Store {
     return r ? toGallery(r) : null;
   }
 
+  async getGalleryByChoiceToken(token: string): Promise<Gallery | null> {
+    const [r] = await this.rows(`/rest/v1/films_galleries?choice_token=eq.${encodeURIComponent(token)}&select=*`);
+    return r ? toGallery(r) : null;
+  }
+
   async getGalleryByPrintToken(token: string): Promise<Gallery | null> {
     if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) return null;
     const [r] = await this.rows(`/rest/v1/films_galleries?print_token=eq.${encodeURIComponent(token)}&select=*`);
@@ -829,6 +834,27 @@ export class SupabaseStore implements Store {
     await this.write('/rest/v1/notifications', 'POST', { tenant_id: tenantId, type: n.type, title: n.title, body: n.body });
   }
 
+  async notifyChoice(galleryId: string): Promise<'sent' | 'skipped' | 'failed'> {
+    // WhatsApp lives in the Edge Functions (_shared/whatsapp.ts): the Worker asks gallery-choice-notify, which reads
+    // the gallery itself (nothing in this call is trusted but its id) and sends only to the studio's own album group.
+    try {
+      const res = await this.fetch(`${this.url.replace(/\/$/, '')}/functions/v1/gallery-choice-notify`, {
+        method: 'POST',
+        headers: { apikey: this.key, Authorization: `Bearer ${this.key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ galleryId, auto: true }),
+      });
+      const r = (await res.json().catch(() => null)) as { sent?: boolean; skipped?: string } | null;
+      if (!res.ok) {
+        console.error(`[films] choice notify: gallery-choice-notify answered ${res.status}`);
+        return 'failed';
+      }
+      return r?.sent ? 'sent' : 'skipped';
+    } catch (e) {
+      console.error('[films] choice notify failed:', (e as Error).message);
+      return 'failed';
+    }
+  }
+
   async emailStudio(tenantId: string, mail: StudioMail): Promise<'sent' | 'skipped' | 'failed'> {
     // The platform's mail lives in the Edge Functions (_shared/email.ts, P11-b): the Worker asks films-link-alert,
     // which sends only from the verified sender and only to the studio's active owners.
@@ -928,6 +954,10 @@ function toGallery(r: Row): Gallery {
     ...(r.hide_date === true ? { hideDate: true } : {}),
     ...(r.hide_venue === true ? { hideVenue: true } : {}),
     ...(Array.isArray(r.guest_hidden_sets) && r.guest_hidden_sets.length ? { guestHiddenSets: (r.guest_hidden_sets as unknown[]).map(String) } : {}),
+    ...(r.choice_done_at ? { choiceDoneAt: String(r.choice_done_at) } : {}),
+    ...(r.choice_done_count !== null && r.choice_done_count !== undefined ? { choiceDoneCount: Number(r.choice_done_count) } : {}),
+    ...(r.choice_token ? { choiceToken: String(r.choice_token) } : {}),
+    ...(r.choice_group_sent_at ? { choiceGroupSentAt: String(r.choice_group_sent_at) } : {}),
     ...(r.event_id ? { eventId: String(r.event_id) } : {}),
     days: Number(r.days ?? 0),
     createdAt: String(r.created_at),
@@ -968,6 +998,7 @@ const LIST_COLUMN: Partial<Record<keyof Gallery, string>> = {
   days: 'days', createdAt: 'created_at', expiresAt: 'expires_at', hasCover: 'has_cover', films: 'films', photoCount: 'photo_count', linkedId: 'linked_id',
   deletedAt: 'deleted_at', coverKey: 'cover_key', hasThumb: 'has_thumb', views: 'views', guestViews: 'guest_views', downloads: 'downloads',
   coverVersion: 'cover_version', photosGen: 'photos_gen', eventId: 'event_id',
+  choiceDoneAt: 'choice_done_at', choiceDoneCount: 'choice_done_count',
 };
 const LIST_COLUMNS = GALLERY_LIST_FIELDS.map((k) => LIST_COLUMN[k]).join(',');
 
@@ -999,6 +1030,10 @@ const GALLERY_COLUMNS: Record<keyof GalleryFields, [string, (v: never) => unknow
   hideDate: ['hide_date', (v?: boolean) => v === true],
   hideVenue: ['hide_venue', (v?: boolean) => v === true],
   guestHiddenSets: ['guest_hidden_sets', (v?: string[]) => v ?? []],
+  choiceDoneAt: ['choice_done_at', (v?: string) => v ?? null],
+  choiceDoneCount: ['choice_done_count', (v?: number) => v ?? null],
+  choiceToken: ['choice_token', (v?: string) => v ?? null],
+  choiceGroupSentAt: ['choice_group_sent_at', (v?: string) => v ?? null],
 };
 
 /** Written only when it has a value: a copy read before the column existed never clears it. */
