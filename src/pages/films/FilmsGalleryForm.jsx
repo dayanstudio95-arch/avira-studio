@@ -722,7 +722,7 @@ export default function FilmsGalleryForm() {
       </form>
       {gallery && kind === "photos" && (
         <div className="max-w-4xl mx-auto mt-5">
-          <PhotosEditor galleryId={gallery.id} initialFolder={gallery.folderUrl || ""} coupleName={coupleName} coupleUrl={link} guestUrl={guestLink} />
+          <PhotosEditor galleryId={gallery.id} initialFolder={gallery.folderUrl || ""} coupleName={coupleName} coupleUrl={link} guestUrl={guestLink} guestHiddenSets={gallery.guestHiddenSets || []} />
         </div>
       )}
       {gallery && kind === "photos" && (

@@ -927,6 +927,7 @@ function toGallery(r: Row): Gallery {
     venue: (r.venue as string) || undefined,
     ...(r.hide_date === true ? { hideDate: true } : {}),
     ...(r.hide_venue === true ? { hideVenue: true } : {}),
+    ...(Array.isArray(r.guest_hidden_sets) && r.guest_hidden_sets.length ? { guestHiddenSets: (r.guest_hidden_sets as unknown[]).map(String) } : {}),
     ...(r.event_id ? { eventId: String(r.event_id) } : {}),
     days: Number(r.days ?? 0),
     createdAt: String(r.created_at),
@@ -997,10 +998,11 @@ const GALLERY_COLUMNS: Record<keyof GalleryFields, [string, (v: never) => unknow
   eventId: ['event_id', (v?: string) => v ?? null],
   hideDate: ['hide_date', (v?: boolean) => v === true],
   hideVenue: ['hide_venue', (v?: boolean) => v === true],
+  guestHiddenSets: ['guest_hidden_sets', (v?: string[]) => v ?? []],
 };
 
 /** Written only when it has a value: a copy read before the column existed never clears it. */
-const ONLY_WHEN_SET = new Set<keyof GalleryFields>(['coverVersion', 'hideDate', 'hideVenue']);
+const ONLY_WHEN_SET = new Set<keyof GalleryFields>(['coverVersion', 'hideDate', 'hideVenue', 'guestHiddenSets']);
 
 /** Only the fields present in `fields` (a field set to undefined is cleared, never skipped). */
 function galleryColumns(fields: GalleryFields): Row {

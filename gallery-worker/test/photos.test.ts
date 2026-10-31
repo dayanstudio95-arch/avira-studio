@@ -101,6 +101,15 @@ describe('owner edits', () => {
     expect(pub.base).toBe('/api/photos/g1/v0');
     expect(pub.items[0].ar).toBe(1.5);
   });
+  it("the guests' link leaves out the sets kept from the guests; the cover moves to a photo they see (Avira, 0098)", () => {
+    const next = applyPhotoEdits(d, { sets: [{ id: 'r', name: 'התארגנות' }, { id: 'p', name: 'מסיבה' }], items: { [a.key]: { set: 'r' }, [b.key]: { set: 'p' } }, cover: a.key });
+    const guest = publicPhotos('gg', next, ['r']);
+    expect(guest.items.map((i) => i.key)).not.toContain(a.key);
+    expect(guest.items.map((i) => i.key)).toContain(b.key);
+    expect(guest.sets).toEqual([{ id: 'p', name: 'מסיבה' }]);
+    expect(guest.cover).not.toBe(a.key);
+    expect(publicPhotos('g1', next).items.map((i) => i.key)).toContain(a.key);
+  });
 });
 
 describe('hearts counter', () => {

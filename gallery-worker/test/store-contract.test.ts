@@ -122,6 +122,11 @@ async function scenario(s: Store): Promise<Step[]> {
     const g = await s.patchGallery(T1, G.films, { hideDate: true, hideVenue: true });
     return [g?.hideDate === true, g?.hideVenue === true];
   });
+  await step('sets kept from the guests, then none', async () => {
+    const a = await s.patchGallery(T1, G.films, { guestHiddenSets: ['s1', 's2'] });
+    await s.patchGallery(T1, G.films, { guestHiddenSets: [] });
+    return [a?.guestHiddenSets ?? [], (await s.getGallery(G.films))?.guestHiddenSets ?? []];
+  });
   await step('show the date and venue again', async () => {
     await s.patchGallery(T1, G.films, { hideDate: false, hideVenue: false });
     const g = await s.getGallery(G.films);
@@ -487,6 +492,7 @@ describe('MemoryStore and SupabaseStore (on the migrations) give the same answer
     expect(at('patch with a guard that fails')).toBeNull();
     expect(at('hide the date and venue')).toEqual([true, true]);
     expect(at('show the date and venue again')).toEqual([false, false]);
+    expect(at('sets kept from the guests, then none')).toEqual([['s1', 's2'], []]);
     expect(at('counters')).toEqual([2, 1, 1]);
     expect(at('photos: a stale version is refused')).toBe(false);
     expect(at('photos: read back')).toEqual({ n: 3, version: 2 });

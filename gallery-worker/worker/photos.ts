@@ -775,15 +775,19 @@ export function patchChangesShown(data: PhotoData, diff: PhotoDiff): boolean {
   return Object.entries(diff.items).some(([k, it]) => hiddenIn(was.get(k)) !== hiddenIn(it) || was.get(k)?.ref !== it.ref);
 }
 
-/** What the couple receives: no file locations, hidden photos left out. `viewId` is the address the couple uses. */
+/**
+ * What the couple receives: no file locations, hidden photos left out. `viewId` is the address the couple uses.
+ * `offSets`: sets left out too — the guests' link, the sets the studio keeps from the guests (Avira, 0098).
+ */
 /** What a photo answers while the studio's Dropbox is disconnected, and the couple's page says (P65). */
 export const CLOUD_OFF_WORDS = 'התמונות לא זמינות כרגע: החיבור של הסטודיו לאחסון התמונות נותק. פנו לסטודיו.';
 
 /** A photo list read through the studio's Dropbox connection (its photos stop when it is disconnected, P65). */
 export const readsThroughDropbox = (data: Pick<PhotoData, 'provider'> | null | undefined) => data?.provider === 'dropbox' || data?.provider === 'dropbox-link';
 
-export function publicPhotos(viewId: string, data: PhotoData) {
-  const shown = data.items.filter((i) => !i.hidden);
+export function publicPhotos(viewId: string, data: PhotoData, offSets: readonly string[] = []) {
+  const off = new Set(offSets);
+  const shown = data.items.filter((i) => !i.hidden && !(i.set && off.has(i.set)));
   const used = new Set(shown.map((i) => i.set).filter(Boolean));
   return {
     sets: data.sets.filter((s) => used.has(s.id)),

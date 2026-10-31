@@ -1135,7 +1135,7 @@ route('GET', '/api/watch/:id', async ({ request, env, store, params, url }) => {
     const data = doc?.data ?? null;
     // The studio disconnected the Dropbox its photos are read through (P65): the page says so instead of empty squares.
     const cloudOff = readsThroughDropbox(data) && !s.dropbox.refreshToken;
-    const photos = data ? { ...publicPhotos(params.id, data), music: musicUrl(g.tenantId, films, g.music), design: effectiveDesign(data.design, films.designDefault), ...(cloudOff ? { cloudOff: true } : {}) } : null;
+    const photos = data ? { ...publicPhotos(params.id, data, role === 'guest' ? (g.guestHiddenSets ?? []) : []), music: musicUrl(g.tenantId, films, g.music), design: effectiveDesign(data.design, films.designDefault), ...(cloudOff ? { cloudOff: true } : {}) } : null;
     if (role === 'guest') return json({ ...view, ...locks, slug: tenant.slug, role, linked: null, photos, favorites: [], favBy: {}, insta: [] }, { headers });
     const [allHearts, allInsta, lists] = data ? await Promise.all([store.listHearts(g.id), store.listInsta(g.id), store.listLists(g.id)]) : [{}, [], []];
     // Only hearts and marks of photos the couple can see (P70): the counter never counts a hidden or gone photo.
@@ -1238,12 +1238,18 @@ async function photoRoute({ request, env, store, params, url, waitUntil }: Ctx):
   // The edge copy is always the gallery as it is now; only how long the browser keeps it follows the address.
   const at = { visible: g.photosVisibleVersion ?? 0, gen: g.photosGen ?? 0 };
   const current = asked === at.gen;
+  // "Full quality" may pick a larger copy of the photo: its possible copies come with it.
+  const readItem = () => store.getPhotoItem(g.tenantId, g.id, params.key, { copies: size === 'full' });
+  // A set kept from the guests (Avira, 0098): the guests' link never gets its photos. Checked before the edge copy,
+  // which is the gallery's (the couple's link fills it too) — so only these galleries read the photo for a guest.
+  const offSets = role === 'guest' && !studio ? (g.guestHiddenSets ?? []) : [];
+  const early = offSets.length ? await readItem() : undefined;
+  if (early?.item?.set && offSets.includes(early.item.set)) throw new HttpError(404, 'התמונה לא נמצאה');
   if (cachedSize(size, download)) {
     const hit = await cachedPreview(g.id, params.key, size, at, current);
     if (hit) return hit;
   }
-  // "Full quality" may pick a larger copy of the photo: its possible copies come with it.
-  const read = await store.getPhotoItem(g.tenantId, g.id, params.key, { copies: size === 'full' });
+  const read = early === undefined ? await readItem() : early;
   const item = read?.item;
   if (!read || !item || (item.hidden && !studio)) throw new HttpError(404, 'התמונה לא נמצאה');
   // Never a copy the studio hid (the studio's own screens may). Cached only when the photo was read at the gallery
@@ -1664,7 +1670,10 @@ route('GET', '/api/watch/:id/faces/:n', async ({ request, env, store, params, ur
   const n = Number(params.n);
   if (!Number.isInteger(n) || n < 0) throw new HttpError(404, 'לא נמצא');
   const v = url.searchParams.get('v');
-  const bytes = await guestChunk(store, g.id, n, v && /^\d+$/.test(v) ? Number(v) : null);
+  // Faces of the photos in a set kept from the guests stay out of what a guest downloads (Avira, 0098).
+  const offSets = new Set(g.guestHiddenSets ?? []);
+  const off = offSets.size ? new Set(((await photoDoc(store, g))?.data?.items ?? []).filter((i) => i.set && offSets.has(i.set)).map((i) => i.key)) : undefined;
+  const bytes = await guestChunk(store, g.id, n, v && /^\d+$/.test(v) ? Number(v) : null, off);
   return new Response(bytes as Uint8Array<ArrayBuffer>, { headers: { 'Content-Type': 'application/octet-stream', 'Cache-Control': v ? 'private, max-age=86400' : 'private, no-store' } });
 });
 

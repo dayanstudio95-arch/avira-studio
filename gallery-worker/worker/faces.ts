@@ -55,13 +55,16 @@ export async function addFacesChunk(
   return { ...m, skipped: m.duplicate ? photos.length : skipped };
 }
 
-/** Chunk n for a guest: only the photos still shown. 409 when the face data changed since the search began. */
-export async function guestChunk(store: Store, galleryId: string, n: number, version: number | null): Promise<Uint8Array> {
+/**
+ * Chunk n for a guest: only the photos still shown, without `off` (the photos of sets kept from the guests). 409 when
+ * the face data changed since the search began.
+ */
+export async function guestChunk(store: Store, galleryId: string, n: number, version: number | null, off?: ReadonlySet<string>): Promise<Uint8Array> {
   const read = await store.facesChunk(galleryId, n);
   if (!read) throw new HttpError(404, 'לא נמצא');
   if (version !== null && read.version !== version) throw new HttpError(409, 'נתוני החיפוש התעדכנו. נסו שוב.', 'faces_changed');
   const shown = new Set(read.keys);
-  return filterChunk(read.bytes, (key) => shown.has(key)).bytes;
+  return filterChunk(read.bytes, (key) => shown.has(key) && !off?.has(key)).bytes;
 }
 
 /**

@@ -785,6 +785,49 @@ test('password, download code and the guests link (and the studio walks straight
 });
 
 
+test("guests' link: the sets the couple keeps from the guests are not shown, and their photos are refused (Avira, 0098)", async ({ browser, request }) => {
+  const g = await (await request.post('/api/admin/galleries', { headers: OWNER, data: { kind: 'photos', coupleName: 'שמורה & לאורחים', date: '2026-07-01' } })).json();
+  const loaded = await (await request.post(`/api/admin/galleries/${g.id}/photos/load`, { headers: OWNER, data: { url: FOLDER } })).json();
+  const setId = (name: string) => loaded.sets.find((x: { name: string }) => x.name === name).id as string;
+  const inSet = (name: string) => loaded.items.filter((i: { set?: string }) => i.set === setId(name)).map((i: { key: string }) => i.key as string);
+  const [ready, outdoor, party] = [inSet('התארגנות'), inSet('צילומי חוץ'), inSet('מסיבה')];
+  expect([ready.length, outdoor.length, party.length]).toEqual([10, 10, 10]);
+  const { guestId } = await (await request.get(`/api/admin/galleries/${g.id}`, { headers: OWNER })).json();
+  // The couple opens a getting-ready photo first: the edge copy exists before the guest asks for it.
+  expect((await request.get(`/api/photos/${g.id}/${ready[0]}?s=m`)).status()).toBe(200);
+
+  const saved = await (await request.put(`/api/admin/galleries/${g.id}`, { headers: OWNER, data: { guestHiddenSets: [setId('התארגנות'), setId('צילומי חוץ')] } })).json();
+  expect(saved.guestHiddenSets).toEqual([setId('התארגנות'), setId('צילומי חוץ')]);
+  // The couple still has everything.
+  const couple = await (await request.get(`/api/watch/${g.id}`)).json();
+  expect(couple.photos.sets.map((x: { name: string }) => x.name)).toEqual(['התארגנות', 'צילומי חוץ', 'מסיבה']);
+  expect(couple.photos.items).toHaveLength(30);
+  // The guests: only the party, nothing of the other two — not in the list, not as a photo, even one the edge keeps.
+  const guestView = await (await request.get(`/api/watch/${guestId}`)).json();
+  expect(guestView.photos.sets.map((x: { name: string }) => x.name)).toEqual(['מסיבה']);
+  expect(guestView.photos.items.map((i: { key: string }) => i.key)).toEqual(party);
+  for (const k of [...ready, ...outdoor]) expect(JSON.stringify(guestView)).not.toContain(k);
+  expect((await request.get(`/api/photos/${guestId}/${ready[0]}?s=m`)).status()).toBe(404);
+  expect((await request.get(`/api/photos/${guestId}/${outdoor[0]}?s=l`)).status()).toBe(404);
+  expect((await request.get(`/api/photos/${guestId}/${party[0]}?s=m`)).status()).toBe(200);
+  expect((await request.get(`/api/photos/${g.id}/${ready[0]}?s=m`)).status()).toBe(200);
+
+  // On the guests' page: the party tab only.
+  const guest = await (await browser.newContext({ baseURL: 'http://localhost:8789', locale: 'he-IL', viewport: { width: 1280, height: 860 } })).newPage();
+  await guest.goto(`/friend/${guestId}`);
+  await guest.getByTestId('agree').check();
+  await guest.getByTestId('enter').click();
+  await guest.getByTestId('pg-enter').click();
+  await expect(guest.getByTestId('pg-tab')).toHaveText(['מסיבה']);
+  await expect(guest.getByTestId('pg-photo')).toHaveCount(10);
+
+  // Shown to the guests again.
+  await request.put(`/api/admin/galleries/${g.id}`, { headers: OWNER, data: { guestHiddenSets: [] } });
+  expect((await (await request.get(`/api/watch/${guestId}`)).json()).photos.items).toHaveLength(30);
+  expect((await request.get(`/api/photos/${guestId}/${ready[0]}?s=m`)).status()).toBe(200);
+});
+
+
 // ---------- phase 5a: the album designer (ported from the Avira films app) ----------
 
 async function quickPhotoGallery(request: APIRequestContext, coupleName: string, headers = OWNER): Promise<string> {

@@ -145,6 +145,8 @@ export interface Gallery {
   /** Kept off the couple's and the guests' pages (Avira, 0097); the studio's screens still show it. */
   hideDate?: boolean;
   hideVenue?: boolean;
+  /** Photo galleries: set ids the guests' link doesn't show (Avira, 0098); the couple's link shows every set. */
+  guestHiddenSets?: string[];
   /**
    * The studio's event (the hub's events, crm studios) this gallery belongs to (fix plan P57): set from the hub's
    * gallery form only after the Worker checked the event is this studio's (the database checks it too, 0139). The

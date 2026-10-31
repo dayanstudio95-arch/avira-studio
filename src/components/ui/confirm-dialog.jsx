@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { answerConfirm, subscribeConfirm } from "@/lib/confirmDialog";
 
 // In-app confirmation (2026-10-09, the owner's request: "שתראה יפה בתוך המערכת ולא כאילו
 // היא מהדפדפן"). Use it like window.confirm, but awaited:
@@ -30,6 +31,23 @@ export function confirmDialog(opts) {
       return { ...o, resolve };
     })
   );
+}
+
+// The galleries' screens (from Studio Plan) ask through @/lib/confirmDialog, whose own window isn't mounted in
+// Avira: their questions are shown in this same window (2026-10-31; before, they fell back to the browser's box).
+// A question that this window drops (another one replaced it) is answered "no", as both modules do.
+export function GalleryConfirmBridge() {
+  useEffect(() => {
+    let open = null;
+    return subscribeConfirm((opts) => {
+      open = opts;
+      if (!opts) return;
+      confirmDialog(opts).then((answer) => {
+        if (open === opts) answerConfirm(answer);
+      });
+    });
+  }, []);
+  return null;
 }
 
 export function ConfirmHost() {

@@ -47,7 +47,7 @@ function Progress({ done, total, children, testId }) {
   );
 }
 
-export default function PhotosEditor({ galleryId, initialFolder = "", coupleName = "", coupleUrl = "", guestUrl = "" }) {
+export default function PhotosEditor({ galleryId, initialFolder = "", coupleName = "", coupleUrl = "", guestUrl = "", guestHiddenSets = [] }) {
   const [data, setData] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [folder, setFolder] = useState(initialFolder);
@@ -63,6 +63,21 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
   const [labelMap, setLabelMap] = useState({});
   const [showLabelMap, setShowLabelMap] = useState(false);
   const [newSet, setNewSet] = useState("");
+  // Sets the guests' link doesn't show (Avira, 0098: "the couple asked that the guests won't see the getting ready"),
+  // saved on the gallery at once; the couple's link shows every set.
+  const [guestOff, setGuestOff] = useState(guestHiddenSets);
+  const toggleGuestSet = async (setId) => {
+    const before = guestOff;
+    const next = before.includes(setId) ? before.filter((x) => x !== setId) : [...before, setId];
+    setGuestOff(next);
+    try {
+      const g = await filmsApi("PUT", `/api/admin/galleries/${galleryId}`, { guestHiddenSets: next });
+      setGuestOff(g.guestHiddenSets || []);
+    } catch (e) {
+      setGuestOff(before);
+      toast.error(e.message);
+    }
+  };
   // A new set typed in the bottom bar: made and filled with the selected photos in one step.
   const [dockSet, setDockSet] = useState(null);
   // "Hide photos already in a set": what's left to sort stays in view (remembered on this computer). On unless
@@ -663,6 +678,24 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
           </Button>
         </div>
         <p className="text-xs text-gray-500">טיפ: אפשר גם לבחור תמונות וללחוץ "+ סט חדש" בפס שלמטה, והן ייכנסו לסט החדש מיד.</p>
+        {guestUrl && data.sets.length > 0 && (
+          <div className="space-y-2 border-t border-gray-800 pt-3" data-testid="guest-sets">
+            <p className="text-sm text-gray-200">
+              סטים שהאורחים לא רואים <span className="text-xs text-gray-500">— הזוג רואה הכל; בקישור לאורחים הסטים המסומנים לא מופיעים בכלל.</span>
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {data.sets.map((s) => {
+                const off = guestOff.includes(s.id);
+                return (
+                  <label key={s.id} className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm cursor-pointer ${off ? "border-amber-400 bg-amber-400/15 text-amber-300" : "border-gray-700 text-gray-300 hover:text-white"}`}>
+                    <input type="checkbox" checked={off} onChange={() => toggleGuestSet(s.id)} data-testid="guest-set" data-set={s.id} />
+                    {s.name}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </section>
 
       <section className={card}>

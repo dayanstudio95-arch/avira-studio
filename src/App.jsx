@@ -2,7 +2,7 @@ import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/sonner';
-import { ConfirmHost } from '@/components/ui/confirm-dialog';
+import { ConfirmHost, GalleryConfirmBridge } from '@/components/ui/confirm-dialog';
 import { queryClientInstance } from '@/lib/query-client';
 import { AuthProvider, useAuth } from '@/lib/SupabaseAuthContext';
 import { isAdmin, isLeadCoordinator, isPhotographerRole, isAlbumManagerRole, isEditorRole } from '@/lib/permissions';
@@ -345,6 +345,7 @@ function App() {
           </Suspense>
           <Toaster />
           <ConfirmHost />
+          <GalleryConfirmBridge />
         </BrowserRouter>
       </QueryClientProvider>
     </AuthProvider>
