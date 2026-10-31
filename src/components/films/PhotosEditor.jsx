@@ -25,6 +25,14 @@ const isUnmarked = (it) => it.label === "" && !(it.folder && isTopFolder(it.fold
 
 const card = "rounded-xl border border-gray-800 bg-gray-900 p-5 space-y-3";
 const chip = (on) => `rounded-full border px-3 py-1 text-sm transition-colors ${on ? "border-brand-400 bg-brand-400/15 text-brand-300" : "border-gray-700 text-gray-300 hover:text-white"}`;
+// A cloud folder's chip says how far its sorting got (Avira, 2026-10-31, the owner's request): green — every photo is
+// in a set (or hidden from the couple), yellow — some, red — none yet. The open folder gets a white ring.
+const FOLDER_TONE = {
+  done: "border-green-500 bg-green-500/15 text-green-300",
+  some: "border-amber-400 bg-amber-400/15 text-amber-300",
+  none: "border-red-500 bg-red-500/15 text-red-300",
+};
+const folderChip = (on, tone) => `rounded-full border px-3 py-1 text-sm transition-colors ${FOLDER_TONE[tone]} ${on ? "ring-2 ring-white/80 ring-offset-1 ring-offset-gray-900" : "hover:brightness-125"}`;
 const btn = "border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700";
 
 function Progress({ done, total, children, testId }) {
@@ -287,7 +295,8 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
     if (!data) return [];
     const hideSet = hideSorted && (view === "all" || view.startsWith("folder:"));
     return data.items.filter((i) => {
-      if (hideSet && i.set) return false;
+      // A photo hidden from the couple is dealt with too, as in the folder's colour.
+      if (hideSet && (i.set || i.hidden)) return false;
       if (view === "all") return !i.hidden;
       if (view === "unsorted") return !i.hidden && !i.set;
       if (view === "fav") return favs.has(i.key);
@@ -341,6 +350,13 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
               ? data.items.filter((i) => i.folder === v.slice(7)).length
               : data.items.filter((i) => !i.hidden && i.set === v).length;
   const folders = [...new Set(data.items.map((i) => i.folder).filter(Boolean))];
+  const folderState = (f) => {
+    const inFolder = data.items.filter((i) => i.folder === f);
+    const done = inFolder.filter((i) => i.set || i.hidden).length;
+    const tone = done === 0 ? "none" : done === inFolder.length ? "done" : "some";
+    const title = tone === "done" ? "כל התמונות שויכו לסטים" : tone === "none" ? "עוד לא שויכה אף תמונה" : `שויכו ${done.toLocaleString("he-IL")} מתוך ${inFolder.length.toLocaleString("he-IL")}`;
+    return { tone, title, total: inFolder.length };
+  };
   const setName = (id) => data.sets.find((s) => s.id === id)?.name || "";
 
   const click = (key, e) => {
@@ -669,20 +685,25 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
         {folders.length > 1 && (
           <div className="flex flex-wrap items-center gap-1.5" data-testid="folder-views">
             <span className="text-xs text-gray-500">תיקיות מהקישור:</span>
-            {folders.map((f) => (
-              <button
-                key={f}
-                type="button"
-                className={chip(view === `folder:${f}`)}
-                onClick={() => {
-                  setView(`folder:${f}`);
-                  setSelected(new Set());
-                }}
-                data-testid="folder-view"
-              >
-                📁 {f} <span className="opacity-70">{count(`folder:${f}`)}</span>
-              </button>
-            ))}
+            {folders.map((f) => {
+              const st = folderState(f);
+              return (
+                <button
+                  key={f}
+                  type="button"
+                  className={folderChip(view === `folder:${f}`, st.tone)}
+                  onClick={() => {
+                    setView(`folder:${f}`);
+                    setSelected(new Set());
+                  }}
+                  title={st.title}
+                  data-testid="folder-view"
+                  data-state={st.tone}
+                >
+                  📁 {f} <span className="opacity-70">{st.total}</span>
+                </button>
+              );
+            })}
           </div>
         )}
         {view === "fav" && favs.size > 0 && (
@@ -721,7 +742,7 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
         </div>
         {hideSorted && mixedView && shown.length === 0 && count(view) > 0 && (
           <p className="py-6 text-center text-sm text-gray-400" data-testid="all-sorted">
-            כל התמונות כאן כבר שויכו לסטים. כדי לראות אותן: לחיצה על סט למעלה, או ביטול הסימון "הסתרת תמונות שכבר שויכו לסט".
+            כל התמונות כאן כבר שויכו לסטים (או הוסתרו מהזוג). כדי לראות אותן: לחיצה על סט למעלה, או ביטול הסימון "הסתרת תמונות שכבר שויכו לסט".
           </p>
         )}
         <div className="grid gap-1.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(118px, 1fr))" }} data-testid="admin-photos">
