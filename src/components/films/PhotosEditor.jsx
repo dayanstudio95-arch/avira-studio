@@ -57,19 +57,21 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
   const [newSet, setNewSet] = useState("");
   // A new set typed in the bottom bar: made and filled with the selected photos in one step.
   const [dockSet, setDockSet] = useState(null);
-  // "Hide photos already in a set": what's left to sort stays in view (remembered on this computer).
+  // "Hide photos already in a set": what's left to sort stays in view (remembered on this computer). On unless
+  // turned off (Avira, 2026-10-31, the owner's request: a photo put in a set leaves its folder); a new key, so an
+  // old "off" doesn't carry over.
   const [hideSorted, setHideSorted] = useState(() => {
     try {
-      return localStorage.getItem("photos:hide-sorted") === "1";
+      return localStorage.getItem("photos:show-sorted") !== "1";
     } catch {
-      return false;
+      return true;
     }
   });
   const toggleHideSorted = (on) => {
     setHideSorted(on);
     setSelected(new Set());
     try {
-      localStorage.setItem("photos:hide-sorted", on ? "1" : "0");
+      localStorage.setItem("photos:show-sorted", on ? "0" : "1");
     } catch {
       /* private mode */
     }
@@ -717,6 +719,11 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
             </>
           )}
         </div>
+        {hideSorted && mixedView && shown.length === 0 && count(view) > 0 && (
+          <p className="py-6 text-center text-sm text-gray-400" data-testid="all-sorted">
+            כל התמונות כאן כבר שויכו לסטים. כדי לראות אותן: לחיצה על סט למעלה, או ביטול הסימון "הסתרת תמונות שכבר שויכו לסט".
+          </p>
+        )}
         <div className="grid gap-1.5" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(118px, 1fr))" }} data-testid="admin-photos">
           {shown.map((p) => (
             <button
@@ -728,7 +735,8 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
               data-testid="admin-photo"
               data-key={p.key}
             >
-              <img src={thumb(p.key)} alt="" loading="lazy" className={`w-full h-full object-cover ${p.hidden ? "opacity-30" : ""}`} />
+              {/* Shown although already in a set (the switch is off): grey, with the set's name. */}
+              <img src={thumb(p.key)} alt="" loading="lazy" className={`w-full h-full object-cover ${p.hidden ? "opacity-30" : p.set && mixedView ? "opacity-50 grayscale" : ""}`} />
               {selected.has(p.key) && <span className="absolute top-1 right-1 w-5 h-5 rounded-full bg-brand-400 text-brand-fg text-xs grid place-items-center font-bold">✓</span>}
               {data.cover === p.key && <span className="absolute top-1 left-1 text-brand-300 drop-shadow">★</span>}
               {favs.has(p.key) && <span className="absolute bottom-1 left-1.5 text-pink-400 drop-shadow">♥</span>}
@@ -737,7 +745,7 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
                   📷
                 </span>
               )}
-              {p.set && view === "all" && <span className="absolute bottom-1 right-1 max-w-[calc(100%-1.6rem)] truncate rounded-full bg-black/65 px-1.5 text-[10px] text-gray-100">{setName(p.set)}</span>}
+              {p.set && mixedView && <span className="absolute bottom-1 right-1 max-w-[calc(100%-1.6rem)] truncate rounded-full bg-black/65 px-1.5 text-[10px] text-gray-100">{setName(p.set)}</span>}
             </button>
           ))}
         </div>
