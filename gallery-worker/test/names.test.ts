@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { withAmpersand } from '../shared/names';
+import { coupleMatches, withAmpersand } from '../shared/names';
 
 describe('couple names with &', () => {
   it('turns the joined ו into &', () => {
@@ -28,5 +28,24 @@ describe('couple names with &', () => {
     expect(withAmpersand('רונית ודניאל וייס')).toBe('רונית & דניאל וייס');
     expect(withAmpersand('דניאל וייס ורונית')).toBe('דניאל וייס & רונית');
     expect(withAmpersand('מיכל ווזנה ואבי וולך')).toBe('מיכל ווזנה & אבי וולך');
+  });
+});
+
+describe('the studio finds a couple however the names are typed (Avira, 2026-11-02)', () => {
+  it('"דניאלה & דן" is found by "דניאלה ודן", "דן ודניאלה", one name, or part of a name', () => {
+    for (const q of ['דניאלה ודן', 'דן ודניאלה', 'דניאלה & דן', 'דן & דניאלה', 'דניאלה', 'דן', 'דני', '  דן   ו דניאלה ']) {
+      expect(coupleMatches('דניאלה & דן', q), q).toBe(true);
+    }
+  });
+  it('not another couple, and every typed person counts', () => {
+    expect(coupleMatches('דניאלה & דן', 'נועה')).toBe(false);
+    expect(coupleMatches('דניאלה & דן', 'דן ונועה')).toBe(false);
+    expect(coupleMatches('נועה & תומר', 'דניאלה ודן')).toBe(false);
+  });
+  it('names stored with ו, English "and", and a family name that starts with ו', () => {
+    expect(coupleMatches('מאי ואופק', 'אופק & מאי')).toBe(true);
+    expect(coupleMatches('Noa and Tom', 'tom & noa')).toBe(true);
+    expect(coupleMatches('רונית & דניאל וייס', 'דניאל וייס ורונית')).toBe(true);
+    expect(coupleMatches('דניאלה & דן', '')).toBe(true);
   });
 });

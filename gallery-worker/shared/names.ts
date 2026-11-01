@@ -32,3 +32,24 @@ export function withAmpersand(input: string): string {
   if (at < 0) return name;
   return `${words.slice(0, at).join(' ')} & ${[words[at].slice(1), ...words.slice(at + 1)].join(' ')}`;
 }
+
+/** The couple's people, as search reads them: "דניאלה ודן" / "דניאלה & דן" / "Daniela and Dan" → ["דניאלה", "דן"]. */
+function people(name: string): string[] {
+  const amp = withAmpersand(name.replace(/\s+(and|AND|And)\s+/g, ' & ').replace(/\s*\+\s*/g, ' & '));
+  return amp
+    .split(/\s*[&,]\s*/)
+    .map((p) => p.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+/**
+ * The studio's search finds a couple however their names are typed (Avira, 2026-11-02, the owner's request): the
+ * list shows "דניאלה & דן", and "דניאלה ודן", "דן ודניאלה" or just "דן" find it too. Every person typed must be (part
+ * of) one of the couple's people, in any order.
+ */
+export function coupleMatches(coupleName: string, query: string): boolean {
+  const asked = people(query);
+  if (asked.length === 0) return true;
+  const theirs = people(coupleName);
+  return asked.every((a) => theirs.some((t) => t.includes(a)));
+}

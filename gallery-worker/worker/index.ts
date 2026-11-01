@@ -325,6 +325,12 @@ route('GET', '/api/admin/galleries', async ({ request, env, store, url }) => {
 const GALLERIES_PAGE = 500;
 
 /** The gallery link picker (films ↔ photos): every gallery of the studio in a few fields (P70). */
+/** The photo galleries whose guest face search is on: the list's face icon (Avira, 2026-11-02). */
+route('GET', '/api/admin/galleries/face-states', async ({ request, store }) => {
+  const me = await requireStudioAdmin(request, store, { module: 'photos' });
+  return json({ on: await store.faceStates(me.tenantId) });
+});
+
 route('GET', '/api/admin/galleries/options', async ({ request, store }) => {
   const me = await requireStudioAdmin(request, store);
   return json(await store.galleryOptions(me.tenantId));

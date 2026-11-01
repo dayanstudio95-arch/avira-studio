@@ -208,6 +208,14 @@ const TEMPLATES = [
     variables: ["{{names}}", "{{event_date}}", "{{message}}", "{{link}}"],
   },
   {
+    // Mirrors DEFAULT_GALLERY_LINK_TEMPLATE in supabase/functions/_shared/galleryLinkMessage.ts
+    key: "template_gallery_link",
+    label: "שליחת הגלריה לזוג (הגלריה שלנו)",
+    description: "ההודעה מהכפתור \"שלח לזוג\" בגלריות. {{link}} = הקישור של הזוג לגלריה, {{expires}} = היום שבו הגלריה נסגרת. שורה שהמשתנה שלה ריק לא תופיע. (\"→ זוג\" בסטטוס עבודה ממשיך לשלוח את \"לינק סופי\".)",
+    defaultValue: `היי {{names}} 😊\nהגלריה מהחתונה שלכם מוכנה! 🎉\nלצפייה, הורדה ובחירת תמונות: {{link}}\nהגלריה פתוחה עד {{expires}}.\n❤ סמנו לב על התמונות לאלבום, וכשסיימתם לחצו "סיימנו לבחור".\n👥 לשיתוף עם האורחים — הכפתור "שתפו עם האורחים" בגלריה.\nבאהבה, אווירה סטודיו`,
+    variables: ["{{names}}", "{{link}}", "{{expires}}", "{{event_date}}", "{{venue}}", "{{album_guide_link}}"],
+  },
+  {
     // Mirrors DEFAULT_GALLERY_CHOICE_TEMPLATE in supabase/functions/_shared/galleryChoice.ts
     key: "template_gallery_choice_group",
     label: "זוג סיים לבחור תמונות לאלבום (בגלריה שלנו)",

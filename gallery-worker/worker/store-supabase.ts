@@ -834,6 +834,11 @@ export class SupabaseStore implements Store {
     await this.write('/rest/v1/notifications', 'POST', { tenant_id: tenantId, type: n.type, title: n.title, body: n.body });
   }
 
+  async faceStates(tenantId: string): Promise<string[]> {
+    const rows = await this.allRows(`/rest/v1/films_photos?tenant_id=eq.${encodeURIComponent(tenantId)}&select=gallery_id,on:data->faceSearch`);
+    return rows.filter((r) => r.on === true).map((r) => String(r.gallery_id));
+  }
+
   async notifyChoice(galleryId: string): Promise<'sent' | 'skipped' | 'failed'> {
     // WhatsApp lives in the Edge Functions (_shared/whatsapp.ts): the Worker asks gallery-choice-notify, which reads
     // the gallery itself (nothing in this call is trusted but its id) and sends only to the studio's own album group.
@@ -958,6 +963,8 @@ function toGallery(r: Row): Gallery {
     ...(r.choice_done_count !== null && r.choice_done_count !== undefined ? { choiceDoneCount: Number(r.choice_done_count) } : {}),
     ...(r.choice_token ? { choiceToken: String(r.choice_token) } : {}),
     ...(r.choice_group_sent_at ? { choiceGroupSentAt: String(r.choice_group_sent_at) } : {}),
+    ...(r.photographer ? { photographer: String(r.photographer) } : {}),
+    ...(r.studio_favorite === true ? { studioFavorite: true } : {}),
     ...(r.event_id ? { eventId: String(r.event_id) } : {}),
     days: Number(r.days ?? 0),
     createdAt: String(r.created_at),
@@ -998,7 +1005,7 @@ const LIST_COLUMN: Partial<Record<keyof Gallery, string>> = {
   days: 'days', createdAt: 'created_at', expiresAt: 'expires_at', hasCover: 'has_cover', films: 'films', photoCount: 'photo_count', linkedId: 'linked_id',
   deletedAt: 'deleted_at', coverKey: 'cover_key', hasThumb: 'has_thumb', views: 'views', guestViews: 'guest_views', downloads: 'downloads',
   coverVersion: 'cover_version', photosGen: 'photos_gen', eventId: 'event_id',
-  choiceDoneAt: 'choice_done_at', choiceDoneCount: 'choice_done_count',
+  choiceDoneAt: 'choice_done_at', choiceDoneCount: 'choice_done_count', photographer: 'photographer', studioFavorite: 'studio_favorite',
 };
 const LIST_COLUMNS = GALLERY_LIST_FIELDS.map((k) => LIST_COLUMN[k]).join(',');
 
@@ -1034,6 +1041,8 @@ const GALLERY_COLUMNS: Record<keyof GalleryFields, [string, (v: never) => unknow
   choiceDoneCount: ['choice_done_count', (v?: number) => v ?? null],
   choiceToken: ['choice_token', (v?: string) => v ?? null],
   choiceGroupSentAt: ['choice_group_sent_at', (v?: string) => v ?? null],
+  photographer: ['photographer', (v?: string) => v ?? null],
+  studioFavorite: ['studio_favorite', (v?: boolean) => v === true],
 };
 
 /** Written only when it has a value: a copy read before the column existed never clears it. */

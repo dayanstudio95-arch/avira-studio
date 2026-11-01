@@ -141,6 +141,14 @@ async function scenario(s: Store): Promise<Step[]> {
       after?.choiceDoneAt ?? null, after?.choiceToken ?? null, await s.getGalleryByChoiceToken('choice-token-0123456789abcdef'),
     ];
   });
+  // Avira 0100: the photographer and the studio's star, set and cleared; read by the list too.
+  await step('photographer and star', async () => {
+    const a = await s.patchGallery(T1, G.films, { photographer: 'יריב', studioFavorite: true });
+    const listed = (await s.listGalleries(T1)).find((g) => g.id === G.films);
+    await s.patchGallery(T1, G.films, { photographer: undefined, studioFavorite: undefined });
+    const b = await s.getGallery(G.films);
+    return [a?.photographer, a?.studioFavorite === true, listed?.photographer, listed?.studioFavorite === true, b?.photographer ?? null, b?.studioFavorite === true];
+  });
   await step('show the date and venue again', async () => {
     await s.patchGallery(T1, G.films, { hideDate: false, hideVenue: false });
     const g = await s.getGallery(G.films);
@@ -409,6 +417,8 @@ async function scenario(s: Store): Promise<Step[]> {
   await step('faces: on again, the mark goes', async () => [await s.faceSearchOn(GF), Boolean((await s.getGallery(GF))?.facesOffAt)]);
   await s.deleteFaces(GF, { searchOff: true });
   await step('faces: never scanned since, the switch stays', () => s.faceSearchOn(GF));
+  // Avira 2026-11-02: the list's face icon reads every gallery's switch in one request.
+  await step('faces: the studio\'s galleries with the switch on', async () => (await s.faceStates(T1)).includes(GF));
   return out;
 }
 
@@ -507,6 +517,7 @@ describe('MemoryStore and SupabaseStore (on the migrations) give the same answer
     expect(at('hide the date and venue')).toEqual([true, true]);
     expect(at('show the date and venue again')).toEqual([false, false]);
     expect(at('sets kept from the guests, then none')).toEqual([['s1', 's2'], []]);
+    expect(at('photographer and star')).toEqual(['יריב', true, 'יריב', true, null, false]);
     expect(at('choice: done once, by its link, reopened')).toEqual([3, '2026-10-31T10:00:00.000Z', null, G.films, 3, null, null, null]);
     expect(at('counters')).toEqual([2, 1, 1]);
     expect(at('photos: a stale version is refused')).toBe(false);
@@ -518,6 +529,7 @@ describe('MemoryStore and SupabaseStore (on the migrations) give the same answer
     expect(at('faces: deleted, search off, the gallery knows why')).toEqual([{ chunks: 0, photos: 0, faces: 0, version: false }, false, true]);
     expect(at('faces: on again, the mark goes')).toEqual([true, false]);
     expect(at('faces: never scanned since, the switch stays')).toBe(true);
+    expect(at('faces: the studio\'s galleries with the switch on')).toBe(true);
     expect(at('photos: first save for a missing gallery')).toMatchObject({ threw: 404 });
     expect(at('photos: versions follow every save')).toEqual({ version: 2, visible: 2, count: 0, cover: null });
     expect(at('photos: a whole save raises both versions')).toEqual({ version: 3, visible: 3, count: 0, cover: null });

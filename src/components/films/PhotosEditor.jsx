@@ -607,6 +607,15 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
             <b className="text-white">שיוך לסטים לפי צבע מלייטרום</b> · תמונה שסומנה בצבע בלייטרום נכנסת לסט של הצבע, ותמונה בלי צבע לסט של "בלי צבע" (רק תמונות שעוד אין להן סט, ולא תיקיות הטופ).
           </span>
         </label>
+        {/* Which colour goes to which set, shown always (Avira, 2026-11-02, the owner's request); changed under "שינוי הצבעים". */}
+        <div className="flex flex-wrap gap-2 pr-7" data-testid="label-legend">
+          {LABELS.map((c) => (
+            <span key={c} className="inline-flex items-center gap-1.5 rounded-full border border-gray-700 px-2.5 py-0.5 text-xs text-gray-300">
+              <span className={`w-2.5 h-2.5 rounded-full ${LABEL_DOT[c]}`} />
+              {LABEL_NAMES[c]} ← {labelMap[c] || "בלי סט"}
+            </span>
+          ))}
+        </div>
         {labelsOn && (
           <div className="space-y-2" data-testid="label-map">
             <div className="flex flex-wrap items-center gap-2">

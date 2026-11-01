@@ -935,6 +935,12 @@ export class MemoryStore implements Store {
     this.notices.push({ tenantId, ...n });
   }
 
+  async faceStates(tenantId: string): Promise<string[]> {
+    const out: string[] = [];
+    for (const g of this.galleries.values()) if (g.tenantId === tenantId && this.photos.get(g.id)?.faceSearch === true) out.push(g.id);
+    return out;
+  }
+
   /** The galleries gallery-choice-notify would have been called for (Avira, 0099). */
   choiceNotified: string[] = [];
   async notifyChoice(galleryId: string): Promise<'sent' | 'skipped' | 'failed'> {

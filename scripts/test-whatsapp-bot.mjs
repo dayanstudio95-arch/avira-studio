@@ -3490,5 +3490,15 @@ console.log('\n— PART 75: album group messages + list order —');
   check('the studio\'s own words', gc.renderGalleryChoice('{{names}} — {{link}}', { names: 'א', link: 'L' }), 'א — L');
 }
 
+{
+  section('galleries "שלח לזוג": the gallery\'s own words (2026-11-02)');
+  const gl = await loadModule('supabase/functions/_shared/galleryLinkMessage.ts', 'gl77');
+  check('the closing day in Israel', [gl.israelDay('2026-12-18T21:59:59.000Z'), gl.israelDay('2026-12-18T22:30:00.000Z'), gl.israelDay(''), gl.israelDay('x')], ['18.12.2026', '19.12.2026', '', '']);
+  check('every line', gl.renderGalleryLink('', { names: 'דניאלה ודן', link: 'https://g/avira/1', expires: '18.12.2026' }),
+    'היי דניאלה ודן 😊\nהגלריה מהחתונה שלכם מוכנה! 🎉\nלצפייה, הורדה ובחירת תמונות: https://g/avira/1\nהגלריה פתוחה עד 18.12.2026.\n❤ סמנו לב על התמונות לאלבום, וכשסיימתם לחצו "סיימנו לבחור".\n👥 לשיתוף עם האורחים — הכפתור "שתפו עם האורחים" בגלריה.\nבאהבה, אווירה סטודיו');
+  check('no closing day: that line goes', gl.renderGalleryLink(null, { names: 'א', link: 'L', expires: '' }).includes('פתוחה עד'), false);
+  check('the studio\'s own words', gl.renderGalleryLink('{{names}}: {{link}} · {{venue}}', { names: 'א', link: 'L', venue: 'שפיים' }), 'א: L · שפיים');
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

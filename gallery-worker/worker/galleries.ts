@@ -40,6 +40,8 @@ export interface GalleryInput {
   hideDate?: boolean;
   hideVenue?: boolean;
   guestHiddenSets?: string[];
+  photographer?: string;
+  studioFavorite?: boolean;
   days?: number;
   expiresAt?: string;
   folderUrl?: string;
@@ -158,6 +160,9 @@ function applyInput(g: Gallery, input: GalleryInput, settings: Settings, env: En
   if (input.venue !== undefined) g.venue = String(input.venue).trim() || undefined;
   if (input.hideDate !== undefined) g.hideDate = input.hideDate === true;
   if (input.hideVenue !== undefined) g.hideVenue = input.hideVenue === true;
+  if (input.photographer !== undefined) g.photographer = String(input.photographer ?? '').replace(/\s+/g, ' ').trim().slice(0, 80) || undefined;
+  // Off is "not set" (as the database reads it back), so the list's copies always agree.
+  if (input.studioFavorite !== undefined) g.studioFavorite = input.studioFavorite === true || undefined;
   if (input.guestHiddenSets !== undefined) {
     const ids = Array.isArray(input.guestHiddenSets) ? input.guestHiddenSets.map((x) => String(x ?? '').trim().slice(0, 40)).filter(Boolean) : [];
     g.guestHiddenSets = [...new Set(ids)].slice(0, 40);

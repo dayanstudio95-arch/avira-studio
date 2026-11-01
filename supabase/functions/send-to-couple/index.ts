@@ -5,6 +5,7 @@
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createUserClient, getRequestUser } from '../_shared/supabaseClients.ts';
 import { sendWhatsApp } from '../_shared/whatsapp.ts';
+import { GALLERY_LINK_TEMPLATE_KEY, israelDay, renderGalleryLink } from '../_shared/galleryLinkMessage.ts';
 
 const DEFAULT_FINAL_LINK_TEMPLATE = `שלום {{names}} 😊
 האלבום/סרטון הסופי שלכם מוכן!
@@ -24,6 +25,9 @@ Deno.serve(async (req) => {
     const supabase = createUserClient(req);
     const body = await req.json();
     const { eventId, coupleNames, eventDate, venue, phoneNumber, finalLink } = body;
+    // The galleries' "שלח לזוג" (2026-11-02): the gallery's own words (template_gallery_link) and its closing day.
+    // Without it — work status — everything below is as before.
+    const fromGallery = body?.template === 'gallery';
 
     if (!finalLink) return jsonResponse({ error: 'חסר לינק סופי' }, { status: 400 });
     if (!phoneNumber) return jsonResponse({ error: 'חסר טלפון זוג' }, { status: 400 });
@@ -44,16 +48,25 @@ Deno.serve(async (req) => {
     const { data: settings } = await supabase
       .from('app_settings')
       .select('key, value')
-      .eq('key', 'template_final_link');
+      .eq('key', fromGallery ? GALLERY_LINK_TEMPLATE_KEY : 'template_final_link');
     const template = settings?.[0]?.value || DEFAULT_FINAL_LINK_TEMPLATE;
 
     const formattedDate = eventDate ? new Date(eventDate).toLocaleDateString('he-IL') : '';
-    const message = template
-      .replace(/{{names}}/g, coupleNames || '')
-      .replace(/{{event_date}}/g, formattedDate)
-      .replace(/{{venue}}/g, venue || '')
-      .replace(/{{final_link}}/g, finalLink)
-      .replace(/{{album_guide_link}}/g, albumGuideLink);
+    const message = fromGallery
+      ? renderGalleryLink(settings?.[0]?.value, {
+          names: coupleNames || '',
+          event_date: formattedDate,
+          venue: venue || '',
+          link: finalLink,
+          expires: israelDay(body?.expiresAt),
+          album_guide_link: albumGuideLink,
+        })
+      : template
+          .replace(/{{names}}/g, coupleNames || '')
+          .replace(/{{event_date}}/g, formattedDate)
+          .replace(/{{venue}}/g, venue || '')
+          .replace(/{{final_link}}/g, finalLink)
+          .replace(/{{album_guide_link}}/g, albumGuideLink);
 
     // No link-preview card on this message, deliberately (2026-09-22): with the card,
     // the gallery message sat undelivered on a single tick for two couples; without it,

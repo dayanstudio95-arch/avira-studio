@@ -156,6 +156,10 @@ export interface Gallery {
   choiceDoneCount?: number;
   choiceToken?: string;
   choiceGroupSentAt?: string;
+  /** The wedding's main photographer (Avira, 0100): filled from the event's "צלם 1", editable; the list shows and searches it. */
+  photographer?: string;
+  /** The studio's own favourite (a star in the list, Avira 0100). */
+  studioFavorite?: boolean;
   /**
    * The studio's event (the hub's events, crm studios) this gallery belongs to (fix plan P57): set from the hub's
    * gallery form only after the Worker checked the event is this studio's (the database checks it too, 0139). The

@@ -1,9 +1,9 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { Link, Navigate, useLocation } from "react-router-dom";
-import { Clapperboard, Copy, ExternalLink, Images, LayoutGrid, List, Loader2, Pencil, Plus, RotateCcw, Search, Send, Timer, Trash2, Upload } from "lucide-react";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Camera, Clapperboard, Copy, ExternalLink, Images, LayoutGrid, List, Loader2, Pencil, Plus, RotateCcw, ScanFace, Search, Send, Star, Timer, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { parseEventList } from "@films-shared/event";
-import { withAmpersand } from "@films-shared/names";
+import { coupleMatches, withAmpersand } from "@films-shared/names";
 import { galleryHome, galleryKindOfPath, galleryPath } from "@/lib/galleryRoutes";
 import { useAuth } from "@/lib/SupabaseAuthContext";
 import { useBottomBar } from "@/lib/bottomBar";
@@ -17,8 +17,12 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { confirmDialog } from "@/lib/confirmDialog";
-import { eventsSentState, sendGalleryToCouple } from "@/lib/gallerySend";
+import { eventsInfo, mainPhotographer, sendGalleryToCouple } from "@/lib/gallerySend";
 import ChoiceDialog from "@/components/films/ChoiceDialog";
+import EventPicker from "@/components/films/EventPicker";
+import { base44 } from "@/api/base44Client";
+import { supabase } from "@/api/supabaseClient";
+import { WORKFLOW_STATUS_COLORS, WORKFLOW_STATUS_LABELS } from "@/pages/AlbumOrders";
 
 // The couples' galleries: photo galleries under "גלריות" (/photos), film galleries under "סרטים" (/films).
 // Ported from the films app's admin: same filters, month grouping and actions; data from the
@@ -26,6 +30,8 @@ import ChoiceDialog from "@/components/films/ChoiceDialog";
 
 const FILTERS = [
   { key: "all", label: "הכל" },
+  // The studio's own favourites (Avira, 0100) — later the photographer's landing page shows these.
+  { key: "fav", label: "⭐ מועדפות" },
   { key: "nofilms", label: "ריקות" },
   { key: "open", label: "פתוחות" },
   { key: "soon", label: "נסגרות בקרוב" },
@@ -38,6 +44,8 @@ function matches(g, f) {
   if (f === "trash") return Boolean(g.deletedAt);
   if (g.deletedAt) return false;
   switch (f) {
+    case "fav":
+      return g.studioFavorite === true;
     case "nofilms":
       return isEmpty(g);
     case "open":
@@ -98,6 +106,23 @@ function State({ g }) {
   return <span className={`${base} border-green-500/30 bg-green-500/10 text-green-300`}>פתוחה · {g.daysLeft} ימים</span>;
 }
 
+/** The open/closed state as one small line under the date (Avira, 2026-11-02: no column of its own). */
+function DaysLeft({ g }) {
+  if (g.expired) return <span className="text-red-400">נסגרה</span>;
+  if (isEmpty(g)) return <span className="text-gray-500">{kindOf(g) === "photos" ? "ללא תמונות" : "ללא סרטים"}</span>;
+  if (g.daysLeft <= 0) return <span className="text-amber-300">נסגרת היום</span>;
+  if (g.daysLeft <= 7) return <span className="text-amber-300">נסגרת בעוד {g.daysLeft === 1 ? "יום" : `${g.daysLeft} ימים`}</span>;
+  return <span className="text-gray-500">נשארו {g.daysLeft} יום</span>;
+}
+
+function readShooter() {
+  try {
+    return localStorage.getItem("films:shooter") || "";
+  } catch {
+    return "";
+  }
+}
+
 /** The gallery's picture on the films site (a photo, the film cover or a frame); '' when none yet. */
 function thumbSrc(g, big = false) {
   if (!g.thumb) return "";
@@ -141,25 +166,139 @@ export default function FilmsGalleries() {
   // Reopened galleries (extended, restored) whose face search went off when its data was deleted (fix plan P68).
   const [faceOff, setFaceOff] = useState([]);
   const slug = tenant?.slug;
-  // "שליחה לזוג" (Avira, 2026-10-31): whether each linked event's couple already got their final link, by event id.
+  const navigate = useNavigate();
+  // From each linked event (Avira, 2026-10-31 / 11-02): whether the couple got their final link (work status "→ זוג"),
+  // the main photographer ("צלם 1") and the venue, by event id.
   const canEvents = hasModule("crm");
-  const [sentByEvent, setSentByEvent] = useState({});
+  const [infoByEvent, setInfoByEvent] = useState({});
   const [sending, setSending] = useState("");
   const eventKey = (list || []).map((g) => g.eventId || "").join(",");
   useEffect(() => {
     if (!canEvents || !eventKey) return;
     let live = true;
-    eventsSentState(eventKey.split(",")).then((m) => live && setSentByEvent(m));
+    eventsInfo(eventKey.split(",")).then((m) => live && setInfoByEvent(m));
     return () => {
       live = false;
     };
   }, [canEvents, eventKey]);
+  const photographerOf = (g) => g.photographer || infoByEvent[g.eventId]?.photographer || "";
+  // The couple's album order (Avira, 2026-11-02): by the gallery (an album they designed, 0096) or by its event; the newest.
+  const [ordersBy, setOrdersBy] = useState({ event: {}, gallery: {} });
+  const galleryKey = (list || []).filter((g) => kindOf(g) === "photos").map((g) => g.id).join(",");
+  useEffect(() => {
+    if (!canEvents || kind !== "photos" || (!eventKey.replace(/,/g, "") && !galleryKey)) return;
+    let live = true;
+    const evs = [...new Set(eventKey.split(",").filter(Boolean))];
+    const gal = galleryKey.split(",").filter(Boolean);
+    const or = [evs.length ? `event_id.in.(${evs.join(",")})` : "", gal.length ? `films_gallery_id.in.(${gal.join(",")})` : ""].filter(Boolean).join(",");
+    supabase
+      .from("album_orders")
+      .select("id, event_id, films_gallery_id, workflow_status, created_at")
+      .or(or)
+      .order("created_at", { ascending: false })
+      .then(({ data }) => {
+        if (!live) return;
+        const event = {};
+        const gallery = {};
+        for (const o of data || []) {
+          if (o.event_id && !event[o.event_id]) event[o.event_id] = o;
+          if (o.films_gallery_id && !gallery[o.films_gallery_id]) gallery[o.films_gallery_id] = o;
+        }
+        setOrdersBy({ event, gallery });
+      });
+    return () => {
+      live = false;
+    };
+  }, [canEvents, kind, eventKey, galleryKey]);
+  const orderOf = (g) => ordersBy.gallery[g.id] || (g.eventId ? ordersBy.event[g.eventId] : null) || null;
+  // A gallery without an event: first "which event is it?", then what was asked (send to the couple / an album order).
+  const [linking, setLinking] = useState(null); // { g, then: "send" | "album" }
   const sendToCouple = async (g) => {
+    if (!g.eventId) {
+      setLinking({ g, then: "send" });
+      return;
+    }
     setSending(g.id);
     try {
-      if (await sendGalleryToCouple(g.eventId, coupleLink(slug, g.id))) setSentByEvent((m) => ({ ...m, [g.eventId]: true }));
+      if (await sendGalleryToCouple(g.eventId, coupleLink(slug, g.id), { expiresAt: g.expiresAt })) {
+        setInfoByEvent((m) => ({ ...m, [g.eventId]: { ...(m[g.eventId] || {}), sent: true } }));
+      }
     } finally {
       setSending("");
+    }
+  };
+  const createOrder = async (g) => {
+    if (!g.eventId) {
+      setLinking({ g, then: "album" });
+      return;
+    }
+    if (!(await confirmDialog({ title: `אין הזמנת אלבום ל${g.coupleName}`, message: "ליצור לזוג הזמנת אלבום חדשה?", confirmText: "יצירת הזמנה" }))) return;
+    try {
+      const order = await base44.entities.AlbumOrder.create({ eventId: g.eventId, workflowStatus: "draft", paymentStatus: "unpaid" });
+      toast.success("הזמנת אלבום נוצרה");
+      navigate(`/AlbumOrders/${order.id}`);
+    } catch (e) {
+      toast.error(e.message || "שגיאה ביצירת ההזמנה");
+    }
+  };
+  const linked = (saved, ev) => {
+    const then = linking?.then;
+    setLinking(null);
+    const g = { ...linking.g, eventId: saved.eventId, photographer: saved.photographer };
+    setList((l) => l?.map((x) => (x.id === g.id ? { ...x, eventId: saved.eventId, photographer: saved.photographer } : x)) ?? l);
+    setInfoByEvent((m) => ({ ...m, [saved.eventId]: { sent: ev?.final_done_manual === true, photographer: mainPhotographer(ev?.team), venue: ev?.venue || "" } }));
+    if (then === "send") sendToCouple(g);
+    if (then === "album") createOrder(g);
+  };
+  // The studio's star (Avira, 0100).
+  const toggleStar = async (g) => {
+    const on = !g.studioFavorite;
+    setList((l) => l?.map((x) => (x.id === g.id ? { ...x, studioFavorite: on } : x)) ?? l);
+    try {
+      await filmsApi("PUT", `/api/admin/galleries/${g.id}`, { studioFavorite: on });
+    } catch (e) {
+      setList((l) => l?.map((x) => (x.id === g.id ? { ...x, studioFavorite: !on } : x)) ?? l);
+      toast.error(e.message);
+    }
+  };
+  // Guest face search per gallery (the face icon): on → the studio's scan; off → asked, switched on, then the scan.
+  const [faceOn, setFaceOn] = useState(() => new Set());
+  const listSize = list?.length ?? 0;
+  useEffect(() => {
+    if (kind !== "photos" || !listSize) return;
+    filmsApi("GET", "/api/admin/galleries/face-states")
+      .then((r) => setFaceOn(new Set(r?.on || [])))
+      .catch(() => {});
+  }, [kind, listSize]);
+  const openFaces = async (g) => {
+    const on = faceOn.has(g.id);
+    if (!on && !(await confirmDialog({ title: `זיהוי הפנים כבוי בגלריה של ${g.coupleName}`, message: "להפעיל ולפתוח את הסריקה? אחרי הסריקה האורחים יוכלו למצוא את התמונות שלהם עם סלפי.", confirmText: "להפעיל ולסרוק" }))) return;
+    const tab = window.open("", "_blank");
+    try {
+      if (!on) {
+        await filmsApi("PUT", `/api/admin/galleries/${g.id}/photos`, { faceSearch: true });
+        setFaceOn((s) => new Set([...s, g.id]));
+      }
+      const { previewToken } = await filmsApi("GET", `/api/admin/galleries/${g.id}`);
+      if (!previewToken) throw new Error("לא ניתן לפתוח את הסריקה כרגע. נסו שוב.");
+      const href = `${coupleLink(slug, g.id)}/faces?pt=${encodeURIComponent(previewToken)}`;
+      if (tab) {
+        tab.opener = null;
+        tab.location.href = href;
+      } else window.open(href, "_blank", "noopener");
+    } catch (e) {
+      tab?.close();
+      toast.error(e.message);
+    }
+  };
+  // "חיפוש לפי צלם" (remembered on this computer).
+  const [shooter, setShooterState] = useState(readShooter);
+  const setShooter = (v) => {
+    setShooterState(v);
+    try {
+      localStorage.setItem("films:shooter", v);
+    } catch {
+      /* ignore */
     }
   };
   // Table or cards (like Pixieset's collections), remembered on this computer.
@@ -214,12 +353,15 @@ export default function FilmsGalleries() {
   const shown = useMemo(() => {
     if (!list) return [];
     const q = query.trim().toLowerCase();
+    const sq = shooter.trim().toLowerCase();
+    // The names in any order and spelling ("דן ודניאלה" finds "דניאלה & דן"), or the venue / date as typed.
     return [...list]
       .sort(byEventDate)
       .filter((g) => kindOf(g) === kind)
       .filter((g) => matches(g, filter))
-      .filter((g) => !q || `${g.coupleName} ${g.venue || ""} ${formatDate(g.date)} ${g.date}`.toLowerCase().includes(q));
-  }, [list, query, filter, kind]);
+      .filter((g) => !q || coupleMatches(g.coupleName, query) || `${g.coupleName} ${g.venue || ""} ${formatDate(g.date)} ${g.date}`.toLowerCase().includes(q))
+      .filter((g) => !sq || (g.photographer || infoByEvent[g.eventId]?.photographer || "").toLowerCase().includes(sq));
+  }, [list, query, filter, kind, shooter, infoByEvent]);
 
   // The bulk bar is fixed at the bottom: the Layout floats its "המשך הקמה" pill above it.
   const bulkBarRef = useBottomBar();
@@ -388,6 +530,12 @@ export default function FilmsGalleries() {
                 className="bg-gray-900 border-gray-800 text-white pr-9"
               />
             </div>
+            {kind === "photos" && (
+              <div className="relative min-w-[180px]">
+                <Camera className="w-4 h-4 text-gray-500 absolute right-3 top-1/2 -translate-y-1/2" />
+                <Input value={shooter} onChange={(e) => setShooter(e.target.value)} placeholder="חיפוש לפי צלם" className="bg-gray-900 border-gray-800 text-white pr-9" data-testid="search-photographer" />
+              </div>
+            )}
             <div className="flex flex-wrap gap-1.5">
               {FILTERS.map((f) => (
                 <button
@@ -445,6 +593,7 @@ export default function FilmsGalleries() {
                       {kindOf(g) === "photos" ? `${(g.photoCount || 0).toLocaleString("he-IL")} תמונות` : `${g.films.length} סרטים`}
                       {g.date && <> · {formatDate(g.date)}</>}
                       {g.venue && <> · {g.venue}</>}
+                      {photographerOf(g) && <> · 📷 {photographerOf(g)}</>}
                     </div>
                     <div className="flex items-center justify-between gap-2">
                       {g.deletedAt ? <TrashState g={g} /> : <State g={g} />}
@@ -454,9 +603,11 @@ export default function FilmsGalleries() {
                         </Button>
                       ) : (
                         <div className="flex gap-1">
-                          {canEvents && g.eventId && !isEmpty(g) && (
-                            <IconButton onClick={() => sending !== g.id && sendToCouple(g)} title={sentByEvent[g.eventId] ? "נשלח לזוג (לחיצה שולחת שוב, אחרי אישור)" : "שליחת הקישור לזוג בוואטסאפ"} icon={Send} />
+                          <IconButton onClick={() => toggleStar(g)} title={g.studioFavorite ? "מועדפת (לחיצה מורידה)" : "סימון כמועדפת"} icon={Star} />
+                          {canEvents && !isEmpty(g) && (
+                            <IconButton onClick={() => sending !== g.id && sendToCouple(g)} title={g.eventId && infoByEvent[g.eventId]?.sent ? "נשלח לזוג (לחיצה שולחת שוב, אחרי אישור)" : "שלח לזוג בוואטסאפ"} icon={Send} />
                           )}
+                          {kindOf(g) === "photos" && !isEmpty(g) && <IconButton onClick={() => openFaces(g)} title={faceOn.has(g.id) ? "זיהוי פנים פעיל — פתיחת הסריקה" : "זיהוי פנים כבוי"} icon={ScanFace} />}
                           <IconButton onClick={() => copyText(link).then((ok) => ok && toast.success("הקישור הועתק"))} title="העתקת הקישור לזוג" icon={Copy} />
                           <IconButton onClick={() => openAsCouple(g)} title="פתיחה כמו הזוג" icon={ExternalLink} />
                         </div>
@@ -484,12 +635,15 @@ export default function FilmsGalleries() {
                       data-testid="pick-all"
                     />
                   </th>
+                  <th className="p-1 w-6" aria-label="מועדפת" />
+                  {/* The owner's order (2026-11-02); the open/closed state is a line under the date. */}
+                  <th className="p-3 text-right font-medium">תאריך</th>
                   <th className="p-3 text-right font-medium">זוג</th>
                   <th className="p-3 text-right font-medium">אולם</th>
-                  <th className="p-3 text-right font-medium">תאריך</th>
-                  <th className="p-3 text-right font-medium">מצב</th>
+                  <th className="p-3 text-right font-medium">צלם</th>
                   <th className="p-3 text-right font-medium">{kind === "photos" ? "תמונות" : "סרטים"}</th>
-                  {kind === "photos" && <th className="p-3 text-right font-medium">בחירה לאלבום</th>}
+                  {kind === "photos" && <th className="p-3 text-right font-medium">בחירת אלבום</th>}
+                  {kind === "photos" && canEvents && <th className="p-3 text-right font-medium">אלבום</th>}
                   <th className="p-3 text-right font-medium">צפיות / הורדות</th>
                   <th className="p-3" />
                 </tr>
@@ -500,11 +654,13 @@ export default function FilmsGalleries() {
                   const newMonth = i === 0 || monthOf(shown[i - 1].date) !== month;
                   const inMonth = newMonth ? shown.filter((x) => monthOf(x.date) === month).length : 0;
                   const link = coupleLink(slug, g.id);
+                  const order = kind === "photos" ? orderOf(g) : null;
+                  const sent = Boolean(g.eventId && infoByEvent[g.eventId]?.sent);
                   return (
                     <Fragment key={g.id}>
                       {newMonth && (
                         <tr className="bg-gray-950/60">
-                          <td colSpan={kind === "photos" ? 9 : 8} className="px-3 py-2 text-xs text-gray-400">
+                          <td colSpan={kind === "photos" ? (canEvents ? 11 : 10) : 9} className="px-3 py-2 text-xs text-gray-400">
                             <bdi className="font-semibold text-gray-300">{month}</bdi> · {inMonth === 1 ? "אירוע אחד" : `${inMonth} אירועים`}
                           </td>
                         </tr>
@@ -513,8 +669,19 @@ export default function FilmsGalleries() {
                         <td className="p-3">
                           <input type="checkbox" className="w-4 h-4" aria-label={`בחירת ${g.coupleName}`} checked={picked.has(g.id)} onChange={() => togglePick(g.id)} data-testid="pick" />
                         </td>
+                        <td className="p-1">
+                          {!g.deletedAt && (
+                            <button type="button" onClick={() => toggleStar(g)} title={g.studioFavorite ? "מועדפת (לחיצה מורידה)" : "סימון כמועדפת"} aria-pressed={g.studioFavorite === true} data-testid="star">
+                              <Star className={`w-4 h-4 ${g.studioFavorite ? "fill-yellow-400 text-yellow-400" : "text-gray-600 hover:text-gray-400"}`} />
+                            </button>
+                          )}
+                        </td>
+                        <td className="p-3 whitespace-nowrap">
+                          <div>{formatDate(g.date)}</div>
+                          <div className="text-xs" data-testid="days-left">{g.deletedAt ? <TrashState g={g} /> : <DaysLeft g={g} />}</div>
+                        </td>
                         <td className="p-2 font-medium">
-                          <div className="flex items-center gap-3 min-w-[220px]">
+                          <div className="flex items-center gap-3 min-w-[200px]">
                             <Thumb g={g} />
                             <div className="min-w-0">
                               <Link to={galleryPath(g)} className="hover:text-brand-400">
@@ -525,10 +692,7 @@ export default function FilmsGalleries() {
                           </div>
                         </td>
                         <td className="p-3 text-gray-400">{g.venue || ""}</td>
-                        <td className="p-3">{formatDate(g.date)}</td>
-                        <td className="p-3">
-                          {g.deletedAt ? <TrashState g={g} /> : <State g={g} />}
-                        </td>
+                        <td className="p-3 text-gray-300 whitespace-nowrap" data-testid="photographer">{photographerOf(g)}</td>
                         <td className="p-3">{contentCount(g).toLocaleString("he-IL")}</td>
                         {kind === "photos" && (
                           <td className="p-3">
@@ -547,6 +711,27 @@ export default function FilmsGalleries() {
                               !g.deletedAt && (
                                 <button type="button" onClick={() => setChoiceOf(g)} className="text-xs text-gray-500 hover:text-gray-300 whitespace-nowrap" title="הזוג עוד לא לחץ 'סיימנו לבחור'. לחיצה מציגה מה סימנו עד עכשיו" data-testid="choice-pending">
                                   עוד בוחרים
+                                </button>
+                              )
+                            )}
+                          </td>
+                        )}
+                        {kind === "photos" && canEvents && (
+                          <td className="p-3">
+                            {order ? (
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/AlbumOrders/${order.id}`)}
+                                className={`rounded-full border px-2.5 py-0.5 text-xs whitespace-nowrap hover:brightness-125 ${WORKFLOW_STATUS_COLORS[order.workflow_status] || "border-gray-600 text-gray-300"}`}
+                                title="פתיחת ההזמנה בהזמנות אלבומים"
+                                data-testid="album-pill"
+                              >
+                                {WORKFLOW_STATUS_LABELS[order.workflow_status] || order.workflow_status}
+                              </button>
+                            ) : (
+                              !g.deletedAt && (
+                                <button type="button" onClick={() => createOrder(g)} className="rounded-full border border-dashed border-gray-600 px-2.5 py-0.5 text-xs text-gray-400 whitespace-nowrap hover:text-white" data-testid="album-create">
+                                  + יצירת הזמנה
                                 </button>
                               )
                             )}
@@ -576,18 +761,18 @@ export default function FilmsGalleries() {
                               </Button>
                             ) : (
                               <>
-                                {canEvents && g.eventId && (
+                                {canEvents && (
                                   <Button
                                     size="sm"
                                     variant="outline"
                                     disabled={sending === g.id}
                                     onClick={() => sendToCouple(g)}
-                                    className={sentByEvent[g.eventId] ? "border-green-500/50 bg-green-500/20 text-green-300 hover:bg-green-500/30" : "border-purple-500/40 bg-purple-600/20 text-purple-300 hover:bg-purple-600/30"}
-                                    title={sentByEvent[g.eventId] ? "הזוג כבר קיבל את הקישור. לחיצה שולחת שוב (אחרי אישור)" : "הקישור לזוג בוואטסאפ, עם ההודעה של סטטוס עבודה"}
+                                    className={sent ? "border-green-500/50 bg-green-500/20 text-green-300 hover:bg-green-500/30" : "border-purple-500/40 bg-purple-600/20 text-purple-300 hover:bg-purple-600/30"}
+                                    title={sent ? "הזוג כבר קיבל את הקישור. לחיצה שולחת שוב (אחרי אישור)" : g.eventId ? "הקישור לזוג בוואטסאפ" : "הקישור לזוג בוואטסאפ (קודם בוחרים לאיזה אירוע הגלריה שייכת)"}
                                     data-testid="row-send-to-couple"
                                   >
                                     <Send className="w-3.5 h-3.5 ml-1" />
-                                    {sending === g.id ? "שולח…" : sentByEvent[g.eventId] ? "✓ נשלח" : "לזוג"}
+                                    {sending === g.id ? "שולח…" : sent ? "✓ נשלח" : "שלח לזוג"}
                                   </Button>
                                 )}
                                 <Button size="sm" className="bg-brand-400 hover:bg-brand-500 text-brand-fg" onClick={() => copyText(link).then((ok) => ok && toast.success("הקישור הועתק"))}>
@@ -597,6 +782,11 @@ export default function FilmsGalleries() {
                               </>
                             )}
                             <IconButton onClick={() => openAsCouple(g)} title="פתיחה כמו הזוג" icon={ExternalLink} />
+                            {kindOf(g) === "photos" && !isEmpty(g) && (
+                              <Button type="button" size="icon" variant="ghost" onClick={() => openFaces(g)} title={faceOn.has(g.id) ? "זיהוי פנים פעיל — פתיחת הסריקה" : "זיהוי פנים כבוי — לחיצה מפעילה ופותחת סריקה"} className={faceOn.has(g.id) ? "text-green-400 hover:text-green-300" : "text-gray-500 hover:text-white"} data-testid="face-icon" data-on={faceOn.has(g.id) ? "1" : "0"}>
+                                <ScanFace className="w-4 h-4" />
+                              </Button>
+                            )}
                             <IconButton onClick={() => setExtending([g])} title="הארכה" icon={Timer} />
                             <IconLink to={galleryPath(g)} title="עריכה" icon={Pencil} />
                             <IconButton onClick={() => remove(g)} title="העברה לסל המחזור" icon={Trash2} danger />
@@ -670,6 +860,7 @@ export default function FilmsGalleries() {
         </>
       )}
 
+      {linking && <EventLinkDialog g={linking.g} then={linking.then} onClose={() => setLinking(null)} onLinked={linked} />}
       {choiceOf && (
         <ChoiceDialog
           galleryId={choiceOf.id}
@@ -763,6 +954,36 @@ function ExtendDialog({ galleries, onClose, onExtend }) {
             {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : `הארכה ב-${valid ? n : "…"} ימים`}
           </Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** "Which event is this gallery?" — then the send or the album order goes on (Avira, 2026-11-02). */
+function EventLinkDialog({ g, then, onClose, onLinked }) {
+  const [busy, setBusy] = useState(false);
+  const pick = async (id, _label, ev) => {
+    if (!id) return;
+    setBusy(true);
+    try {
+      const shooter = mainPhotographer(ev?.team);
+      const saved = await filmsApi("PUT", `/api/admin/galleries/${g.id}`, { eventId: id, ...(shooter && !g.photographer ? { photographer: shooter } : {}) });
+      onLinked(saved, ev);
+    } catch (e) {
+      toast.error(e.message);
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="bg-gray-900 border-gray-800 text-white max-w-md" dir="rtl" data-testid="link-event-dialog">
+        <DialogHeader>
+          <DialogTitle>לאיזה אירוע הגלריה של {g.coupleName} שייכת?</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-gray-400">
+          {then === "send" ? "דרך האירוע נשלח לזוג (השם והטלפון שלו), וסטטוס עבודה מתעדכן לבד." : "הזמנת האלבום נפתחת על האירוע."} הגלריה תישאר מקושרת אליו.
+        </p>
+        {busy ? <Loader2 className="w-5 h-5 animate-spin text-brand-400" /> : <EventPicker eventId="" label="" onPick={pick} />}
       </DialogContent>
     </Dialog>
   );

@@ -457,6 +457,8 @@ export interface Store {
    * their photos and rings the studio's bell. Never throws; 'sent', 'skipped' (no group chosen, turned off) or 'failed'.
    */
   notifyChoice(galleryId: string): Promise<'sent' | 'skipped' | 'failed'>;
+  /** The studio's photo galleries whose guest face search is on (the list's face icon, Avira 2026-11-02). */
+  faceStates(tenantId: string): Promise<string[]>;
   /**
    * An email to the studio's active owners through the platform's own mail (the films-link-alert function, which
    * sends only from the verified sender of fix plan P11-b): 'sent', 'skipped' (no verified sender, or no owner email)
@@ -517,8 +519,8 @@ export const GALLERY_LIST_FIELDS = [
   'photoCount', 'linkedId', 'deletedAt', 'coverKey', 'hasThumb', 'views', 'guestViews', 'downloads', 'coverVersion', 'photosGen',
   // The hub event the gallery belongs to (the album sketch editor finds the event's photos by it — port B9).
   'eventId',
-  // Avira 0099: the list's "בחירה לאלבום" column.
-  'choiceDoneAt', 'choiceDoneCount',
+  // Avira 0099: the list's "בחירה לאלבום" column; 0100: its photographer column and search, and the studio's star.
+  'choiceDoneAt', 'choiceDoneCount', 'photographer', 'studioFavorite',
 ] as const satisfies readonly (keyof Gallery)[];
 
 /** A gallery as the list reads it (MemoryStore's copy of SupabaseStore's column list). */
@@ -666,6 +668,7 @@ const GALLERY_WRITABLE: (keyof GalleryFields)[] = [
   'coupleName', 'studioName', 'date', 'venue', 'days', 'expiresAt', 'hasCover', 'folderUrl', 'folderProvider', 'films',
   'photoCount', 'linkedId', 'music', 'guestId', 'password', 'downloadPin', 'printToken', 'printTokenAt', 'deletedAt', 'coverKey', 'hasThumb',
   'coverVersion', 'eventId', 'hideDate', 'hideVenue', 'guestHiddenSets', 'choiceDoneAt', 'choiceDoneCount', 'choiceToken', 'choiceGroupSentAt',
+  'photographer', 'studioFavorite',
 ];
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);

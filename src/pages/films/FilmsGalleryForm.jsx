@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { Copy, ExternalLink, Loader2, Send } from "lucide-react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { ArrowRight, Copy, ExternalLink, Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 import { sortByTag } from "@films-shared/dropbox";
 import { detectLink, PROVIDER_NAMES } from "@films-shared/providers";
@@ -20,7 +20,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDateShort, formatDateTime, israelToday } from "@/lib/dates";
 import { confirmDialog } from "@/lib/confirmDialog";
-import { sendGalleryToCouple } from "@/lib/gallerySend";
+import { mainPhotographer, sendGalleryToCouple } from "@/lib/gallerySend";
+import EventPicker from "@/components/films/EventPicker";
 import ChoiceDialog from "@/components/films/ChoiceDialog";
 
 // Create / edit one couple's gallery (/films/new, /films/:id): films or photos. Ported from
@@ -64,100 +65,6 @@ function ShowOnPage({ checked, onChange, testId }) {
   );
 }
 
-// The event search (an ilike pattern): % * and \ become "_" (one character), so typing them never matches everything.
-const cleanEventSearch = (text) => String(text || "").replace(/[%*\\]/g, "_").replace(/\s+/g, " ").trim().slice(0, 60);
-
-const EVENT_FIELDS = "id, couple_names, date, venue";
-
-/**
- * The studio's event this gallery belongs to (crm studios; fix plan P57): the couple's album order then joins the
- * order the studio opened for that wedding instead of making a second one. The films Worker checks the event is
- * this studio's. Avira (2026-10-31, the owner's request): before anything is typed it lists the weddings that
- * already happened and didn't get their final link yet (work status: "לינק סופי" empty, "→ זוג" not sent);
- * picking one fills the names, date and venue, and "שליחה לזוג" sends through it.
- */
-function EventPicker({ eventId, label, onPick }) {
-  const [search, setSearch] = useState("");
-  const [query, setQuery] = useState("");
-  const [found, setFound] = useState([]);
-  const [waiting, setWaiting] = useState([]);
-  useEffect(() => {
-    if (eventId) return;
-    let live = true;
-    supabase
-      .from("events")
-      .select(`${EVENT_FIELDS}, final_link, final_done_manual`)
-      .lte("date", israelToday())
-      .order("date", { ascending: false })
-      .limit(300)
-      .then(({ data, error }) => {
-        if (live && !error) setWaiting((data || []).filter((ev) => !String(ev.final_link || "").trim() && ev.final_done_manual !== true).slice(0, 40));
-      });
-    return () => {
-      live = false;
-    };
-  }, [eventId]);
-  useEffect(() => {
-    const t = setTimeout(() => setQuery(cleanEventSearch(search)), 250);
-    return () => clearTimeout(t);
-  }, [search]);
-  useEffect(() => {
-    if (!query) {
-      setFound([]);
-      return;
-    }
-    let live = true;
-    supabase
-      .from("events")
-      .select(EVENT_FIELDS)
-      .ilike("couple_names", `%${query}%`)
-      .order("date", { ascending: false })
-      .limit(10)
-      .then(({ data, error }) => {
-        if (live && !error) setFound(data || []);
-      });
-    return () => {
-      live = false;
-    };
-  }, [query]);
-  return (
-    <div className="space-y-2" data-testid="gallery-event">
-      {eventId ? (
-        <div className="flex items-center gap-2 text-sm text-gray-200">
-          <span data-testid="gallery-event-label">{label || "אירוע מקושר"}</span>
-          <button type="button" className="text-gray-400 hover:underline" onClick={() => onPick("", "")} data-testid="gallery-event-clear">
-            ביטול הקישור
-          </button>
-        </div>
-      ) : (
-        <>
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="חיפוש לפי שם הזוג (בכל האירועים)" className={inputCls} data-testid="gallery-event-search" />
-          {!query && waiting.length > 0 && <p className="text-xs text-gray-400">אירועים שעוד לא קיבלו את הלינק הסופי:</p>}
-          {(query ? found : waiting).length > 0 && (
-            <div className="max-h-48 overflow-y-auto rounded-lg border border-gray-800 p-1">
-              {(query ? found : waiting).map((ev) => (
-                <button
-                  key={ev.id}
-                  type="button"
-                  className="block w-full rounded p-1.5 text-right text-sm text-gray-300 hover:bg-gray-800"
-                  onClick={() => {
-                    onPick(ev.id, `${ev.couple_names || ""}${ev.date ? ` · ${formatDateShort(ev.date)}` : ""}`, ev);
-                    setSearch("");
-                  }}
-                  data-testid="gallery-event-option"
-                >
-                  {ev.couple_names} {ev.date ? `· ${formatDateShort(ev.date)}` : ""}
-                  {ev.venue ? <span className="text-gray-500"> · {ev.venue}</span> : null}
-                </button>
-              ))}
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
 export default function FilmsGalleryForm() {
   const { id } = useParams();
   const isNew = !id;
@@ -196,6 +103,8 @@ export default function FilmsGalleryForm() {
   const [venue, setVenue] = useState("");
   // Kept off the couple's page (Avira, 0097); the studio's screens still show them.
   const [hideDate, setHideDate] = useState(false);
+  // The wedding's main photographer (Avira, 0100): from the event's "צלם 1", editable.
+  const [photographer, setPhotographer] = useState("");
   const [hideVenue, setHideVenue] = useState(false);
   const [dateTouched, setDateTouched] = useState(false);
   const [date, setDate] = useState(todayIso());
@@ -246,6 +155,7 @@ export default function FilmsGalleryForm() {
         setStudioName(g.studioName || "");
         setVenue(g.venue || "");
         setHideDate(g.hideDate === true);
+        setPhotographer(g.photographer || "");
         setHideVenue(g.hideVenue === true);
         setDateTouched(true);
         setDate(g.date || todayIso());
@@ -367,6 +277,7 @@ export default function FilmsGalleryForm() {
         venue,
         hideDate,
         hideVenue,
+        photographer,
         ...(isNew || daysTouched ? { days } : {}),
         ...(seesSecrets ? { password, downloadPin } : {}),
         ...(canEvents && eventTouched ? { eventId } : {}),
@@ -429,7 +340,7 @@ export default function FilmsGalleryForm() {
     }
     setBusy("send");
     try {
-      if (await sendGalleryToCouple(gallery?.eventId, link)) setEventSent(true);
+      if (await sendGalleryToCouple(gallery?.eventId, link, { expiresAt: gallery?.expiresAt })) setEventSent(true);
     } finally {
       setBusy("");
     }
@@ -448,6 +359,8 @@ export default function FilmsGalleryForm() {
       setDateTouched(true);
     }
     if (ev.venue && (isNew || !venue.trim())) setVenue(ev.venue);
+    const shooter = mainPhotographer(ev.team);
+    if (shooter && (isNew || !photographer.trim())) setPhotographer(shooter);
   };
 
   return (
@@ -461,6 +374,10 @@ export default function FilmsGalleryForm() {
         />
       )}
       <form className="max-w-4xl mx-auto space-y-5" onSubmit={save}>
+        <Link to={galleryHome(kind)} className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-white" data-testid="back-to-galleries">
+          <ArrowRight className="w-4 h-4" />
+          חזרה לגלריות
+        </Link>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-bold text-white">{isNew ? (kind === "photos" ? "גלריית תמונות חדשה" : "גלריית סרטים חדשה") : coupleName || "עריכת גלריה"}</h1>
           {gallery && (
@@ -476,7 +393,7 @@ export default function FilmsGalleryForm() {
                   data-testid="send-to-couple"
                 >
                   <Send className="w-4 h-4 ml-2" />
-                  {busy === "send" ? "שולח…" : eventSent ? "✓ נשלח לזוג" : "שליחה לזוג"}
+                  {busy === "send" ? "שולח…" : eventSent ? "✓ נשלח לזוג" : "שלח לזוג"}
                 </Button>
               )}
               {kind === "photos" && (
@@ -546,6 +463,9 @@ export default function FilmsGalleryForm() {
                   </button>
                 </p>
               )}
+            </Field>
+            <Field label="צלם (צלם 1 מהאירוע, אפשר לשנות)" hint="מוצג ברשימת הגלריות, ואפשר לחפש לפיו.">
+              <Input value={photographer} onChange={(e) => setPhotographer(e.target.value)} placeholder="יריב" maxLength={80} className={inputCls} data-testid="gallery-photographer" />
             </Field>
             <Field label="אולם / מקום (מוצג מתחת לתאריך)">
               <Input value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="חוות אלבני" className={inputCls} />

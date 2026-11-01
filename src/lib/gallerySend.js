@@ -4,21 +4,25 @@ import { supabase } from "@/api/supabaseClient";
 // Avira's in-app question, as work status asks it (the galleries' @/lib/confirmDialog has no window mounted here).
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 
-// "שליחה לזוג" from the galleries (Avira, 2026-10-31, the owner's request): exactly the work-status "→ זוג" button —
-// the same send-to-couple function and message (the "לינק סופי" template), with the gallery's couple link as the
-// final link. Then the event's "לינק סופי" is that link, and the function marks it sent, so the work-status row turns
-// green by itself. A gallery is sent through the event it is linked to (the couple's names and phone are the event's).
+// "שלח לזוג" from the galleries (Avira, 2026-10-31, the owner's request): the work-status "→ זוג" button's
+// send-to-couple function, with the gallery's couple link as the final link — in the gallery's own words since
+// 2026-11-02 (template "gallery": template_gallery_link, with the day the gallery closes). Then the event's "לינק סופי"
+// is that link, and the function marks it sent, so the work-status row turns green by itself. A gallery is sent through
+// the event it is linked to (the couple's names and phone are the event's).
 
-/** Whether each linked event's couple already got their final link (work status "→ זוג"), by event id. */
-export async function eventsSentState(eventIds) {
+/** The wedding's main photographer: the event's "צלם 1" ('' when none). */
+export const mainPhotographer = (team) => (Array.isArray(team) ? team.find((m) => m?.role === "photographer1")?.staffMemberName || "" : "");
+
+/** What the galleries list shows of each linked event, by event id: sent to the couple (work status), photographer, venue. */
+export async function eventsInfo(eventIds) {
   const ids = [...new Set(eventIds.filter(Boolean))];
   if (ids.length === 0) return {};
-  const { data } = await supabase.from("events").select("id, final_done_manual").in("id", ids);
-  return Object.fromEntries((data || []).map((e) => [e.id, e.final_done_manual === true]));
+  const { data } = await supabase.from("events").select("id, final_done_manual, team, venue").in("id", ids);
+  return Object.fromEntries((data || []).map((e) => [e.id, { sent: e.final_done_manual === true, photographer: mainPhotographer(e.team), venue: e.venue || "" }]));
 }
 
-/** Sends the gallery's link to the couple on WhatsApp. True when it was sent. */
-export async function sendGalleryToCouple(eventId, link) {
+/** Sends the gallery's link to the couple on WhatsApp. True when it was sent. `expiresAt`: the gallery's closing time. */
+export async function sendGalleryToCouple(eventId, link, { expiresAt } = {}) {
   if (!eventId) {
     toast.error("קודם לבחור את האירוע של הזוג בעריכת הגלריה");
     return false;
@@ -51,6 +55,8 @@ export async function sendGalleryToCouple(eventId, link) {
       venue: ev.venue,
       phoneNumber: ev.phone_number,
       finalLink: link,
+      template: "gallery",
+      expiresAt: expiresAt || null,
     });
   } catch (err) {
     toast.error("שגיאה בשליחה: " + (err?.message || ""));
