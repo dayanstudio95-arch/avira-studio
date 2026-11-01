@@ -77,3 +77,9 @@ verify_jwt = false
 # the studio is found).
 [functions.pixieset-favorites-notify]
 verify_jwt = false
+
+# The owner's Google Drive helper (2026-11-02, 0101): a Google Apps Script in the owner's Google account, with no
+# Supabase session. Authenticates itself via the x-avira-token header, whose SHA-256 is
+# app_settings.drive_helper_token_hash (also how the studio is found).
+[functions.drive-helper]
+verify_jwt = false

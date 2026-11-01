@@ -459,6 +459,12 @@ export interface Store {
   notifyChoice(galleryId: string): Promise<'sent' | 'skipped' | 'failed'>;
   /** The studio's photo galleries whose guest face search is on (the list's face icon, Avira 2026-11-02). */
   faceStates(tenantId: string): Promise<string[]>;
+  /** Work for the owner's Google Drive helper (Avira 0101, worker/driveTasks.ts). */
+  queueDriveTasks(tasks: import('./driveTasks').DriveTaskInput[]): Promise<void>;
+  /** Pending tasks of this kind for the gallery become 'cancelled'; how many. */
+  cancelDriveTasks(galleryId: string, kind: import('./driveTasks').DriveTaskKind): Promise<number>;
+  /** The studio's galleries (the trash too) that read this folder link. */
+  folderUsers(tenantId: string, folderUrl: string): Promise<string[]>;
   /**
    * An email to the studio's active owners through the platform's own mail (the films-link-alert function, which
    * sends only from the verified sender of fix plan P11-b): 'sent', 'skipped' (no verified sender, or no owner email)
@@ -519,8 +525,9 @@ export const GALLERY_LIST_FIELDS = [
   'photoCount', 'linkedId', 'deletedAt', 'coverKey', 'hasThumb', 'views', 'guestViews', 'downloads', 'coverVersion', 'photosGen',
   // The hub event the gallery belongs to (the album sketch editor finds the event's photos by it — port B9).
   'eventId',
-  // Avira 0099: the list's "בחירה לאלבום" column; 0100: its photographer column and search, and the studio's star.
-  'choiceDoneAt', 'choiceDoneCount', 'photographer', 'studioFavorite',
+  // Avira 0099: the list's "בחירה לאלבום" column; 0100: its photographer column and search, and the studio's star;
+  // 0101: whether its folder is on Google Drive (the Drive helper's words and states).
+  'choiceDoneAt', 'choiceDoneCount', 'photographer', 'studioFavorite', 'folderProvider',
 ] as const satisfies readonly (keyof Gallery)[];
 
 /** A gallery as the list reads it (MemoryStore's copy of SupabaseStore's column list). */
@@ -648,7 +655,7 @@ export const MAX_LISTS = 20;
 export const LIST_NAME_TAKEN = 'כבר יש רשימה בשם הזה';
 
 /** Gallery fields patchGallery may write: never the id, studio, kind, creation time, the counters or the photo versions. */
-export type GalleryFields = Partial<Omit<Gallery, 'id' | 'tenantId' | 'kind' | 'createdAt' | 'views' | 'downloads' | 'guestViews' | 'photosVersion' | 'photosVisibleVersion' | 'photosGen' | 'facesOffAt'>>;
+export type GalleryFields = Partial<Omit<Gallery, 'id' | 'tenantId' | 'kind' | 'createdAt' | 'views' | 'downloads' | 'guestViews' | 'photosVersion' | 'photosVisibleVersion' | 'photosGen' | 'facesOffAt' | 'drivePrevParent'>>;
 export type CountedEvent = 'view' | 'download' | 'guest_view';
 /** patchGallery writes only while these still hold: a value, or null = still empty. */
 /** setSlug's refusals (P73, the trigger on tenants in 0134): the same words from both stores. */

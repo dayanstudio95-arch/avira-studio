@@ -941,6 +941,25 @@ export class MemoryStore implements Store {
     return out;
   }
 
+  /** The Drive helper's tasks (Avira 0101). */
+  driveTasks: (import('./driveTasks').DriveTaskInput & { status: string })[] = [];
+  async queueDriveTasks(tasks: import('./driveTasks').DriveTaskInput[]): Promise<void> {
+    for (const t of tasks) this.driveTasks.push({ ...t, status: 'pending' });
+  }
+  async cancelDriveTasks(galleryId: string, kind: import('./driveTasks').DriveTaskKind): Promise<number> {
+    let n = 0;
+    for (const t of this.driveTasks) {
+      if (t.galleryId === galleryId && t.kind === kind && t.status === 'pending') {
+        t.status = 'cancelled';
+        n++;
+      }
+    }
+    return n;
+  }
+  async folderUsers(tenantId: string, folderUrl: string): Promise<string[]> {
+    return [...this.galleries.values()].filter((g) => g.tenantId === tenantId && g.folderUrl === folderUrl).map((g) => g.id);
+  }
+
   /** The galleries gallery-choice-notify would have been called for (Avira, 0099). */
   choiceNotified: string[] = [];
   async notifyChoice(galleryId: string): Promise<'sent' | 'skipped' | 'failed'> {

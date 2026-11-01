@@ -160,6 +160,8 @@ export interface Gallery {
   photographer?: string;
   /** The studio's own favourite (a star in the list, Avira 0100). */
   studioFavorite?: boolean;
+  /** Where its Drive folder was before the Drive helper moved it into "גלריות מועדפים" (Avira 0101; read only here). */
+  drivePrevParent?: string;
   /**
    * The studio's event (the hub's events, crm studios) this gallery belongs to (fix plan P57): set from the hub's
    * gallery form only after the Worker checked the event is this studio's (the database checks it too, 0139). The

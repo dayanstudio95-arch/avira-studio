@@ -36,6 +36,7 @@ import {
 } from './galleries';
 import { applyPhotoEdits, cachedPreview, cachedSize, chosenLost, cleanWho, coverOf, downloadFailedPage, editPhotos, favoritesFrom, fetchOriginalStart, heartsFor, listPhotos, mergePhotoData, nextGen, photoDoc, photoResponse, publicPhotos, readsThroughDropbox, sharedLinkReplaced, withoutPreviewWarning } from './photos';
 import { askedVersion, choicePhotoBase, photoBase, photoPath, printPhotoBase } from '../shared/photoUrl';
+import { queueDriveTrash, queueStarMove, STARRED_WORDS } from './driveTasks';
 import { exifTakenAt, normalizeLabel, pictureKind, xmpLabel } from '../shared/exif';
 import { datesBatchSize } from '../shared/photosets';
 import { resolveFile, resolveFolder } from './providers';
@@ -431,7 +432,12 @@ route('PUT', '/api/admin/galleries/:id', async ({ request, env, store, params })
     const f = await store.getFilmsStudio(me.tenantId);
     if (!f.music?.some((t) => t.id === input.music)) throw new HttpError(400, 'השיר לא נמצא');
   }
-  return json(adminGallery(await updateGallery(store, env, s, g, input, { onlyLower: me.readOnly }), me));
+  // Read before the update (updateGallery edits `g` in place).
+  const wasStarred = g.studioFavorite === true;
+  const saved = await updateGallery(store, env, s, g, input, { onlyLower: me.readOnly });
+  // The star moves its Drive folder into "גלריות מועדפים", or back (Avira 0101).
+  await queueStarMove(store, saved, wasStarred);
+  return json(adminGallery(saved, me));
 });
 
 route('DELETE', '/api/admin/galleries/:id', async ({ request, env, store, params, url }) => {
@@ -446,8 +452,13 @@ route('DELETE', '/api/admin/galleries/:id', async ({ request, env, store, params
     const block = albumGuard((await store.albumGuards(me.tenantId, [g.id]))[g.id], forever ? 'purge' : 'trash', url.searchParams.get('force') === '1');
     if (block) throw new HttpError(409, ALBUM_BLOCK_WORDS[block], block);
   }
-  if (forever) await purgeGallery(store, env, g);
-  else await trashGallery(store, g);
+  // A starred gallery stays until its star is taken off (Avira, 2026-11-02).
+  if (!g.deletedAt && g.studioFavorite) throw new HttpError(409, STARRED_WORDS, 'starred');
+  if (forever) {
+    await purgeGallery(store, env, g);
+    // Removed for good: its Drive folder to the Drive trash (Avira 0101).
+    await queueDriveTrash(store, [g]);
+  } else await trashGallery(store, g);
   // Its cover leaves this data centre's cache now (P66; the link already stops at the gallery check everywhere).
   await forgetCover(g.id, g.coverVersion);
   return json({ ok: true });
@@ -473,7 +484,7 @@ route('POST', '/api/admin/galleries/:id/restore', async ({ request, store, param
  * Why a gallery of a batch was left as it was (the hub says it in words). P71: 'album_submitted' (sent again with
  * `force` after the studio's yes), 'album_order' and 'album_paid' (albumGuard).
  */
-type Skipped = { id: string; reason: 'not_found' | 'module' | 'in_trash' | 'not_in_trash' | 'changed' | 'faces_failed' | AlbumBlock };
+type Skipped = { id: string; reason: 'not_found' | 'module' | 'in_trash' | 'not_in_trash' | 'changed' | 'faces_failed' | 'starred' | AlbumBlock };
 
 /**
  * Photo galleries whose face data one batch request deletes: about 3 requests each (list, delete, record), so
@@ -516,6 +527,8 @@ route('POST', '/api/admin/galleries/batch', async ({ request, env, store }) => {
     // Only galleries of a module the studio has.
     else if (!(kindOf(g) === 'photos' ? me.photos : me.films)) skipped.push({ id, reason: 'module' });
     else if (Boolean(g.deletedAt) !== fromTrash) skipped.push({ id, reason: fromTrash ? 'not_in_trash' : 'in_trash' });
+    // A starred gallery stays until its star is taken off (Avira, 2026-11-02).
+    else if (action === 'trash' && g.studioFavorite) skipped.push({ id, reason: 'starred' });
     else ready.push(g);
   }
   // A designed album keeps its photo gallery out of the trash, or from removal for good (P71, albumGuard): one read
@@ -567,6 +580,8 @@ route('POST', '/api/admin/galleries/batch', async ({ request, env, store }) => {
     done = await store.deleteGalleries(me.tenantId, readyIds);
     const gone = new Set(done);
     await Promise.all(ready.filter((g) => gone.has(g.id)).flatMap((g) => [env.KV.delete(`cover:${g.id}`), ...(g.hasThumb ? [env.KV.delete(`thumb:${g.id}`)] : [])]));
+    // Removed for good: their Drive folders to the Drive trash (Avira 0101).
+    await queueDriveTrash(store, ready.filter((g) => gone.has(g.id)));
   }
   // Their covers leave this data centre's cache now (P66).
   if (action === 'trash' || action === 'purge') {

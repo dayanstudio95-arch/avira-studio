@@ -9,6 +9,7 @@ import { Save, CheckCircle, MessageCircle, Calendar, FileText, Eye, EyeOff, Arro
 import WhatsAppPanel from "./WhatsAppPanel";
 import WhatsAppBotCard from "./WhatsAppBotCard";
 import PixiesetNotifyCard from "./PixiesetNotifyCard";
+import DriveHelperCard from "./DriveHelperCard";
 import { toast } from "sonner";
 
 // CHANGED: Make.com was fully retired (site-wide decision — every WhatsApp send now
@@ -259,6 +260,7 @@ export default function IntegrationsTab() {
       <WhatsAppBotCard />
 
       <PixiesetNotifyCard />
+      <DriveHelperCard />
 
       {/* Google Calendar — connect/manage/sync-health now lives on its own dedicated page */}
       <Card className="bg-gray-900/50 border-gray-800">

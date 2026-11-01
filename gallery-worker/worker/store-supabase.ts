@@ -834,6 +834,31 @@ export class SupabaseStore implements Store {
     await this.write('/rest/v1/notifications', 'POST', { tenant_id: tenantId, type: n.type, title: n.title, body: n.body });
   }
 
+  async queueDriveTasks(tasks: import('./driveTasks').DriveTaskInput[]): Promise<void> {
+    if (!tasks.length) return;
+    await this.write(
+      '/rest/v1/drive_tasks',
+      'POST',
+      tasks.map((t) => ({ tenant_id: t.tenantId, gallery_id: t.galleryId, couple_name: t.coupleName, folder_id: t.folderId, kind: t.kind, parent_id: t.parentId ?? null })),
+      'return=minimal',
+    );
+  }
+
+  async cancelDriveTasks(galleryId: string, kind: import('./driveTasks').DriveTaskKind): Promise<number> {
+    const res = await this.write(
+      `/rest/v1/drive_tasks?gallery_id=eq.${encodeURIComponent(galleryId)}&kind=eq.${kind}&status=eq.pending&select=id`,
+      'PATCH',
+      { status: 'cancelled', done_at: new Date().toISOString() },
+      'return=representation',
+    );
+    return ((await res.json()) as unknown[]).length;
+  }
+
+  async folderUsers(tenantId: string, folderUrl: string): Promise<string[]> {
+    const rows = await this.rows(`/rest/v1/films_galleries?tenant_id=eq.${encodeURIComponent(tenantId)}&folder_url=eq.${encodeURIComponent(folderUrl)}&select=id`);
+    return rows.map((r) => String(r.id));
+  }
+
   async faceStates(tenantId: string): Promise<string[]> {
     const rows = await this.allRows(`/rest/v1/films_photos?tenant_id=eq.${encodeURIComponent(tenantId)}&select=gallery_id,on:data->faceSearch`);
     return rows.filter((r) => r.on === true).map((r) => String(r.gallery_id));
@@ -965,6 +990,7 @@ function toGallery(r: Row): Gallery {
     ...(r.choice_group_sent_at ? { choiceGroupSentAt: String(r.choice_group_sent_at) } : {}),
     ...(r.photographer ? { photographer: String(r.photographer) } : {}),
     ...(r.studio_favorite === true ? { studioFavorite: true } : {}),
+    ...(r.drive_prev_parent ? { drivePrevParent: String(r.drive_prev_parent) } : {}),
     ...(r.event_id ? { eventId: String(r.event_id) } : {}),
     days: Number(r.days ?? 0),
     createdAt: String(r.created_at),
@@ -1006,6 +1032,7 @@ const LIST_COLUMN: Partial<Record<keyof Gallery, string>> = {
   deletedAt: 'deleted_at', coverKey: 'cover_key', hasThumb: 'has_thumb', views: 'views', guestViews: 'guest_views', downloads: 'downloads',
   coverVersion: 'cover_version', photosGen: 'photos_gen', eventId: 'event_id',
   choiceDoneAt: 'choice_done_at', choiceDoneCount: 'choice_done_count', photographer: 'photographer', studioFavorite: 'studio_favorite',
+  folderProvider: 'folder_provider',
 };
 const LIST_COLUMNS = GALLERY_LIST_FIELDS.map((k) => LIST_COLUMN[k]).join(',');
 

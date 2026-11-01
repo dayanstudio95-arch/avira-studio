@@ -149,6 +149,14 @@ async function scenario(s: Store): Promise<Step[]> {
     const b = await s.getGallery(G.films);
     return [a?.photographer, a?.studioFavorite === true, listed?.photographer, listed?.studioFavorite === true, b?.photographer ?? null, b?.studioFavorite === true];
   });
+  // Avira 0101: the Drive helper's tasks — written, a pending one cancelled once, and the galleries reading a folder.
+  await step('drive tasks: written, cancelled once; the readers of a folder', async () => {
+    await s.queueDriveTasks([{ tenantId: T1, galleryId: G.films, coupleName: 'Renamed', folderId: 'folderAbcdef12345', kind: 'to_favorites' }]);
+    const first = await s.cancelDriveTasks(G.films, 'to_favorites');
+    const again = await s.cancelDriveTasks(G.films, 'to_favorites');
+    const none = await s.folderUsers(T1, 'https://drive.google.com/drive/folders/noSuchFolder123');
+    return [first, again, none];
+  });
   await step('show the date and venue again', async () => {
     await s.patchGallery(T1, G.films, { hideDate: false, hideVenue: false });
     const g = await s.getGallery(G.films);
@@ -518,6 +526,7 @@ describe('MemoryStore and SupabaseStore (on the migrations) give the same answer
     expect(at('show the date and venue again')).toEqual([false, false]);
     expect(at('sets kept from the guests, then none')).toEqual([['s1', 's2'], []]);
     expect(at('photographer and star')).toEqual(['יריב', true, 'יריב', true, null, false]);
+    expect(at('drive tasks: written, cancelled once; the readers of a folder')).toEqual([1, 0, []]);
     expect(at('choice: done once, by its link, reopened')).toEqual([3, '2026-10-31T10:00:00.000Z', null, G.films, 3, null, null, null]);
     expect(at('counters')).toEqual([2, 1, 1]);
     expect(at('photos: a stale version is refused')).toBe(false);

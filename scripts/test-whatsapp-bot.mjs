@@ -3500,5 +3500,20 @@ console.log('\n— PART 75: album group messages + list order —');
   check('the studio\'s own words', gl.renderGalleryLink('{{names}}: {{link}} · {{venue}}', { names: 'א', link: 'L', venue: 'שפיים' }), 'א: L · שפיים');
 }
 
+{
+  section('the Google Drive helper (2026-11-02, 0101)');
+  const dh = await loadModule('supabase/functions/_shared/driveHelper.ts', 'dh78');
+  const ds = await loadModule('src/lib/driveScript.js', 'ds78');
+  const id = '0f8fad5b-d9cb-469f-a165-70867728950e';
+  check('the report: space and results', dh.parseSync({ storage: { used: 1.2e12, limit: '2000000000000' }, results: [{ id, ok: true, prevParentId: 'octoberFolder123' }, { id, ok: false, error: 'x'.repeat(500) }] }),
+    { storage: { used: 1.2e12, limit: 2e12 }, results: [{ id, ok: true, error: '', prevParentId: 'octoberFolder123' }, { id, ok: false, error: 'x'.repeat(300), prevParentId: '' }] });
+  check('no space when it isn\'t two good numbers (an unlimited Drive says -1)', [dh.parseSync({ storage: { used: 5, limit: -1 } }).storage, dh.parseSync({}).storage, dh.parseSync(null).storage], [null, null, null]);
+  check('a result without a real task id, or a bad parent, is dropped / blanked', dh.parseSync({ results: [{ id: 'nope', ok: true }, { id, ok: true, prevParentId: '../../x' }] }).results, [{ id, ok: true, error: '', prevParentId: '' }]);
+  const script = ds.driveAppsScript({ url: 'https://example.supabase.co/functions/v1/drive-helper', token: 'tok_ABCDEFGHIJKLMNOPQRSTUVWX' });
+  check('the script carries its address and token once each', [script.split('drive-helper').length - 1, script.split('tok_ABCDEFGHIJKLMNOPQRSTUVWX').length - 1], [1, 1]);
+  check('the script trashes, moves to the favourites, moves back, and reports the space', ['setTrashed(true)', "FAVORITES = 'גלריות מועדפים'", 'moveTo(favorites_())', 'getStorageUsed()', "newTrigger('runAvira')"].every((x) => script.includes(x)), true);
+  check('the script never deletes for good', /setTrashed\(false\)|\.remove|Drive\.Files\.(remove|delete)|emptyTrash/.test(script), false);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

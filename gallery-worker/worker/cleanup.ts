@@ -21,6 +21,7 @@
 // Each run is recorded in films_cleanup_runs (what was done, what failed, what is still waiting).
 import { rewriteFaceFiles } from './faces';
 import { purgeGallery, TRASH_DAYS } from './galleries';
+import { queueDriveTrash } from './driveTasks';
 import { filmKey, probeFilm, readMarks, writeMarks, type FilmMarks } from './linkCheck';
 import { PRINT_LINK_DAYS } from './printLink';
 import { accessToken } from './providers/dropbox';
@@ -42,8 +43,9 @@ const DAY = 86_400_000;
 // Worst-case requests per item with SupabaseStore, so a started item always has room to finish:
 // face data = list + delete + record, plus a failure mark;
 const FACE_COST = 3 + 1;
-// a trash item = read the gallery, its face data, the partner's link, the row, cover + thumbnail in KV, a failure mark;
-const PURGE_COST = 1 + 3 + 1 + 1 + 2 + 1;
+// a trash item = read the gallery, its face data, the partner's link, the row, cover + thumbnail in KV, a failure mark,
+// and its Drive folder's way to the Drive trash (the galleries reading it, the task; Avira 0101);
+const PURGE_COST = 1 + 3 + 1 + 1 + 2 + 1 + 2;
 // a face-file rewrite = the plan, a download and an upload per file, the swap, the delete of the old files, a mark;
 export const FACE_REWRITE_FILES = 5;
 const REWRITE_COST = 1 + 2 * FACE_REWRITE_FILES + 1 + 1 + 1;
@@ -196,6 +198,7 @@ export async function nightly(store: Store, env: Env, now = Date.now()): Promise
       // Restored (or removed) meanwhile: nothing to do.
       if (!g?.deletedAt) return true;
       await purgeGallery(store, countedEnv, g);
+      await queueDriveTrash(store, [g]);
       report.purged.push(id);
       return true;
     },

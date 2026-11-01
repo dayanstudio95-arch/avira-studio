@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
-import { Camera, Clapperboard, Copy, ExternalLink, Images, LayoutGrid, List, Loader2, Pencil, Plus, RotateCcw, ScanFace, Search, Send, Star, Timer, Trash2, Upload } from "lucide-react";
+import { Camera, Clapperboard, Copy, ExternalLink, HardDrive, Images, LayoutGrid, List, Loader2, Pencil, Plus, RotateCcw, ScanFace, Search, Send, Star, Timer, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { parseEventList } from "@films-shared/event";
 import { coupleMatches, withAmpersand } from "@films-shared/names";
@@ -23,6 +23,7 @@ import EventPicker from "@/components/films/EventPicker";
 import { base44 } from "@/api/base44Client";
 import { supabase } from "@/api/supabaseClient";
 import { WORKFLOW_STATUS_COLORS, WORKFLOW_STATUS_LABELS } from "@/pages/AlbumOrders";
+import { bytesText, driveSpace } from "@/lib/driveSpace";
 
 // The couples' galleries: photo galleries under "גלריות" (/photos), film galleries under "סרטים" (/films).
 // Ported from the films app's admin: same filters, month grouping and actions; data from the
@@ -113,6 +114,14 @@ function DaysLeft({ g }) {
   if (g.daysLeft <= 0) return <span className="text-amber-300">נסגרת היום</span>;
   if (g.daysLeft <= 7) return <span className="text-amber-300">נסגרת בעוד {g.daysLeft === 1 ? "יום" : `${g.daysLeft} ימים`}</span>;
   return <span className="text-gray-500">נשארו {g.daysLeft} יום</span>;
+}
+
+/** A starred gallery's folder on the way into "גלריות מועדפים" (the Drive helper, 0101). */
+function DriveMove({ t }) {
+  if (t.kind !== "to_favorites") return null;
+  if (t.status === "done") return <span className="block text-[10px] leading-tight text-green-300" title="התיקייה בדרייב נמצאת ב'גלריות מועדפים'">📁</span>;
+  if (t.status === "failed") return <span className="block text-[10px] leading-tight text-red-400" title={`ההעברה בדרייב נכשלה: ${t.error || ""}`}>!</span>;
+  return <span className="block text-[10px] leading-tight text-amber-300" title="התיקייה תעבור ל'גלריות מועדפים' בדרייב (עד 5 דקות)">⏳</span>;
 }
 
 function readShooter() {
@@ -291,6 +300,44 @@ export default function FilmsGalleries() {
       toast.error(e.message);
     }
   };
+  // The owner's Google Drive helper (0101): the Drive's space, whether it runs, and each starred gallery's folder move.
+  const [drive, setDrive] = useState(null); // { connected, used, limit }
+  const [driveBy, setDriveBy] = useState({}); // gallery id → its latest favourites move { kind, status, error }
+  useEffect(() => {
+    if (kind !== "photos") return;
+    supabase
+      .from("app_settings")
+      .select("key, value")
+      .in("key", ["drive_helper_token_hash", "drive_storage_used", "drive_storage_limit"])
+      .then(({ data }) => {
+        const v = Object.fromEntries((data || []).map((r) => [r.key, r.value]));
+        setDrive({ connected: Boolean(v.drive_helper_token_hash), used: v.drive_storage_used, limit: v.drive_storage_limit });
+      });
+  }, [kind]);
+  const starredKey = (list || []).filter((g) => g.studioFavorite && g.folderProvider === "gdrive").map((g) => g.id).join(",");
+  useEffect(() => {
+    if (!drive?.connected || !starredKey) return;
+    let live = true;
+    supabase
+      .from("drive_tasks")
+      .select("gallery_id, kind, status, error, created_at")
+      .in("gallery_id", starredKey.split(","))
+      .in("kind", ["to_favorites", "restore"])
+      .neq("status", "cancelled")
+      .order("created_at", { ascending: false })
+      .then(({ data }) => {
+        if (!live) return;
+        const m = {};
+        for (const t of data || []) if (!m[t.gallery_id]) m[t.gallery_id] = t;
+        setDriveBy(m);
+      });
+    return () => {
+      live = false;
+    };
+  }, [drive?.connected, starredKey]);
+  const space = drive ? driveSpace(drive.used, drive.limit) : null;
+  // Removed for good: a Drive gallery's folder goes to the Drive trash (when the helper is connected).
+  const driveWords = (g) => (drive?.connected && g.folderProvider === "gdrive" ? "התיקייה שלה בגוגל דרייב תעבור לפח של הדרייב (אפשר לשחזר משם 30 יום)." : "הקבצים בענן לא נמחקים.");
   // "חיפוש לפי צלם" (remembered on this computer).
   const [shooter, setShooterState] = useState(readShooter);
   const setShooter = (v) => {
@@ -368,7 +415,12 @@ export default function FilmsGalleries() {
   if (!filmsConfigured()) return <FilmsNotConfigured />;
 
   const remove = async (g) => {
-    if (!(await confirmDialog(`להעביר את הגלריה של ${g.coupleName} לסל המחזור? הקישור יפסיק לעבוד מיד. אפשר לשחזר עד 30 יום, ואחר כך היא נמחקת לגמרי. הקבצים בענן לא נמחקים.`))) return;
+    // A starred gallery stays until its star is taken off (the owner's choice, 2026-11-02; the Worker refuses too).
+    if (g.studioFavorite) {
+      toast.error("הגלריה מסומנת בכוכב. כדי למחוק אותה, קודם להוריד את הכוכב.");
+      return;
+    }
+    if (!(await confirmDialog(`להעביר את הגלריה של ${g.coupleName} לסל המחזור?\nהקישור יפסיק לעבוד מיד. אפשר לשחזר עד 30 יום, ואחר כך היא נמחקת לגמרי — ${driveWords(g)}`))) return;
     try {
       try {
         await filmsApi("DELETE", `/api/admin/galleries/${g.id}`);
@@ -396,7 +448,7 @@ export default function FilmsGalleries() {
   };
 
   const removeForever = async (g) => {
-    if (!(await confirmDialog(`למחוק לצמיתות את הגלריה של ${g.coupleName}? אי אפשר לבטל. הקבצים בענן לא נמחקים.`))) return;
+    if (!(await confirmDialog({ title: `למחוק לצמיתות את הגלריה של ${g.coupleName}?`, message: `הגלריה והקישורים נמחקים מהמערכת, ואי אפשר לבטל. ${driveWords(g)}`, confirmText: "מחק", danger: true }))) return;
     try {
       await filmsApi("DELETE", `/api/admin/galleries/${g.id}?forever=1`);
       toast.success("הגלריה נמחקה לצמיתות");
@@ -503,6 +555,31 @@ export default function FilmsGalleries() {
             <button type="button" className="ms-auto text-amber-300 hover:text-white" onClick={() => setFaceOff([])} aria-label="סגירה">
               ✕
             </button>
+          </div>
+        )}
+
+        {kind === "photos" && drive && (
+          <div className="rounded-xl border border-gray-800 bg-gray-900 px-4 py-3" data-testid="drive-space">
+            {space ? (
+              <div className="flex items-center gap-3">
+                <HardDrive className="w-5 h-5 shrink-0 text-gray-400" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="flex flex-wrap justify-between gap-2 text-sm">
+                    <span className="text-gray-300">גוגל דרייב</span>
+                    <span className="text-gray-200">
+                      <b>{bytesText(space.used)}</b> בשימוש מתוך {bytesText(space.limit)} · נשארו {bytesText(space.free)}
+                    </span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-gray-800">
+                    <div className={`h-full ${space.level === "full" ? "bg-red-500" : space.level === "high" ? "bg-amber-400" : "bg-sky-500"}`} style={{ width: `${space.pct}%` }} />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-gray-500">
+                {drive.connected ? "שטח האחסון בגוגל דרייב יופיע כאן אחרי שהסקריפט ירוץ (עד 5 דקות)." : "חיבור גוגל דרייב (שטח אחסון, מחיקה לפח הדרייב ומועדפים): הגדרות ← חיבורים ← גוגל דרייב."}
+              </p>
+            )}
           </div>
         )}
 
@@ -675,6 +752,7 @@ export default function FilmsGalleries() {
                               <Star className={`w-4 h-4 ${g.studioFavorite ? "fill-yellow-400 text-yellow-400" : "text-gray-600 hover:text-gray-400"}`} />
                             </button>
                           )}
+                          {g.studioFavorite && driveBy[g.id] && <DriveMove t={driveBy[g.id]} />}
                         </td>
                         <td className="p-3 whitespace-nowrap">
                           <div>{formatDate(g.date)}</div>
@@ -818,7 +896,9 @@ export default function FilmsGalleries() {
                     size="sm"
                     variant="outline"
                     className="border-red-500/40 bg-gray-800 text-red-300 hover:bg-gray-700"
-                    onClick={async () => (await confirmDialog(`למחוק לצמיתות ${pickedList.length} גלריות? אי אפשר לבטל.`)) && batch("purge", pickedList)}
+                    onClick={async () =>
+                      (await confirmDialog({ title: `למחוק לצמיתות ${pickedList.length} גלריות?`, message: `אי אפשר לבטל. ${drive?.connected ? "התיקיות שלהן בגוגל דרייב יעברו לפח של הדרייב (אפשר לשחזר משם 30 יום)." : "הקבצים בענן לא נמחקים."}`, confirmText: "מחק", danger: true })) && batch("purge", pickedList)
+                    }
                     data-testid="bulk-purge"
                   >
                     מחיקה לצמיתות
