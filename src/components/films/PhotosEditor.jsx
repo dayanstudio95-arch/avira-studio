@@ -153,6 +153,19 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
     return run;
   };
 
+  // The studio's album-choice folder in this gallery, or not (Avira, 2026-11-02: gallery settings ← "בחירת אלבום").
+  const toggleStudioAlbum = (on) => {
+    const run = saveQueue.current.then(async () => {
+      try {
+        setData(await filmsApi("PUT", `/api/admin/galleries/${galleryId}/photos/album-set`, { on }));
+      } catch (e) {
+        setError(e.message);
+      }
+    });
+    saveQueue.current = run;
+    return run;
+  };
+
   /** Puts photos that have no set yet into the set their Lightroom colour stands for (no colour: the "none" set). */
   const applyLabels = async (d, map = labelMap) => {
     const idByName = new Map(d.sets.map((x) => [x.name, x.id]));
@@ -703,6 +716,21 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
                 );
               })}
             </div>
+          </div>
+        )}
+        {data.studioAlbum?.configured && (
+          <div className="space-y-1 border-t border-gray-800 pt-3" data-testid="studio-album">
+            {data.studioAlbum.own ? (
+              <p className="text-sm text-gray-300">בגלריה הזו יש תיקיית מחירון משלה, ולכן "בחירת אלבום" מציג אותה ולא את התיקייה הקבועה מההגדרות.</p>
+            ) : (
+              <label className="flex items-center gap-2 text-sm text-gray-200 cursor-pointer">
+                <input type="checkbox" checked={!data.studioSetOff} onChange={(e) => toggleStudioAlbum(e.target.checked)} data-testid="studio-album-on" />
+                להציג את המחירון הקבוע מההגדרות בסט "בחירת אלבום"
+                <span className="text-xs text-gray-500">
+                  ({data.items.filter((i) => i.studio).length || "אין"} תמונות, בהגדרות גלריות ← "בחירת אלבום — תיקייה אחת לכל הגלריות")
+                </span>
+              </label>
+            )}
           </div>
         )}
       </section>

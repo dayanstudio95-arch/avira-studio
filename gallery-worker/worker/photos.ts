@@ -250,6 +250,7 @@ export function mergePhotoData(fresh: PhotoData, old: PhotoData | null): PhotoDa
     design: old.design,
     ...(old.timesV ? { timesV: old.timesV } : {}),
     ...(old.gen ? { gen: old.gen } : {}),
+    ...(old.studioSetOff ? { studioSetOff: true as const } : {}),
   };
 }
 
@@ -506,6 +507,11 @@ function mockPhotos(url: string, provider: PhotoData['provider'] = 'mock'): Phot
       found.push({ name: `T-${i}.jpg`, folder: 'שיר ועומר טופ1', ref: `m:/demo/photos/${i}.jpg` });
       found.push({ name: `T-${i}.jpg`, folder: 'שיר ועומר טופ2', ref: `m:/demo/photos/${i + 5}.jpg` });
     }
+    return buildPhotoData(url, provider, found);
+  }
+  if (url.includes('mock=price')) {
+    // A studio's price list (the album-choice folder in the settings, albumSet.ts): its own files.
+    for (let i = 1; i <= 4; i++) found.push({ name: `מחירון-${i}.jpg`, folder: '', ref: `m:/demo/photos/${String(25 + i)}.jpg?price` });
     return buildPhotoData(url, provider, found);
   }
   const folders = ['01 התארגנות', '02 צילומי חוץ', '03 מסיבה'];

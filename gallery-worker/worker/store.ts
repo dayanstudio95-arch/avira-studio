@@ -166,6 +166,8 @@ export interface FilmsStudio {
   mit4mitRemoved?: string[];
   mit4mitLinkedAt?: string;
   mit4mitApprovedAt?: string;
+  /** Avira (2026-11-02): one cloud folder (the price list) shown in every photo gallery as "בחירת אלבום" (albumSet.ts). */
+  albumSet?: import('./albumSet').StudioAlbumSet;
 }
 
 /** A couple's personal list ("התמונות של אופק"): photos apart from the favourites for the album. */

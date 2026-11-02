@@ -34,10 +34,11 @@ import {
   validDays,
   type AlbumBlock,
 } from './galleries';
-import { applyPhotoEdits, cachedPreview, cachedSize, chosenLost, cleanWho, coverOf, downloadFailedPage, editPhotos, favoritesFrom, fetchOriginalStart, heartsFor, listPhotos, mergePhotoData, nextGen, photoDoc, photoResponse, publicPhotos, readsThroughDropbox, sharedLinkReplaced, withoutPreviewWarning } from './photos';
+import { applyPhotoEdits, cachedPreview, cachedSize, chosenLost, cleanWho, coverOf, downloadFailedPage, editPhotos, favoritesFrom, fetchOriginalStart, heartsFor, listPhotos, mergePhotoData, nextGen, photoDoc, photoKey, photoResponse, publicPhotos, readsThroughDropbox, sharedLinkReplaced, withoutPreviewWarning } from './photos';
 import { askedVersion, choicePhotoBase, photoBase, photoPath, printPhotoBase } from '../shared/photoUrl';
 import { queueDriveTrash, queueStarMove, STARRED_WORDS } from './driveTasks';
 import { isPageToken, pageWeddings, PHOTOGRAPHER_BUCKET, weddingCard, weddingPhotos, weddingRef, type PhotographerPage } from './photographerPage';
+import { guestSetsOnFirstLoad, hasOwnAlbumCopy, samePhotos, studioSetFrom, withStudioSet, type StudioAlbumSet } from './albumSet';
 import { exifTakenAt, normalizeLabel, pictureKind, xmpLabel } from '../shared/exif';
 import { datesBatchSize } from '../shared/photosets';
 import { resolveFile, resolveFolder } from './providers';
@@ -639,7 +640,9 @@ async function adminPhotos(env: Env, store: Store, me: StudioUser, galleryId: st
   const [allHearts, allInsta] = await Promise.all([store.listHearts(galleryId), store.listInsta(galleryId)]);
   // The studio sees the hearts of every photo in the list, hidden ones too (P70).
   const { favBy, insta } = heartsFor(data, allHearts, allInsta, { includeHidden: true });
-  return { ...data, favorites: favoritesFrom(favBy), favBy, insta, previewToken: await studioPass(env, store, me, galleryId) };
+  // Avira: whether the settings have an album-choice folder, and whether this gallery has its own copy (albumSet.ts).
+  const studioAlbum = { configured: Boolean((await store.getFilmsStudio(me.tenantId)).albumSet?.items.length), own: hasOwnAlbumCopy(data) };
+  return { ...data, favorites: favoritesFrom(favBy), favBy, insta, previewToken: await studioPass(env, store, me, galleryId), studioAlbum };
 }
 
 /**
@@ -689,17 +692,21 @@ route('POST', '/api/admin/galleries/:id/photos/load', async ({ request, env, sto
   const { url, confirm } = await body<{ url: string; confirm?: boolean }>(request);
   // The folder is read once; only the merge with the saved list is repeated on a clash.
   const fresh = await listPhotos(env, s, String(url ?? ''), new URL(request.url).origin);
-  const chosen = confirm === true ? null : await chosenKeys(store, g.id);
+  const [chosen, films] = await Promise.all([confirm === true ? null : chosenKeys(store, g.id), store.getFilmsStudio(me.tenantId)]);
   try {
     const { before, data } = await savePhotoData(store, g, (old) => {
       const merged = mergePhotoData(fresh, old);
-      const next = { ...merged, gen: nextGen(old, merged) };
+      // The studio's album-choice folder from the settings, at the end (Avira, albumSet.ts).
+      const next = withStudioSet({ ...merged, gen: nextGen(old, merged) }, films.albumSet, old);
       if (chosen && old) {
         const { lost, total } = chosenLost(chosen, old, next);
         if (lost * 10 > total) throw new LoadNeedsConfirm(lost, total);
       }
       return next;
     });
+    // A new gallery's "בחירת אלבום" (the price list) starts kept from the guests (Avira, the owner's decision).
+    const guestSets = before ? null : guestSetsOnFirstLoad(g.guestHiddenSets, data);
+    if (guestSets) await store.patchGallery(g.tenantId, g.id, { guestHiddenSets: guestSets });
     // Another couple's folder under a new shared link: the old photos' face data goes at once (privacy).
     if (sharedLinkReplaced(before, data)) await store.deleteFaces(g.id);
     // Photos gone from the folder (or hidden by it): their face data goes (P68).
@@ -715,6 +722,102 @@ route('POST', '/api/admin/galleries/:id/photos/load', async ({ request, env, sto
 route('GET', '/api/admin/galleries/:id/photos', async ({ request, env, store, params }) => {
   const { me, g } = await ownedPhotoGallery(request, store, params.id);
   return json(await adminPhotos(env, store, me, g.id, (await photoDoc(store, g))?.data ?? null));
+});
+
+// ---------- the studio's album-choice folder (Avira, 2026-11-02; albumSet.ts, 0104) ----------
+
+/** At most this many galleries per "apply" call: each costs up to 4 outside calls (the free plan allows about 50). */
+const ALBUM_SET_BATCH = 8;
+
+const albumSetView = (set: StudioAlbumSet | undefined) =>
+  set ? { url: set.url, at: set.at, items: set.items.map((i, n) => ({ n, name: i.name, ref: i.ref, ar: i.ar ?? null })) } : null;
+
+async function albumSetAnswer(store: Store, tenantId: string, set: StudioAlbumSet | undefined) {
+  const galleries = (await store.listGalleries(tenantId)).filter((g) => kindOf(g) === 'photos' && !g.deletedAt).map((g) => g.id);
+  return { albumSet: albumSetView(set), galleries };
+}
+
+route('GET', '/api/admin/album-set', async ({ request, store }) => {
+  const me = await requireStudioAdmin(request, store, { module: 'photos' });
+  return json(await albumSetAnswer(store, me.tenantId, (await store.getFilmsStudio(me.tenantId)).albumSet));
+});
+
+// A folder link: read it now and keep its photos; '' = no folder (the galleries lose the studio's photos on "apply").
+route('PUT', '/api/admin/album-set', async ({ request, env, store }) => {
+  const me = await requireStudioAdmin(request, store, { write: true, module: 'photos' });
+  const { url } = await body<{ url?: string }>(request);
+  const films = await store.getFilmsStudio(me.tenantId);
+  const link = String(url ?? '').trim();
+  let set: StudioAlbumSet | undefined;
+  if (link) {
+    const s = await getSettings(env, store, me.tenantId);
+    set = studioSetFrom(link, await listPhotos(env, s, link, new URL(request.url).origin), films.albumSet);
+  }
+  await store.patchFilmsStudio(me.tenantId, { albumSet: set });
+  return json(await albumSetAnswer(store, me.tenantId, set));
+});
+
+// The shapes the settings screen measured ({ref: width / height}): new galleries get them with the photos.
+route('PUT', '/api/admin/album-set/sizes', async ({ request, store }) => {
+  const me = await requireStudioAdmin(request, store, { write: true, module: 'photos' });
+  const { ars } = await body<{ ars?: Record<string, unknown> }>(request);
+  const films = await store.getFilmsStudio(me.tenantId);
+  if (!films.albumSet) throw new HttpError(400, 'אין תיקיית בחירת אלבום בהגדרות');
+  const items = films.albumSet.items.map((i) => {
+    const ar = Number(ars?.[i.ref]);
+    return Number.isFinite(ar) && ar > 0.1 && ar < 10 ? { ...i, ar: Math.round(ar * 1000) / 1000 } : i;
+  });
+  await store.patchFilmsStudio(me.tenantId, { albumSet: { ...films.albumSet, items } });
+  return json({ ok: true });
+});
+
+// One photo of the folder, preview size, for the settings screen (signed in: the screen fetches it with its session).
+route('GET', '/api/admin/album-set/photo/:n', async ({ request, env, store, params }) => {
+  const me = await requireStudioAdmin(request, store, { module: 'photos' });
+  const set = (await store.getFilmsStudio(me.tenantId)).albumSet;
+  const it = set?.items[Number(params.n)];
+  if (!set || !it || !/^\d+$/.test(params.n)) throw new HttpError(404, 'התמונה לא נמצאה');
+  const item = { ...it, key: photoKey(it.ref) };
+  return photoResponse(env, () => getSettings(env, store, me.tenantId), { folderUrl: set.url, provider: set.provider, sets: [], items: [item] }, item, 'm', request, false, `album-set-${me.tenantId}`);
+});
+
+/**
+ * The folder in the settings, as it is now, into these galleries (ALBUM_SET_BATCH at a time; the screen sends them
+ * all): the studio's photos of before replaced, a gallery with its own copy or switched off left without them.
+ */
+route('POST', '/api/admin/album-set/apply', async ({ request, store }) => {
+  const me = await requireStudioAdmin(request, store, { write: true, module: 'photos' });
+  const { ids } = await body<{ ids?: unknown }>(request);
+  const asked = [...new Set((Array.isArray(ids) ? ids : []).map(String))];
+  if (asked.length > ALBUM_SET_BATCH) throw new HttpError(400, `עד ${ALBUM_SET_BATCH} גלריות בכל פעם`);
+  const set = (await store.getFilmsStudio(me.tenantId)).albumSet;
+  const changed: string[] = [];
+  const skipped: string[] = [];
+  for (const id of asked) {
+    const g = await store.getGallery(id);
+    if (!g || g.tenantId !== me.tenantId || kindOf(g) !== 'photos' || g.deletedAt) {
+      skipped.push(id);
+      continue;
+    }
+    const doc = await photoDoc(store, g);
+    if (!doc || samePhotos(doc.data, withStudioSet(doc.data, set))) continue;
+    await savePhotoData(store, g, (d) => withStudioSet(d ?? doc.data, set));
+    changed.push(id);
+  }
+  return json({ changed, skipped });
+});
+
+// The gallery's switch: the studio's album-choice folder in this gallery, or not.
+route('PUT', '/api/admin/galleries/:id/photos/album-set', async ({ request, env, store, params }) => {
+  const { me, g } = await ownedPhotoGallery(request, store, params.id, true);
+  const { on } = await body<{ on?: boolean }>(request);
+  const set = (await store.getFilmsStudio(me.tenantId)).albumSet;
+  const { data } = await savePhotoData(store, g, (d) => {
+    if (!d) throw new HttpError(400, 'קודם טען את התמונות');
+    const { studioSetOff: _off, ...rest } = d;
+    return withStudioSet(on === false ? { ...rest, studioSetOff: true } : rest, set);
+  });
+  return json(await adminPhotos(env, store, me, g.id, data));
 });
 
 /**

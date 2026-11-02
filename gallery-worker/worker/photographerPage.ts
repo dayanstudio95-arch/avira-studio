@@ -3,6 +3,7 @@
 // teaser set, or the whole gallery when the studio opened it), and what couples said. Nothing on it leads to a couple's
 // own gallery: a wedding is known here by its ref (a signature of the page and the gallery), never by the gallery's id,
 // and only its chosen photos are served — no download, no hearts, no hidden photo, no set kept from the guests.
+import { albumSetId } from './albumSet';
 import { hmac } from './auth';
 import { firstNames } from '../shared/names';
 import { kindOf } from './galleries';
@@ -63,11 +64,12 @@ export function weddingMonth(g: Pick<Gallery, 'date' | 'hideDate'>): string {
   return m && !g.hideDate ? `${MONTHS[Number(m[2]) - 1]} ${m[1]}` : '';
 }
 
-/** What a wedding shows here: its teaser set, or (opened by the studio) every photo the guests may see. */
+/** What a wedding shows here: its teaser set, or (opened by the studio) every photo the guests may see — never the price list. */
 export function weddingPhotos(data: PhotoData | null, g: Pick<Gallery, 'guestHiddenSets'>, full: boolean): PhotoItem[] {
   if (!data) return [];
-  const off = new Set(g.guestHiddenSets ?? []);
-  const shown = data.items.filter((i) => !i.hidden && !(i.set && off.has(i.set)));
+  // The price list ("בחירת אלבום", the studio's or the gallery's own copy) is never part of a portfolio.
+  const off = new Set([...(g.guestHiddenSets ?? []), albumSetId(data)].filter(Boolean));
+  const shown = data.items.filter((i) => !i.hidden && !i.studio && !(i.set && off.has(i.set)));
   if (full) return shown;
   const teaser = new Set(data.sets.filter((s) => s.name.replace(/\s+/g, ' ').trim() === 'טיזר').map((s) => s.id));
   const inTeaser = shown.filter((i) => i.set && teaser.has(i.set));

@@ -193,6 +193,7 @@ export class SupabaseStore implements Store {
       mit4mitRemoved: (r.mit4mit_removed as string[]) ?? [],
       mit4mitLinkedAt: (r.mit4mit_linked_at as string) || undefined,
       mit4mitApprovedAt: (r.mit4mit_approved_at as string) || undefined,
+      albumSet: (r.album_set as FilmsStudio['albumSet']) ?? undefined,
     };
   }
 
@@ -1177,6 +1178,7 @@ const STUDIO_COLUMNS: Record<keyof FilmsStudio, [string, (v: never) => unknown]>
   mit4mitRemoved: ['mit4mit_removed', (v?: string[]) => v ?? []],
   mit4mitLinkedAt: ['mit4mit_linked_at', (v?: string) => v ?? null],
   mit4mitApprovedAt: ['mit4mit_approved_at', (v?: string) => v ?? null],
+  albumSet: ['album_set', (v?: unknown) => v ?? null],
 };
 
 function studioColumns(fields: Partial<FilmsStudio>): Row {

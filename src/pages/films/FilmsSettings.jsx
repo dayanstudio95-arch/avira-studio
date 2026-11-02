@@ -6,6 +6,7 @@ import { FILMS_BASE_URL, filmsApi, filmsConfigured } from "@/lib/filmsApi";
 import { galleryKindOfPath } from "@/lib/galleryRoutes";
 import { useAuth } from "@/lib/SupabaseAuthContext";
 import FilmsNotConfigured from "@/components/films/FilmsNotConfigured";
+import AlbumChoiceFolder from "@/components/films/AlbumChoiceFolder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -246,6 +247,7 @@ export default function FilmsSettings() {
         </Section>
 
         {scope === "photos" && hasModule("photos") && <Songs s={s} onChange={setS} />}
+        {scope === "photos" && hasModule("photos") && <AlbumChoiceFolder />}
 
         {canRevoke && (
           <Section title="ניתוק כל הגישות">

@@ -319,6 +319,11 @@ async function scenario(s: Store): Promise<Step[]> {
   await step('mit4mit: another studio binds the same business', () => attempt(() => s.patchFilmsStudio(T2, { mit4mitBizId: '71071' })));
   await step('mit4mit: read back', async () => (({ mit4mitBizId, mit4mitRemoved, mit4mitLinkedAt, mit4mitApprovedAt }) => ({ mit4mitBizId, mit4mitRemoved, mit4mitLinkedAt, mit4mitApprovedAt }))(await s.getFilmsStudio(T1)));
   await step('mit4mit: the other studio has none', async () => (await s.getFilmsStudio(T2)).mit4mitBizId ?? null);
+  // Avira 0104: the studio's album-choice folder, kept and cleared.
+  await s.patchFilmsStudio(T1, { albumSet: { url: 'https://drive.google.com/drive/folders/priceList123', provider: 'gdrive', items: [{ name: 'מחירון-1.jpg', ref: 'g:file1', ar: 0.707 }], at: '2026-11-02T10:00:00.000Z' } });
+  await step('album-choice folder: read back', async () => (await s.getFilmsStudio(T1)).albumSet ?? null);
+  await s.patchFilmsStudio(T1, { albumSet: undefined });
+  await step('album-choice folder: cleared', async () => (await s.getFilmsStudio(T1)).albumSet ?? null);
 
   // Several galleries at once, the list's fields, the summary, many hearts at once (P70)
   const P = ['d0000000000000a1', 'd0000000000000a2', 'd0000000000000a3'];

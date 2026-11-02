@@ -293,6 +293,8 @@ export interface PhotoItem {
    * A changed version on a folder load: the shape and the time are read again, and the gallery's `gen` goes up.
    */
   v?: string;
+  /** From the studio's album-choice folder in the settings, not the gallery's own folder (Avira, albumSet.ts). */
+  studio?: true;
 }
 
 /** A photo gallery's list (films_photos.data). */
@@ -323,4 +325,6 @@ export interface PhotoData {
   faceSearch?: boolean;
   /** The gallery's own look (cover, fonts, colours, grid); missing parts follow the studio default. */
   design?: Partial<import('../shared/design').Design>;
+  /** Avira: this gallery doesn't show the studio's album-choice folder (the studio's switch, albumSet.ts). */
+  studioSetOff?: true;
 }
