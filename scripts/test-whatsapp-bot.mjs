@@ -3660,6 +3660,72 @@ console.log('\n— PART 75: album group messages + list order —');
 }
 
 {
+  section('"שילמתי" and the invoice asked for before paying (2026-11-02, 0108)');
+  const si = await loadModule('supabase/functions/_shared/staffInvoices.ts', 'si81');
+  const pm = await loadModule('src/lib/staffPaymentMessages.js', 'pm81');
+  const sl = await loadModule('src/lib/staffInvoices.js', 'sl81');
+  const rows = [
+    { id: 'conf', staff_member_name: 'דודו', amount: '23600.00', paid_on: '2026-11-02', source: 'confirmed', message_id: null },
+    { id: 'old', staff_member_name: 'דודו', amount: '23600.00', paid_on: '2026-10-01', source: 'confirmed', message_id: null },
+    { id: 'shot', staff_member_name: 'דודו', amount: '2360', paid_on: '2026-11-02', source: 'screenshot', message_id: 'm1' },
+  ];
+  check('the screenshot sent by hand after "שילמתי" is that payment; another amount, another person, or 3+ days apart is not', [
+    si.confirmedTwin({ staff: 'דודו', amount: 23600, paidOn: '2026-11-03' }, rows),
+    si.confirmedTwin({ staff: 'דודו', amount: 2360, paidOn: '2026-11-02' }, rows),
+    si.confirmedTwin({ staff: 'רודי', amount: 23600, paidOn: '2026-11-02' }, rows),
+    si.confirmedTwin({ staff: 'דודו', amount: 23600, paidOn: '2026-11-09' }, rows),
+    si.confirmedTwin({ staff: 'דודו', amount: 23600, paidOn: '2026-11-02' }, rows.map((r) => ({ ...r, message_id: 'joined' }))),
+  ], ['conf', null, null, null, null]);
+  const evs = [
+    { id: 'e1', team: [{ role: 'photographer1', isPaid: true, paidAt: '2026-11-02T08:00:00Z' }, { role: 'editor', isPaid: false }] },
+    { id: 'e2', team: [{ role: 'photographer1', isPaid: true, paidAt: '2026-11-03T22:30:00Z' }] },
+  ];
+  check('an invoice asked for before paying is paid once all its works are marked "שולם" — on the last mark\'s Israel day', si.paidRequests([
+    { id: 'all', events: [{ eventId: 'e1', role: 'photographer1' }, { eventId: 'e2', role: 'photographer1' }] },
+    { id: 'part', events: [{ eventId: 'e1', role: 'photographer1' }, { eventId: 'e1', role: 'editor' }] },
+    { id: 'gone', events: [{ eventId: 'e9', role: 'photographer1' }] },
+    { id: 'none', events: [] },
+  ], evs), [{ id: 'all', paidOn: '2026-11-04' }]);
+
+  const ten = Array.from({ length: 10 }, (_, i) => ({ eventId: `e${i}`, role: 'photographer2', cost: 2000, date: `2026-10-${String(3 + i).padStart(2, '0')}`, venue: i ? 'טרויה' : 'האחוזה מודיעין' }));
+  check('10 events × 2,000: 20,000 + 18% = 23,600; an exempt dealer: 20,000, no VAT', [pm.paymentTotals(ten, 'authorized'), pm.paymentTotals(ten, null), pm.paymentTotals(ten, 'exempt'), pm.totalLine(pm.paymentTotals(ten, 'authorized')), pm.totalLine(pm.paymentTotals(ten, 'exempt'))],
+    [{ net: 20000, vat: 3600, gross: 23600 }, { net: 20000, vat: 3600, gross: 23600 }, { net: 20000, vat: 0, gross: 20000 }, '20,000 ₪ + מע״מ = 23,600 ₪', '20,000 ₪']);
+  const company = { name: 'אווירה מדיה צילום בע"מ', id: '517309670', email: 'avira.media1@gmail.com' };
+  const msg = pm.confirmMessage({ name: 'דודו פרץ', events: [...ten].reverse(), type: 'authorized', payer: company });
+  check('the message after paying: the owner\'s own wording, events by date, with the company\'s details and the allocation line (above 5,000)', msg,
+    'היי דודו 😊\nהעברתי לך עכשיו את התשלום על האירועים האלה:\n' + ten.map((e, i) => `• ${3 + i}/10/26 - ${e.venue} - ₪2,000`).join('\n') +
+    '\nסה״כ: 20,000 ₪ + מע״מ = 23,600 ₪\nצילום ההעברה מצורף 👆\n\nחשבונית מס:\nאווירה מדיה צילום בע"מ\n517309670\navira.media1@gmail.com\n(אני אשמח שתשלח לי לפה לוואטסאפ שזה לא יתפספס לי במייל)\nתודה רבה 🙏🏻♥️\n*סכום מעל 5 אלף חייב במספר הקצאה*');
+  const small = [{ cost: 1800, date: '2026-10-24', venue: 'עדיה' }];
+  check('under 5,000: no allocation line; no email saved: no email line; an exempt dealer: a receipt, no VAT, no allocation', [
+    pm.invoiceRequest(pm.DEFAULT_INVOICE_AFTER, { type: 'authorized', payer: company, net: 1800 }).includes('הקצאה'),
+    pm.invoiceRequest(pm.DEFAULT_INVOICE_AFTER, { type: 'authorized', payer: { name: 'דניאל דיין', id: '313569964' }, net: 1800 }),
+    pm.confirmMessage({ name: 'אמיר', events: ten, type: 'exempt', payer: company }).split('\n').filter((l) => /קבלה:|הקצאה|מע״מ/.test(l)),
+  ], [false, 'חשבונית מס:\nדניאל דיין\n313569964\n(אני אשמח שתשלח לי לפה לוואטסאפ שזה לא יתפספס לי במייל)\nתודה רבה 🙏🏻♥️', ['קבלה:']]);
+  check('nothing asked of a team member who issues no documents; a thank-you when the invoice asked for before paying came', [
+    pm.confirmMessage({ name: 'רודי', events: small, type: 'none', payer: company }),
+    pm.confirmMessage({ name: 'רודי', events: small, type: 'authorized', payer: company, invoiceArrived: true }).split('\n').slice(-1)[0],
+  ], ['היי רודי 😊\nהעברתי לך עכשיו את התשלום על האירועים האלה:\n• 24/10/26 - עדיה - ₪1,800\nסה״כ: 1,800 ₪\nצילום ההעברה מצורף 👆', 'תודה על החשבונית 🙏🏻♥️']);
+  check('"שלח פירוט" asking before paying: the owner\'s wording', pm.invoiceRequest(pm.DEFAULT_INVOICE_BEFORE, { type: 'authorized', payer: company, net: 20000 }),
+    'נא להוציא חשבונית מס כדי שנעביר לך את התשלום\nעם הפרטים הבאים:\nאווירה מדיה צילום בע"מ\n517309670\navira.media1@gmail.com\n(אני אשמח שתשלח לי לפה לוואטסאפ שזה לא יתפספס לי במייל)\nתודה רבה 🙏🏻♥️\n*סכום מעל 5 אלף חייב במספר הקצאה*');
+  check('a studio\'s own template keeps its words; an unknown {{x}} stays as typed', pm.fill('{{doc}} ל{{business_name}} {{x}}\n{{business_email}}\nסוף', { doc: 'קבלה', business_name: 'א', business_email: '' }), 'קבלה לא {{x}}\nסוף');
+  check('the works a transfer keeps, and the open request a payment settles', [
+    pm.transferEvents([{ eventId: 'e1', role: 'photographer1', cost: 2000, date: '2026-10-03T00:00:00', venue: 'טרויה', coupleNames: 'x' }]),
+    pm.requestFor([{ id: 'r1', staff_member_name: 'דודו', events: [{ eventId: 'e1', role: 'photographer1' }] }], 'דודו', [{ eventId: 'e1', role: 'photographer1' }])?.id,
+    pm.requestFor([{ id: 'r1', staff_member_name: 'דודו', events: [{ eventId: 'e1', role: 'photographer1' }] }], 'דודו', [{ eventId: 'e2', role: 'photographer1' }]),
+  ], [[{ eventId: 'e1', role: 'photographer1', date: '2026-10-03', venue: 'טרויה', amount: 2000 }], 'r1', null]);
+  const now = new Date('2026-11-02T12:00:00+02:00');
+  const w = (paid_on, more = {}) => ({ status: 'waiting', paid_on, reminders_on: true, reminders_sent: 0, ...more });
+  check('"מחכה לך": the reminders are done (day 8 after two), never had them (day 3), or no reminder could go (day 10)', [
+    sl.stuck(w('2026-10-30'), now), sl.stuck(w('2026-10-25', { reminders_sent: 2 }), now), sl.stuck(w('2026-10-25', { reminders_sent: 1 }), now),
+    sl.stuck(w('2026-10-30', { reminders_on: false }), now), sl.stuck(w('2026-10-23'), now), sl.stuck({ ...w('2026-10-01'), status: 'received' }, now),
+  ], [false, true, false, true, true, false]);
+  check('where a transfer stands, in plain words', [
+    sl.transferState(w('2026-11-01'), { now }), sl.transferState(w('2026-10-27', { reminders_sent: 1 }), { now }), sl.transferState(w('2026-10-26', { reminders_on: false }), { now }),
+    sl.transferState({ status: 'requested' }, { now }), sl.transferState({ status: 'requested' }, { arrived: true, now }),
+  ], ['יום אחד בלי מסמך · תזכורת תצא לבד בעוד 2 ימים', '6 ימים בלי מסמך · נשלחה תזכורת', '7 ימים בלי מסמך · תזכורת רק בלחיצה', 'ביקשת חשבונית לפני התשלום · עוד לא שילמת', 'ביקשת חשבונית לפני התשלום — היא הגיעה, אפשר להעביר']);
+}
+
+{
   // Production gives a new table no privileges at all (0103): 0101 and 0102 passed staging and failed live. Every table
   // a migration from 0101 on creates must grant itself to the service role (the Worker / Edge Functions) explicitly.
   section('every new table grants itself (2026-11-02, 0103)');

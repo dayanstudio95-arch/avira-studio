@@ -13,6 +13,8 @@ export interface Payer {
   id: string;
   /** The bank account numbers (digits; a part is enough) the screenshots show for this business. */
   accounts: string[];
+  /** Where invoices may be emailed (the invoice details the payments page sends, src/lib/staffPaymentMessages.js). */
+  email?: string;
 }
 export type Payers = Partial<Record<Entity, Payer>>;
 export const STAFF_PAYERS_KEY = 'staff_invoice_payers';
@@ -308,6 +310,48 @@ export function screenshotOf(
   const byAmount = mine.find((s) => dayGap(s.paidOn, marks.paidOn) <= MARK_WINDOW_DAYS && (close(s.amount, marks.amount) || close(s.amount, round2(marks.amount * (1 + VAT_RATE)))));
   if (byAmount) return byAmount.id;
   return mine.find((s) => dayGap(s.paidOn, marks.paidOn) <= 3)?.id ?? null;
+}
+
+// ---------------------------------------------------------------- "שילמתי" on the payments page (2026-11-02, 0108)
+
+/**
+ * A bank screenshot read in a team member's chat that the payments page already recorded: the owner confirmed it
+ * there ("שילמתי", source 'confirmed') and then also sent it by hand. Same team member and amount, within 3 days, not
+ * yet joined to a chat message; nearest in date. null = a transfer of its own, as before.
+ */
+export function confirmedTwin(
+  shot: { staff: string; amount: number; paidOn: string },
+  rows: { id: string; staff_member_name: string; amount: number | string; paid_on: string; source: string; message_id?: string | null }[],
+): string | null {
+  const twin = rows
+    .filter((t) => t.source === 'confirmed' && !t.message_id && norm(t.staff_member_name) === norm(shot.staff) && close(Number(t.amount), shot.amount) && dayGap(t.paid_on, shot.paidOn) <= 3)
+    .sort((a, b) => dayGap(a.paid_on, shot.paidOn) - dayGap(b.paid_on, shot.paidOn));
+  return twin[0]?.id ?? null;
+}
+
+/**
+ * Invoices asked for before paying ("שלח פירוט", status 'requested') whose works were then all marked "שולם" on the
+ * payments page without "שילמתי": they are paid now — on the day of the last mark. A work not found, or not marked
+ * paid yet, keeps the request waiting.
+ */
+export function paidRequests(
+  requests: { id: string; events?: { eventId: string; role?: string }[] | null }[],
+  events: EventRow[],
+): { id: string; paidOn: string }[] {
+  const marks = new Map<string, string>();
+  for (const e of events)
+    for (const t of Array.isArray(e.team) ? e.team : []) {
+      const m = t as { role?: string; isPaid?: boolean; paidAt?: string };
+      const day = israelDay(m.paidAt);
+      if (m.isPaid && day) marks.set(`${e.id}|${m.role ?? ''}`, day);
+    }
+  const out: { id: string; paidOn: string }[] = [];
+  for (const r of requests) {
+    const days = (r.events || []).map((w) => marks.get(`${w.eventId}|${w.role ?? ''}`));
+    if (!days.length || days.some((d) => !d)) continue;
+    out.push({ id: r.id, paidOn: (days as string[]).sort().at(-1)! });
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- reminders

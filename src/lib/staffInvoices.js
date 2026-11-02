@@ -51,3 +51,28 @@ export function docFileName(inv) {
   const parts = [inv.issued_on || String(inv.created_at || "").slice(0, 10), inv.staff_member_name, inv.doc_type, inv.doc_number, inv.amount !== null && inv.amount !== undefined ? `${fmt(inv.amount)}₪` : "", String(inv.id).slice(0, 6)];
   return `${parts.filter(Boolean).join(" ").replace(/[\\/:*?"<>|]/g, "-")}.${ext}`;
 }
+
+/**
+ * The simpler screen (2026-11-02, the owner: "מרגיש לי קצת מסובך המסך"): a waiting transfer the automatic reminders
+ * are done with — 3 and 7 days after it, then a day's grace — or that never had them (from before the tracking, or no
+ * phone to remind): only the owner can move it now, so it is in "מחכה לך".
+ */
+export function stuck(t, now = new Date()) {
+  if (t.status !== "waiting") return false;
+  const days = daysSince(t.paid_on, now);
+  if (!t.reminders_on) return days >= 3;
+  return days >= 8 && ((t.reminders_sent || 0) >= 2 || days >= 10);
+}
+
+/** Where a transfer stands, in plain words (one line under the name). */
+export function transferState(t, { arrived = false, now = new Date() } = {}) {
+  if (t.status === "requested") return arrived ? "ביקשת חשבונית לפני התשלום — היא הגיעה, אפשר להעביר" : "ביקשת חשבונית לפני התשלום · עוד לא שילמת";
+  if (t.status === "received") return String(t.note || "").startsWith(MANUAL_CLOSE) ? t.note : "התקבל מסמך";
+  if (t.status === "not_needed") return t.note === DUPLICATE_NOTE ? DUPLICATE_NOTE : "לא צריך מסמך";
+  const days = daysSince(t.paid_on, now);
+  const age = days === 0 ? "שולם היום" : days === 1 ? "יום אחד בלי מסמך" : `${days} ימים בלי מסמך`;
+  if (!t.reminders_on) return `${age} · תזכורת רק בלחיצה`;
+  const sent = t.reminders_sent || 0;
+  if (sent === 0) return `${age} · תזכורת תצא לבד ${days < 3 ? `בעוד ${3 - days === 1 ? "יום" : `${3 - days} ימים`}` : "בשעות העבודה הקרובות"}`;
+  return `${age} · ${sent === 1 ? "נשלחה תזכורת" : `נשלחו ${sent} תזכורות`}`;
+}

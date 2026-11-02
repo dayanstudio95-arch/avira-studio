@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { WalletCards, Check, User, Calendar, Coins, CalendarDays, MessageCircle, History, Receipt, Banknote, Undo2 } from 'lucide-react';
+import { WalletCards, Check, User, Calendar, Coins, CalendarDays, MessageCircle, History, Receipt, Banknote, Undo2, FileCheck2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -14,6 +14,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SUPPLIER_VAT_RATE } from '@/lib/financialCalculations';
 import StaffPaymentDetailDialog from '@/components/payments/StaffPaymentDetailDialog';
 import RecordStaffPaymentDialog from '@/components/payments/RecordStaffPaymentDialog';
+import ConfirmStaffPaymentDialog from '@/components/payments/ConfirmStaffPaymentDialog';
+import { STAFF_PAYERS_KEY } from '@/lib/staffInvoices';
+import { addsVat, requestFor } from '@/lib/staffPaymentMessages';
+import { useAuth } from '@/lib/SupabaseAuthContext';
 import { supabase } from '@/api/supabaseClient';
 import { toast } from 'sonner';
 import { unpaidRowsForStaff, creditByStaff, creditForExactPeriod, undoablePaymentIds, periodRange, earlierMonthDebts } from '@/lib/staffPaymentAllocation';
@@ -25,6 +29,7 @@ const MONTHS_HE = ['ינואר','פברואר','מרץ','אפריל','מאי','�
 const StaffPayment = base44.entities.StaffPayment;
 
 export default function Payments() {
+    const { tenant } = useAuth();
     const [events, setEvents] = useState([]);
     const [staffMembers, setStaffMembers] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -39,6 +44,30 @@ export default function Payments() {
     const [staffPayments, setStaffPayments] = useState([]);
     const [recordPaymentFor, setRecordPaymentFor] = useState(null); // staff name | null
     const [undoingPaymentId, setUndoingPaymentId] = useState(null);
+    // "שילמתי" and invoices asked for before paying (2026-11-02; 0108): the two businesses' invoice details, and the
+    // open requests with whether their invoice already came.
+    const [confirmFor, setConfirmFor] = useState(null); // { name, phone, rows } | null
+    const [payers, setPayers] = useState({});
+    const [requests, setRequests] = useState([]);
+
+    // Tolerant: a role without access to the invoice tracking just sees no badges.
+    const loadInvoiceTracking = async () => {
+        const [p, r] = await Promise.all([
+            supabase.from('app_settings').select('value').eq('key', STAFF_PAYERS_KEY).maybeSingle(),
+            supabase.from('staff_transfers').select('id, staff_member_name, amount, entity, events, paid_on').eq('status', 'requested'),
+        ]);
+        try { setPayers(JSON.parse(p.data?.value || '{}')); } catch { setPayers({}); }
+        const rows = r.data || [];
+        if (!rows.length) return setRequests([]);
+        const { data: links } = await supabase.from('staff_invoice_transfers').select('invoice_id, transfer_id').in('transfer_id', rows.map((x) => x.id));
+        const invIds = [...new Set((links || []).map((l) => l.invoice_id))];
+        const { data: invs } = invIds.length ? await supabase.from('staff_invoices').select('id, amount').in('id', invIds) : { data: [] };
+        setRequests(rows.map((x) => {
+            const docs = (links || []).filter((l) => l.transfer_id === x.id).map((l) => (invs || []).find((i) => i.id === l.invoice_id)).filter(Boolean);
+            const covered = docs.some((d) => d.amount === null) ? Infinity : docs.reduce((sum, d) => sum + Number(d.amount), 0);
+            return { ...x, arrived: docs.length > 0 && covered >= Number(x.amount) - 1 };
+        }));
+    };
 
     const loadData = async () => {
         setIsLoading(true);
@@ -52,6 +81,7 @@ export default function Payments() {
         setEvents(allEvents);
         setStaffMembers(allStaff);
         setStaffPayments(allPayments || []);
+        await loadInvoiceTracking().catch(() => {});
         setIsLoading(false);
     };
 
@@ -125,6 +155,24 @@ export default function Payments() {
     const getStaffPhone = (staffName) => {
         const staff = staffMembers.find(s => s.name === staffName);
         return staff?.phoneNumber || null;
+    };
+    // Settings → the team member's invoice type: an exempt dealer (or one who issues nothing) is paid without VAT.
+    const staffTypeOf = (staffName) => staffMembers.find((s) => s.name === staffName)?.invoiceType || null;
+    const withVat = (staffName, amount) => (addsVat(staffTypeOf(staffName)) ? Math.round(amount * SUPPLIER_VAT_RATE) : amount);
+
+    // "שילמתי": these rows' events marked paid (the dialog records the transfer first).
+    const markRowsPaid = async (rows) => {
+        const byEvent = new Map();
+        rows.forEach((r) => byEvent.set(r.eventId, [...(byEvent.get(r.eventId) || []), r.memberIndexInEvent]));
+        const paidAt = new Date().toISOString();
+        await Promise.all(events.filter((e) => byEvent.has(e.id)).map((event) => {
+            const newTeam = [...event.team];
+            byEvent.get(event.id).forEach((i) => {
+                if (newTeam[i]) newTeam[i] = { ...newTeam[i], isPaid: true, paidAt };
+            });
+            return Event.update(event.id, { team: newTeam });
+        }));
+        setSelectedPayments({});
     };
 
     const handleMarkAsPaid = async (eventId, memberIndexInEvent) => {
@@ -210,94 +258,6 @@ export default function Payments() {
             setSelectedReceipts(prev => ({ ...prev, [staffName]: [] }));
         } catch (error) {
             console.error("Error updating selected receipts:", error);
-        } finally {
-            setUpdatingPayment(null);
-        }
-    };
-
-    const handleMarkAllAsPaid = async (staffName) => {
-        setUpdatingPayment(staffName);
-        try {
-            const staffPaymentDetails = paymentsOwed[staffName];
-            if (!staffPaymentDetails || staffPaymentDetails.events.length === 0) return;
-
-            const eventUpdates = new Map();
-            staffPaymentDetails.events.forEach(payment => {
-                if (!eventUpdates.has(payment.eventId)) {
-                    eventUpdates.set(payment.eventId, []);
-                }
-                eventUpdates.get(payment.eventId).push(payment.memberIndexInEvent);
-            });
-
-            const eventIdsToUpdate = Array.from(eventUpdates.keys());
-            const eventsToModify = events.filter(e => eventIdsToUpdate.includes(e.id));
-
-            const updatePromises = eventsToModify.map(event => {
-                const indicesToUpdate = eventUpdates.get(event.id);
-                if (!indicesToUpdate) return null;
-
-                const newTeam = [...event.team];
-                indicesToUpdate.forEach(index => {
-                    if (newTeam[index]) {
-                        newTeam[index].isPaid = true;
-                        newTeam[index].paidAt = new Date().toISOString();
-                    }
-                });
-                return Event.update(event.id, { team: newTeam });
-            }).filter(Boolean);
-
-            await Promise.all(updatePromises);
-            await loadData();
-            setSelectedPayments({});
-        } catch (error) {
-            console.error("Error updating all payments for staff:", error);
-        } finally {
-            setUpdatingPayment(null);
-        }
-    };
-
-    const handleMarkSelectedAsPaid = async (staffName) => {
-        setUpdatingPayment(`selected-${staffName}`);
-        try {
-            const selected = selectedPayments[staffName] || [];
-            if (selected.length === 0) return;
-
-            const eventUpdates = new Map();
-            selected.forEach(paymentKey => {
-                // eventId is a uuid and already contains hyphens, so the key uses
-                // '::' as a separator (chosen because it can't appear inside a uuid)
-                // and the index is always the last segment.
-                const sepIndex = paymentKey.lastIndexOf('::');
-                const eventId = paymentKey.slice(0, sepIndex);
-                const memberIndex = paymentKey.slice(sepIndex + 2);
-                if (!eventUpdates.has(eventId)) {
-                    eventUpdates.set(eventId, []);
-                }
-                eventUpdates.get(eventId).push(parseInt(memberIndex));
-            });
-
-            const eventIdsToUpdate = Array.from(eventUpdates.keys());
-            const eventsToModify = events.filter(e => eventIdsToUpdate.includes(e.id));
-
-            const updatePromises = eventsToModify.map(event => {
-                const indicesToUpdate = eventUpdates.get(event.id);
-                if (!indicesToUpdate) return null;
-
-                const newTeam = [...event.team];
-                indicesToUpdate.forEach(index => {
-                    if (newTeam[index]) {
-                        newTeam[index].isPaid = true;
-                        newTeam[index].paidAt = new Date().toISOString();
-                    }
-                });
-                return Event.update(event.id, { team: newTeam });
-            }).filter(Boolean);
-
-            await Promise.all(updatePromises);
-            await loadData();
-            setSelectedPayments(prev => ({ ...prev, [staffName]: [] }));
-        } catch (error) {
-            console.error("Error updating selected payments:", error);
         } finally {
             setUpdatingPayment(null);
         }
@@ -515,6 +475,19 @@ export default function Payments() {
                                                     <User className="w-5 h-5 text-yellow-400 flex-shrink-0"/>
                                                     <span className="text-base md:text-xl font-semibold">{name}</span>
                                                     <span className="text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded-full">{data.events.length} אירועים</span>
+                                                    {(() => {
+                                                        const req = requestFor(requests, name, data.events);
+                                                        if (!req) return null;
+                                                        return req.arrived ? (
+                                                            <span className="text-xs text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded-full flex items-center gap-1" data-testid="pay-invoice-arrived">
+                                                                <FileCheck2 className="w-3 h-3" /> החשבונית הגיעה — אפשר להעביר
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-xs text-gray-400 bg-gray-800 px-2 py-0.5 rounded-full" data-testid="pay-invoice-asked">
+                                                                ביקשת חשבונית {req.paid_on ? `ב-${format(new Date(req.paid_on), 'd/M')}` : ''}
+                                                            </span>
+                                                        );
+                                                    })()}
                                                 </div>
                                                 {/* Row 2: amount + buttons */}
                                                 <div className="flex flex-wrap items-center gap-2">
@@ -523,9 +496,9 @@ export default function Payments() {
                                                         <p className="text-gray-400 text-xs">{n.credit > 0 ? 'נשאר לשלם' : 'סה״כ לתשלום'}</p>
                                                         <p className="text-base font-bold text-red-400">
                                                             ₪{n.remaining.toLocaleString()}
-                                                            <span className="text-xs font-normal text-gray-500 mr-1 hidden sm:inline">(כולל מע"מ: ₪{Math.round(n.remaining * SUPPLIER_VAT_RATE).toLocaleString()})</span>
+                                                            <span className="text-xs font-normal text-gray-500 mr-1 hidden sm:inline">{addsVat(staffTypeOf(name)) ? `(כולל מע"מ: ₪${withVat(name, n.remaining).toLocaleString()})` : '(עוסק פטור — בלי מע״מ)'}</span>
                                                         </p>
-                                                        <p className="text-xs font-normal text-gray-500 sm:hidden">כולל מע"מ: ₪{Math.round(n.remaining * SUPPLIER_VAT_RATE).toLocaleString()}</p>
+                                                        <p className="text-xs font-normal text-gray-500 sm:hidden">{addsVat(staffTypeOf(name)) ? `כולל מע"מ: ₪${withVat(name, n.remaining).toLocaleString()}` : 'עוסק פטור — בלי מע״מ'}</p>
                                                         {(n.credit > 0 || n.paidEventsTotal > 0) && (
                                                             <p className="text-xs text-emerald-400 mt-0.5">
                                                                 {selectedMonth === 'all' ? 'בתקופה' : 'החודש'}: ₪{n.monthTotal.toLocaleString()} · שולם ₪{n.paid.toLocaleString()} · נשאר ₪{n.remaining.toLocaleString()}
@@ -557,32 +530,26 @@ export default function Payments() {
                                                        <MessageCircle className="w-3 h-3 ml-1"/>
                                                        שלח פירוט
                                                    </Button>
-                                                    {(selectedPayments[name] || []).length > 0 && (
-                                                       <Button
-                                                           size="sm"
-                                                           onClick={(e) => {
-                                                               e.stopPropagation();
-                                                               handleMarkSelectedAsPaid(name);
-                                                           }}
-                                                           disabled={updatingPayment === `selected-${name}`}
-                                                           className="bg-blue-500 hover:bg-blue-600 text-white text-xs px-2"
-                                                       >
-                                                           <Check className="w-3 h-3 ml-1"/>
-                                                           {updatingPayment === `selected-${name}` ? 'מעדכן...' : `שולם (${(selectedPayments[name] || []).length})`}
-                                                       </Button>
-                                                    )}
-                                                    <Button
-                                                       size="sm"
-                                                       onClick={(e) => {
-                                                           e.stopPropagation();
-                                                           handleMarkAllAsPaid(name);
-                                                       }}
-                                                       disabled={updatingPayment === name}
-                                                       className="bg-green-500 hover:bg-green-600 text-white text-xs px-2"
-                                                   >
-                                                       <Check className="w-3 h-3 ml-1"/>
-                                                       {updatingPayment === name ? 'מעדכן...' : 'שולם הכל'}
-                                                   </Button>
+                                                    {(() => {
+                                                       // "שילמתי" (2026-11-02): the ticked events, or all of them — confirmed with the screenshot
+                                                       // and the business, and sent to the team member (ConfirmStaffPaymentDialog).
+                                                       const keys = selectedPayments[name] || [];
+                                                       const rows = keys.length ? data.events.filter((ev) => keys.includes(`${ev.eventId}::${ev.memberIndexInEvent}`)) : data.events;
+                                                       return (
+                                                           <Button
+                                                               size="sm"
+                                                               onClick={(e) => {
+                                                                   e.stopPropagation();
+                                                                   setConfirmFor({ name, phone: getStaffPhone(name) || data.events.find((ev) => ev.phone)?.phone || null, rows });
+                                                               }}
+                                                               className="bg-green-500 hover:bg-green-600 text-white text-xs px-2 font-semibold"
+                                                               data-testid="pay-confirm"
+                                                           >
+                                                               <Check className="w-3 h-3 ml-1"/>
+                                                               {rows.length === 1 ? 'שילמתי על אירוע אחד' : `שילמתי על ${rows.length} אירועים`}
+                                                           </Button>
+                                                       );
+                                                    })()}
                                                 </div>
                                             </div>
                                         </AccordionTrigger>
@@ -819,6 +786,25 @@ export default function Payments() {
                     phoneNumber={detailDialogStaff?.phone}
                     events={detailDialogStaff?.events}
                     total={detailDialogStaff?.total}
+                    staffType={detailDialogStaff ? staffTypeOf(detailDialogStaff.name) : null}
+                    payers={payers}
+                    requests={requests}
+                    tenantId={tenant?.id}
+                    onRequested={() => loadInvoiceTracking().catch(() => {})}
+                />
+
+                <ConfirmStaffPaymentDialog
+                    open={!!confirmFor}
+                    onOpenChange={(isOpen) => { if (!isOpen) setConfirmFor(null); }}
+                    staffName={confirmFor?.name}
+                    phone={confirmFor?.phone}
+                    rows={confirmFor?.rows || []}
+                    staffType={confirmFor ? staffTypeOf(confirmFor.name) : null}
+                    payers={payers}
+                    request={confirmFor ? requestFor(requests, confirmFor.name, confirmFor.rows) : null}
+                    tenantId={tenant?.id}
+                    onMarkPaid={markRowsPaid}
+                    onDone={loadData}
                 />
 
             </div>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { DEFAULT_WORK_ORDER_NOTE } from "@/lib/workOrder";
 import { MOVE_TEMPLATE_KEY, DEFAULT_MOVE_TEMPLATE } from "@/lib/crewMove";
 import { REVIEW_REMINDER_TEMPLATE_KEY, DEFAULT_REVIEW_REMINDER, PURCHASE_REMINDER_TEMPLATE_KEY, DEFAULT_PURCHASE_REMINDER } from "@/lib/albumPrintDetails";
+import { CONFIRM_TEMPLATE_KEY, DEFAULT_CONFIRM_TEMPLATE, INVOICE_AFTER_KEY, DEFAULT_INVOICE_AFTER, INVOICE_BEFORE_KEY, DEFAULT_INVOICE_BEFORE } from "@/lib/staffPaymentMessages";
 import { base44 } from "@/api/base44Client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -267,6 +268,27 @@ const TEMPLATES = [
     description: "ההודעה שתישלח לאיש/אשת צוות כשלוחצים על כפתור 'שלח פירוט' בדף התשלומים — כוללת רשימת אירועים עם תאריך/מיקום/סכום, ואת הסכום הכולל לתשלום (כולל וללא מע\"מ)",
     defaultValue: `היי {{name}} 😊\nהנה פירוט התשלום שלך:\n{{events_list}}\nסה"כ לתשלום: ₪{{total}} (כולל מע"מ: ₪{{total_with_vat}})`,
     variables: ["{{name}}", "{{events_list}}", "{{total}}", "{{total_with_vat}}"],
+  },
+  {
+    key: CONFIRM_TEMPLATE_KEY,
+    label: "אישור תשלום לאיש צוות (\"שילמתי\")",
+    description: "נשלחת לאיש הצוות כשמאשרים \"שילמתי\" בדף התשלומים, יחד עם צילום ההעברה. {{total_line}} = \"20,000 ₪ + מע״מ = 23,600 ₪\" (לעוסק פטור בלי מע״מ). {{invoice_request}} = פרטי החשבונית מהתבנית הבאה. לפני השליחה אפשר לערוך.",
+    defaultValue: DEFAULT_CONFIRM_TEMPLATE,
+    variables: ["{{name}}", "{{events_list}}", "{{total_line}}", "{{invoice_request}}"],
+  },
+  {
+    key: INVOICE_AFTER_KEY,
+    label: "פרטים לחשבונית — אחרי תשלום",
+    description: "החלק של {{invoice_request}} בהודעת \"שילמתי\": על שם העסק שממנו העברת (הפרטים נשמרים ב\"חשבוניות מהצוות\" ← עוד ← פרטי שני העסקים). {{doc}} = \"חשבונית מס\", או \"קבלה\" לעוסק פטור. {{allocation_line}} מופיע רק מעל 5,000 ₪ לפני מע״מ. שורה שהמשתנה שלה ריק לא תופיע.",
+    defaultValue: DEFAULT_INVOICE_AFTER,
+    variables: ["{{doc}}", "{{business_name}}", "{{business_id}}", "{{business_email}}", "{{allocation_line}}"],
+  },
+  {
+    key: INVOICE_BEFORE_KEY,
+    label: "בקשת חשבונית לפני תשלום (\"שלח פירוט\")",
+    description: "נוסף מתחת לפירוט כשמסמנים \"לבקש חשבונית לפני התשלום\" בכפתור \"שלח פירוט\". אותם משתנים כמו בתבנית הקודמת.",
+    defaultValue: DEFAULT_INVOICE_BEFORE,
+    variables: ["{{doc}}", "{{business_name}}", "{{business_id}}", "{{business_email}}", "{{allocation_line}}"],
   },
 ];
 

@@ -1,6 +1,7 @@
 // "חשבוניות מהצוות" (Avira, 2026-11-02, the owner's request; 0106) — the scan. Run by the screen (staff-invoices, a few
 // documents a call until done) and by the hourly automation-engine tick (with reminders):
-//   1. "שולם" marks on the work → transfers (one staff member, one day = one transfer).
+//   1. "שולם" marks on the work → transfers (one staff member, one day = one transfer); an invoice asked for before
+//      paying (0108) whose works are now all marked paid → paid.
 //   2. The staff chats from TRACK_SINCE: the owner's bank screenshots → transfers (AI reads amount, payer, date);
 //      the staff members' invoice links → the PDF downloaded and kept (Paperless's through its page's API; an
 //      Invoice4U page is kept as PDF by the gallery Worker, hourly; any other page is saved by hand);
@@ -10,12 +11,12 @@
 //   5. Reminders to the staff member after 3 and 7 days (working hours, quiet hours, opt-out).
 // Pure decisions live in staffInvoices.ts.
 import {
-  groupMarks, invoiceLink, invoiceTextFacts, invoiceWarnings, last9, matchTransfers, paidMarks, paperlessInfoUrl, paperlessPdfUrl, payerOf, reminderDue,
-  reminderHours, reminderText, round2, screenshotOf, STAFF_PAYERS_KEY, TRACK_SINCE, israelDay,
+  confirmedTwin, groupMarks, invoiceLink, invoiceTextFacts, invoiceWarnings, last9, matchTransfers, paidMarks, paidRequests, paperlessInfoUrl, paperlessPdfUrl,
+  payerOf, reminderDue, reminderHours, reminderText, round2, screenshotOf, STAFF_PAYERS_KEY, TRACK_SINCE, israelDay,
   type Entity, type OpenTransfer, type Payers,
 } from './staffInvoices.ts';
 import { amountOf, canRead, dateOf, MAX_DOC_BYTES, readDoc, type DocReading } from './staffDocReader.ts';
-import { sendWhatsApp } from './whatsapp.ts';
+import { sendWhatsApp, sendWhatsAppFileByUrl, WHATSAPP_CAPTION_MAX } from './whatsapp.ts';
 import { isInQuietHoursNow, loadQuietHoursSettings } from './automationGuards.ts';
 import { isOptedOut, loadOptOutList } from './whatsappOptOut.ts';
 
@@ -121,7 +122,7 @@ export async function runStaffInvoices(supabase: any, tenantId: string, opts: { 
   }
 
   // ---- 1. "שולם" marks → transfers
-  const { data: transfers0 } = await supabase.from('staff_transfers').select('id, staff_member_name, amount, paid_on, events, message_id, source').eq('tenant_id', tenantId);
+  const { data: transfers0 } = await supabase.from('staff_transfers').select('id, staff_member_name, amount, paid_on, events, message_id, source, status, wa_id_message').eq('tenant_id', tenantId);
   const known = new Set<string>();
   for (const t of transfers0 || []) for (const e of t.events || []) known.add(`${e.eventId}|${e.role}`);
   const { data: events } = await supabase.from('events').select('id, date, venue, team').eq('tenant_id', tenantId).not('team', 'is', null);
@@ -138,12 +139,18 @@ export async function runStaffInvoices(supabase: any, tenantId: string, opts: { 
     const { data: row, error } = await supabase.from('staff_transfers').insert({
       tenant_id: tenantId, staff_member_name: g.staff, amount: g.amount, paid_on: g.paidOn, source: 'paid_mark', events: evs,
       reminders_on: g.paidOn >= remindersFrom,
-    }).select('id, staff_member_name, amount, paid_on, events, message_id, source').single();
+    }).select('id, staff_member_name, amount, paid_on, events, message_id, source, status, wa_id_message').single();
     if (error) result.errors.push(`העברה של ${g.staff}: ${error.message}`);
     else {
       (transfers0 || []).push(row);
       result.transfers++;
     }
+  }
+  // An invoice asked for before paying ("שלח פירוט", 0108), its works then marked "שולם" without "שילמתי": paid now
+  // (its works are in `known` above, so the marks opened no transfer of their own). Matched and closed in step 4.
+  for (const p of paidRequests((transfers0 || []).filter((t: any) => t.status === 'requested'), events || [])) {
+    await supabase.from('staff_transfers').update({ status: 'waiting', paid_on: p.paidOn, reminders_on: p.paidOn >= remindersFrom, updated_at: now.toISOString() })
+      .eq('id', p.id).eq('status', 'requested');
   }
 
   // ---- 2. the staff chats
@@ -156,7 +163,7 @@ export async function runStaffInvoices(supabase: any, tenantId: string, opts: { 
     const seen = new Set<string>([...(scanned || []), ...(invMsgs || []), ...(transfers0 || [])].map((r: any) => r.message_id).filter(Boolean));
     const { data: msgs } = await supabase
       .from('whatsapp_messages')
-      .select('id, conversation_id, direction, type_message, body_text, media_path, media_mime, created_at')
+      .select('id, conversation_id, direction, type_message, body_text, media_path, media_mime, created_at, id_message')
       .eq('tenant_id', tenantId)
       .in('conversation_id', convIds)
       .gte('created_at', `${TRACK_SINCE}T00:00:00+03:00`)
@@ -165,11 +172,22 @@ export async function runStaffInvoices(supabase: any, tenantId: string, opts: { 
       .limit(400);
     const todo = (msgs || []).filter((m: any) => !seen.has(m.id));
     const mark = (m: any, kind: string) => supabase.from('staff_doc_scans').upsert({ message_id: m.id, tenant_id: tenantId, kind }, { onConflict: 'message_id' });
+    // The screenshots the payments page sent ("שילמתי", 0108): already a transfer — joined to it, never read again.
+    const sentHere = new Map<string, any>((transfers0 || []).filter((t: any) => t.wa_id_message).map((t: any) => [t.wa_id_message, t]));
     // Messages left for the next call: no reading quota (or no AI key) for them now. Texts go on regardless.
     let later = 0;
     for (const m of todo) {
       const who = convStaff.get(m.conversation_id)!;
       try {
+        const sent = m.direction !== 'inbound' && m.id_message ? sentHere.get(m.id_message) : null;
+        if (sent) {
+          if (!sent.message_id) {
+            await supabase.from('staff_transfers').update({ message_id: m.id, updated_at: now.toISOString() }).eq('id', sent.id);
+            sent.message_id = m.id;
+          }
+          await mark(m, 'transfer');
+          continue;
+        }
         if (m.type_message !== 'imageMessage' && m.type_message !== 'documentMessage') {
           // A text: an invoice link from the staff member?
           const link = m.direction === 'inbound' ? invoiceLink(m.body_text) : null;
@@ -233,10 +251,20 @@ export async function runStaffInvoices(supabase: any, tenantId: string, opts: { 
           const amount = amountOf(r.amount)!;
           const entity = payerOf({ account: r.from_account, name: r.from_name }, payers);
           const fields = { message_id: m.id, entity, bank_reference: r.reference.slice(0, 60) || null, description: r.description.slice(0, 200) || null, updated_at: now.toISOString() };
+          // Already confirmed on the payments page ("שילמתי") and then sent by hand too: the same payment, joined to it
+          // (the owner's business choice stays).
+          const twinId = confirmedTwin({ staff: who, amount, paidOn }, transfers0 || []);
+          if (twinId) {
+            const twin = (transfers0 || []).find((t: any) => t.id === twinId);
+            await supabase.from('staff_transfers').update({ message_id: m.id, bank_reference: fields.bank_reference, description: fields.description, updated_at: fields.updated_at }).eq('id', twinId);
+            twin.message_id = m.id;
+            await mark(m, 'transfer');
+            continue;
+          }
           // "שולם" marks of the same payment made before it are joined to it below (reconcileMarks).
           const { data: row, error } = await supabase.from('staff_transfers').insert({
             tenant_id: tenantId, staff_member_name: who, amount, paid_on: paidOn, source: 'screenshot', reminders_on: paidOn >= remindersFrom, ...fields,
-          }).select('id, staff_member_name, amount, paid_on, events, message_id, source').single();
+          }).select('id, staff_member_name, amount, paid_on, events, message_id, source, status, wa_id_message').single();
           if (error) throw error;
           (transfers0 || []).push(row);
           result.transfers++;
@@ -402,8 +430,9 @@ async function matchAll(supabase: any, tenantId: string, payers: Payers, typeOf:
   }
   // Statuses: covered → received; a staff member who issues nothing (by agreement) → not needed.
   for (const t of trs || []) {
-    // Closed by the owner (documents short of the amount, and he decided it's fine): stays as he set it.
-    if (String(t.note || '').startsWith(MANUAL_CLOSE)) continue;
+    // Closed by the owner (documents short of the amount, and he decided it's fine): stays as he set it. Asked for
+    // before paying (0108): waits for the payment whatever arrived (the payments page shows "the invoice is here").
+    if (String(t.note || '').startsWith(MANUAL_CLOSE) || t.status === 'requested') continue;
     let status = t.status;
     if (typeOf.get(t.staff_member_name) === 'none') status = status === 'received' ? status : 'not_needed';
     else if (status !== 'not_needed') status = covered(t.id) >= Number(t.amount) - 1 ? 'received' : 'waiting';
@@ -431,4 +460,70 @@ async function sendReminders(supabase: any, tenantId: string, staff: any[], now:
     sent++;
   }
   return sent;
+}
+
+// ---------------------------------------------------------------- "שילמתי" on the payments page (2026-11-02, 0108)
+
+/** Where the payments page keeps the owner's bank screenshots: <tenant>/transfers/<uuid>.<ext> in the private bucket. */
+const PROOF_PATH = /^([0-9a-f-]{36})\/transfers\/[0-9a-f-]{36}\.(png|jpe?g|webp|pdf)$/i;
+const PROOF_MIME: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', pdf: 'application/pdf' };
+
+export interface ProofReading {
+  /** False: not read (no AI key, too large, not a screenshot the reader takes) — the dialog goes on without it. */
+  read: boolean;
+  isTransfer?: boolean;
+  amount?: number | null;
+  date?: string | null;
+  entity?: Entity | null;
+}
+
+/** The screenshot the owner just uploaded, read before he confirms: the amount and day sent, and from which business. */
+export async function readTransferShot(supabase: any, tenantId: string, path: string): Promise<ProofReading> {
+  const m = PROOF_PATH.exec(path);
+  if (!m || m[1] !== tenantId) throw new Error('קובץ לא מוכר');
+  const key = await anthropicKey(supabase, tenantId);
+  if (!key) return { read: false };
+  const { data: blob } = await supabase.storage.from(BUCKET).download(path);
+  if (!blob || blob.size > MAX_DOC_BYTES) return { read: false };
+  const r = await readDoc(new Uint8Array(await blob.arrayBuffer()), PROOF_MIME[m[2].toLowerCase()], key);
+  let payers: Payers = {};
+  try {
+    payers = JSON.parse((await setting(supabase, tenantId, STAFF_PAYERS_KEY)) || '{}');
+  } catch { /* not set: no business from the screenshot */ }
+  return {
+    read: true,
+    isTransfer: r.kind === 'bank_transfer',
+    amount: amountOf(r.amount),
+    date: dateOf(r.date),
+    entity: r.kind === 'bank_transfer' ? payerOf({ account: r.from_account, name: r.from_name }, payers) : null,
+  };
+}
+
+/**
+ * The confirmed payment to the team member on WhatsApp: the screenshot with the message as its caption (WhatsApp's
+ * 1,024 characters; longer — the screenshot, then the message). The screenshot's WhatsApp id is kept on the transfer,
+ * so the scan joins that chat message to it instead of reading it as a new payment. No screenshot — the message alone.
+ */
+export async function sendPaymentProof(supabase: any, tenantId: string, v: { transferId: string; to: string; message: string }): Promise<{ success: boolean; error?: string }> {
+  const message = String(v.message || '').trim();
+  const to = String(v.to || '').trim();
+  if (!message || message.length > 4000 || !to || to.length > 40) return { success: false, error: 'חסרים טלפון או הודעה' };
+  const { data: t } = await supabase.from('staff_transfers').select('id, proof_path').eq('tenant_id', tenantId).eq('id', v.transferId).maybeSingle();
+  if (!t) return { success: false, error: 'ההעברה לא נמצאה' };
+  if (!t.proof_path) {
+    const res = await sendWhatsApp(supabase, to, message, tenantId);
+    return res.success ? { success: true } : { success: false, error: res.error };
+  }
+  const { data: signed, error } = await supabase.storage.from(BUCKET).createSignedUrl(t.proof_path, 600);
+  if (error || !signed?.signedUrl) return { success: false, error: 'לא הצלחנו לצרף את הצילום' };
+  const ext = String(t.proof_path).split('.').pop();
+  const fits = message.length <= WHATSAPP_CAPTION_MAX;
+  const file = await sendWhatsAppFileByUrl(supabase, to, signed.signedUrl, `העברה.${ext}`, fits ? message : undefined, tenantId);
+  if (!file.success) return { success: false, error: file.error };
+  const sentId = (file.raw as { idMessage?: string } | undefined)?.idMessage;
+  const idMessage = sentId ? String(sentId).slice(0, 120) : null;
+  if (idMessage) await supabase.from('staff_transfers').update({ wa_id_message: idMessage, updated_at: new Date().toISOString() }).eq('id', t.id);
+  if (fits) return { success: true };
+  const text = await sendWhatsApp(supabase, to, message, tenantId);
+  return text.success ? { success: true } : { success: false, error: text.error };
 }
