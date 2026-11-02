@@ -2,14 +2,15 @@
 // documents a call until done) and by the hourly automation-engine tick (with reminders):
 //   1. "שולם" marks on the work → transfers (one staff member, one day = one transfer).
 //   2. The staff chats from TRACK_SINCE: the owner's bank screenshots → transfers (AI reads amount, payer, date);
-//      the staff members' invoice links → the PDF downloaded and kept (or "save by hand" for a page);
+//      the staff members' invoice links → the PDF downloaded and kept (Paperless's through its page's API; an
+//      Invoice4U page is kept as PDF by the gallery Worker, hourly; any other page is saved by hand);
 //      their PDFs / photos → read by AI, kept when they are invoices. A message is looked at once (staff_doc_scans).
 //   3. Documents uploaded on the screen → read.
 //   4. Every unmatched document → its transfer(s); the checks; a transfer is "received" once its documents cover it.
 //   5. Reminders to the staff member after 3 and 7 days (working hours, quiet hours, opt-out).
 // Pure decisions live in staffInvoices.ts.
 import {
-  groupMarks, invoiceLink, invoiceTextFacts, invoiceWarnings, last9, matchTransfers, paidMarks, payerOf, reminderDue,
+  groupMarks, invoiceLink, invoiceTextFacts, invoiceWarnings, last9, matchTransfers, paidMarks, paperlessInfoUrl, paperlessPdfUrl, payerOf, reminderDue,
   reminderHours, reminderText, round2, screenshotOf, STAFF_PAYERS_KEY, TRACK_SINCE, israelDay,
   type Entity, type OpenTransfer, type Payers,
 } from './staffInvoices.ts';
@@ -23,6 +24,8 @@ const REMINDERS_FROM_KEY = 'staff_invoices_reminders_from';
 export const REMINDER_TEMPLATE_KEY = 'template_staff_invoice_reminder';
 /** A transfer's note that starts so was closed by the owner (src/lib/staffInvoices.js MANUAL_CLOSE): the scan leaves its status. */
 export const MANUAL_CLOSE = 'נסגר ידנית';
+/** A link whose PDF couldn't be had: the row waits for the owner (the screen's "נסה שוב" clears it). */
+const LINK_FAILED = 'הקישור לא החזיר קובץ — לפתוח ולשמור ידנית';
 
 export interface ScanResult {
   transfers: number;
@@ -55,6 +58,24 @@ async function fetchPdf(url: string): Promise<Uint8Array | null> {
     const bytes = new Uint8Array(await res.arrayBuffer());
     const isPdf = bytes.length > 4 && String.fromCharCode(...bytes.subarray(0, 5)) === '%PDF-';
     return isPdf && bytes.length <= MAX_DOC_BYTES ? bytes : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** The link's PDF: the file itself, or Paperless's (its page's API names the signed PDF). */
+async function linkPdf(link: { url: string; provider: string | null }): Promise<Uint8Array | null> {
+  if (link.provider !== 'paperless') return fetchPdf(link.url);
+  const info = paperlessInfoUrl(link.url);
+  if (!info) return null;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 20_000);
+  try {
+    const res = await fetch(info, { signal: ctl.signal, headers: { accept: 'application/json', origin: 'https://www.paperless.tax' } });
+    const pdf = res.ok ? paperlessPdfUrl(await res.json()) : null;
+    return pdf ? await fetchPdf(pdf) : null;
   } catch {
     return null;
   } finally {
@@ -169,9 +190,9 @@ export async function runStaffInvoices(supabase: any, tenantId: string, opts: { 
           if (error) throw error;
           result.invoices++;
           if (link.direct) {
-            const pdf = await fetchPdf(link.url);
+            const pdf = await linkPdf(link);
             if (!pdf) {
-              await supabase.from('staff_invoices').update({ read_status: 'manual', note: 'הקישור לא החזיר קובץ — לפתוח ולשמור ידנית' }).eq('id', inv.id);
+              await supabase.from('staff_invoices').update({ read_status: 'manual', note: LINK_FAILED }).eq('id', inv.id);
             } else {
               const path = `${tenantId}/${inv.id}.pdf`;
               await supabase.storage.from(BUCKET).upload(path, pdf, { contentType: 'application/pdf', upsert: true });
@@ -242,7 +263,26 @@ export async function runStaffInvoices(supabase: any, tenantId: string, opts: { 
     result.remaining = later;
   }
 
-  // ---- 3. documents uploaded on the screen (or a link's PDF saved by hand)
+  // ---- 2b. Paperless links that came before the scan could fetch them (2026-11-02), or that the owner asked to try
+  // again: the PDF kept, the row to "pending" (read just below). One that fails gets the note and waits for the owner.
+  const { data: retry } = await supabase.from('staff_invoices').select('id, link_url, provider').eq('tenant_id', tenantId).eq('provider', 'paperless')
+    .eq('read_status', 'manual').is('file_path', null).is('note', null).not('link_url', 'is', null).limit(5);
+  for (const inv of retry || []) {
+    const pdf = await linkPdf({ url: inv.link_url, provider: inv.provider });
+    if (!pdf) {
+      await supabase.from('staff_invoices').update({ note: LINK_FAILED, updated_at: now.toISOString() }).eq('id', inv.id);
+      continue;
+    }
+    const path = `${tenantId}/${inv.id}.pdf`;
+    const { error } = await supabase.storage.from(BUCKET).upload(path, pdf, { contentType: 'application/pdf', upsert: true });
+    if (error) {
+      result.errors.push(error.message.slice(0, 200));
+      continue;
+    }
+    await supabase.from('staff_invoices').update({ file_path: path, file_mime: 'application/pdf', read_status: 'pending', updated_at: now.toISOString() }).eq('id', inv.id);
+  }
+
+  // ---- 3. documents uploaded on the screen (or a link's PDF saved by hand, or kept by the gallery Worker)
   const { data: pending } = await supabase.from('staff_invoices').select('id, file_path, file_mime').eq('tenant_id', tenantId).eq('read_status', 'pending').not('file_path', 'is', null).limit(20);
   if ((pending || []).length && budget > 0) {
     const key = await apiKey();
@@ -323,7 +363,8 @@ async function applyReading(supabase: any, id: string, r: DocReading, facts: { d
 async function matchAll(supabase: any, tenantId: string, payers: Payers, typeOf: Map<string, string | null>, now: Date): Promise<number> {
   const [{ data: trs }, { data: invs }, { data: links }] = await Promise.all([
     supabase.from('staff_transfers').select('id, staff_member_name, amount, paid_on, entity, status, source, message_id, note').eq('tenant_id', tenantId),
-    supabase.from('staff_invoices').select('id, staff_member_name, read_status, doc_type, amount, vat, allocation_number, issued_to, issued_to_id, issued_on, warnings, created_at').eq('tenant_id', tenantId).in('read_status', ['done', 'manual']),
+    // A "pending" document (its PDF just arrived, not read yet) still covers the transfer it was linked to.
+    supabase.from('staff_invoices').select('id, staff_member_name, read_status, doc_type, amount, vat, allocation_number, issued_to, issued_to_id, issued_on, warnings, created_at').eq('tenant_id', tenantId).in('read_status', ['done', 'manual', 'pending']),
     supabase.from('staff_invoice_transfers').select('invoice_id, transfer_id').eq('tenant_id', tenantId),
   ]);
   const linkRows: { invoice_id: string; transfer_id: string }[] = [...(links || [])];
@@ -333,7 +374,7 @@ async function matchAll(supabase: any, tenantId: string, payers: Payers, typeOf:
   };
   let matched = 0;
   for (const inv of (invs || []).sort((a: any, b: any) => String(a.created_at).localeCompare(String(b.created_at)))) {
-    if (linkRows.some((l) => l.invoice_id === inv.id)) continue;
+    if (inv.read_status === 'pending' || linkRows.some((l) => l.invoice_id === inv.id)) continue;
     const open: OpenTransfer[] = (trs || [])
       .filter((t: any) => t.staff_member_name === inv.staff_member_name && t.status !== 'not_needed')
       .map((t: any) => ({ id: t.id, amount: Number(t.amount), remaining: round2(Number(t.amount) - Math.min(covered(t.id), Number(t.amount))), paid_on: t.paid_on, beforeVat: t.source === 'paid_mark' && !t.message_id }));
@@ -348,6 +389,7 @@ async function matchAll(supabase: any, tenantId: string, payers: Payers, typeOf:
   }
   // The checks of every linked document.
   for (const inv of invs || []) {
+    if (inv.read_status === 'pending') continue;
     const mine = linkRows.filter((l) => l.invoice_id === inv.id).map((l) => (trs || []).find((t: any) => t.id === l.transfer_id)).filter(Boolean);
     if (!mine.length) continue;
     const warnings = invoiceWarnings(

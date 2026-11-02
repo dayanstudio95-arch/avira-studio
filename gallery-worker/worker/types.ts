@@ -33,6 +33,8 @@ export interface Env {
    */
   TURNSTILE_SITE_KEY?: string;
   TURNSTILE_SECRET_KEY?: string;
+  /** Cloudflare's browser (Browser Run): the team's Invoice4U pages kept as PDF (worker/staffPages.ts, Avira). */
+  BROWSER?: Fetcher;
 }
 
 export interface CachedToken {

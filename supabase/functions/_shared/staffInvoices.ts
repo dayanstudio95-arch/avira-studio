@@ -39,7 +39,11 @@ export const fmtAmount = (n: number) => Number(n).toLocaleString('he-IL', { maxi
 export interface InvoiceLink {
   url: string;
   provider: string;
-  /** The link gives the PDF itself (else it opens a page: the document is saved by hand). */
+  /**
+   * The scan gets the PDF itself: the link is the file, or (Paperless) its page names the file (paperlessInfoUrl).
+   * Else it opens a page: Invoice4U's is kept as PDF by the gallery Worker (gallery-worker/worker/staffPages.ts), any
+   * other is saved by hand.
+   */
   direct: boolean;
 }
 
@@ -48,7 +52,7 @@ const LINKS: { re: RegExp; provider: string; direct: boolean }[] = [
   { re: /https?:\/\/(?:www\.)?greeninvoice\.co\.il\/api\/v1\/documents\/download\?\S+/, provider: 'morning', direct: true },
   { re: /https?:\/\/(?:www\.)?smartbee\.co\.il\/public\/files\/\S+/, provider: 'smartbee', direct: true },
   { re: /https?:\/\/app\.icount\.co\.il\/\S+/, provider: 'icount', direct: true },
-  { re: /https?:\/\/(?:www\.)?paperless\.tax\/invoice\?\S+/, provider: 'paperless', direct: false },
+  { re: /https?:\/\/(?:www\.)?paperless\.tax\/invoice\?\S+/, provider: 'paperless', direct: true },
   { re: /https?:\/\/newview\.invoice4u\.co\.il\/\S+/, provider: 'invoice4u', direct: false },
 ];
 // Links that are never invoices (photo deliveries and the like).
@@ -66,6 +70,32 @@ export function invoiceLink(text: unknown): InvoiceLink | null {
   const any = /https?:\/\/\S+/.exec(t)?.[0];
   if (!any || NOT_INVOICE.test(any)) return null;
   return { url: any.replace(/[).,]+$/, ''), provider: 'other', direct: false };
+}
+
+/**
+ * Paperless's document page is an app that asks its API for the document (checked on a real one, 2026-11-02: the page's
+ * own code, GET api.paperless.tax/invoices/getinfo/<sID>) — the answer names the signed PDF (paperlessPdfUrl).
+ */
+export function paperlessInfoUrl(link: unknown): string | null {
+  try {
+    const u = new URL(String(link ?? '').trim());
+    if (u.protocol !== 'https:' || !/^(?:www\.)?paperless\.tax$/.test(u.hostname)) return null;
+    const sid = u.searchParams.get('sID') || '';
+    return /^[\w-]{10,200}$/.test(sid) ? `https://api.paperless.tax/invoices/getinfo/${sid}` : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The PDF's address in Paperless's answer, or null. */
+export function paperlessPdfUrl(info: unknown): string | null {
+  const url = (info as { basedOnInfo?: { sDocumentURL?: unknown } } | null)?.basedOnInfo?.sDocumentURL;
+  if (typeof url !== 'string') return null;
+  try {
+    return new URL(url).protocol === 'https:' ? url : null;
+  } catch {
+    return null;
+  }
 }
 
 export interface TextFacts {

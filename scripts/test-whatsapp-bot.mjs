@@ -3552,7 +3552,25 @@ console.log('\n— PART 75: album group messages + list order —');
     si.invoiceLink("קישור ל חשבונית מס קבלה מס' 500284 על סך 2,124.00₪ https://smartbee.co.il/public/files/abc/1.def/500284_Original.pdf"),
     si.invoiceLink('קיבלת חשבונית מס קבלה ממלינקוב אילון: https://www.paperless.tax/invoice?sID=5aoP5DL-wkPo'),
     si.invoiceLink('חשבונית מס קבלה מספר 70156 התקבלה מ "משה". לפתיחה לחץ כאן: https://newview.invoice4u.co.il/Views/NewViewMobile.aspx?docid=9853&docNumber=70156&original=true'),
-  ].map((l) => l && [l.provider, l.direct]), [['morning', true], ['smartbee', true], ['paperless', false], ['invoice4u', false]]);
+  ].map((l) => l && [l.provider, l.direct]), [['morning', true], ['smartbee', true], ['paperless', true], ['invoice4u', false]]);
+  check("Paperless: the page's API is asked for the document", [
+    si.paperlessInfoUrl('https://www.paperless.tax/invoice?sID=5aoP5DL-wkPqD-ZNcA_X8ISckAmmAMSI'),
+    si.paperlessInfoUrl(' https://paperless.tax/invoice?sID=5aoP5DL-wkPqD-ZNcA\r'),
+  ], ['https://api.paperless.tax/invoices/getinfo/5aoP5DL-wkPqD-ZNcA_X8ISckAmmAMSI', 'https://api.paperless.tax/invoices/getinfo/5aoP5DL-wkPqD-ZNcA']);
+  check('Paperless: only its own pages, with a real sID', [
+    si.paperlessInfoUrl('https://evil.example/invoice?sID=5aoP5DL-wkPqD-ZNcA'),
+    si.paperlessInfoUrl('https://paperless.tax.evil.example/invoice?sID=5aoP5DL-wkPqD-ZNcA'),
+    si.paperlessInfoUrl('http://www.paperless.tax/invoice?sID=5aoP5DL-wkPqD-ZNcA'),
+    si.paperlessInfoUrl('https://www.paperless.tax/invoice?sID=../../x'),
+    si.paperlessInfoUrl('https://www.paperless.tax/invoice'),
+    si.paperlessInfoUrl(null),
+  ], [null, null, null, null, null, null]);
+  check("Paperless: the PDF's address from its answer", [
+    si.paperlessPdfUrl({ basedOnInfo: { sDocNumber: '30038', sDocumentURL: 'https://ezradb.s3.eu-west-1.amazonaws.com/documents/x.pdf?X-Amz-Signature=1' } }),
+    si.paperlessPdfUrl({ basedOnInfo: { sDocumentURL: 'http://insecure.example/x.pdf' } }),
+    si.paperlessPdfUrl({ salesPageInfo: {} }),
+    si.paperlessPdfUrl(null),
+  ], ['https://ezradb.s3.eu-west-1.amazonaws.com/documents/x.pdf?X-Amz-Signature=1', null, null, null]);
   check('the Morning link without the line break after it', si.invoiceLink('קבלה https://mrng.to/8eHCIMZa3t\nחשוב לדעת').url, 'https://mrng.to/8eHCIMZa3t');
   check('photo deliveries and plain links are not invoices', [si.invoiceLink('מצלמה 1 https://mab.to/t/65QPz65Ccsm/eu2'), si.invoiceLink('https://example.com/x'), si.invoiceLink('הנה הקבלה https://drive.google.com/x')], [null, null, null]);
   check('an unknown provider next to "קבלה": kept as a page to save by hand', si.invoiceLink('הנה הקבלה שלך https://docs.example-invoices.co.il/d/42'), { url: 'https://docs.example-invoices.co.il/d/42', provider: 'other', direct: false });

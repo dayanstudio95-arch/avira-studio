@@ -26,6 +26,9 @@
   "triggers": { "crons": ["0 * * * *", "20 0-3,22-23 * * *"] },
   // "avira-gallery-KV", made 2026-10-31. Neither the original films app's namespace (63ffc8…, titled "KV", same
   // account) nor Studio Plan's (a38f86…) may ever appear here — scripts/deploy.mjs checks.
+  // Cloudflare's browser (Browser Run, on Workers Paid: 10 browser hours a month included): the team's Invoice4U
+  // documents are web pages only, kept as PDF every hour (worker/staffPages.ts, 2026-11-02).
+  "browser": { "binding": "BROWSER" },
   "kv_namespaces": [
     { "binding": "KV", "id": "cead6de5505f4da6bc684edb1a101144" }
   ],

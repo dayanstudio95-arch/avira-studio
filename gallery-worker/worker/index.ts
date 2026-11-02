@@ -5,6 +5,7 @@
 //    and video streaming. Every stream re-checks the gallery's expiry.
 import { randomId, randomToken, sign, verify } from './auth';
 import { checkFilmLinks, LINK_CHECK_CRON, nightly, type LinkCheckReport, type NightlyReport } from './cleanup';
+import { staffPagesRun } from './staffPages';
 import { dashboard } from './dashboard';
 import { addFacesChunk, FACE_CONSENT, FACE_SEARCHES_PER_HOUR, FACE_TOKEN_SECONDS, faceToken, faceTokenValid, guestChunk, removeFacePhotos, removePerson, type PersonFace } from './faces';
 import { DESIGN_BANK_LIMITS, DESIGNER_ROLES, designerGalleries, designerPhotos, pixelSize } from './albumDesigner';
@@ -2483,6 +2484,8 @@ export default {
   async scheduled(event: ScheduledController, env: Env): Promise<void> {
     // The nightly link check (P65) is its own cron: its own run, budget and failures, never the clean-up's.
     if (event?.cron === LINK_CHECK_CRON) return linkCheckRun(env);
+    // The team's Invoice4U pages → PDF (Avira, worker/staffPages.ts): a few at most, never failing the run.
+    await staffPagesRun(env);
     let report: NightlyReport;
     try {
       report = await nightly(await storeFor(env), env);

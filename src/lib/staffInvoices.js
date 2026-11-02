@@ -6,6 +6,13 @@ export const STAFF_PAYERS_KEY = "staff_invoice_payers";
 export const MANUAL_CLOSE = "נסגר ידנית";
 /** A "שולם" transfer removed as a duplicate stays as "not needed" — deleted, the scan would make it again from the marks. */
 export const DUPLICATE_NOTE = "כפילות — נמחק";
+/**
+ * Link documents the system keeps as PDF by itself (2026-11-02): Paperless's through the scan, Invoice4U's through the
+ * gallery Worker every hour. Any other page, or one that failed (a note on the row), waits for the owner.
+ */
+export const AUTO_PDF = { paperless: "Paperless", invoice4u: "Invoice4U" };
+/** A link document still without its PDF that needs the owner (not one the system is about to keep). */
+export const needsOwner = (inv) => !!inv.note || !AUTO_PDF[inv.provider];
 export const DEFAULT_REMINDER_TEMPLATE =
   "היי {staff_name}, תזכורת קטנה 🙏\nעדיין לא קיבלתי חשבונית / קבלה על ההעברה מ-{date} על סך {amount} ₪.\nאפשר לשלוח לי כאן בוואטסאפ? תודה!";
 const VAT_RATE = 0.18;

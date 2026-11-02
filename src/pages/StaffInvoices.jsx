@@ -9,7 +9,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ENTITIES } from "@/lib/paymentEntity";
-import { STAFF_PAYERS_KEY, MANUAL_CLOSE, DUPLICATE_NOTE, missingSummary, reminderMessage, daysSince, monthOf, docFileName } from "@/lib/staffInvoices";
+import { STAFF_PAYERS_KEY, MANUAL_CLOSE, DUPLICATE_NOTE, AUTO_PDF, needsOwner, missingSummary, reminderMessage, daysSince, monthOf, docFileName } from "@/lib/staffInvoices";
 
 // "חשבוניות מהצוות" (2026-11-02, the owner's request; 0106). Every transfer to a team member, with the invoice / receipt
 // that closes it. Transfers open themselves (the owner's bank screenshot in the staff chat, "שולם" marks) and documents
@@ -133,8 +133,10 @@ export default function StaffInvoices() {
           <Stat label="ממתינות למסמך" value={view.summary.count} tone="text-amber-300" />
           <Stat label="סכום שממתין" value={`${fmt(view.summary.sum)} ₪`} />
           <Stat label="מע״מ שעוד לא חוזר" value={`${fmt(view.summary.vat)} ₪`} tone="text-red-300" />
-          <Stat label="קישורים לשמור ידנית" value={view.toSave.length} tone={view.toSave.length ? "text-amber-300" : ""} />
+          <Stat label="מחכים ל-PDF" value={view.toSave.length} tone={view.toSave.some(needsOwner) ? "text-amber-300" : ""} />
         </div>
+
+        {view.toSave.length > 0 && <LinkDocs docs={view.toSave} tenantId={tenant?.id} onChange={load} onScan={runScan} />}
 
         <PayersCard payers={data.payers} tenantId={tenant?.id} onSaved={load} />
 
@@ -380,6 +382,85 @@ function TransferRow({ t, docs, staff, type, tenantId, onChange, onScan }) {
   );
 }
 
+/** A PDF or photo the owner saved, for a document that came as a link: kept, and read by the scan. */
+async function attachFile(inv, f, tenantId) {
+  const path = `${tenantId}/${inv.id}.${f.type === "application/pdf" ? "pdf" : "jpg"}`;
+  const { error } = await supabase.storage.from(BUCKET).upload(path, f, { contentType: f.type, upsert: true });
+  if (error) return toast.error(error.message), false;
+  await supabase.from("staff_invoices").update({ file_path: path, file_mime: f.type, read_status: "pending" }).eq("id", inv.id);
+  return true;
+}
+
+/**
+ * "מסמכים שמחכים ל-PDF" (2026-11-02, the owner's request: in one place, not to be looked for). Documents that came as a
+ * link to a page: Paperless's are fetched by the scan, Invoice4U's kept as PDF by the gallery Worker within the hour;
+ * any other page, or one that failed, waits here — open the link, save as PDF, upload. "נסה שוב" sends a failed one
+ * back to the system.
+ */
+function LinkDocs({ docs, tenantId, onChange, onScan }) {
+  const owner = docs.filter(needsOwner).length;
+  return (
+    <section className="rounded-xl border border-amber-700/40 bg-gray-900 p-4 space-y-3" data-testid="si-link-docs">
+      <h2 className="font-semibold text-white">📄 מסמכים שמחכים ל-PDF ({docs.length})</h2>
+      <p className="text-xs text-gray-500">
+        מסמכים שהגיעו כקישור לעמוד ולא כקובץ. את אלה של Paperless ושל Invoice4U המערכת שומרת כ-PDF לבד
+        {owner ? " — מה שמסומן בכתום מחכה לך: פותחים את הקישור, שומרים כ-PDF ומעלים." : "."}
+      </p>
+      {docs.map((inv) => (
+        <LinkDoc key={inv.id} inv={inv} tenantId={tenantId} onChange={onChange} onScan={onScan} />
+      ))}
+    </section>
+  );
+}
+
+function LinkDoc({ inv, tenantId, onChange, onScan }) {
+  const file = useRef(null);
+  const auto = AUTO_PDF[inv.provider];
+  const upload = async (f) => {
+    if (f && (await attachFile(inv, f, tenantId))) await onScan({ quiet: true });
+  };
+  const retry = async () => {
+    const { error } = await supabase.from("staff_invoices").update({ note: null }).eq("id", inv.id);
+    if (error) return toast.error(error.message);
+    if (inv.provider === "invoice4u") {
+      toast.success("המערכת תנסה שוב לשמור אותו כ-PDF בשעה הקרובה");
+      return onChange();
+    }
+    await onScan({ quiet: true });
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-gray-800 p-3 text-sm" data-testid="si-link-doc">
+      <span className="font-semibold text-white">{inv.staff_member_name}</span>
+      <span className="text-gray-300">
+        {inv.doc_type || "מסמך"} {inv.doc_number || ""}
+      </span>
+      {inv.amount !== null && <span className="text-gray-400">{fmt(inv.amount)} ₪</span>}
+      <span className="text-xs text-gray-500">
+        {auto || "קישור"} · {day(String(inv.created_at || "").slice(0, 10))}
+      </span>
+      {needsOwner(inv) ? (
+        <span className="text-xs text-amber-300">{inv.note || "צריך לשמור ידנית"}</span>
+      ) : (
+        <span className="text-xs text-brand-300">⏳ {inv.provider === "invoice4u" ? "המערכת שומרת אותו כ-PDF לבד, בשעה הקרובה" : "המערכת שומרת אותו כ-PDF לבד, בסריקה הבאה"}</span>
+      )}
+      <div className="flex flex-wrap items-center gap-3 mr-auto">
+        <a href={inv.link_url} target="_blank" rel="noopener noreferrer" className="text-amber-300 hover:underline text-xs inline-flex items-center gap-1">
+          <ExternalLink className="w-3 h-3" /> פתיחת הקישור
+        </a>
+        <input ref={file} type="file" accept="application/pdf,image/*" className="hidden" onChange={(e) => upload(e.target.files?.[0])} />
+        <button type="button" className="text-brand-300 hover:underline text-xs inline-flex items-center gap-1" onClick={() => file.current?.click()}>
+          <Upload className="w-3 h-3" /> העלאת PDF
+        </button>
+        {auto && inv.note && (
+          <button type="button" className="text-gray-400 hover:text-white text-xs inline-flex items-center gap-1" onClick={retry} data-testid="si-link-retry">
+            <RefreshCw className="w-3 h-3" /> נסה שוב
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function UnassignedDoc({ inv, transfers, tenantId, onChange, onScan }) {
   const [target, setTarget] = useState("");
   const file = useRef(null);
@@ -390,12 +471,7 @@ function UnassignedDoc({ inv, transfers, tenantId, onChange, onScan }) {
     await onScan({ quiet: true });
   };
   const attach = async (f) => {
-    if (!f) return;
-    const path = `${tenantId}/${inv.id}.${f.type === "application/pdf" ? "pdf" : "jpg"}`;
-    const { error } = await supabase.storage.from(BUCKET).upload(path, f, { contentType: f.type, upsert: true });
-    if (error) return toast.error(error.message);
-    await supabase.from("staff_invoices").update({ file_path: path, file_mime: f.type, read_status: "pending" }).eq("id", inv.id);
-    await onScan({ quiet: true });
+    if (f && (await attachFile(inv, f, tenantId))) await onScan({ quiet: true });
   };
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-800 p-3 text-sm" data-testid="si-unassigned-doc">
@@ -548,7 +624,7 @@ function ExportCard({ invoices, links, transfers, toSave }) {
       <h2 className="font-semibold text-white">הורדה למורנינג</h2>
       <p className="text-xs text-gray-500">כל המסמכים של החודש בקובץ ZIP אחד לכל עסק, בשמות מסודרים (תאריך, איש צוות, מספר מסמך, סכום) — להעלאה להוצאות במורנינג.</p>
       <MorningProbe />
-      {toSave.length > 0 && <p className="text-xs text-amber-300">⚠️ {toSave.length} מסמכים הגיעו כקישור לעמוד (Paperless / Invoice4U) ועוד לא נשמרו כ-PDF — הם לא ייכנסו לקובץ עד שתעלה אותם.</p>}
+      {toSave.length > 0 && <p className="text-xs text-amber-300">⚠️ {toSave.length} מסמכים עוד מחכים ל-PDF (ברשימה "מסמכים שמחכים ל-PDF" למעלה) — הם ייכנסו לקובץ אחרי שיישמרו.</p>}
       <div className="flex flex-wrap items-center gap-2">
         <select value={month} onChange={(e) => setMonth(e.target.value)} className="rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-white">
           {months.length === 0 && <option value="">אין עדיין מסמכים</option>}
