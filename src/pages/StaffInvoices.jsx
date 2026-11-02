@@ -575,10 +575,12 @@ function MorningProbe() {
       if (!p) throw new Error(res.data?.error || "אין תשובה");
       const line = (k, label) => {
         const e = p[k];
+        if (e?.error) return `${label}: שגיאה (${e.error})`;
         if (!e?.connected) return `${label}: לא מחובר${e?.login ? ` (${e.login})` : ""}`;
         return `${label}: ${e.search?.status === 200 ? `נקראו ${e.search.count} הוצאות` : `שגיאה ${e.search?.status}`}`;
       };
-      toast.success(`הבדיקה הסתיימה — ${line("company", "חברה")} · ${line("sole_prop", "עוסק מורשה")}`, { duration: 8000 });
+      const msg = `הבדיקה הסתיימה — ${line("company", "חברה")} · ${line("sole_prop", "עוסק מורשה")}${p.saveError ? ` · לא נשמרה (${p.saveError})` : ""}`;
+      toast.success(msg, { duration: 15000 });
     } catch (e) {
       toast.error("הבדיקה נכשלה: " + e.message);
     }
