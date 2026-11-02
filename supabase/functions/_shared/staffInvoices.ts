@@ -77,7 +77,8 @@ export interface TextFacts {
 
 /** What the message itself says ("חשבונית מס קבלה מס' 500284 על סך 2,124.00₪", "מספר הקצאה …"). */
 export function invoiceTextFacts(text: unknown): TextFacts {
-  const t = String(text ?? '').replace(/\s+/g, ' ');
+  // Morning writes "חש׳ מס/קבלה" for short.
+  const t = String(text ?? '').replace(/\s+/g, ' ').replace(/חש['׳]\s*מס/g, 'חשבונית מס');
   const out: TextFacts = {};
   const type = /(חשבונית מס\s*\/?\s*קבלה|חשבונית מס|חשבונית עסקה|קבלה)/.exec(t);
   if (type) out.docType = type[1].replace(/\s*\/\s*/, ' ').replace(/\s+/g, ' ');

@@ -82,11 +82,14 @@ export async function runStaffInvoices(supabase: any, tenantId: string, opts: { 
   }
 
   const [{ data: staff }, { data: convs }] = await Promise.all([
-    supabase.from('staff_members').select('name, phone_number, invoice_type').eq('tenant_id', tenantId),
+    supabase.from('staff_members').select('name, phone_number, extra_phones, invoice_type').eq('tenant_id', tenantId),
     supabase.from('whatsapp_conversations').select('id, phone, chat_id').eq('tenant_id', tenantId).eq('contact_type', 'staff'),
   ]);
   const staffByPhone = new Map<string, { name: string; invoice_type: string | null; phone: string }>();
-  for (const s of staff || []) if (last9(s.phone_number).length === 9) staffByPhone.set(last9(s.phone_number), { name: s.name, invoice_type: s.invoice_type, phone: s.phone_number });
+  // A team member's own number and the others he writes from (a business WhatsApp, 0107).
+  for (const s of staff || [])
+    for (const ph of [s.phone_number, ...(s.extra_phones || [])])
+      if (last9(ph).length === 9) staffByPhone.set(last9(ph), { name: s.name, invoice_type: s.invoice_type, phone: s.phone_number });
   const typeOf = new Map<string, string | null>((staff || []).map((s: any) => [s.name, s.invoice_type]));
   const convStaff = new Map<string, string>();
   for (const c of convs || []) {

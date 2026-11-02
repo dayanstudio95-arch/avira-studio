@@ -20,7 +20,8 @@ export default function StaffChatSection({ conversation }) {
   const staffQ = useQuery({ queryKey: CHAT_STAFF_KEY, queryFn: () => base44.entities.StaffMember.list(), staleTime: 60000 });
   const phone = normalizeIsraeliPhone(conversation?.phone || String(conversation?.chatId || "").split("@")[0]);
   const staff = useMemo(
-    () => (staffQ.data || []).find((s) => phone && normalizeIsraeliPhone(s.phoneNumber) === phone) || null,
+    // His own number, or another he writes from (a business WhatsApp — 0107).
+    () => (staffQ.data || []).find((s) => phone && [s.phoneNumber, ...(s.extraPhones || [])].some((p) => normalizeIsraeliPhone(p) === phone)) || null,
     [staffQ.data, phone]
   );
   const [area, setArea] = useState("");

@@ -65,6 +65,9 @@ export default function Settings() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [newStaff, setNewStaff] = useState({ name: "", role: "photographer", defaultRate: 0, phoneNumber: "", email: "", ratesByRole: [] });
   const [editStaffData, setEditStaffData] = useState(null);
+  // What is typed in "מספרי וואטסאפ נוספים" (0107) — kept apart from the record that is saved; only the parsed list is.
+  const [extraPhonesDraft, setExtraPhonesDraft] = useState(null);
+  useEffect(() => setExtraPhonesDraft(null), [editStaffData?.id]);
   const [isEditStaffDialogOpen, setIsEditStaffDialogOpen] = useState(false);
   const [isPropagatingRate, setIsPropagatingRate] = useState(false);
   const [retroFromDate, setRetroFromDate] = useState("");
@@ -611,6 +614,23 @@ export default function Settings() {
                         <div className="space-y-2">
                           <Label>מספר טלפון</Label>
                           <Input type="tel" value={editStaffData.phoneNumber || ""} onChange={(e) => setEditStaffData({...editStaffData, phoneNumber: e.target.value})} placeholder="05X-XXXXXXX" className="bg-gray-800 border-gray-700 text-white" />
+                        </div>
+                        {/* 0107: the other numbers he writes from (a business WhatsApp), comma-separated. */}
+                        <div className="space-y-2">
+                          <Label>מספרי וואטסאפ נוספים (למשל מספר עסקי)</Label>
+                          <Input
+                            type="text"
+                            dir="ltr"
+                            value={extraPhonesDraft ?? (editStaffData.extraPhones || []).join(", ")}
+                            onChange={(e) => {
+                              setExtraPhonesDraft(e.target.value);
+                              setEditStaffData({...editStaffData, extraPhones: e.target.value.split(/[,\n]/).map((x) => x.trim()).filter(Boolean).slice(0, 5)});
+                            }}
+                            placeholder="05X-XXXXXXX, 05X-XXXXXXX"
+                            className="bg-gray-800 border-gray-700 text-white"
+                            data-testid="staff-extra-phones"
+                          />
+                          <p className="text-xs text-gray-500">צ'אט מכל אחד מהמספרים נחשב שלו — גם לקליטת חשבוניות.</p>
                         </div>
                         <div className="space-y-2">
                           <Label>אימייל (לזימון יומן)</Label>

@@ -3635,6 +3635,7 @@ console.log('\n— PART 75: album group messages + list order —');
   check('reminders on working hours only', [si.reminderHours(new Date('2026-11-02T11:00:00+02:00')), si.reminderHours(new Date('2026-11-02T20:00:00+02:00')), si.reminderHours(new Date('2026-11-06T11:00:00+02:00')), si.reminderHours(new Date('2026-11-07T12:00:00+02:00'))], [true, false, false, false]);
   check('the reminder', si.reminderText(null, { name: 'איילון', amount: 2400, paidOn: '2026-10-27' }), 'היי איילון, תזכורת קטנה 🙏\nעדיין לא קיבלתי חשבונית / קבלה על ההעברה מ-27/10 על סך 2,400 ₪.\nאפשר לשלוח לי כאן בוואטסאפ? תודה!');
   check('a chat and a team member', [si.last9('972523699501@c.us'), si.last9('052-369-9501')], ['523699501', '523699501']);
+  check('Morning\'s short "חש׳ מס/קבלה"', si.invoiceTextFacts('קיבלת חש׳ מס/קבלה מספר 420 מיריב ברוך https://mrng.to/qXXufNysL4'), { docType: 'חשבונית מס קבלה', docNumber: '420' });
 }
 
 {
