@@ -3584,7 +3584,10 @@ console.log('\n— PART 75: album group messages + list order —');
     si.matchTransfers(1200, '2026-10-20', [open[3]]),
     si.matchTransfers(999, '2026-10-20', open),
   ], [['c'], ['a', 'b'], ['d'], []]);
-  check('no amount: the only open transfer, else the owner chooses', [si.matchTransfers(null, null, [open[0]]), si.matchTransfers(null, null, open)], [['a'], []]);
+  check('no amount: the only open transfer; else the latest one paid by the invoice\'s date (Ayalon\'s two Paperless links); none before it or no date: the owner', (() => {
+    const ay = [{ id: 'oct15', amount: 7080, remaining: 7080, paid_on: '2026-10-15' }, { id: 'oct28', amount: 7080, remaining: 7080, paid_on: '2026-10-28' }];
+    return [si.matchTransfers(null, null, [open[0]]), si.matchTransfers(null, '2026-10-20', ay), si.matchTransfers(null, '2026-11-01', ay), si.matchTransfers(null, '2026-10-01', ay), si.matchTransfers(null, null, ay)];
+  })(), [['a'], ['oct15'], ['oct28'], [], []]);
   check('the checks', [
     si.invoiceWarnings({ docType: 'חשבונית מס קבלה', amount: 4248, vat: 648, issuedTo: 'אווירה מדיה צילום בע"מ', issuedToId: '517309670' }, [{ amount: 4248, entity: 'company' }], payers, 'authorized'),
     si.invoiceWarnings({ docType: 'חשבונית מס', amount: 1200, vat: 183, issuedTo: 'דניאל דיין', issuedToId: '313569964' }, [{ amount: 1200, entity: 'company' }], payers, 'authorized').length,

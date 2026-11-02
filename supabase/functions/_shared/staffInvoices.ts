@@ -138,12 +138,19 @@ const dayGap = (a: string, b?: string | null) => (b ? Math.abs(Date.parse(a) - D
 /**
  * The open transfer(s) of this staff member a document of `amount` closes: one whose remainder it is, else two or
  * three together (a transfer and its VAT top-up), else one it partly covers (one transfer, two invoices); nearest in
- * date wins a tie. A document without an amount closes the only open transfer. [] = the owner chooses.
+ * date wins a tie. A document without an amount closes the only open transfer, else the latest one paid by its date
+ * (an invoice comes after its transfer). [] = the owner chooses.
  */
 export function matchTransfers(amount: number | null | undefined, issuedOn: string | null | undefined, open: OpenTransfer[]): string[] {
   const live = open.filter((t) => t.remaining > 0.5);
   if (!live.length) return [];
-  if (amount === null || amount === undefined || !(amount > 0)) return live.length === 1 ? [live[0].id] : [];
+  if (amount === null || amount === undefined || !(amount > 0)) {
+    if (live.length === 1) return [live[0].id];
+    // No amount (a link that opens a page): the invoice comes after its transfer — the latest one paid by its date.
+    if (!issuedOn) return [];
+    const before = live.filter((t) => t.paid_on <= issuedOn).sort((a, b) => b.paid_on.localeCompare(a.paid_on));
+    return before.length ? [before[0].id] : [];
+  }
   const byDate = (xs: OpenTransfer[]) => [...xs].sort((a, b) => dayGap(a.paid_on, issuedOn) - dayGap(b.paid_on, issuedOn));
   const single = byDate(live.filter((t) => close(t.remaining, amount) || (t.beforeVat && close(round2(t.remaining * (1 + VAT_RATE)), amount))));
   if (single.length) return [single[0].id];
