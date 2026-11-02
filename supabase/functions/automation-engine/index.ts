@@ -44,6 +44,7 @@ import { loadOptOutList, isOptedOut, OPTED_OUT_REASON, type OptOutList } from '.
 import { alertStuckMessages, purgeOldMedia } from '../_shared/whatsappStatus.ts';
 import { DAILY_BRIEF_DEFAULT_TEMPLATE, findBriefLead, dailyBriefVars } from '../_shared/eventBrief.ts';
 import { sendPush } from '../_shared/webPush.ts';
+import { israelToday, renderStaffSchedule, staffSchedule } from '../_shared/staffSchedule.ts';
 import { refreshAvatars } from '../_shared/whatsappAvatars.ts';
 
 function getTargetMonth(mode: string) {
@@ -1085,12 +1086,101 @@ async function runCustomAudienceMessage(supabase: any, tenantId: string, automat
   return { sent, failed, skipped, logs };
 }
 
+// "לוח עבודות לאנשי צוות" (2026-11-02, the owner's request; _shared/staffSchedule.ts). Manual only (not in
+// SCHEDULER_ELIGIBLE_TYPES). The dry run lists every team member with his working dates from today on in the years
+// asked (none too, so the screen shows everyone); a send goes only to the members selected — never to everyone when
+// none are — each his own message, in parts when it is long (one log row per part; a part that fails stops his rest).
+async function runStaffSchedule(supabase: any, tenantId: string, automation: any, runId: string, opts: any = {}) {
+  const { testPhone, dryRun, selectedStaffIds, scheduleYears, quietHours } = opts;
+  const today = israelToday();
+  const thisYear = Number(today.slice(0, 4));
+  const asked = (Array.isArray(scheduleYears) ? scheduleYears : []).map(String).filter((y: string) => /^\d{4}$/.test(y) && Number(y) >= thisYear && Number(y) <= thisYear + 5);
+  const years = asked.length ? asked : [String(thisYear), String(thisYear + 1)];
+
+  const [{ data: allStaff }, { data: allEvents }] = await Promise.all([
+    supabase.from('staff_members').select('id, name, role, phone_number').eq('tenant_id', tenantId).order('order_index'),
+    supabase.from('events').select('date, venue, team').eq('tenant_id', tenantId).gte('date', today),
+  ]);
+  const rows = (allStaff || []).map((m: any) => {
+    const entries = staffSchedule(allEvents || [], m.name, today, years);
+    const parts = entries.length ? renderStaffSchedule(automation.message_template, m.name, entries) : [];
+    return { staffId: m.id, name: m.name, role: m.role, phone: String(testPhone || m.phone_number || '').trim(), count: entries.length, parts };
+  });
+
+  if (dryRun) {
+    const previews = rows.map((r: any) => ({ staffId: r.staffId, name: r.name, staffPhone: r.phone, eventCount: r.count, parts: r.parts, message: r.parts.join('\n\n') }));
+    return { sent: 0, failed: 0, skipped: 0, logs: [], previews, years };
+  }
+  if (!Array.isArray(selectedStaffIds) || selectedStaffIds.length === 0) {
+    return { sent: 0, failed: 0, skipped: 0, logs: [], error: 'לא נבחרו אנשי צוות — לא נשלח כלום' };
+  }
+
+  const optOut = testPhone ? null : await loadOptOutList(supabase, tenantId);
+  let sent = 0, failed = 0, skipped = 0;
+  const logs: any[] = [];
+  const sentPhones = new Set<string>();
+
+  for (const item of rows.filter((r: any) => selectedStaffIds.includes(r.staffId))) {
+    if (item.count === 0) {
+      skipped++;
+      logs.push({ staffId: item.staffId, name: item.name, status: 'skipped', reason: 'אין תאריכים בתקופה' });
+      continue;
+    }
+    if (item.phone.length <= 3) {
+      skipped++;
+      logs.push({ staffId: item.staffId, name: item.name, status: 'skipped', reason: 'invalid_phone' });
+      continue;
+    }
+    if (sentPhones.has(item.phone)) {
+      skipped++;
+      logs.push({ staffId: item.staffId, name: item.name, status: 'skipped', reason: 'dup_phone' });
+      continue;
+    }
+    const logEntry = {
+      automation_run_id: runId,
+      automation_id: automation.id,
+      automation_name: automation.name,
+      recipient_name: item.name,
+      recipient_contact: item.phone,
+      channel: automation.channel || 'whatsapp',
+    };
+    const guardSkipReason = await checkSendGuards(supabase, automation, quietHours, item.phone, { optOut });
+    if (guardSkipReason) {
+      await supabase.from('automation_message_logs').insert({ ...logEntry, message_content: item.parts.join('\n\n'), status: 'skipped', error: guardSkipReason });
+      skipped++;
+      logs.push({ staffId: item.staffId, name: item.name, status: 'skipped', reason: guardSkipReason });
+      continue;
+    }
+    let error = '';
+    for (const part of item.parts) {
+      try {
+        await sendWhatsApp(supabase, tenantId, item.phone, part);
+        await supabase.from('automation_message_logs').insert({ ...logEntry, message_content: part, status: 'sent', sent_at: new Date().toISOString() });
+      } catch (err) {
+        error = (err as Error).message;
+        await supabase.from('automation_message_logs').insert({ ...logEntry, message_content: part, status: 'failed', error });
+        break;
+      }
+    }
+    sentPhones.add(item.phone);
+    if (error) {
+      failed++;
+      logs.push({ staffId: item.staffId, name: item.name, phone: item.phone, status: 'failed', error });
+    } else {
+      sent++;
+      logs.push({ staffId: item.staffId, name: item.name, phone: item.phone, status: 'sent', parts: item.parts.length });
+    }
+  }
+
+  return { sent, failed, skipped, logs };
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Orchestration
 // ─────────────────────────────────────────────────────────────────────────
 
 async function executeAutomation(supabase: any, tenantId: string, automation: any, opts: any = {}) {
-  const { triggeredBy, testPhone, dryRun, selectedStaffIds, targetYYYYMM, selectedEventIds, messageTemplateOverride, targetRoleOverride, allowResendToday } = opts;
+  const { triggeredBy, testPhone, dryRun, selectedStaffIds, targetYYYYMM, selectedEventIds, messageTemplateOverride, targetRoleOverride, allowResendToday, scheduleYears } = opts;
 
   let runId = 'dryrun';
   if (!dryRun) {
@@ -1126,6 +1216,7 @@ async function executeAutomation(supabase: any, tenantId: string, automation: an
     if (automation.type === 'questionnaire_send') result = await runQuestionnaireSend(supabase, tenantId, automation, runId, { testPhone, dryRun, targetYYYYMM, selectedEventIds, quietHours });
     if (automation.type === 'custom_staff_message') result = await runCustomStaffMessage(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds, messageTemplateOverride, targetRoleOverride, quietHours });
     if (automation.type === 'custom') result = await runCustomAudienceMessage(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds, quietHours });
+    if (automation.type === 'staff_schedule') result = await runStaffSchedule(supabase, tenantId, automation, runId, { testPhone, dryRun, selectedStaffIds, scheduleYears, quietHours });
 
     if (!dryRun) {
       const nextRunAt = calculateNextRun(automation);
@@ -1225,6 +1316,8 @@ async function handleForTenant(supabase: any, tenantId: string, body: any) {
       selectedEventIds: body.selectedEventIds || null,
       messageTemplateOverride: body.message_template_override || null,
       targetRoleOverride: body.target_role_override || null,
+      // staff_schedule: the years the screen asked for (["2026","2027"] or one).
+      scheduleYears: Array.isArray(body.schedule_years) ? body.schedule_years : null,
       // Only on an explicit manual run of ONE automation, with an explicit recipient
       // selection. The scheduler path (no automation_id) can never lift the dedup.
       allowResendToday: !!body.allow_resend_today && !!automation_id

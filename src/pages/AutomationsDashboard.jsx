@@ -6,6 +6,7 @@ const { Automation, AutomationRun, StaffMember, Event, Lead } = base44.entities;
 import QuestionnaireSendPreviewModal from "@/components/automations/QuestionnaireSendPreviewModal";
 import AlbumReminderPreviewModal from "@/components/automations/AlbumReminderPreviewModal";
 import CustomStaffMessageModal from "@/components/automations/CustomStaffMessageModal";
+import StaffScheduleModal from "@/components/automations/StaffScheduleModal";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -84,6 +85,17 @@ const DEFAULTS = [
     channel: "whatsapp",
     messageTemplate: "היי {coupleNames}, ההתרגשות בשיאה! 🥂\nלקראת האירוע שלכם, אנחנו רוצים לוודא שכל הפרטים מסונכרנים אצלנו במערכת. 📋\nנשמח אם תוכלו למלא את השאלון הקצר בקישור הבא כדי שנוכל לתת לכם את השירות הטוב ביותר ❤️\n{questionnaireUrl}\nתודה! {studioName} 📸",
     isActive: false,
+  },
+  {
+    // 2026-11-02 (the owner's request): each chosen team member gets every date he works from today on.
+    // Mirrors DEFAULT_STAFF_SCHEDULE_TEMPLATE in supabase/functions/_shared/staffSchedule.ts.
+    name: "לוח עבודות לאנשי צוות",
+    type: "staff_schedule",
+    emoji: "🗓️",
+    frequency: "manual",
+    channel: "whatsapp",
+    messageTemplate: "היי {staff_name} 👋\nאלה כל התאריכים שלך אצלנו מהיום והלאה:\n\n{schedule}\n\nסה״כ {count} תאריכים\nאם משהו לא מסתדר, נשמח לדעת 🙏\nאווירה סטודיו",
+    isActive: true,
   },
   {
     name: "הודעה מותאמת אישית לצוות",
@@ -1082,7 +1094,7 @@ function AutomationCard({ automation, onToggle, onSettings, onManualRun, onSyncS
 
 // ── Main Page ───────────────────────────────────────────────────────────────
 // D8: types the scheduler never runs — sent only from "הרצה ידנית".
-const MANUAL_ONLY_TYPES = ['album_reminder', 'custom_staff_message', 'custom'];
+const MANUAL_ONLY_TYPES = ['album_reminder', 'custom_staff_message', 'custom', 'staff_schedule'];
 
 export default function AutomationsDashboard() {
   const [automations, setAutomations] = useState([]);
@@ -1094,6 +1106,7 @@ export default function AutomationsDashboard() {
   const [albumReminderModal, setAlbumReminderModal] = useState(null); // { automation, previews }
   const [questionnaireSendModal, setQuestionnaireSendModal] = useState(null); // automation
   const [customStaffMessageModal, setCustomStaffMessageModal] = useState(null); // automation
+  const [staffScheduleModal, setStaffScheduleModal] = useState(null); // automation
   const [createCustomModal, setCreateCustomModal] = useState(false);
   const [sendingAll, setSendingAll] = useState(false);
   const [selectedRecipients, setSelectedRecipients] = useState(new Set()); // indices of selected previews
@@ -1111,9 +1124,11 @@ export default function AutomationsDashboard() {
         const existingTypes = new Set(data.map(a => a.type));
         const missingDefaults = DEFAULTS.filter(d => !existingTypes.has(d.type));
         if (missingDefaults.length > 0) {
-          const created = await Promise.all(missingDefaults.map(d => Automation.create(d)));
+          // One the database doesn't accept yet (a new type before its migration) never takes the page down.
+          const created = (await Promise.allSettled(missingDefaults.map(d => Automation.create(d))))
+            .filter(r => r.status === 'fulfilled').map(r => r.value);
           data = [...data, ...created];
-          toast.success(`נוצרו ${created.length} אוטומציות חדשות`);
+          if (created.length) toast.success(`נוצרו ${created.length} אוטומציות חדשות`);
         }
       }
       setAutomations(sortAutomations(data));
@@ -1192,6 +1207,11 @@ export default function AutomationsDashboard() {
     // unlike the other types there's no saved template/target to dry-run immediately.
     if (automation.type === 'custom_staff_message') {
       setCustomStaffMessageModal(automation);
+      return;
+    }
+    // staff_schedule: pick the period and the team members, then a preview each.
+    if (automation.type === 'staff_schedule') {
+      setStaffScheduleModal(automation);
       return;
     }
     // album_reminder has its own dedicated modal
@@ -1378,6 +1398,14 @@ export default function AutomationsDashboard() {
         <CustomStaffMessageModal
           automation={customStaffMessageModal}
           onClose={() => setCustomStaffMessageModal(null)}
+          onSent={loadAutomations}
+        />
+      )}
+
+      {staffScheduleModal && (
+        <StaffScheduleModal
+          automation={staffScheduleModal}
+          onClose={() => setStaffScheduleModal(null)}
           onSent={loadAutomations}
         />
       )}

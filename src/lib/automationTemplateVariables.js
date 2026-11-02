@@ -21,6 +21,8 @@ export const VARS_BY_TYPE = {
   payment_reminder: ["{coupleNames}", "{remainingBalance}", "{eventDate}", "{venueName}", "{studioName}"],
   questionnaire_reminder: ["{coupleNames}", "{eventDate}", "{venue}", "{questionnaireLink}", "{studioName}"],
   questionnaire_send: ["{coupleNames}", "{venue}", "{date}", "{questionnaireUrl}", "{studioName}"],
+  // _shared/staffSchedule.ts renderStaffSchedule (2026-11-02).
+  staff_schedule: ["{staff_name}", "{schedule}", "{count}"],
 };
 
 export const VARS_BY_AUDIENCE_TYPE = {
@@ -31,6 +33,8 @@ export const VARS_BY_AUDIENCE_TYPE = {
 export const TEMPLATE_VARIABLE_DESCRIPTIONS = {
   "{staffName}": "שם איש הצוות",
   "{staff_name}": "שם איש הצוות",
+  "{schedule}": "התאריכים לפי חודשים ושנים (תאריך, אולם - תפקיד)",
+  "{count}": "מספר התאריכים",
   "{month}": "שם החודש הרלוונטי",
   "{eventsList}": "רשימת האירועים של איש הצוות באותו חודש",
   "{eventCount}": "מספר האירועים באותו חודש",

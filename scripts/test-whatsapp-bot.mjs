@@ -3516,6 +3516,34 @@ console.log('\n— PART 75: album group messages + list order —');
 }
 
 {
+  section('"לוח עבודות לאנשי צוות" (2026-11-02)');
+  const ss = await loadModule('supabase/functions/_shared/staffSchedule.ts', 'ss79');
+  const ev = [
+    { date: '2026-11-24', venue: 'טרויה', team: [{ role: 'photographer1', staffMemberName: 'איילון' }] },
+    { date: '2026-11-01', venue: 'עבר', team: [{ role: 'photographer1', staffMemberName: 'איילון' }] },
+    { date: '2026-12-30', venue: 'עדיה', team: [{ role: 'photographer2', staffMemberName: ' איילון ' }, { role: 'editor', staffMemberName: 'איילון' }] },
+    { date: '2027-01-21', venue: '', team: [{ role: 'videographer', staffMemberName: 'איילון' }] },
+    { date: '2027-03-02', venue: 'דואה', team: [{ role: 'photographer1', staffMemberName: 'רודי' }] },
+    { date: '2028-01-21', venue: 'רחוק', team: [{ role: 'videographer', staffMemberName: 'איילון' }] },
+    { date: null, venue: 'בלי תאריך', team: [{ role: 'videographer', staffMemberName: 'איילון' }] },
+  ];
+  const both = ss.staffSchedule(ev, 'איילון', '2026-11-02', ['2026', '2027']);
+  check('from today on, the years asked, the roles at the wedding only (no editor), by date', both.map((e) => `${e.date} ${e.role}`), ['2026-11-24 צלם ראשי', '2026-12-30 צלם שני', '2027-01-21 צלם וידאו']);
+  check('one year only', ss.staffSchedule(ev, 'איילון', '2026-11-02', ['2027']).map((e) => e.date), ['2027-01-21']);
+  check('the owner\'s layout: months, a year banner where a new year starts, "date venue - role"', ss.renderStaffSchedule(null, 'איילון', both),
+    ['היי איילון 👋\nאלה כל התאריכים שלך אצלנו מהיום והלאה:\n\nנובמבר 2026 🗓️\n24/11/26 טרויה - צלם ראשי\n\nדצמבר 2026 🗓️\n30/12/26 עדיה - צלם שני\n\n🎉 2027 🎉\nינואר 2027 🗓️\n21/1/27 אולם לא צוין - צלם וידאו\n\nסה״כ 3 תאריכים\nאם משהו לא מסתדר, נשמח לדעת 🙏\nאווירה סטודיו']);
+  check('the studio\'s own words', ss.renderStaffSchedule('{staff_name}: {count}\n{schedule}', 'רודי', ss.staffSchedule(ev, 'רודי', '2026-11-02', ['2027'])), ['רודי: 1\nמרץ 2027 🗓️\n2/3/27 דואה - צלם ראשי']);
+  check('Israel\'s day', [ss.israelToday(new Date('2026-11-01T21:59:00Z')), ss.israelToday(new Date('2026-11-01T22:01:00Z'))], ['2026-11-01', '2026-11-02']);
+  const many = Array.from({ length: 180 }, (_, i) => ({ date: `2027-${String(1 + (i % 12)).padStart(2, '0')}-${String(1 + (i % 27)).padStart(2, '0')}`, venue: 'אולם עם שם ארוך לבדיקה', team: [{ role: 'photographer1', staffMemberName: 'א' }] }));
+  const parts = ss.renderStaffSchedule(null, 'א', ss.staffSchedule(many, 'א', '2026-11-02', ['2027']));
+  const lines = parts.join('\n').split('\n').filter((l) => /^\d+\/\d+\/27 /.test(l));
+  check('long: in parts, each under the limit, numbered, no date lost or repeated, months whole', [parts.length > 1, parts.every((p) => p.length <= 4000 + 30), parts.every((p, i) => p.startsWith(`(חלק ${i + 1} מתוך ${parts.length})`)), lines.length, new Set(parts.flatMap((p) => p.split('\n').filter((l) => / 2027 🗓️$/.test(l)))).size], [true, true, true, 180, 12]);
+  check('the greeting opens the first part and the total closes the last', [parts[0].includes('היי א 👋'), parts[parts.length - 1].includes('סה״כ 180 תאריכים'), parts.slice(1).some((p) => p.includes('היי א'))], [true, true, false]);
+  check('no dates: just the greeting and the total', ss.renderStaffSchedule(null, 'א', []).length, 1);
+  check('one date: "תאריך אחד", not "1 תאריכים"; 11 stays 11', [ss.renderStaffSchedule(null, 'א', both.slice(0, 1))[0].includes('סה״כ תאריך אחד'), ss.renderStaffSchedule('{count} תאריכים', 'א', Array(11).fill(both[0]))[0].startsWith('11 תאריכים')], [true, true]);
+}
+
+{
   // Production gives a new table no privileges at all (0103): 0101 and 0102 passed staging and failed live. Every table
   // a migration from 0101 on creates must grant itself to the service role (the Worker / Edge Functions) explicitly.
   section('every new table grants itself (2026-11-02, 0103)');
