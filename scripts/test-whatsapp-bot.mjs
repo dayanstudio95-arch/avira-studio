@@ -3515,5 +3515,17 @@ console.log('\n— PART 75: album group messages + list order —');
   check('the script never deletes for good', /setTrashed\(false\)|\.remove|Drive\.Files\.(remove|delete)|emptyTrash/.test(script), false);
 }
 
+{
+  // Production gives a new table no privileges at all (0103): 0101 and 0102 passed staging and failed live. Every table
+  // a migration from 0101 on creates must grant itself to the service role (the Worker / Edge Functions) explicitly.
+  section('every new table grants itself (2026-11-02, 0103)');
+  const { readdirSync, readFileSync } = await import('node:fs');
+  const dir = resolve(repoRoot, 'supabase/migrations');
+  const sql = readdirSync(dir).filter((f) => /^\d{4}_.*\.sql$/.test(f) && Number(f.slice(0, 4)) >= 101).sort().map((f) => readFileSync(join(dir, f), 'utf8')).join('\n').toLowerCase();
+  const created = [...sql.matchAll(/create table (?:if not exists )?(?:public\.)?([a-z_][a-z0-9_]*)/g)].map((m) => m[1]);
+  const granted = (t) => new RegExp(`grant [a-z, ]+ on (?:table )?(?:[a-z_.]+, *)*(?:public\\.)?${t}\\b[^;]*service_role`).test(sql);
+  check('tables created since 0101 are granted to service_role', created.filter((t) => !granted(t)), []);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
