@@ -5,6 +5,7 @@
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createServiceRoleClient, getRequestUser } from '../_shared/supabaseClients.ts';
 import { runStaffInvoices } from '../_shared/staffInvoicesScan.ts';
+import { probeMorningExpenses } from '../_shared/morningExpensesProbe.ts';
 
 const ROLES = ['owner', 'admin', 'studio_manager'];
 
@@ -18,6 +19,12 @@ Deno.serve(async (req) => {
     const supabase = createServiceRoleClient();
     const { data: profile } = await supabase.from('profiles').select('tenant_id, role').eq('id', user.id).maybeSingle();
     if (!profile?.tenant_id || !ROLES.includes(profile.role)) return jsonResponse({ error: 'אין הרשאה' }, { status: 403 });
+    const body = await req.json().catch(() => ({}));
+    // The read-only look at Morning's expenses API (2026-11-02), before invoices are sent there as drafts.
+    if (body?.action === 'morning_probe') {
+      const today = new Date().toISOString().slice(0, 10);
+      return jsonResponse({ success: true, probe: await probeMorningExpenses(supabase, profile.tenant_id, '2026-09-01', today) });
+    }
     const result = await runStaffInvoices(supabase, profile.tenant_id, { maxReads: 6, remind: false });
     return jsonResponse({ success: true, ...result });
   } catch (e) {

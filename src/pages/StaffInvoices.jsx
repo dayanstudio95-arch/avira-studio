@@ -485,6 +485,36 @@ function AddTransfer({ staff, payers, tenantId, onClose, onSaved }) {
   );
 }
 
+/**
+ * "בדיקת חיבור למורנינג" (2026-11-02): a READ-ONLY look at both Morning accounts' expenses, before the team's invoices are
+ * sent there as drafts — what came back is kept for the build (supabase/functions/_shared/morningExpensesProbe.ts).
+ */
+function MorningProbe() {
+  const [busy, setBusy] = useState(false);
+  const run = async () => {
+    setBusy(true);
+    try {
+      const res = await base44.functions.invoke("staffInvoices", { action: "morning_probe" });
+      const p = res.data?.probe;
+      if (!p) throw new Error(res.data?.error || "אין תשובה");
+      const line = (k, label) => {
+        const e = p[k];
+        if (!e?.connected) return `${label}: לא מחובר${e?.login ? ` (${e.login})` : ""}`;
+        return `${label}: ${e.search?.status === 200 ? `נקראו ${e.search.count} הוצאות` : `שגיאה ${e.search?.status}`}`;
+      };
+      toast.success(`הבדיקה הסתיימה — ${line("company", "חברה")} · ${line("sole_prop", "עוסק מורשה")}`, { duration: 8000 });
+    } catch (e) {
+      toast.error("הבדיקה נכשלה: " + e.message);
+    }
+    setBusy(false);
+  };
+  return (
+    <Button variant="outline" className={btn} disabled={busy} onClick={run} data-testid="si-morning-probe">
+      {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4 ml-1.5" />} בדיקת חיבור למורנינג (קריאה בלבד)
+    </Button>
+  );
+}
+
 /** A month's documents for Morning, one ZIP per business (client-side, like the print shop's album files). */
 function ExportCard({ invoices, links, transfers, toSave }) {
   const months = useMemo(() => [...new Set(invoices.filter((i) => i.file_path).map((i) => monthOf(i.issued_on || i.created_at)))].sort().reverse(), [invoices]);
@@ -517,6 +547,7 @@ function ExportCard({ invoices, links, transfers, toSave }) {
     <section className="rounded-xl border border-gray-800 bg-gray-900 p-4 space-y-3" data-testid="si-export">
       <h2 className="font-semibold text-white">הורדה למורנינג</h2>
       <p className="text-xs text-gray-500">כל המסמכים של החודש בקובץ ZIP אחד לכל עסק, בשמות מסודרים (תאריך, איש צוות, מספר מסמך, סכום) — להעלאה להוצאות במורנינג.</p>
+      <MorningProbe />
       {toSave.length > 0 && <p className="text-xs text-amber-300">⚠️ {toSave.length} מסמכים הגיעו כקישור לעמוד (Paperless / Invoice4U) ועוד לא נשמרו כ-PDF — הם לא ייכנסו לקובץ עד שתעלה אותם.</p>}
       <div className="flex flex-wrap items-center gap-2">
         <select value={month} onChange={(e) => setMonth(e.target.value)} className="rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-white">
