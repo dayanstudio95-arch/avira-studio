@@ -9,7 +9,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ENTITIES } from "@/lib/paymentEntity";
-import { STAFF_PAYERS_KEY, missingSummary, reminderMessage, daysSince, monthOf, docFileName } from "@/lib/staffInvoices";
+import { STAFF_PAYERS_KEY, MANUAL_CLOSE, DUPLICATE_NOTE, missingSummary, reminderMessage, daysSince, monthOf, docFileName } from "@/lib/staffInvoices";
 
 // "חשבוניות מהצוות" (2026-11-02, the owner's request; 0106). Every transfer to a team member, with the invoice / receipt
 // that closes it. Transfers open themselves (the owner's bank screenshot in the staff chat, "שולם" marks) and documents
@@ -278,10 +278,21 @@ function TransferRow({ t, docs, staff, type, tenantId, onChange, onScan }) {
     update({ reminders_sent: Math.min(5, (t.reminders_sent || 0) + 1), last_reminder_at: new Date().toISOString() });
   };
   const remove = async () => {
-    if (!(await confirmDialog({ title: "למחוק את ההעברה?", message: "רק אם היא נפתחה בטעות (למשל צילום שאינו העברה). המסמכים שלה נשארים.", confirmText: "מחק", danger: true }))) return;
-    const { error } = await supabase.from("staff_transfers").delete().eq("id", t.id);
+    if (!(await confirmDialog({ title: "למחוק את ההעברה?", message: "רק אם היא נפתחה בטעות או שהיא כפולה (למשל צילום שאינו העברה). המסמכים שלה עוברים ל\"מסמכים שלא שויכו\".", confirmText: "מחק", danger: true }))) return;
+    await supabase.from("staff_invoice_transfers").delete().eq("transfer_id", t.id);
+    // A transfer from "שולם" marks is kept as a "not needed" duplicate: deleted, the next scan would make it again from the marks.
+    const { error } = (t.events || []).length
+      ? await supabase.from("staff_transfers").update({ status: "not_needed", note: DUPLICATE_NOTE, updated_at: new Date().toISOString() }).eq("id", t.id)
+      : await supabase.from("staff_transfers").delete().eq("id", t.id);
     if (error) toast.error(error.message);
     onChange();
+  };
+  // Documents short of the transfer (Yonatan: a 1,100 ₪ receipt for 1,200 ₪): the owner may close it as it is.
+  const covered = docs.some((d) => d.amount === null) ? null : docs.reduce((s, d) => s + Number(d.amount || 0), 0);
+  const short = t.status === "waiting" && docs.length > 0 && covered !== null && covered < Number(t.amount) - 1;
+  const closeAnyway = async () => {
+    if (!(await confirmDialog({ title: "לסגור את ההעברה כמו שהיא?", message: `המסמכים מכסים ${fmt(covered)} מתוך ${fmt(t.amount)} ₪. על ההפרש לא יהיה מסמך.`, confirmText: "סגירה" }))) return;
+    update({ status: "received", note: `${MANUAL_CLOSE} — המסמכים מכסים ${fmt(covered)} מתוך ${fmt(t.amount)} ₪` });
   };
   const unlink = async (inv) => {
     await supabase.from("staff_invoice_transfers").delete().eq("invoice_id", inv.id).eq("transfer_id", t.id);
@@ -307,6 +318,8 @@ function TransferRow({ t, docs, staff, type, tenantId, onChange, onScan }) {
       </div>
       {(t.events || []).length > 0 && <div className="text-xs text-gray-500">{t.events.map((e) => `${day(e.date)} ${e.venue || ""}`.trim()).join(" · ")}</div>}
       {t.description && <div className="text-xs text-gray-500">"{t.description}"</div>}
+      {short && <div className="text-xs text-amber-300">⚠️ המסמכים מכסים {fmt(covered)} מתוך {fmt(t.amount)} ₪ — חסרים {fmt(Number(t.amount) - covered)} ₪</div>}
+      {t.note && (String(t.note).startsWith(MANUAL_CLOSE) || t.note === DUPLICATE_NOTE) && <div className="text-xs text-gray-500">{t.note}</div>}
       {docs.map((d) => (
         <div key={d.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-gray-950/60 px-3 py-2 text-sm" data-testid="si-doc">
           <FileText className="w-4 h-4 text-gray-400" />
@@ -347,10 +360,15 @@ function TransferRow({ t, docs, staff, type, tenantId, onChange, onScan }) {
             <Button size="sm" variant="outline" className={btn} onClick={() => update({ status: "not_needed" })}>
               לא נדרש
             </Button>
+            {short && (
+              <Button size="sm" variant="outline" className={btn} onClick={closeAnyway} data-testid="si-close-anyway">
+                סגירה ידנית
+              </Button>
+            )}
           </>
         )}
-        {t.status === "not_needed" && (
-          <Button size="sm" variant="outline" className={btn} onClick={() => update({ status: "waiting" })}>
+        {(t.status === "not_needed" || String(t.note || "").startsWith(MANUAL_CLOSE)) && (
+          <Button size="sm" variant="outline" className={btn} onClick={() => update({ status: "waiting", note: null })}>
             החזרה לממתינות
           </Button>
         )}

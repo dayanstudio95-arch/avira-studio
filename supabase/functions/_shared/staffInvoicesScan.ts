@@ -21,6 +21,8 @@ import { isOptedOut, loadOptOutList } from './whatsappOptOut.ts';
 const BUCKET = 'staff-invoices';
 const REMINDERS_FROM_KEY = 'staff_invoices_reminders_from';
 export const REMINDER_TEMPLATE_KEY = 'template_staff_invoice_reminder';
+/** A transfer's note that starts so was closed by the owner (src/lib/staffInvoices.js MANUAL_CLOSE): the scan leaves its status. */
+export const MANUAL_CLOSE = 'נסגר ידנית';
 
 export interface ScanResult {
   transfers: number;
@@ -320,7 +322,7 @@ async function applyReading(supabase: any, id: string, r: DocReading, facts: { d
 /** Every document without a transfer → its transfer(s); every linked document's checks; transfers' statuses. */
 async function matchAll(supabase: any, tenantId: string, payers: Payers, typeOf: Map<string, string | null>, now: Date): Promise<number> {
   const [{ data: trs }, { data: invs }, { data: links }] = await Promise.all([
-    supabase.from('staff_transfers').select('id, staff_member_name, amount, paid_on, entity, status, source, message_id').eq('tenant_id', tenantId),
+    supabase.from('staff_transfers').select('id, staff_member_name, amount, paid_on, entity, status, source, message_id, note').eq('tenant_id', tenantId),
     supabase.from('staff_invoices').select('id, staff_member_name, read_status, doc_type, amount, vat, allocation_number, issued_to, issued_to_id, issued_on, warnings, created_at').eq('tenant_id', tenantId).in('read_status', ['done', 'manual']),
     supabase.from('staff_invoice_transfers').select('invoice_id, transfer_id').eq('tenant_id', tenantId),
   ]);
@@ -358,6 +360,8 @@ async function matchAll(supabase: any, tenantId: string, payers: Payers, typeOf:
   }
   // Statuses: covered → received; a staff member who issues nothing (by agreement) → not needed.
   for (const t of trs || []) {
+    // Closed by the owner (documents short of the amount, and he decided it's fine): stays as he set it.
+    if (String(t.note || '').startsWith(MANUAL_CLOSE)) continue;
     let status = t.status;
     if (typeOf.get(t.staff_member_name) === 'none') status = status === 'received' ? status : 'not_needed';
     else if (status !== 'not_needed') status = covered(t.id) >= Number(t.amount) - 1 ? 'received' : 'waiting';

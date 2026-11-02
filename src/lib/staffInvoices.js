@@ -2,6 +2,10 @@
 // The scan's own rules are in supabase/functions/_shared/staffInvoices.ts; the reminder here mirrors
 // DEFAULT_REMINDER_TEMPLATE there. Pure.
 export const STAFF_PAYERS_KEY = "staff_invoice_payers";
+/** A transfer the owner closed though its documents are short (the scan leaves it; supabase/functions/_shared/staffInvoicesScan.ts). */
+export const MANUAL_CLOSE = "נסגר ידנית";
+/** A "שולם" transfer removed as a duplicate stays as "not needed" — deleted, the scan would make it again from the marks. */
+export const DUPLICATE_NOTE = "כפילות — נמחק";
 export const DEFAULT_REMINDER_TEMPLATE =
   "היי {staff_name}, תזכורת קטנה 🙏\nעדיין לא קיבלתי חשבונית / קבלה על ההעברה מ-{date} על סך {amount} ₪.\nאפשר לשלוח לי כאן בוואטסאפ? תודה!";
 const VAT_RATE = 0.18;
