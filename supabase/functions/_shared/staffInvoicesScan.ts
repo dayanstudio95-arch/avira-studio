@@ -10,7 +10,7 @@
 // Pure decisions live in staffInvoices.ts.
 import {
   groupMarks, invoiceLink, invoiceTextFacts, invoiceWarnings, last9, matchTransfers, paidMarks, payerOf, reminderDue,
-  reminderHours, reminderText, round2, sameTransfer, STAFF_PAYERS_KEY, TRACK_SINCE, israelDay,
+  reminderHours, reminderText, round2, screenshotOf, STAFF_PAYERS_KEY, TRACK_SINCE, israelDay,
   type Entity, type OpenTransfer, type Payers,
 } from './staffInvoices.ts';
 import { amountOf, canRead, dateOf, MAX_DOC_BYTES, readDoc, type DocReading } from './staffDocReader.ts';
@@ -101,11 +101,12 @@ export async function runStaffInvoices(supabase: any, tenantId: string, opts: { 
   const { data: events } = await supabase.from('events').select('id, date, venue, team').eq('tenant_id', tenantId).not('team', 'is', null);
   for (const g of groupMarks(paidMarks(events || [], TRACK_SINCE, known))) {
     const evs = g.marks.map((m) => ({ eventId: m.eventId, role: m.role, date: m.date, venue: m.venue, amount: m.amount }));
-    // The screenshot of the same transfer, read before the marks: the marks join it.
-    const twin = (transfers0 || []).find((t: any) => t.source === 'screenshot' && !(t.events || []).length && sameTransfer({ staff: t.staff_member_name, amount: Number(t.amount), paidOn: t.paid_on }, { staff: g.staff, amount: g.amount, paidOn: g.paidOn }));
+    // The screenshot of the same payment (cost, or cost + VAT; marked up to 3 weeks apart): the marks join it.
+    const twinId = screenshotOf(g, shotsOf(transfers0 || []));
+    const twin = twinId ? (transfers0 || []).find((t: any) => t.id === twinId) : null;
     if (twin) {
-      twin.events = evs;
-      await supabase.from('staff_transfers').update({ events: evs, updated_at: now.toISOString() }).eq('id', twin.id);
+      twin.events = [...(twin.events || []), ...evs];
+      await supabase.from('staff_transfers').update({ events: twin.events, updated_at: now.toISOString() }).eq('id', twin.id);
       continue;
     }
     const { data: row, error } = await supabase.from('staff_transfers').insert({
@@ -206,19 +207,13 @@ export async function runStaffInvoices(supabase: any, tenantId: string, opts: { 
           const amount = amountOf(r.amount)!;
           const entity = payerOf({ account: r.from_account, name: r.from_name }, payers);
           const fields = { message_id: m.id, entity, bank_reference: r.reference.slice(0, 60) || null, description: r.description.slice(0, 200) || null, updated_at: now.toISOString() };
-          // "שולם" marks of the same transfer, made before the screenshot: the screenshot joins them.
-          const twin = (transfers0 || []).find((t: any) => !t.message_id && sameTransfer({ staff: t.staff_member_name, amount: Number(t.amount), paidOn: t.paid_on }, { staff: who, amount, paidOn }));
-          if (twin) {
-            twin.message_id = m.id;
-            await supabase.from('staff_transfers').update(fields).eq('id', twin.id);
-          } else {
-            const { data: row, error } = await supabase.from('staff_transfers').insert({
-              tenant_id: tenantId, staff_member_name: who, amount, paid_on: paidOn, source: 'screenshot', reminders_on: paidOn >= remindersFrom, ...fields,
-            }).select('id, staff_member_name, amount, paid_on, events, message_id, source').single();
-            if (error) throw error;
-            (transfers0 || []).push(row);
-            result.transfers++;
-          }
+          // "שולם" marks of the same payment made before it are joined to it below (reconcileMarks).
+          const { data: row, error } = await supabase.from('staff_transfers').insert({
+            tenant_id: tenantId, staff_member_name: who, amount, paid_on: paidOn, source: 'screenshot', reminders_on: paidOn >= remindersFrom, ...fields,
+          }).select('id, staff_member_name, amount, paid_on, events, message_id, source').single();
+          if (error) throw error;
+          (transfers0 || []).push(row);
+          result.transfers++;
           await mark(m, 'transfer');
         } else if (r.kind === 'invoice' && !outbound) {
           const { data: inv, error } = await supabase.from('staff_invoices').insert({
@@ -264,12 +259,38 @@ export async function runStaffInvoices(supabase: any, tenantId: string, opts: { 
     }
   }
 
-  // ---- 4. match, check, close
+  // ---- 4. marks joined to their screenshot (either order; also rows from before this rule), then match, check, close
+  await reconcileMarks(supabase, tenantId, now);
   result.matched = await matchAll(supabase, tenantId, payers, typeOf, now);
 
   // ---- 5. reminders
   if (opts.remind && reminderHours(now)) result.reminders = await sendReminders(supabase, tenantId, staff || [], now);
   return result;
+}
+
+/** The transfers read from bank screenshots (a "שולם" transfer joined to one carries its message too). */
+const shotsOf = (rows: any[]) => rows.filter((t) => t.message_id).map((t) => ({ id: t.id, staff: t.staff_member_name, amount: Number(t.amount), paidOn: t.paid_on }));
+
+/**
+ * "שולם" transfers that are a screenshot's payment (screenshotOf): their works join the screenshot transfer, their
+ * documents move to it, and they go — so a payment is counted once whichever came first.
+ */
+async function reconcileMarks(supabase: any, tenantId: string, now: Date) {
+  const { data: trs } = await supabase.from('staff_transfers').select('id, staff_member_name, amount, paid_on, source, message_id, events').eq('tenant_id', tenantId);
+  const shots = shotsOf(trs || []);
+  for (const mark of (trs || []).filter((t: any) => t.source === 'paid_mark' && !t.message_id)) {
+    const twinId = screenshotOf({ staff: mark.staff_member_name, amount: Number(mark.amount), paidOn: mark.paid_on }, shots);
+    const twin = twinId ? (trs || []).find((t: any) => t.id === twinId) : null;
+    if (!twin) continue;
+    const have = new Set((twin.events || []).map((e: any) => `${e.eventId}|${e.role}`));
+    twin.events = [...(twin.events || []), ...(mark.events || []).filter((e: any) => !have.has(`${e.eventId}|${e.role}`))];
+    await supabase.from('staff_transfers').update({ events: twin.events, updated_at: now.toISOString() }).eq('id', twin.id);
+    const { data: links } = await supabase.from('staff_invoice_transfers').select('invoice_id').eq('transfer_id', mark.id);
+    for (const l of links || []) {
+      await supabase.from('staff_invoice_transfers').upsert({ invoice_id: l.invoice_id, transfer_id: twin.id, tenant_id: tenantId }, { onConflict: 'invoice_id,transfer_id', ignoreDuplicates: true });
+    }
+    await supabase.from('staff_transfers').delete().eq('id', mark.id);
+  }
 }
 
 /** What AI read, into the invoice row (the message's own text fills what the document didn't show). */
@@ -296,7 +317,7 @@ async function applyReading(supabase: any, id: string, r: DocReading, facts: { d
 /** Every document without a transfer → its transfer(s); every linked document's checks; transfers' statuses. */
 async function matchAll(supabase: any, tenantId: string, payers: Payers, typeOf: Map<string, string | null>, now: Date): Promise<number> {
   const [{ data: trs }, { data: invs }, { data: links }] = await Promise.all([
-    supabase.from('staff_transfers').select('id, staff_member_name, amount, paid_on, entity, status').eq('tenant_id', tenantId),
+    supabase.from('staff_transfers').select('id, staff_member_name, amount, paid_on, entity, status, source, message_id').eq('tenant_id', tenantId),
     supabase.from('staff_invoices').select('id, staff_member_name, read_status, doc_type, amount, vat, allocation_number, issued_to, issued_to_id, issued_on, warnings, created_at').eq('tenant_id', tenantId).in('read_status', ['done', 'manual']),
     supabase.from('staff_invoice_transfers').select('invoice_id, transfer_id').eq('tenant_id', tenantId),
   ]);
@@ -310,7 +331,7 @@ async function matchAll(supabase: any, tenantId: string, payers: Payers, typeOf:
     if (linkRows.some((l) => l.invoice_id === inv.id)) continue;
     const open: OpenTransfer[] = (trs || [])
       .filter((t: any) => t.staff_member_name === inv.staff_member_name && t.status !== 'not_needed')
-      .map((t: any) => ({ id: t.id, amount: Number(t.amount), remaining: round2(Number(t.amount) - Math.min(covered(t.id), Number(t.amount))), paid_on: t.paid_on }));
+      .map((t: any) => ({ id: t.id, amount: Number(t.amount), remaining: round2(Number(t.amount) - Math.min(covered(t.id), Number(t.amount))), paid_on: t.paid_on, beforeVat: t.source === 'paid_mark' && !t.message_id }));
     const ids = matchTransfers(inv.amount === null ? null : Number(inv.amount), inv.issued_on, open);
     if (!ids.length) continue;
     const rows = ids.map((tid) => ({ invoice_id: inv.id, transfer_id: tid, tenant_id: tenantId }));
@@ -326,7 +347,7 @@ async function matchAll(supabase: any, tenantId: string, payers: Payers, typeOf:
     if (!mine.length) continue;
     const warnings = invoiceWarnings(
       { docType: inv.doc_type, amount: inv.amount === null ? null : Number(inv.amount), vat: inv.vat === null ? null : Number(inv.vat), allocation: inv.allocation_number, issuedTo: inv.issued_to, issuedToId: inv.issued_to_id },
-      mine.map((t: any) => ({ amount: Number(t.amount), entity: t.entity as Entity | null })),
+      mine.map((t: any) => ({ amount: Number(t.amount), entity: t.entity as Entity | null, beforeVat: t.source === 'paid_mark' && !t.message_id })),
       payers,
       typeOf.get(inv.staff_member_name),
     );

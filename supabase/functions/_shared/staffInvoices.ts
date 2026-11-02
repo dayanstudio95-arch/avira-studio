@@ -92,6 +92,17 @@ export function invoiceTextFacts(text: unknown): TextFacts {
 
 // ---------------------------------------------------------------- the paying business
 
+/** Hebrew spelling varies ("אוירה" / "אווירה", "צלמים"): words compared without ו and י. */
+const words = (s: unknown) => norm(s).replace(/[וי]/g, '').split(' ').filter((w) => w.length >= 2);
+
+/** The same business name: every word of the shorter one in the other ("דיין דניאל-אווירה צלמים" has "דניאל דיין"). */
+export function sameName(a: unknown, b: unknown): boolean {
+  const [x, y] = [words(a), words(b)];
+  if (!x.length || !y.length) return false;
+  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
+  return short.every((w) => long.includes(w));
+}
+
 /** Which business a transfer came from, by the account or the name the bank screenshot shows. */
 export function payerOf(from: { account?: string; name?: string }, payers: Payers): Entity | null {
   const acc = digits(from.account);
@@ -103,7 +114,7 @@ export function payerOf(from: { account?: string; name?: string }, payers: Payer
   }
   for (const key of ENTITY_KEYS) {
     const p = payers[key];
-    if (p && name && norm(p.name) && (name.includes(norm(p.name)) || norm(p.name).includes(name))) return key;
+    if (p && name && sameName(p.name, name)) return key;
   }
   return null;
 }
@@ -116,6 +127,8 @@ export interface OpenTransfer {
   /** What its documents so far don't cover. */
   remaining: number;
   paid_on: string;
+  /** From "שולם" marks only: the cost before VAT, so its invoice may be that plus VAT. */
+  beforeVat?: boolean;
 }
 
 const close = (a: number, b: number) => Math.abs(a - b) <= 1;
@@ -131,7 +144,7 @@ export function matchTransfers(amount: number | null | undefined, issuedOn: stri
   if (!live.length) return [];
   if (amount === null || amount === undefined || !(amount > 0)) return live.length === 1 ? [live[0].id] : [];
   const byDate = (xs: OpenTransfer[]) => [...xs].sort((a, b) => dayGap(a.paid_on, issuedOn) - dayGap(b.paid_on, issuedOn));
-  const single = byDate(live.filter((t) => close(t.remaining, amount)));
+  const single = byDate(live.filter((t) => close(t.remaining, amount) || (t.beforeVat && close(round2(t.remaining * (1 + VAT_RATE)), amount))));
   if (single.length) return [single[0].id];
   const n = Math.min(live.length, 12);
   for (let i = 0; i < n; i++)
@@ -157,21 +170,21 @@ export interface InvoiceFacts {
 /** What the screen warns about a document: amount, the business it was issued to, allocation number, a receipt only. */
 export function invoiceWarnings(
   inv: InvoiceFacts,
-  linked: { amount: number; entity?: string | null }[],
+  linked: { amount: number; entity?: string | null; beforeVat?: boolean }[],
   payers: Payers,
   staffType: string | null | undefined,
 ): string[] {
   const out: string[] = [];
   const type = String(inv.docType ?? '');
   const isTaxInvoice = /חשבונית/.test(type);
-  const total = linked.reduce((s, t) => s + t.amount, 0);
+  const total = linked.reduce((s, t) => s + (t.beforeVat ? round2(t.amount * (1 + VAT_RATE)) : t.amount), 0);
   if (inv.amount && linked.length && !close(inv.amount, total) && inv.amount > total + 1)
     out.push(`הסכום במסמך (${fmtAmount(inv.amount)} ₪) גדול מההעברה (${fmtAmount(total)} ₪)`);
   const entity = linked.find((t) => t.entity)?.entity as Entity | undefined;
   const payer = entity ? payers[entity] : undefined;
   if (payer && (inv.issuedToId || inv.issuedTo)) {
     const idOk = inv.issuedToId ? digits(inv.issuedToId) === digits(payer.id) : null;
-    const nameOk = inv.issuedTo ? norm(inv.issuedTo).includes(norm(payer.name)) || norm(payer.name).includes(norm(inv.issuedTo)) : null;
+    const nameOk = inv.issuedTo ? sameName(inv.issuedTo, payer.name) : null;
     if (idOk === false || (idOk === null && nameOk === false)) out.push(`המסמך יצא על שם "${inv.issuedTo || inv.issuedToId}" — ההעברה יצאה מ${payer.name} (${payer.id})`);
   }
   if (staffType !== 'exempt' && isTaxInvoice && inv.amount) {
@@ -241,9 +254,23 @@ export function groupMarks(marks: PaidMark[]): { staff: string; paidOn: string; 
   return [...groups.values()];
 }
 
-/** The same transfer seen twice (a screenshot and "שולם" marks): same staff member, same amount, within 3 days. */
-export const sameTransfer = (a: { staff: string; amount: number; paidOn: string }, b: { staff: string; amount: number; paidOn: string }) =>
-  norm(a.staff) === norm(b.staff) && close(a.amount, b.amount) && dayGap(a.paidOn, b.paidOn) <= 3;
+/** How far apart a "שולם" mark and the bank transfer can be (the owner sometimes marks days later). */
+export const MARK_WINDOW_DAYS = 21;
+
+/**
+ * The screenshot transfer that "שולם" marks belong to: the same staff member's, nearest in date, whose amount is the
+ * marks' cost — or that plus VAT (an authorized dealer is paid cost + 18%) — within MARK_WINDOW_DAYS; else one made
+ * within 3 days of the marks. null = the marks are a payment of their own (no screenshot of it).
+ */
+export function screenshotOf(
+  marks: { staff: string; amount: number; paidOn: string },
+  shots: { id: string; staff: string; amount: number; paidOn: string }[],
+): string | null {
+  const mine = shots.filter((s) => norm(s.staff) === norm(marks.staff)).sort((a, b) => dayGap(a.paidOn, marks.paidOn) - dayGap(b.paidOn, marks.paidOn));
+  const byAmount = mine.find((s) => dayGap(s.paidOn, marks.paidOn) <= MARK_WINDOW_DAYS && (close(s.amount, marks.amount) || close(s.amount, round2(marks.amount * (1 + VAT_RATE)))));
+  if (byAmount) return byAmount.id;
+  return mine.find((s) => dayGap(s.paidOn, marks.paidOn) <= 3)?.id ?? null;
+}
 
 // ---------------------------------------------------------------- reminders
 

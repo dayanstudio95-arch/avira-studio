@@ -3602,7 +3602,26 @@ console.log('\n— PART 75: album group messages + list order —');
   ];
   const marks = si.paidMarks(events, '2026-10-01', new Set(['e1|editor']));
   check('"שולם" marks from 1/10, not the unpaid, not one already in a transfer; one staff member and day = one transfer (by Israel day)', si.groupMarks(marks).map((g) => [g.staff, g.paidOn, g.amount, g.marks.length]), [['איילון', '2026-10-27', 1200, 1], ['איילון', '2026-10-28', 1200, 1]]);
-  check('a screenshot and the marks of the same transfer', [si.sameTransfer({ staff: 'איילון', amount: 2400, paidOn: '2026-10-27' }, { staff: ' איילון', amount: 2400, paidOn: '2026-10-29' }), si.sameTransfer({ staff: 'איילון', amount: 2400, paidOn: '2026-10-27' }, { staff: 'איילון', amount: 2400, paidOn: '2026-11-03' })], [true, false]);
+  // The owner's real cases (2026-11-02): marks are the cost before VAT, the transfer cost + 18%, marked days apart.
+  const shots = [
+    { id: 'ay15', staff: 'איילון', amount: 7080, paidOn: '2026-10-15' },
+    { id: 'ro15', staff: 'רותם נחמני', amount: 2124, paidOn: '2026-10-15' },
+    { id: 'dr19', staff: 'דרור', amount: 15576, paidOn: '2026-10-19' },
+    { id: 'am28', staff: 'אמיר', amount: 1600, paidOn: '2026-10-28' },
+    { id: 'al11', staff: 'אלכס', amount: 2360, paidOn: '2026-10-11' },
+  ];
+  check('"שולם" marks and the screenshot of the same payment: cost or cost + VAT within 3 weeks, else within 3 days', [
+    si.screenshotOf({ staff: 'איילון', amount: 6000, paidOn: '2026-10-15' }, shots),
+    si.screenshotOf({ staff: 'רותם נחמני', amount: 1800, paidOn: '2026-10-26' }, shots),
+    si.screenshotOf({ staff: 'דרור', amount: 13200, paidOn: '2026-10-26' }, shots),
+    si.screenshotOf({ staff: 'אמיר', amount: 1800, paidOn: '2026-10-28' }, shots),
+    si.screenshotOf({ staff: 'אלכס', amount: 2000, paidOn: '2026-11-15' }, shots),
+    si.screenshotOf({ staff: 'רודי', amount: 19800, paidOn: '2026-10-09' }, shots),
+  ], ['ay15', 'ro15', 'dr19', 'am28', null, null]);
+  check('an invoice of cost + VAT closes a "שולם" transfer (cost before VAT)', si.matchTransfers(2124, '2026-10-29', [{ id: 'm', amount: 1800, remaining: 1800, paid_on: '2026-10-28', beforeVat: true }]), ['m']);
+  check('no "larger than the transfer" warning for cost + VAT on a "שולם" transfer', si.invoiceWarnings({ docType: 'חשבונית מס קבלה', amount: 2124, vat: 324 }, [{ amount: 1800, beforeVat: true }], {}, 'authorized'), []);
+  check('business names spelled differently', [si.sameName('דיין דניאל-אווירה צלמים', 'דניאל דיין'), si.sameName("אוירה מדיה צילום בע'מ", 'אווירה מדיה צילום בע"מ'), si.sameName('אווירה בגים', 'אווירה מדיה צילום בע"מ'), si.payerOf({ name: 'דיין דניאל-אווירה צלמים' }, payers)], [true, true, false, 'sole_prop']);
+  check('Amir\'s receipt to "אוירה … בע\'מ" is the company: no warning', si.invoiceWarnings({ docType: 'קבלה', amount: 1600, issuedTo: "אוירה מדיה צילום בע'מ" }, [{ amount: 1600, entity: 'company' }], payers, 'exempt'), []);
   const t0 = { status: 'waiting', reminders_on: true, reminders_sent: 0, last_reminder_at: null, paid_on: '2026-10-27' };
   check('reminders after 3 and 7 days, once each, never on an old or a closed transfer', [
     si.reminderDue(t0, new Date('2026-10-29T12:00:00+02:00')),
