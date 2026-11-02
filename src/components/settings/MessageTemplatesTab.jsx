@@ -216,6 +216,14 @@ const TEMPLATES = [
     variables: ["{{names}}", "{{link}}", "{{expires}}", "{{event_date}}", "{{venue}}", "{{album_guide_link}}"],
   },
   {
+    // Mirrors DEFAULT_REMINDER_TEMPLATE in supabase/functions/_shared/staffInvoices.ts and src/lib/staffInvoices.js
+    key: "template_staff_invoice_reminder",
+    label: "תזכורת לאיש צוות לשלוח חשבונית",
+    description: "נשלחת לבד לאיש צוות שלא שלח חשבונית / קבלה, 3 ו-7 ימים אחרי ההעברה (ימים א׳–ה׳, 10:00–18:00), וגם מהכפתור \"תזכורת עכשיו\" במסך חשבוניות מהצוות. {date} = יום ההעברה, {amount} = הסכום.",
+    defaultValue: `היי {staff_name}, תזכורת קטנה 🙏\nעדיין לא קיבלתי חשבונית / קבלה על ההעברה מ-{date} על סך {amount} ₪.\nאפשר לשלוח לי כאן בוואטסאפ? תודה!`,
+    variables: ["{staff_name}", "{date}", "{amount}"],
+  },
+  {
     // Mirrors DEFAULT_PHOTOGRAPHER_PAGE_MESSAGE in src/components/chat/SendPhotographerPageButton.jsx
     key: "template_photographer_page",
     label: "שליחת דף צלם לזוג",

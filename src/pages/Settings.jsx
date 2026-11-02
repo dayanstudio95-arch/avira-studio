@@ -616,6 +616,26 @@ export default function Settings() {
                           <Label>אימייל (לזימון יומן)</Label>
                           <Input type="email" value={editStaffData.email || ""} onChange={(e) => setEditStaffData({...editStaffData, email: e.target.value})} placeholder="example@email.com" className="bg-gray-800 border-gray-700 text-white" />
                         </div>
+                        {/* "חשבוניות מהצוות" (2026-11-02, 0106): what document he issues, and how he is paid. */}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-2">
+                            <Label>סוג עוסק (לחשבוניות)</Label>
+                            <select value={editStaffData.invoiceType || ""} onChange={(e) => setEditStaffData({...editStaffData, invoiceType: e.target.value || null})} className="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white" data-testid="staff-invoice-type">
+                              <option value="">לא צוין</option>
+                              <option value="authorized">עוסק מורשה — חשבונית מס</option>
+                              <option value="exempt">עוסק פטור — קבלה</option>
+                              <option value="none">לא מוציא מסמכים (לפי הסכם)</option>
+                            </select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label>תדירות תשלום</Label>
+                            <select value={editStaffData.payCycle || ""} onChange={(e) => setEditStaffData({...editStaffData, payCycle: e.target.value || null})} className="w-full rounded-md border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white">
+                              <option value="">לא צוין</option>
+                              <option value="per_event">אחרי כל אירוע</option>
+                              <option value="monthly">בסוף החודש</option>
+                            </select>
+                          </div>
+                        </div>
                         <div className="space-y-2 border-t border-gray-800 pt-4">
                           <Label>תיקון תעריף רטרואקטיבי (אופציונלי)</Label>
                           <p className="text-xs text-gray-500">

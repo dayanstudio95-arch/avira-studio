@@ -32,6 +32,8 @@ const ProgressStatus = lazy(() => import('./pages/ProgressStatus'));
 const Reports = lazy(() => import('./pages/Reports'));
 const Payments = lazy(() => import('./pages/Payments'));
 const AllInvoicesPage = lazy(() => import('./pages/AllInvoicesPage'));
+// Every transfer to a team member with the invoice that closes it (2026-11-02; 0106).
+const StaffInvoices = lazy(() => import('./pages/StaffInvoices'));
 const ContractPage = lazy(() => import('./pages/ContractPage'));
 const EventQuestionnaire = lazy(() => import('./pages/EventQuestionnaire'));
 const Login = lazy(() => import('./pages/Login'));
@@ -263,6 +265,7 @@ const AuthenticatedApp = () => {
           <Route path="/Reports" element={<Reports />} />
           <Route path="/Payments" element={<Payments />} />
           <Route path="/AllInvoicesPage" element={<AllInvoicesPage />} />
+          <Route path="/StaffInvoices" element={<StaffInvoices />} />
           <Route path="/Settings" element={<Settings />} />
           <Route path="/AutomationsDashboard" element={<AutomationsDashboard />} />
           <Route path="/GoogleCalendarSync" element={<GoogleCalendarSync />} />

@@ -81,6 +81,8 @@ const FUNCTION_MAP = {
 
   // Automation engine + approval workflow
   automationEngine: 'automation-engine',
+  // "חשבוניות מהצוות" (2026-11-02): the screen's scan of the staff chats (0106).
+  staffInvoices: 'staff-invoices',
   approvePendingAutomation: 'approve-pending-automation',
 
   // Morning / Green Invoice — supports two business entities (sole_prop / company),

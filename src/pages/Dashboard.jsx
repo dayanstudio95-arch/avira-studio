@@ -13,6 +13,7 @@ import DashboardWorkStatusCard from "../components/dashboard/DashboardWorkStatus
 import DashboardMissingTeamCard from "../components/dashboard/DashboardMissingTeamCard";
 import TodayEventsCard from "../components/dashboard/TodayEventsCard";
 import FinanceCard from "../components/dashboard/FinanceCard";
+import StaffInvoicesBanner from "../components/dashboard/StaffInvoicesBanner";
 import { MeetingsTodayCard, WhatsAppPulseCard, FollowUpCard, PostSignCard } from "../components/dashboard/DailyPulseCards";
 import { israelToday, eventDay } from "@/lib/missingTeam";
 import { useQuery } from "@tanstack/react-query";
@@ -376,6 +377,8 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+
+        <StaffInvoicesBanner />
 
         {isMobile ? (
           // The phone, 2026-10-24 (the owner's order): today, the couples mid-process, money

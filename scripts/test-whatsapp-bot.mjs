@@ -3544,6 +3544,81 @@ console.log('\n— PART 75: album group messages + list order —');
 }
 
 {
+  section('"חשבוניות מהצוות" (2026-11-02, 0106)');
+  const si = await loadModule('supabase/functions/_shared/staffInvoices.ts', 'si80');
+  // The links staff members really send (shapes from the owner's screenshots; ids made up).
+  check('Morning, SmartBee, iCount: the PDF itself; Paperless, Invoice4U: a page', [
+    si.invoiceLink('קיבלת חשבונית מס / קבלה 60145 מדודו פרץ - צילום ועריכת וידאו https://mrng.to/ZFieVbYffs\r\nכדאי לדעת'),
+    si.invoiceLink("קישור ל חשבונית מס קבלה מס' 500284 על סך 2,124.00₪ https://smartbee.co.il/public/files/abc/1.def/500284_Original.pdf"),
+    si.invoiceLink('קיבלת חשבונית מס קבלה ממלינקוב אילון: https://www.paperless.tax/invoice?sID=5aoP5DL-wkPo'),
+    si.invoiceLink('חשבונית מס קבלה מספר 70156 התקבלה מ "משה". לפתיחה לחץ כאן: https://newview.invoice4u.co.il/Views/NewViewMobile.aspx?docid=9853&docNumber=70156&original=true'),
+  ].map((l) => l && [l.provider, l.direct]), [['morning', true], ['smartbee', true], ['paperless', false], ['invoice4u', false]]);
+  check('the Morning link without the line break after it', si.invoiceLink('קבלה https://mrng.to/8eHCIMZa3t\nחשוב לדעת').url, 'https://mrng.to/8eHCIMZa3t');
+  check('photo deliveries and plain links are not invoices', [si.invoiceLink('מצלמה 1 https://mab.to/t/65QPz65Ccsm/eu2'), si.invoiceLink('https://example.com/x'), si.invoiceLink('הנה הקבלה https://drive.google.com/x')], [null, null, null]);
+  check('an unknown provider next to "קבלה": kept as a page to save by hand', si.invoiceLink('הנה הקבלה שלך https://docs.example-invoices.co.il/d/42'), { url: 'https://docs.example-invoices.co.il/d/42', provider: 'other', direct: false });
+  check('what the message itself says', [
+    si.invoiceTextFacts("קישור ל חשבונית מס קבלה מס' 500284 על סך 2,124.00₪ https://x"),
+    si.invoiceTextFacts('קיבלת חשבונית מס / קבלה 60145 מדודו פרץ https://mrng.to/a מספר הקצאה 202611011200588 3330508875 1'),
+    si.invoiceTextFacts('קיבלת קבלה מספר 80020 מאייל ברוך'),
+  ], [
+    { docType: 'חשבונית מס קבלה', docNumber: '500284', amount: 2124 },
+    { docType: 'חשבונית מס קבלה', docNumber: '60145', allocation: '20261101120058833305088751' },
+    { docType: 'קבלה', docNumber: '80020' },
+  ]);
+  const payers = { company: { name: 'אווירה מדיה צילום בע"מ', id: '517309670', accounts: ['615-027088'] }, sole_prop: { name: 'דניאל דיין', id: '313569964', accounts: ['540-482994'] } };
+  check('the paying business from the screenshot: the account, else the name', [
+    si.payerOf({ account: 'מספר סניף וחשבון: 615-027088', name: 'אווירה מדיה צילום בע"מ' }, payers),
+    si.payerOf({ account: '540-482994', name: 'דיין דניאל-אווירה צלמים' }, payers),
+    si.payerOf({ name: 'אווירה מדיה צילום בעמ' }, payers),
+    si.payerOf({ account: '12-345678' }, payers),
+  ], ['company', 'sole_prop', 'company', null]);
+  const open = [
+    { id: 'a', amount: 1800, remaining: 1800, paid_on: '2026-10-27' },
+    { id: 'b', amount: 324, remaining: 324, paid_on: '2026-10-28' },
+    { id: 'c', amount: 4248, remaining: 4248, paid_on: '2026-10-28' },
+    { id: 'd', amount: 2400, remaining: 2400, paid_on: '2026-10-19' },
+  ];
+  check('one transfer; a transfer and its VAT top-up together (1,800 + 324 = 2,124); one of two invoices; no match', [
+    si.matchTransfers(4248, '2026-10-29', open),
+    si.matchTransfers(2124, '2026-10-30', open),
+    si.matchTransfers(1200, '2026-10-20', [open[3]]),
+    si.matchTransfers(999, '2026-10-20', open),
+  ], [['c'], ['a', 'b'], ['d'], []]);
+  check('no amount: the only open transfer, else the owner chooses', [si.matchTransfers(null, null, [open[0]]), si.matchTransfers(null, null, open)], [['a'], []]);
+  check('the checks', [
+    si.invoiceWarnings({ docType: 'חשבונית מס קבלה', amount: 4248, vat: 648, issuedTo: 'אווירה מדיה צילום בע"מ', issuedToId: '517309670' }, [{ amount: 4248, entity: 'company' }], payers, 'authorized'),
+    si.invoiceWarnings({ docType: 'חשבונית מס', amount: 1200, vat: 183, issuedTo: 'דניאל דיין', issuedToId: '313569964' }, [{ amount: 1200, entity: 'company' }], payers, 'authorized').length,
+    si.invoiceWarnings({ docType: 'חשבונית מס קבלה', amount: 7080, vat: 1080 }, [{ amount: 7080 }], payers, 'authorized').length,
+    si.invoiceWarnings({ docType: 'חשבונית מס קבלה', amount: 7080, vat: 1080, allocation: '123456789' }, [{ amount: 7080 }], payers, 'authorized'),
+    si.invoiceWarnings({ docType: 'קבלה', amount: 2000 }, [{ amount: 2000 }], payers, 'authorized').length,
+    si.invoiceWarnings({ docType: 'קבלה', amount: 2000 }, [{ amount: 2000 }], payers, 'exempt'),
+    si.invoiceWarnings({ docType: 'חשבונית מס', amount: 3000, vat: 457 }, [{ amount: 2124 }], payers, 'authorized').length,
+  ], [[], 1, 1, [], 1, [], 1]);
+  check('VAT inside 2,400 ₪', si.vatInside(2400), 366.1);
+  const events = [
+    { id: 'e1', date: '2026-10-24', venue: 'טרויה', team: [{ staffMemberName: 'איילון', role: 'photographer2', cost: 1200, isPaid: true, paidAt: '2026-10-27T15:00:00Z' }, { staffMemberName: 'דרור', role: 'editor', cost: 600, isPaid: true, paidAt: '2026-10-27T15:01:00Z' }] },
+    { id: 'e2', date: '2026-10-26', venue: 'עדיה', team: [{ staffMemberName: 'איילון', role: 'photographer2', cost: 1200, isPaid: true, paidAt: '2026-10-27T22:30:00Z' }, { staffMemberName: 'רודי', role: 'videographer', cost: 1500, isPaid: false }] },
+    { id: 'e3', date: '2026-09-10', venue: 'ישן', team: [{ staffMemberName: 'איילון', role: 'photographer1', cost: 1500, isPaid: true, paidAt: '2026-09-12T10:00:00Z' }] },
+  ];
+  const marks = si.paidMarks(events, '2026-10-01', new Set(['e1|editor']));
+  check('"שולם" marks from 1/10, not the unpaid, not one already in a transfer; one staff member and day = one transfer (by Israel day)', si.groupMarks(marks).map((g) => [g.staff, g.paidOn, g.amount, g.marks.length]), [['איילון', '2026-10-27', 1200, 1], ['איילון', '2026-10-28', 1200, 1]]);
+  check('a screenshot and the marks of the same transfer', [si.sameTransfer({ staff: 'איילון', amount: 2400, paidOn: '2026-10-27' }, { staff: ' איילון', amount: 2400, paidOn: '2026-10-29' }), si.sameTransfer({ staff: 'איילון', amount: 2400, paidOn: '2026-10-27' }, { staff: 'איילון', amount: 2400, paidOn: '2026-11-03' })], [true, false]);
+  const t0 = { status: 'waiting', reminders_on: true, reminders_sent: 0, last_reminder_at: null, paid_on: '2026-10-27' };
+  check('reminders after 3 and 7 days, once each, never on an old or a closed transfer', [
+    si.reminderDue(t0, new Date('2026-10-29T12:00:00+02:00')),
+    si.reminderDue(t0, new Date('2026-10-30T12:00:00+02:00')),
+    si.reminderDue({ ...t0, reminders_sent: 1, last_reminder_at: '2026-10-30T10:00:00Z' }, new Date('2026-11-01T12:00:00+02:00')),
+    si.reminderDue({ ...t0, reminders_sent: 1, last_reminder_at: '2026-10-30T10:00:00Z' }, new Date('2026-11-03T12:00:00+02:00')),
+    si.reminderDue({ ...t0, reminders_sent: 2 }, new Date('2026-12-01T12:00:00+02:00')),
+    si.reminderDue({ ...t0, reminders_on: false }, new Date('2026-11-03T12:00:00+02:00')),
+    si.reminderDue({ ...t0, status: 'received' }, new Date('2026-11-03T12:00:00+02:00')),
+  ], [false, true, false, true, false, false, false]);
+  check('reminders on working hours only', [si.reminderHours(new Date('2026-11-02T11:00:00+02:00')), si.reminderHours(new Date('2026-11-02T20:00:00+02:00')), si.reminderHours(new Date('2026-11-06T11:00:00+02:00')), si.reminderHours(new Date('2026-11-07T12:00:00+02:00'))], [true, false, false, false]);
+  check('the reminder', si.reminderText(null, { name: 'איילון', amount: 2400, paidOn: '2026-10-27' }), 'היי איילון, תזכורת קטנה 🙏\nעדיין לא קיבלתי חשבונית / קבלה על ההעברה מ-27/10 על סך 2,400 ₪.\nאפשר לשלוח לי כאן בוואטסאפ? תודה!');
+  check('a chat and a team member', [si.last9('972523699501@c.us'), si.last9('052-369-9501')], ['523699501', '523699501']);
+}
+
+{
   // Production gives a new table no privileges at all (0103): 0101 and 0102 passed staging and failed live. Every table
   // a migration from 0101 on creates must grant itself to the service role (the Worker / Edge Functions) explicitly.
   section('every new table grants itself (2026-11-02, 0103)');

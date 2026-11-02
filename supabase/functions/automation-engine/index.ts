@@ -45,6 +45,7 @@ import { alertStuckMessages, purgeOldMedia } from '../_shared/whatsappStatus.ts'
 import { DAILY_BRIEF_DEFAULT_TEMPLATE, findBriefLead, dailyBriefVars } from '../_shared/eventBrief.ts';
 import { sendPush } from '../_shared/webPush.ts';
 import { israelToday, renderStaffSchedule, staffSchedule } from '../_shared/staffSchedule.ts';
+import { runStaffInvoices } from '../_shared/staffInvoicesScan.ts';
 import { refreshAvatars } from '../_shared/whatsappAvatars.ts';
 
 function getTargetMonth(mode: string) {
@@ -1393,7 +1394,14 @@ Deno.serve(async (req) => {
       } catch (e: any) {
         console.error('[automationEngine] avatar refresh failed for tenant', t.id, e?.message || e);
       }
-      perTenantResults.push({ tenant_id: t.id, ...result, whatsapp, stuckAlerts, mediaPurged, avatars });
+      // "חשבוניות מהצוות" (2026-11-02): the staff chats read, documents matched, reminders sent (_shared/staffInvoicesScan.ts).
+      let staffInvoices = null;
+      try {
+        staffInvoices = await runStaffInvoices(supabase, t.id, { maxReads: 6, remind: true });
+      } catch (e: any) {
+        console.error('[automationEngine] staff invoices failed for tenant', t.id, e?.message || e);
+      }
+      perTenantResults.push({ tenant_id: t.id, ...result, whatsapp, stuckAlerts, mediaPurged, avatars, staffInvoices });
     }
 
     return jsonResponse({ success: true, tenants: perTenantResults.length, results: perTenantResults });
