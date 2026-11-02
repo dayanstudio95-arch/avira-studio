@@ -960,6 +960,34 @@ export class MemoryStore implements Store {
     return [...this.galleries.values()].filter((g) => g.tenantId === tenantId && g.folderUrl === folderUrl).map((g) => g.id);
   }
 
+  /** Photographer pages (Avira 0102): seeded by tests. */
+  photographerPages = new Map<string, import('./photographerPage').PhotographerPage>();
+  testimonials = new Map<string, import('./photographerPage').PhotographerTestimonial[]>();
+  pageViews = new Map<string, number>();
+  eventTeams = new Map<string, { tenantId: string; photographer: string }>();
+  objects = new Map<string, { body: ArrayBuffer; type: string }>();
+  async getPhotographerPage(token: string) {
+    for (const p of this.photographerPages.values()) if (p.token === token) return structuredClone(p);
+    return null;
+  }
+  async photographerTestimonials(pageId: string) {
+    return structuredClone([...(this.testimonials.get(pageId) ?? [])].sort((a, b) => a.sort - b.sort));
+  }
+  async photographerPageSeen(pageId: string) {
+    this.pageViews.set(pageId, (this.pageViews.get(pageId) ?? 0) + 1);
+  }
+  async eventPhotographers(tenantId: string, eventIds: string[]) {
+    const out: Record<string, string> = {};
+    for (const id of eventIds) {
+      const e = this.eventTeams.get(id);
+      if (e && e.tenantId === tenantId && e.photographer) out[id] = e.photographer;
+    }
+    return out;
+  }
+  async storageObject(bucket: string, path: string) {
+    return this.objects.get(`${bucket}/${path}`) ?? null;
+  }
+
   /** The galleries gallery-choice-notify would have been called for (Avira, 0099). */
   choiceNotified: string[] = [];
   async notifyChoice(galleryId: string): Promise<'sent' | 'skipped' | 'failed'> {

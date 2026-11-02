@@ -158,8 +158,9 @@ function applyInput(g: Gallery, input: GalleryInput, settings: Settings, env: En
     g.date = date;
   }
   if (input.venue !== undefined) g.venue = String(input.venue).trim() || undefined;
-  if (input.hideDate !== undefined) g.hideDate = input.hideDate === true;
-  if (input.hideVenue !== undefined) g.hideVenue = input.hideVenue === true;
+  // Off is "not set" (as the database reads it back), so every copy of the list agrees (0102 lists them).
+  if (input.hideDate !== undefined) g.hideDate = input.hideDate === true || undefined;
+  if (input.hideVenue !== undefined) g.hideVenue = input.hideVenue === true || undefined;
   if (input.photographer !== undefined) g.photographer = String(input.photographer ?? '').replace(/\s+/g, ' ').trim().slice(0, 80) || undefined;
   // Off is "not set" (as the database reads it back), so the list's copies always agree.
   if (input.studioFavorite !== undefined) g.studioFavorite = input.studioFavorite === true || undefined;

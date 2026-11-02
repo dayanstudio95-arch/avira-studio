@@ -3,6 +3,7 @@ import { contractViewInfo } from "@/lib/contractViews";
 import { Link } from "react-router-dom";
 import ClientActionsCard from "./ClientActionsCard";
 import SendContractButton from "./SendContractButton";
+import SendPhotographerPageButton from "./SendPhotographerPageButton";
 import { Switch } from "@/components/ui/switch";
 import { CONTACT_TYPES, STAGES, contactTypeLabel, effectiveStage, hasStage } from "@/lib/chatModel";
 import { Avatar, conversationTitle } from "./ChatList";
@@ -149,6 +150,9 @@ export default function ContactPanel({
         )
       )}
       {["client", "past_client"].includes(c.contactType) && <ClientActionsCard key={c.id} conversation={c} />}
+      {["unknown", "lead", "client", "past_client"].includes(c.contactType) && (canSeeStaff || user?.role === "lead_coordinator") && (
+        <SendPhotographerPageButton key={`pp-${c.id}`} conversation={c} names={(linked && lead.coupleNames) || c.coupleNames || ""} />
+      )}
       {onScheduleMeeting && (
         <button type="button" onClick={onScheduleMeeting} className="w-full rounded-xl border border-gray-700 bg-gray-900 py-3 text-sm font-semibold text-gray-100 hover:border-yellow-500">
           📅 קבע פגישה / שיחה

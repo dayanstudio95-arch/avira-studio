@@ -216,6 +216,14 @@ const TEMPLATES = [
     variables: ["{{names}}", "{{link}}", "{{expires}}", "{{event_date}}", "{{venue}}", "{{album_guide_link}}"],
   },
   {
+    // Mirrors DEFAULT_PHOTOGRAPHER_PAGE_MESSAGE in src/components/chat/SendPhotographerPageButton.jsx
+    key: "template_photographer_page",
+    label: "שליחת דף צלם לזוג",
+    description: "ההודעה מהכפתור \"שליחת דף צלם\" בצ'אט (הדפים עצמם: גלריות ← דפי צלמים). {{photographer}} = השם בדף, {{link}} = הקישור לדף. לפני השליחה אפשר לערוך.",
+    defaultValue: `היי {{names}} 😊\nכמו שביקשתם, הנה הדף של {{photographer}} — חתונות שצילמנו והמלצות של זוגות:\n{{link}}\nנשמח לשמוע מה דעתכם! אווירה סטודיו`,
+    variables: ["{{names}}", "{{photographer}}", "{{link}}"],
+  },
+  {
     // Mirrors DEFAULT_GALLERY_CHOICE_TEMPLATE in supabase/functions/_shared/galleryChoice.ts
     key: "template_gallery_choice_group",
     label: "זוג סיים לבחור תמונות לאלבום (בגלריה שלנו)",

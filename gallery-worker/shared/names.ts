@@ -53,3 +53,15 @@ export function coupleMatches(coupleName: string, query: string): boolean {
   const theirs = people(coupleName);
   return asked.every((a) => theirs.some((t) => t.includes(a)));
 }
+
+/**
+ * The couple's first names only, for a page other couples see (Avira, 2026-11-02): "דניאל וייס & רונית כהן" →
+ * "דניאל & רונית"; "דניאלה ודן" → "דניאלה & דן".
+ */
+export function firstNames(coupleName: string): string {
+  return withAmpersand(String(coupleName || '').replace(/\s*\([^)]*\)\s*/g, ' '))
+    .split(/\s*&\s*/)
+    .map((p) => p.trim().split(/\s+/)[0] ?? '')
+    .filter(Boolean)
+    .join(' & ');
+}

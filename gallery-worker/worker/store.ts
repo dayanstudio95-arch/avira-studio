@@ -465,6 +465,14 @@ export interface Store {
   cancelDriveTasks(galleryId: string, kind: import('./driveTasks').DriveTaskKind): Promise<number>;
   /** The studio's galleries (the trash too) that read this folder link. */
   folderUsers(tenantId: string, folderUrl: string): Promise<string[]>;
+  /** Photographer landing pages (Avira 0102, worker/photographerPage.ts). */
+  getPhotographerPage(token: string): Promise<import('./photographerPage').PhotographerPage | null>;
+  photographerTestimonials(pageId: string): Promise<import('./photographerPage').PhotographerTestimonial[]>;
+  photographerPageSeen(pageId: string): Promise<void>;
+  /** Each event's "צלם 1" (photographer1), by event id. */
+  eventPhotographers(tenantId: string, eventIds: string[]): Promise<Record<string, string>>;
+  /** A file from a private Storage bucket (the photographers' photos and screenshots), or null. */
+  storageObject(bucket: string, path: string): Promise<{ body: ArrayBuffer; type: string } | null>;
   /**
    * An email to the studio's active owners through the platform's own mail (the films-link-alert function, which
    * sends only from the verified sender of fix plan P11-b): 'sent', 'skipped' (no verified sender, or no owner email)
@@ -528,6 +536,8 @@ export const GALLERY_LIST_FIELDS = [
   // Avira 0099: the list's "בחירה לאלבום" column; 0100: its photographer column and search, and the studio's star;
   // 0101: whether its folder is on Google Drive (the Drive helper's words and states).
   'choiceDoneAt', 'choiceDoneCount', 'photographer', 'studioFavorite', 'folderProvider',
+  // 0102: what the photographer page shows of a wedding.
+  'hideDate', 'hideVenue',
 ] as const satisfies readonly (keyof Gallery)[];
 
 /** A gallery as the list reads it (MemoryStore's copy of SupabaseStore's column list). */

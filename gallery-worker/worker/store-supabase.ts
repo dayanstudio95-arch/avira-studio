@@ -859,6 +859,59 @@ export class SupabaseStore implements Store {
     return rows.map((r) => String(r.id));
   }
 
+  async getPhotographerPage(token: string): Promise<import('./photographerPage').PhotographerPage | null> {
+    const [r] = await this.rows(`/rest/v1/photographer_pages?token=eq.${encodeURIComponent(token)}&select=*`);
+    if (!r) return null;
+    return {
+      id: String(r.id),
+      tenantId: String(r.tenant_id),
+      staffName: String(r.staff_name ?? ''),
+      ...(r.display_name ? { displayName: String(r.display_name) } : {}),
+      ...(r.bio ? { bio: String(r.bio) } : {}),
+      ...(r.photo_path ? { photoPath: String(r.photo_path) } : {}),
+      token: String(r.token),
+      published: r.published !== false,
+      hiddenGalleries: Array.isArray(r.hidden_galleries) ? (r.hidden_galleries as unknown[]).map(String) : [],
+      fullGalleries: Array.isArray(r.full_galleries) ? (r.full_galleries as unknown[]).map(String) : [],
+    };
+  }
+
+  async photographerTestimonials(pageId: string): Promise<import('./photographerPage').PhotographerTestimonial[]> {
+    const rows = await this.rows(`/rest/v1/photographer_testimonials?page_id=eq.${encodeURIComponent(pageId)}&select=id,body,couple_name,image_path,sort&order=sort.asc,created_at.asc`);
+    return rows.map((r) => ({
+      id: String(r.id),
+      ...(r.body ? { body: String(r.body) } : {}),
+      ...(r.couple_name ? { coupleName: String(r.couple_name) } : {}),
+      ...(r.image_path ? { imagePath: String(r.image_path) } : {}),
+      sort: Number(r.sort ?? 0),
+    }));
+  }
+
+  async photographerPageSeen(pageId: string): Promise<void> {
+    await this.write('/rest/v1/rpc/photographer_page_seen', 'POST', { p_id: pageId }, 'return=minimal');
+  }
+
+  async eventPhotographers(tenantId: string, eventIds: string[]): Promise<Record<string, string>> {
+    const ids = [...new Set(eventIds)].filter((id) => /^[0-9a-f-]{36}$/i.test(id));
+    if (!ids.length) return {};
+    const rows = await this.rows(`/rest/v1/events?tenant_id=eq.${encodeURIComponent(tenantId)}&id=in.(${ids.join(',')})&select=id,team`);
+    const out: Record<string, string> = {};
+    for (const r of rows) {
+      const team = Array.isArray(r.team) ? (r.team as { role?: string; staffMemberName?: string }[]) : [];
+      const name = team.find((m) => m?.role === 'photographer1')?.staffMemberName;
+      if (name) out[String(r.id)] = String(name);
+    }
+    return out;
+  }
+
+  async storageObject(bucket: string, path: string): Promise<{ body: ArrayBuffer; type: string } | null> {
+    const res = await this.fetch(`${this.url.replace(/\/$/, '')}/storage/v1/object/${encodeURIComponent(bucket)}/${path.split('/').map(encodeURIComponent).join('/')}`, {
+      headers: { apikey: this.key, Authorization: `Bearer ${this.key}` },
+    });
+    if (!res.ok) return null;
+    return { body: await res.arrayBuffer(), type: res.headers.get('Content-Type') || 'image/jpeg' };
+  }
+
   async faceStates(tenantId: string): Promise<string[]> {
     const rows = await this.allRows(`/rest/v1/films_photos?tenant_id=eq.${encodeURIComponent(tenantId)}&select=gallery_id,on:data->faceSearch`);
     return rows.filter((r) => r.on === true).map((r) => String(r.gallery_id));
@@ -1032,7 +1085,7 @@ const LIST_COLUMN: Partial<Record<keyof Gallery, string>> = {
   deletedAt: 'deleted_at', coverKey: 'cover_key', hasThumb: 'has_thumb', views: 'views', guestViews: 'guest_views', downloads: 'downloads',
   coverVersion: 'cover_version', photosGen: 'photos_gen', eventId: 'event_id',
   choiceDoneAt: 'choice_done_at', choiceDoneCount: 'choice_done_count', photographer: 'photographer', studioFavorite: 'studio_favorite',
-  folderProvider: 'folder_provider',
+  folderProvider: 'folder_provider', hideDate: 'hide_date', hideVenue: 'hide_venue',
 };
 const LIST_COLUMNS = GALLERY_LIST_FIELDS.map((k) => LIST_COLUMN[k]).join(',');
 
@@ -1073,7 +1126,7 @@ const GALLERY_COLUMNS: Record<keyof GalleryFields, [string, (v: never) => unknow
 };
 
 /** Written only when it has a value: a copy read before the column existed never clears it. */
-const ONLY_WHEN_SET = new Set<keyof GalleryFields>(['coverVersion', 'hideDate', 'hideVenue', 'guestHiddenSets']);
+const ONLY_WHEN_SET = new Set<keyof GalleryFields>(['coverVersion', 'guestHiddenSets']);
 
 /** Only the fields present in `fields` (a field set to undefined is cleared, never skipped). */
 function galleryColumns(fields: GalleryFields): Row {

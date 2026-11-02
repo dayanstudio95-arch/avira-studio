@@ -37,6 +37,7 @@ import {
 import { applyPhotoEdits, cachedPreview, cachedSize, chosenLost, cleanWho, coverOf, downloadFailedPage, editPhotos, favoritesFrom, fetchOriginalStart, heartsFor, listPhotos, mergePhotoData, nextGen, photoDoc, photoResponse, publicPhotos, readsThroughDropbox, sharedLinkReplaced, withoutPreviewWarning } from './photos';
 import { askedVersion, choicePhotoBase, photoBase, photoPath, printPhotoBase } from '../shared/photoUrl';
 import { queueDriveTrash, queueStarMove, STARRED_WORDS } from './driveTasks';
+import { isPageToken, pageWeddings, PHOTOGRAPHER_BUCKET, weddingCard, weddingPhotos, weddingRef, type PhotographerPage } from './photographerPage';
 import { exifTakenAt, normalizeLabel, pictureKind, xmpLabel } from '../shared/exif';
 import { datesBatchSize } from '../shared/photosets';
 import { resolveFile, resolveFolder } from './providers';
@@ -44,7 +45,7 @@ import { accountName, dropboxError, exchangeCode, forgetAccessToken, oauthAuthor
 import { filmIssues } from './linkCheck';
 import { CONNECTION_PROVIDERS } from '../shared/providers';
 import { streamFilm, streamFolderZip } from './providers/stream';
-import { adminView, getSettings, musicUrl, normalizeSocial, studioNameOf } from './settings';
+import { adminView, getSettings, musicUrl, normalizeSocial, studioNameOf, whatsappNumber } from './settings';
 import { MIT4MIT_DECLARATION, fetchMit4mitReviews, isMit4mitUrl, mit4mitBizId } from './mit4mit';
 import { ADMIN_UPLOADS_PER_HOUR, checkTurnstile, cleanReviews, clientIp, getStudioPage, leadLimits, mergeImport, publicStudio, rateLimit, saveStudioPage, validateLead } from './studio';
 import { DROPBOX_SECRET, MAX_LISTS, storeFor, studioChanges, type FilmsStudio, type Store, type StudioUser, type TenantInfo } from './store';
@@ -1944,6 +1945,108 @@ async function choicePhoto({ request, env, store, params, url, waitUntil }: Ctx)
 }
 route('GET', '/api/choice/:token/photo/:key', choicePhoto);
 route('GET', '/api/choice/:token/photo/:ver/:key', choicePhoto);
+
+// ---------- photographer landing pages (Avira, 2026-11-02, the owner's request; 0102; worker/photographerPage.ts) ----------
+// /photographer/<token>: sent to a couple who asks to see a photographer's work. No session: the token is the link. A
+// wedding is named here by its ref only; only its chosen photos are served, in preview sizes, never for download.
+
+const PAGE_GONE = 'הדף לא זמין. בקשו קישור חדש מהסטודיו.';
+
+/** The page, its studio (open, with the photos module) and its settings — checked on every request. */
+async function photographerTarget(env: Env, store: Store, token: string) {
+  const page = isPageToken(token) ? await store.getPhotographerPage(token) : null;
+  const tenant = page ? await store.getTenant(page.tenantId) : null;
+  if (!page || !page.published || page.token !== token || !tenant || tenant.access === 'blocked' || !tenant.photos) throw new HttpError(404, PAGE_GONE);
+  return { page, tenant };
+}
+
+/** One wedding of the page by its ref, with its photo list and the photos it shows. */
+async function photographerWedding(env: Env, store: Store, page: PhotographerPage, ref: string) {
+  const secret = stateSecret(env);
+  let found: Gallery | null = null;
+  for (const g of await pageWeddings(store, page)) if ((await weddingRef(secret, page.id, g.id)) === ref) found = g;
+  const g = found ? await store.getGallery(found.id) : null;
+  if (!g || g.deletedAt) throw new HttpError(404, 'החתונה לא נמצאה');
+  const doc = await photoDoc(store, g);
+  const data = doc?.data ?? null;
+  const full = page.fullGalleries.includes(g.id);
+  const cache = doc && doc.version === g.photosVersion ? { visible: g.photosVisibleVersion ?? 0, gen: g.photosGen ?? 0 } : undefined;
+  return { g, data, full, photos: weddingPhotos(data, g, full), cache };
+}
+
+const pagePhotoBase = (token: string, ref: string, gen: number | undefined) => `/api/photographer/${token}/w/${ref}/photo/v${typeof gen === 'number' && gen > 0 ? Math.floor(gen) : 0}`;
+
+route('GET', '/api/photographer/:token', async ({ env, store, params, waitUntil }) => {
+  const { page, tenant } = await photographerTarget(env, store, params.token);
+  const s = await getSettings(env, store, page.tenantId, tenant);
+  const [weddings, testimonials] = await Promise.all([pageWeddings(store, page), store.photographerTestimonials(page.id)]);
+  const secret = stateSecret(env);
+  const cards = await Promise.all(
+    weddings.map(async (g) => {
+      const ref = await weddingRef(secret, page.id, g.id);
+      const card = weddingCard(g, ref, page.fullGalleries.includes(g.id));
+      return { ...card, cover: card.cover ? `${pagePhotoBase(params.token, ref, g.photosGen)}/${card.cover}?s=md` : '' };
+    }),
+  );
+  // A view of the page (never fails the page).
+  const seen = store.photographerPageSeen(page.id).catch(() => undefined);
+  if (waitUntil) waitUntil(seen);
+  else await seen;
+  return json(
+    {
+      name: page.displayName || page.staffName,
+      bio: page.bio ?? '',
+      photoUrl: page.photoPath ? `/api/photographer/${params.token}/img/photo` : '',
+      studioName: s.studioName,
+      logoUrl: s.logoUrl,
+      whatsapp: whatsappNumber(s.phone),
+      weddings: cards,
+      testimonials: testimonials.map((t) => ({ id: t.id, body: t.body ?? '', coupleName: t.coupleName ?? '', imageUrl: t.imagePath ? `/api/photographer/${params.token}/img/${t.id}` : '' })),
+    },
+    { headers: { 'Cache-Control': 'no-store' } },
+  );
+});
+
+route('GET', '/api/photographer/:token/w/:ref', async ({ env, store, params }) => {
+  const { page } = await photographerTarget(env, store, params.token);
+  const { g, data, full, photos } = await photographerWedding(env, store, page, params.ref);
+  return json(
+    {
+      ...weddingCard(g, params.ref, full),
+      cover: '',
+      items: photos.map((i) => ({ key: i.key, ar: i.ar ?? 1.5 })),
+      base: pagePhotoBase(params.token, params.ref, data?.gen),
+    },
+    { headers: { 'Cache-Control': 'no-store' } },
+  );
+});
+
+/** One photo of a wedding on the page (or its cover), preview sizes only. */
+async function photographerPhoto({ request, env, store, params, url, waitUntil }: Ctx): Promise<Response> {
+  const asked = addressVersion(params);
+  const { page, tenant } = await photographerTarget(env, store, params.token);
+  const { g, data, photos, cache } = await photographerWedding(env, store, page, params.ref);
+  const item = photos.find((i) => i.key === params.key) ?? (g.coverKey === params.key ? data?.items.find((i) => i.key === params.key && !i.hidden) : undefined);
+  if (!data || !item) throw new HttpError(404, 'התמונה לא נמצאה');
+  const s = url.searchParams.get('s');
+  const size = s === 'l' || s === 'md' ? s : 'm';
+  return photoResponse(env, () => getSettings(env, store, g.tenantId, tenant), data, item, size, request, false, g.id, { includeHidden: false, cache, current: asked === (data.gen ?? 0), waitUntil });
+}
+route('GET', '/api/photographer/:token/w/:ref/photo/:key', photographerPhoto);
+route('GET', '/api/photographer/:token/w/:ref/photo/:ver/:key', photographerPhoto);
+
+/** The photographer's photo ("photo") or a testimonial's screenshot (its id), from the studio's private bucket. */
+route('GET', '/api/photographer/:token/img/:what', async ({ env, store, params }) => {
+  const { page } = await photographerTarget(env, store, params.token);
+  let path = '';
+  if (params.what === 'photo') path = page.photoPath ?? '';
+  else path = (await store.photographerTestimonials(page.id)).find((t) => t.id === params.what)?.imagePath ?? '';
+  // Only the studio's own files of this page.
+  if (!path || !path.startsWith(`${page.tenantId}/${page.id}/`)) throw new HttpError(404, 'לא נמצא');
+  const file = await store.storageObject(PHOTOGRAPHER_BUCKET, path);
+  if (!file) throw new HttpError(404, 'לא נמצא');
+  return new Response(file.body, { headers: { 'Content-Type': /^image\//.test(file.type) ? file.type : 'image/jpeg', 'Cache-Control': 'private, max-age=600', 'X-Content-Type-Options': 'nosniff' } });
+});
 
 // ---------- slideshow songs (per studio, up to 3) ----------
 const MUSIC_TYPES = /^audio\/(mpeg|mp3|mp4|x-m4a|aac|ogg|wav|x-wav)$/;

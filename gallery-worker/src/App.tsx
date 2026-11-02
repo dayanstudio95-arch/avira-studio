@@ -15,6 +15,8 @@ const StudioFaces = lazy(() => import('./faces/StudioFaces').then((m) => ({ defa
 const Accessibility = lazy(() => import('./Accessibility').then((m) => ({ default: m.Accessibility })));
 // The couple's chosen photos for the album designer (Avira, 0099).
 const ChoicePage = lazy(() => import('./choice/ChoicePage').then((m) => ({ default: m.ChoicePage })));
+// A photographer's page for couples who ask to see his work (Avira, 0102).
+const PhotographerPage = lazy(() => import('./photographer/PhotographerPage').then((m) => ({ default: m.PhotographerPage })));
 
 export function App() {
   return (
@@ -28,6 +30,8 @@ export function App() {
           <Route path="/print/:token" element={<PrintPage />} />
           {/* The album designer's private link to the couple's chosen photos. */}
           <Route path="/choice/:token" element={<ChoicePage />} />
+          {/* A photographer's page (his starred weddings, what couples said). */}
+          <Route path="/photographer/:token" element={<PhotographerPage />} />
           <Route path="/watch/:id/print" element={<StudioPrint />} />
           <Route path="/watch/:id/me" element={<GuestPage />} />
           <Route path="/watch/:id/faces" element={<StudioFaces />} />

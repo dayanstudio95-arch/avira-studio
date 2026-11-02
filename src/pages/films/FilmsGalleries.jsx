@@ -531,6 +531,14 @@ export default function FilmsGalleries() {
             {kind === "photos" ? "גלריות תמונות" : "גלריות סרטים"}
           </h1>
           <div className="flex gap-2">
+            {kind === "photos" && (
+              <Button asChild variant="outline" className="border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700">
+                <Link to="/photos/photographers" data-testid="photographer-pages-link">
+                  <Camera className="w-4 h-4 ml-2" />
+                  דפי צלמים
+                </Link>
+              </Button>
+            )}
             <Button variant="outline" onClick={() => setImporting(true)} className="border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700">
               <Upload className="w-4 h-4 ml-2" />
               ייבוא רשימה

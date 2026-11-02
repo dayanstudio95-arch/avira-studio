@@ -158,7 +158,7 @@ async function scenario(s: Store): Promise<Step[]> {
     return [first, again, none];
   });
   await step('show the date and venue again', async () => {
-    await s.patchGallery(T1, G.films, { hideDate: false, hideVenue: false });
+    await s.patchGallery(T1, G.films, { hideDate: undefined, hideVenue: undefined });
     const g = await s.getGallery(G.films);
     return [g?.hideDate === true, g?.hideVenue === true];
   });

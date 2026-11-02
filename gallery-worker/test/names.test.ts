@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { coupleMatches, withAmpersand } from '../shared/names';
+import { coupleMatches, firstNames, withAmpersand } from '../shared/names';
 
 describe('couple names with &', () => {
   it('turns the joined ו into &', () => {
@@ -47,5 +47,15 @@ describe('the studio finds a couple however the names are typed (Avira, 2026-11-
     expect(coupleMatches('Noa and Tom', 'tom & noa')).toBe(true);
     expect(coupleMatches('רונית & דניאל וייס', 'דניאל וייס ורונית')).toBe(true);
     expect(coupleMatches('דניאלה & דן', '')).toBe(true);
+  });
+});
+
+describe('first names only, for the photographer page (Avira, 2026-11-02)', () => {
+  it('drops family names and notes in brackets', () => {
+    expect(firstNames('דניאלה & דן')).toBe('דניאלה & דן');
+    expect(firstNames('דניאלה ודן')).toBe('דניאלה & דן');
+    expect(firstNames('דניאל וייס & רונית כהן')).toBe('דניאל & רונית');
+    expect(firstNames('נועה & איתמר (דמה)')).toBe('נועה & איתמר');
+    expect(firstNames('')).toBe('');
   });
 });

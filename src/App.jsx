@@ -66,6 +66,8 @@ const AlbumOrders = lazy(() => import('./pages/AlbumOrders'));
 const FilmsGalleries = lazy(() => import('./pages/films/FilmsGalleries'));
 const FilmsGalleryForm = lazy(() => import('./pages/films/FilmsGalleryForm'));
 const FilmsSettings = lazy(() => import('./pages/films/FilmsSettings'));
+// A page per photographer for couples who ask to see his work (2026-11-02; 0102).
+const PhotographerPages = lazy(() => import('./pages/films/PhotographerPages'));
 
 // Avira has photo galleries only. Studio Plan's code links some places to /films (the Dropbox answer to
 // /films/settings, the bell's "gallery locked", the face-off notice's /films/<id>): each lands on the same
@@ -292,6 +294,7 @@ const AuthenticatedApp = () => {
           <Route path="/photos" element={<FilmsGalleries key="pg" />} />
           <Route path="/photos/new" element={<FilmsGalleryForm key="pn" />} />
           <Route path="/photos/settings" element={<FilmsSettings key="ps" />} />
+          <Route path="/photos/photographers" element={<PhotographerPages />} />
           <Route path="/photos/:id" element={<FilmsGalleryForm key="pe" />} />
           <Route path="/films" element={<FilmsToPhotos />} />
           <Route path="/films/*" element={<FilmsToPhotos />} />
