@@ -1,7 +1,7 @@
 // When a gallery closes (P72, D15): at the end of its last day, 23:59 Israel time; "today" and
 // "tomorrow" are calendar days in Israel (the last day never says "tomorrow").
 import { describe, expect, it } from 'vitest';
-import { closeAfterDays, closeOfDay, endOfIsraelDay, israelDay, israelDaysBetween } from '../shared/day';
+import { closeAfterDays, closeFromSend, closeOfDay, endOfIsraelDay, israelDay, israelDaysBetween } from '../shared/day';
 import { availabilityText, closingLabel } from '../src/lib/expiry';
 import { createGallery, daysLeft, extendGallery, updateGallery } from '../worker/galleries';
 import { MemoryStore } from '../worker/store-memory';
@@ -17,6 +17,20 @@ describe('Israel days', () => {
     expect(israelDay(Date.parse('2026-12-01T23:30:00Z'))).toBe('2026-12-02');
     expect(new Date(closeOfDay(Date.parse('2026-12-01T23:30:00Z'))).toISOString()).toBe('2026-12-02T21:59:59.000Z');
     expect(israelDaysBetween(Date.parse('2026-07-15T06:00:00Z'), Date.parse('2026-07-16T01:00:00Z'))).toBe(1);
+  });
+});
+
+describe('sent to the couple (Avira, 2026-11-03)', () => {
+  // Sent on 3.11 at 01:30 in Israel (still 2.11 in UTC): 60 days from 3.11 = 2.1.2027, 23:59 in Israel.
+  const sent = Date.parse('2026-11-02T23:30:00Z');
+  it('the access days count from the send day', () => {
+    expect(closeFromSend('2026-12-30T21:59:59.000Z', 60, sent)).toBe('2027-01-02T21:59:59.000Z');
+    // A closed gallery opens again; no closing date at all is the same.
+    expect(closeFromSend('2026-10-01T20:59:59.000Z', 60, sent)).toBe('2027-01-02T21:59:59.000Z');
+    expect(closeFromSend(undefined, 60, sent)).toBe('2027-01-02T21:59:59.000Z');
+  });
+  it('never earlier than it closes already', () => {
+    expect(closeFromSend('2027-03-01T21:59:59.000Z', 60, sent)).toBe('2027-03-01T21:59:59.000Z');
   });
 });
 
@@ -62,6 +76,17 @@ describe('galleries close at the end of the day', () => {
     const store = new MemoryStore();
     const g = await createGallery(store, env, settings, { coupleName: 'א', expiresAt: '2027-03-10T08:00:00Z' }, 't1');
     expect(g.expiresAt).toBe('2027-03-10T21:59:59.000Z');
+  });
+  it('sent to the couple: the closing date moves to the days from the send, the days stay (the form saved later keeps it)', async () => {
+    const store = new MemoryStore();
+    const g = await createGallery(store, env, { ...settings, defaultDays: 60 }, { coupleName: 'א' }, 't1');
+    const closes = closeFromSend(g.expiresAt, g.days, Date.parse(g.createdAt) + 20 * 86_400_000);
+    const sent = await updateGallery(store, env, settings, structuredClone(g), { expiresAt: closes });
+    expect(sent.expiresAt).toBe(closes);
+    expect(sent.days).toBe(60);
+    expect(daysLeft(sent, Date.parse(g.createdAt) + 20 * 86_400_000)).toBe(60);
+    // The gallery form sends its days back unchanged: the closing date from the send stays.
+    expect((await updateGallery(store, env, settings, structuredClone(sent), { coupleName: 'א', days: 60 })).expiresAt).toBe(closes);
   });
 });
 

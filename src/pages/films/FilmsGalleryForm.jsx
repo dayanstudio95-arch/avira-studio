@@ -483,7 +483,7 @@ export default function FilmsGalleryForm() {
               />
               <ShowOnPage checked={!hideDate} onChange={(on) => setHideDate(!on)} testId="show-date" />
             </Field>
-            <Field label="ימי גישה" hint={gallery ? `נסגרת ב־${formatDateShort(gallery.expiresAt)}` : "נספר מרגע היצירה"}>
+            <Field label="ימי גישה" hint={`${gallery ? `נסגרת ב־${formatDateShort(gallery.expiresAt)} · ` : ""}נספרים מחדש מהיום שנשלחת לזוג ב"שלח לזוג"`}>
               <Input
                 type="number"
                 min={1}

@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Camera, Clapperboard, Copy, ExternalLink, HardDrive, Images, LayoutGrid, List, Loader2, Pencil, Plus, RotateCcw, ScanFace, Search, Send, Star, Timer, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
+import { closeFromSend } from "@films-shared/day";
 import { parseEventList } from "@films-shared/event";
 import { coupleMatches, withAmpersand } from "@films-shared/names";
 import { galleryHome, galleryKindOfPath, galleryPath } from "@/lib/galleryRoutes";
@@ -229,8 +230,19 @@ export default function FilmsGalleries() {
     }
     setSending(g.id);
     try {
-      if (await sendGalleryToCouple(g.eventId, coupleLink(slug, g.id), { expiresAt: g.expiresAt })) {
+      // The access days count from the send (Avira, 2026-11-03): the message says the new closing day, and the
+      // gallery gets it once the message went out.
+      const closes = g.days >= 1 ? closeFromSend(g.expiresAt, g.days, Date.now()) : g.expiresAt;
+      if (await sendGalleryToCouple(g.eventId, coupleLink(slug, g.id), { expiresAt: closes })) {
         setInfoByEvent((m) => ({ ...m, [g.eventId]: { ...(m[g.eventId] || {}), sent: true } }));
+        if (closes !== g.expiresAt) {
+          try {
+            const saved = await filmsApi("PUT", `/api/admin/galleries/${g.id}`, { expiresAt: closes });
+            setList((l) => l?.map((x) => (x.id === g.id ? { ...x, expiresAt: saved.expiresAt, daysLeft: saved.daysLeft, expired: saved.expired } : x)) ?? l);
+          } catch (e) {
+            toast.warning(`נשלח, אבל תאריך הסגירה של הגלריה לא עודכן: ${e.message}`);
+          }
+        }
       }
     } finally {
       setSending("");

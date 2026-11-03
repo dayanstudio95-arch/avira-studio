@@ -38,6 +38,16 @@ export function closeAfterDays(ms: number, days: number): number {
   return endOfIsraelDay(day);
 }
 
+/**
+ * Where a gallery closes once it is sent to the couple (Avira, 2026-11-03, the owner's decision): its access days
+ * counted from the send day, never earlier than it closes already (a longer date set by hand stays). ISO time.
+ */
+export function closeFromSend(expiresAt: string | undefined, days: number, now: number): string {
+  const from = closeAfterDays(now, days);
+  const current = Date.parse(String(expiresAt || ''));
+  return new Date(Number.isFinite(current) && current > from ? current : from).toISOString();
+}
+
 /** Calendar days in Israel from `from` to `to` (0 = the same day, 1 = the next day). */
 export function israelDaysBetween(from: number, to: number): number {
   return Math.round((Date.parse(israelDay(to)) - Date.parse(israelDay(from))) / DAY);
