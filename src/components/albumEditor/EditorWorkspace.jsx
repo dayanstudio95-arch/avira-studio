@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import {
-  usageCounts, addPage, insertPageAt, removePage, duplicatePage, movePage, setTemplate, setTemplateAssigned, toggleFlip, setTitle,
+  usageCounts, addPage, insertPageAt, removePage, duplicatePage, movePage, setTemplate, setTemplateAssigned, toggleFlip, setTitle, setPageCells,
   placeAsset, clearSlot, updateSlot, swapSlots, setPageProps, addHealPatch, tagAssets, moveSlot, pasteSlot,
 } from "@/lib/albumDesign";
 import { splitPage, placeGroup, addToPage, removeFromPage, fromIndices } from "@/lib/albumAutoLayout";
@@ -377,6 +377,7 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
                   toast.info("נקודת המקור נבחרה — עכשיו לחצו על מה שרוצים למחוק");
                 }}
                 faceWarnings={faces}
+                onCellsChange={locked ? null : (cells) => change((d) => setPageCells(d, page.id, cells))}
               />
             </div>
             {!locked && groupSel.length > 0 && (
@@ -388,7 +389,7 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
                 onClear={() => setMultiSel([])}
               />
             )}
-            {!locked && <div className="text-[11px] text-slate-500">גוררים תמונה מהבנק · בין מסגרות = החלפה · ⌘+לחיצה (בבנק או בכפולה) = כמה תמונות · לחיצה על תמונה = זום, צבע, תיקון · גוררים דף בפס למטה = שינוי הסדר · ←/→ מעבר בין כפולות</div>}
+            {!locked && <div className="text-[11px] text-slate-500">גוררים תמונה מהבנק · בין מסגרות = החלפה · ⌘+לחיצה (בבנק או בכפולה) = כמה תמונות · לחיצה על תמונה = זום, צבע, תיקון · גוררים את הקו הלבן בין תמונות = שינוי הגודל · גוררים דף בפס למטה = שינוי הסדר · ←/→ מעבר בין כפולות</div>}
           </div>
           <button type="button" onClick={() => step(-1)} disabled={pageIndex <= 0} title="הכפולה הקודמת (← חץ שמאלה)" className="shrink-0 rounded-full p-2 text-slate-300 hover:bg-white/10 disabled:opacity-20">
             <ChevronLeft className="h-7 w-7" />
@@ -442,6 +443,7 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
             onClearSlot={() => change((d) => clearSlot(d, page.id, selectedSlot))}
             onTitle={(patch) => change((d) => setTitle(d, page.id, patch), `title:${page.id}:${Object.keys(patch).join()}`)}
             onPage={(patch) => change((d) => setPageProps(d, page.id, patch), `page:${page.id}:${Object.keys(patch).join()}`)}
+            onResetCells={locked ? null : () => change((d) => setPageCells(d, page.id, null))}
             heal={heal}
             setHeal={setHeal}
             brandingReady={brandingReady}

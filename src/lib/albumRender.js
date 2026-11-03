@@ -4,7 +4,8 @@
 // same CSS filter strings for B&W, the same font sizes (percent of the spread width) for the title.
 // Verified in Chrome on a real folder: decode ~0.2s, render + JPEG ~1.3s, ~11MB per spread.
 // canvas ctx.filter is Chrome/Edge/Firefox only — the editor is "Chrome recommended".
-import { SPREAD, getTemplate, layoutRects, textRect } from "./albumTemplates";
+import { SPREAD, layoutRects, textRect } from "./albumTemplates";
+import { pageTemplate } from "./albumCells";
 import { computeCrop, filterCss, titleNames, titleLineFonts } from "./albumDesign";
 import { slotFilter } from "./albumAdjust";
 import { healedSource } from "./albumHeal";
@@ -147,7 +148,7 @@ export async function renderSpread(page, assetsById, getBitmap, { canvas = docum
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, width, height);
   ctx.imageSmoothingQuality = "high";
-  const t = getTemplate(page.templateId);
+  const t = pageTemplate(page);
   const rects = layoutRects(t, page.flip, page.blend, page.fadeStrength ?? 100);
   // draw order = z (left→right, top→bottom) so faded edges lie over their neighbour
   const order = rects.map((r, i) => i).sort((a, b) => rects[a].z - rects[b].z);

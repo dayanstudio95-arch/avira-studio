@@ -3737,5 +3737,47 @@ console.log('\n— PART 75: album group messages + list order —');
   check('tables created since 0101 are granted to service_role', created.filter((t) => !granted(t)), []);
 }
 
+{
+  section('album editor: frames sized by hand — the white line dragged (2026-11-03)');
+  const ac = await loadModule('src/lib/albumCells.js', 'ac82');
+  const ad = await loadModule('src/lib/albumDesign.js', 'ad82');
+  const sz = await loadModule('supabase/functions/_shared/albumDesignSanitize.ts', 'sz82');
+  const p3a = [[0, 0, 50, 100], [50, 0, 25, 100], [75, 0, 25, 100]];
+  const p3d = [[0, 0, 75, 100], [75, 0, 25, 50], [75, 50, 25, 50]];
+  const p5b = [[0, 0, 56.5, 100], [56.5, 0, 29.5, 50], [56.5, 50, 13.5, 50], [70, 50, 30, 50], [86, 0, 14, 50]];
+  const sum = (ds) => ds.map((d) => `${d.dir}${d.at}:${d.a.join('.')}|${d.b.join('.')}`).sort();
+  check('the lines that can be dragged: one per touching edge, a long line moves every frame along it', [sum(ac.dividers(p3a)), sum(ac.dividers(p3d)), sum(ac.dividers(p5b))], [
+    ['v50:0|1', 'v75:1|2'],
+    ['h50:1|2', 'v75:0|1.2'],
+    ['h50:1.4|2.3', 'v56.5:0|1.2', 'v70:2|3', 'v86:1|4'],
+  ]);
+  const v75 = ac.dividers(p3a).find((d) => d.at === 75);
+  check('dragging the line between the two right photos: one grows, its neighbour shrinks, nothing else moves', ac.moveDivider(p3a, v75, 65), [[0, 0, 50, 100], [50, 0, 15, 100], [65, 0, 35, 100]]);
+  check('no frame under 6 cm: the line stops (7.5% of the width, 20% of the height)', [
+    ac.moveDivider(p3a, v75, 52)[1][2], ac.moveDivider(p3a, v75, 99)[2][2],
+    ac.moveDivider(p3d, ac.dividers(p3d).find((d) => d.dir === 'h'), 95)[2][3],
+  ], [7.5, 7.5, 20]);
+  check('it clicks onto the fold, the template\'s own place, or another line; else stays where dropped', [
+    ac.snapDivider(50.6, v75, { original: 75 }).why, ac.snapDivider(74.2, v75, { original: 75 }).at, ac.snapDivider(60, v75, { original: 75 }), ac.snapDivider(69.5, ac.dividers(p5b)[0], { others: [{ dir: 'v', at: 70 }] }).at,
+  ], ['fold', 75, { at: 60, why: null }, 70]);
+  const page = { id: 'pg', templateId: 'p3-a', flip: false, slots: [{}, {}, {}] };
+  const sized = ad.setPageCells({ pages: [page] }, 'pg', ac.moveDivider(p3a, v75, 65)).pages[0];
+  check('the page keeps its own sizes (made on its template); back to the template\'s exact sizes = none kept', [
+    sized.cellsFor, ac.hasOwnCells(sized), ac.pageTemplate(sized).cells[2],
+    ac.hasOwnCells(ad.setPageCells({ pages: [sized] }, 'pg', p3a).pages[0]), 'cells' in ad.setPageCells({ pages: [sized] }, 'pg', null).pages[0],
+  ], ['p3-a', true, [65, 0, 35, 100], false, false]);
+  check('another layout drops them: a new template, a recommended one, or sizes made on another template', [
+    'cells' in ad.setTemplate({ pages: [sized] }, 'pg', 'p3-b').pages[0],
+    'cells' in ad.setTemplateAssigned({ pages: [sized] }, 'pg', 'p3-a', true, [0, 1, 2]).pages[0],
+    ac.hasOwnCells({ ...sized, templateId: 'p3-b' }), ac.hasOwnCells({ ...sized, cells: [[0, 0, 50, 100]] }),
+    'cells' in ad.toggleFlip({ pages: [sized] }, 'pg').pages[0],
+  ], [false, false, false, false, true]);
+  const fromCouple = (p) => sz.sanitizeClientDoc({ pages: [p] }, [], {}).pages[0];
+  check('the couple\'s sketch keeps its sizes through the server check, only on the template they were made on and inside the spread', [
+    fromCouple(sized).cells, fromCouple({ ...sized, cellsFor: 'p4-a' }).cells, fromCouple({ ...sized, cells: [[0, 0, 150, 100]] }).cells, fromCouple({ ...sized, cells: 'x' }).cells,
+  ], [[[0, 0, 50, 100], [50, 0, 15, 100], [65, 0, 35, 100]], undefined, undefined, undefined]);
+  check('the size the drag shows, in cm', [ac.frameCm(p3a, 0, 'v'), ac.frameCm(p3d, 1, 'h')], [40, 15]);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

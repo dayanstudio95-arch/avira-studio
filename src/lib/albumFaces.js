@@ -3,7 +3,8 @@
 // leaves the computer), loaded from the CDN only the first time it's needed.
 // Only the vertical band of the photo around the fold is checked, enlarged — wedding photos often
 // have people at a distance, and the small model finds faces much better when they're bigger.
-import { getTemplate, layoutRects } from "./albumTemplates";
+import { layoutRects } from "./albumTemplates";
+import { pageTemplate } from "./albumCells";
 import { computeCrop } from "./albumDesign";
 import { assetSrc } from "./albumAssets";
 
@@ -62,7 +63,7 @@ async function facesInBand(asset, bandX0, bandX1) {
 
 // → { [slotIndex]: true } for every photo on this spread with a face on the fold.
 export async function foldFaceWarnings(page, assetsById) {
-  const t = getTemplate(page.templateId);
+  const t = pageTemplate(page);
   const rects = layoutRects(t, page.flip, page.blend, page.fadeStrength ?? 100);
   const warn = {};
   await Promise.all(

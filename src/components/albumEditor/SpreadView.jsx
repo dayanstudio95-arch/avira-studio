@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getTemplate, layoutRects, textRect, cellAspect } from "@/lib/albumTemplates";
+import { dividers, frameCm, mirrorCell, moveDivider, pageTemplate, snapDivider } from "@/lib/albumCells";
 import { computeCrop, centerFromOffset, filterCss, effectiveDpi, titleNames, minZoom, titleLineFonts } from "@/lib/albumDesign";
 import { assetSrc } from "@/lib/albumAssets";
 import { slotFilter, docFilters } from "@/lib/albumAdjust";
@@ -56,8 +57,11 @@ export default function SpreadView({
   onHeal,
   onHealSource,
   faceWarnings = {},
+  onCellsChange = null, // the white line between two photos dragged (src/lib/albumCells.js)
 }) {
-  const t = getTemplate(page.templateId);
+  const [liveCells, setLiveCells] = useState(null); // while a line is dragged
+  const base = pageTemplate(page);
+  const t = liveCells ? { ...base, cells: liveCells } : base;
   const rects = layoutRects(t, page.flip, page.blend, page.fadeStrength ?? 100);
   const text = textRect(t, page.flip);
   const boxRef = useRef(null);
@@ -93,7 +97,95 @@ export default function SpreadView({
       )}
       {/* the fold */}
       {!mini && <div className="pointer-events-none absolute inset-y-0 left-1/2 z-30 w-px bg-black/15" />}
+      {!mini && onCellsChange && !heal?.on && (
+        <FrameLines
+          cells={t.cells}
+          template={getTemplate(page.templateId)}
+          flip={!!page.flip}
+          spreadRef={boxRef}
+          onLive={setLiveCells}
+          onCommit={(cells) => {
+            setLiveCells(null);
+            if (cells) onCellsChange(cells);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+// The white lines between photos, dragged to make one photo bigger and its neighbour smaller (Avira, 2026-11-03).
+// Worked out on the spread as seen (a flipped spread is mirrored), saved in the template's own coordinates.
+function FrameLines({ cells, template, flip, spreadRef, onLive, onCommit }) {
+  const [drag, setDrag] = useState(null); // { d, at, why, a, b }
+  const seen = flip ? cells.map(mirrorCell) : cells;
+  const lines = drag ? [drag.d] : dividers(seen);
+  const start = (e, d) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const box = spreadRef.current.getBoundingClientRect();
+    const from = seen.map((c) => c.slice());
+    const tpl = flip ? template.cells.map(mirrorCell) : template.cells;
+    const a0 = tpl[d.a[0]];
+    const original = a0 ? (d.dir === "v" ? a0[0] + a0[2] : a0[1] + a0[3]) : undefined;
+    const others = dividers(from).filter((o) => o.dir === d.dir && Math.abs(o.at - d.at) > 0.05);
+    let last = null;
+    const move = (ev) => {
+      const raw = d.dir === "v" ? ((ev.clientX - box.left) / box.width) * 100 : ((ev.clientY - box.top) / box.height) * 100;
+      const snap = snapDivider(raw, d, { original, others });
+      last = moveDivider(from, d, snap.at);
+      const at = d.dir === "v" ? last[d.a[0]][0] + last[d.a[0]][2] : last[d.a[0]][1] + last[d.a[0]][3];
+      setDrag({ d: { ...d, at }, why: snap.why, a: frameCm(last, d.a[0], d.dir), b: frameCm(last, d.b[0], d.dir) });
+      onLive(flip ? last.map(mirrorCell) : last);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setDrag(null);
+      onCommit(last ? (flip ? last.map(mirrorCell) : last) : null);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  return (
+    <>
+      {drag?.d.dir === "v" && <div className="pointer-events-none absolute inset-y-0 left-1/2 z-[34] border-l-2 border-dashed border-rose-500/80" />}
+      {lines.map((d) => {
+        const v = d.dir === "v";
+        const style = v
+          ? { left: `${d.at}%`, top: `${d.from}%`, height: `${d.to - d.from}%`, width: 14, transform: "translateX(-50%)" }
+          : { top: `${d.at}%`, left: `${d.from}%`, width: `${d.to - d.from}%`, height: 14, transform: "translateY(-50%)" };
+        const on = Boolean(drag);
+        return (
+          <div
+            key={`${d.dir}${d.a.join()}|${d.b.join()}`}
+            onPointerDown={(e) => start(e, d)}
+            title="גוררים את הקו כדי להגדיל תמונה אחת ולהקטין את השכנה"
+            className={`group absolute z-[35] ${v ? "cursor-col-resize" : "cursor-row-resize"}`}
+            style={style}
+            data-testid="frame-line"
+          >
+            <div className={`absolute bg-amber-400 ${on ? "opacity-100" : "opacity-0 group-hover:opacity-100"} ${v ? "inset-y-0 left-1/2 w-[3px] -translate-x-1/2" : "inset-x-0 top-1/2 h-[3px] -translate-y-1/2"}`} />
+            <div className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-amber-400 px-2 py-0.5 text-[11px] font-semibold text-amber-950 shadow ${on ? "" : "hidden group-hover:block"}`} dir="ltr">
+              {on ? (
+                // Each size by its own frame (left | right, above | below), kept apart from the Hebrew around it.
+                <>
+                  <bdi dir="rtl">{drag.a} ס״מ</bdi>
+                  <span className="mx-1 opacity-60">{v ? "|" : "/"}</span>
+                  <bdi dir="rtl">{drag.b} ס״מ</bdi>
+                  {drag.why && <bdi dir="rtl" className="mr-0 ml-1">{` · ${drag.why === "fold" ? "על הקפל" : drag.why === "template" ? "כמו בתבנית" : "בקו אחד"}`}</bdi>}
+                </>
+              ) : v ? (
+                "⟷"
+              ) : (
+                "↕"
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </>
   );
 }
 

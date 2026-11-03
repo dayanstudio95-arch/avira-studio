@@ -11,6 +11,7 @@
 // A page is one 80×30 spread. Slots line up with the template's cells by index.
 
 import { getTemplate, templatesForCount, PHOTO_TEMPLATES, cellRects, cellAspect } from "./albumTemplates";
+import { withCells, withoutCells } from "./albumCells";
 
 export const PAGE_BASELINE = 30; // spreads included in every album (album-portal PAGE_BASELINE)
 
@@ -153,7 +154,7 @@ export const setTemplate = (doc, pageId, templateId) =>
     const t = getTemplate(templateId);
     const filled = p.slots.filter((s) => s.assetId);
     const slots = t.cells.map((_, i) => (filled[i] ? { ...filled[i], zoom: 1, cx: 0.5, cy: 0.5 } : emptySlot()));
-    const next = { ...p, templateId: t.id, slots };
+    const next = { ...withoutCells(p), templateId: t.id, slots };
     if (t.title && !next.title) next.title = newPage(t.id).title;
     if (!t.title) delete next.title;
     return next;
@@ -165,10 +166,13 @@ export const setTemplateAssigned = (doc, pageId, templateId, flip, assign) =>
   mapPage(doc, pageId, (p) => {
     const filled = p.slots.filter((s) => s.assetId);
     const slots = assign.map((k) => (filled[k] ? { ...filled[k], zoom: 1, cx: 0.5, cy: 0.5 } : emptySlot()));
-    return { ...p, templateId, flip: !!flip, slots };
+    return { ...withoutCells(p), templateId, flip: !!flip, slots };
   });
 
 export const setPageProps = (doc, pageId, patch) => mapPage(doc, pageId, (p) => ({ ...p, ...patch }));
+
+// Frames sized by hand on this spread (src/lib/albumCells.js); null = back to the template's sizes.
+export const setPageCells = (doc, pageId, cells) => mapPage(doc, pageId, (p) => (cells ? withCells(p, cells) : withoutCells(p)));
 
 export const addHealPatch = (doc, pageId, i, patch) => mapSlot(doc, pageId, i, (s) => ({ ...s, heal: [...(s.heal || []), patch].slice(-200) }));
 

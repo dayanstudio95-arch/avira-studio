@@ -4,6 +4,7 @@ import { getTemplate, cellRects, layoutRects, textRect, PHOTO_COUNTS, templatesF
 import { FILTERS, TITLE_FONTS, hebrewDateText, formatDotDate, minZoom } from "@/lib/albumDesign";
 import { ADJ_FIELDS, isNeutral } from "@/lib/albumAdjust";
 import { rankTemplates } from "@/lib/albumAutoLayout";
+import { hasOwnCells, pageTemplate } from "@/lib/albumCells";
 
 function TemplateThumb({ template, flip, active, onClick, badge }) {
   const rects = cellRects(template, flip);
@@ -45,7 +46,7 @@ const Slider = ({ label, value, min, max, step, onChange, fmt }) => (
   </label>
 );
 
-export default function PagePanel({ page, selectedSlot, doc, assetsById, onTemplate, onFlip, onSlot, onClearSlot, onTitle, onPage, heal, setHeal, brandingReady, onEnlarge, clipboard }) {
+export default function PagePanel({ page, selectedSlot, doc, assetsById, onTemplate, onFlip, onSlot, onClearSlot, onTitle, onPage, onResetCells, heal, setHeal, brandingReady, onEnlarge, clipboard }) {
   const [kind, setKind] = useState("all");
   const [showAdj, setShowAdj] = useState(false);
   const t = getTemplate(page.templateId);
@@ -53,7 +54,7 @@ export default function PagePanel({ page, selectedSlot, doc, assetsById, onTempl
   const isTitle = Boolean(t.title);
   const slot = selectedSlot != null ? page.slots[selectedSlot] : null;
   const asset = slot?.assetId ? assetsById?.[slot.assetId] || doc.assets.find((a) => a.id === slot.assetId) : null;
-  const rect = selectedSlot != null ? layoutRects(t, page.flip, page.blend, page.fadeStrength ?? 100)[selectedSlot] : null;
+  const rect = selectedSlot != null ? layoutRects(pageTemplate(page), page.flip, page.blend, page.fadeStrength ?? 100)[selectedSlot] : null;
   const zMin = asset && rect ? minZoom(rect.w * 80, rect.h * 30, asset.w || 1, asset.h || 1) : 1;
 
   const photos = useMemo(() => page.slots.map((s) => s.assetId && (assetsById?.[s.assetId] || doc.assets.find((a) => a.id === s.assetId))).filter(Boolean), [page.slots, assetsById, doc.assets]);
@@ -228,6 +229,16 @@ export default function PagePanel({ page, selectedSlot, doc, assetsById, onTempl
             <button key={id} type="button" onClick={() => onPage({ blend: id })} className={`flex-1 rounded-md border py-1 ${(page.blend || "none") === id ? "border-amber-400 bg-amber-400/15 text-amber-100" : "border-white/10 text-slate-300"}`}>{label}</button>
           ))}
         </div>
+        {hasOwnCells(page) && (
+          <div className="flex items-center justify-between gap-2 rounded-md border border-amber-400/40 bg-amber-400/10 px-2 py-1.5 text-xs text-amber-100" data-testid="cells-own">
+            <span>המידות הותאמו ידנית בכפולה הזו</span>
+            {onResetCells && (
+              <button type="button" onClick={onResetCells} className="flex items-center gap-1 rounded border border-amber-400/50 px-1.5 py-0.5 hover:bg-amber-400/20" data-testid="cells-reset">
+                <RotateCcw className="h-3 w-3" /> חזרה לתבנית
+              </button>
+            )}
+          </div>
+        )}
         {page.blend === "fade" && (
           <Slider label="עוצמת המעבר הרך" value={page.fadeStrength ?? 100} min={0} max={200} step={5} fmt={(v) => `${v}%`} onChange={(v) => onPage({ fadeStrength: v })} />
         )}

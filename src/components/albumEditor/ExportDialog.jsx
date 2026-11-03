@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { X, Send, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
 import { exportDesignAsVersion } from "@/lib/albumExport";
-import { getTemplate, cellRects } from "@/lib/albumTemplates";
+import { cellRects } from "@/lib/albumTemplates";
+import { pageTemplate } from "@/lib/albumCells";
 import { effectiveDpi } from "@/lib/albumDesign";
 
 // "📤 ייצוא לזוג" (stage 3). Builds every spread at full print size and adds it as a new version
@@ -17,7 +18,7 @@ export default function ExportDialog({ design, doc, orderId, tenantId, branding 
     let lowDpi = 0;
     const byId = Object.fromEntries(doc.assets.map((a) => [a.id, a]));
     for (const p of doc.pages) {
-      const rects = cellRects(getTemplate(p.templateId), p.flip);
+      const rects = cellRects(pageTemplate(p), p.flip);
       p.slots.forEach((s, i) => {
         if (!s.assetId) empty++;
         else {

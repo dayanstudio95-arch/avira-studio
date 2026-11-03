@@ -37,6 +37,20 @@ function cleanAdj(a: any) {
   return out;
 }
 
+// Frames sized by hand (2026-11-03, src/lib/albumCells.js cleanCells): [x, y, w, h] in percent, inside the spread.
+// The server doesn't know how many frames each template has; the editor uses them only when the count matches.
+export function cleanCells(cells: unknown): number[][] | null {
+  if (!Array.isArray(cells) || cells.length < 1 || cells.length > MAX_SLOTS) return null;
+  const out: number[][] = [];
+  for (const c of cells) {
+    if (!Array.isArray(c) || c.length !== 4 || !c.every((v) => typeof v === 'number' && Number.isFinite(v))) return null;
+    const [x, y, w, h] = c as number[];
+    if (x < -0.05 || y < -0.05 || w < 1 || h < 1 || x + w > 100.05 || y + h > 100.05) return null;
+    out.push((c as number[]).map((v) => Math.round(v * 100) / 100));
+  }
+  return out;
+}
+
 export function sanitizeClientDoc(input: any, allowedAssets: any[], studioDoc: any) {
   const allowed = new Set(allowedAssets.map((a) => a.id));
   const rawPages = Array.isArray(input?.pages) ? input.pages.slice(0, MAX_PAGES) : [];
@@ -62,6 +76,11 @@ export function sanitizeClientDoc(input: any, allowedAssets: any[], studioDoc: a
       }));
       const page: any = { id, templateId, flip: p.flip === true, slots, blend: p.blend === 'fade' ? 'fade' : 'none', fadeStrength: num(p.fadeStrength, 0, 200, 100) };
       if (typeof p.foldOk === 'string') page.foldOk = p.foldOk.slice(0, 4000);
+      const cells = p.cellsFor === templateId ? cleanCells(p.cells) : null;
+      if (cells) {
+        page.cells = cells;
+        page.cellsFor = templateId;
+      }
       if (typeof p.section === 'string' && p.section) page.section = p.section.slice(0, 30);
       if (p.branding && typeof p.branding === 'object') {
         page.branding = { show: p.branding.show === true, x: num(p.branding.x, -10, 100, 3), y: num(p.branding.y, -10, 100, 72), scale: num(p.branding.scale, 0.5, 3, 1) };

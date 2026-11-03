@@ -8,6 +8,7 @@
 //     a row. Within a spread photos may move between cells to fit; across spreads the order holds.
 // Pure — unit-tested in scripts/test-whatsapp-bot.mjs (PART 40).
 import { getTemplate, cellRects, cellAspect, templatesForCount } from "./albumTemplates";
+import { withoutCells } from "./albumCells";
 import { newPage, newId, sortAssets } from "./albumDesign";
 
 const MAX_PER_SPREAD = 10;
@@ -215,11 +216,11 @@ function relayout(page, photos, looks) {
     const tid = OPENING_TEMPLATE[photos.length];
     if (!tid) return null; // the opening takes 1–3 photos
     const t = getTemplate(tid);
-    return { ...page, templateId: tid, slots: t.cells.map((_, i) => slotFor(photos[i], looks)) };
+    return { ...withoutCells(page), templateId: tid, slots: t.cells.map((_, i) => slotFor(photos[i], looks)) };
   }
   const made = pageFor(photos);
   if (!made) return null;
-  return { ...page, templateId: made.templateId, flip: made.flip, slots: made.slots.map((s) => slotFor({ id: s.assetId }, looks)) };
+  return { ...withoutCells(page), templateId: made.templateId, flip: made.flip, slots: made.slots.map((s) => slotFor({ id: s.assetId }, looks)) };
 }
 
 function slotFor(asset, looks) {
