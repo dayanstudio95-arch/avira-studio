@@ -7,7 +7,7 @@
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createServiceRoleClient, getRequestUser } from '../_shared/supabaseClients.ts';
 import { signState, revokeToken } from '../_shared/googleCalendarAuth.ts';
-import { buildDriveAuthorizeUrl, getDriveAccess } from '../_shared/googleDriveAuth.ts';
+import { appOrigin, buildDriveAuthorizeUrl, getDriveAccess } from '../_shared/googleDriveAuth.ts';
 
 const ROLES = ['owner', 'admin', 'studio_manager'];
 const BACK = /^\/[A-Za-z0-9/_-]{0,120}$/;
@@ -26,8 +26,9 @@ Deno.serve(async (req) => {
 
     if (action === 'start') {
       const back = BACK.test(String(body?.back || '')) ? String(body.back) : '/photos';
-      // accountRole is the calendar's field; `back` rides along in the signed state.
-      const state = await signState({ tenantId: profile.tenant_id, accountRole: 'primary', userId: user.id, exp: Date.now() + 10 * 60 * 1000, back } as any);
+      // accountRole is the calendar's field; `back` and the app's address ride along in the signed state.
+      const app = appOrigin(req.headers.get('origin'));
+      const state = await signState({ tenantId: profile.tenant_id, accountRole: 'primary', userId: user.id, exp: Date.now() + 10 * 60 * 1000, back, app } as any);
       return jsonResponse({ authorizeUrl: buildDriveAuthorizeUrl(state) });
     }
 

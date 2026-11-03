@@ -16,6 +16,16 @@ export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 export const ROOT_FOLDER_NAME = 'גלריות אווירה';
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
 
+/**
+ * The app address to come back to after Google's consent page: the one the studio started from when it is one of
+ * ours (new.avira-studio.com and the like, or APP_BASE_URL), so the browser lands where it is signed in.
+ */
+export function appOrigin(candidate: string | null | undefined): string {
+  const base = Deno.env.get('APP_BASE_URL') ?? '';
+  const c = String(candidate || '').replace(/\/+$/, '');
+  return c && (c === base || /^https:\/\/([a-z0-9-]+\.)*avira-studio\.com$/.test(c)) ? c : base;
+}
+
 export function getDriveRedirectUri(): string {
   return `${Deno.env.get('SUPABASE_URL')!}/functions/v1/google-drive-oauth-callback`;
 }

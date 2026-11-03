@@ -1467,6 +1467,7 @@ batch_id, actor, created_at)`. `before` שומר בדיוק את הערכים ש
     - אם בחלון של גוגל לא סומנה ההרשאה לדרייב, מופיעה הודעה ברורה.
     - חשבון גוגל אחר מקבל תיקייה משלו.
   - **`_shared/googleDriveAuth.ts`:** רענון הטוקן, ובדיקה שתיקיית השורש עדיין קיימת. אם היא נמחקה, נוצרת חדשה.
+  - **אחרי האישור אצל גוגל,** חוזרים לכתובת שממנה התחילו (`appOrigin`). אם זו כתובת `*.avira-studio.com` או `APP_BASE_URL`, חוזרים אליה. אחרת חוזרים ל-`APP_BASE_URL`. במערכת החיה `APP_BASE_URL` הוא avira-studio.vercel.app, ושם דניאל אולי לא מחובר.
 - **מיגרציה `0109_drive_uploads.sql`:**
   - **`google_drive_accounts`:** אחת לכל סטודיו. אין עליה מדיניות ל-authenticated, ורק service_role יכול לקרוא אותה. ההרשאות מפורשות, לפי 0103.
   - **ב-`events`:** `final_sent_at`, `final_sent_via` (gallery / status) ו-`final_sent_gallery` ("photos/<id>").

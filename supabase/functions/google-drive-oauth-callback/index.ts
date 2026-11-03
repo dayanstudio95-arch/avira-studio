@@ -3,19 +3,20 @@
 // studio and who. Saves the account, makes "גלריות אווירה", and sends the browser back to the page it came from.
 import { createServiceRoleClient } from '../_shared/supabaseClients.ts';
 import { verifyState, fetchGoogleUserEmail } from '../_shared/googleCalendarAuth.ts';
-import { DRIVE_SCOPE, ensureRootFolder, exchangeDriveCode } from '../_shared/googleDriveAuth.ts';
+import { appOrigin, DRIVE_SCOPE, ensureRootFolder, exchangeDriveCode } from '../_shared/googleDriveAuth.ts';
 
 const BACK = /^\/[A-Za-z0-9/_-]{0,120}$/;
 const redirectTo = (url: string) => new Response(null, { status: 302, headers: { Location: url } });
 
 Deno.serve(async (req) => {
-  const app = Deno.env.get('APP_BASE_URL') ?? '';
+  let app = appOrigin(null);
   let back = '/photos';
   try {
     const url = new URL(req.url);
     const state = url.searchParams.get('state');
     const payload: any = state ? await verifyState(state) : null;
     if (payload && BACK.test(String(payload.back || ''))) back = payload.back;
+    if (payload?.app) app = appOrigin(payload.app);
     const error = url.searchParams.get('error');
     if (error) return redirectTo(`${app}${back}?drive_error=${encodeURIComponent(error)}`);
     const code = url.searchParams.get('code');
