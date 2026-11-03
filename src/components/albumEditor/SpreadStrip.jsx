@@ -5,6 +5,8 @@ import SpreadView from "./SpreadView";
 
 // All spreads in a row at the bottom. Click = open, drag = reorder, small "+" between two spreads
 // inserts a new one there, ✂ splits a crowded spread in two.
+// A page is dragged by its picture too (Avira, 2026-11-03): the picture is a button, and the drag library ignores
+// drags that start on one unless told otherwise — before, only the small "דף N" line under it moved the page.
 // Dragging a photo over a page in the strip opens that page (after a moment), so the photo can be
 // dropped on one of its frames — that's how a photo moves between pages.
 let hoverTimer = null;
@@ -13,18 +15,19 @@ export default function SpreadStrip({ doc, assetsById, currentId, onSelect, onMo
   const [over, setOver] = useState(null);
   return (
     <div className="flex items-stretch gap-2 overflow-x-auto px-3 py-2" dir="ltr">
-      <DragDropContext onDragEnd={(r) => r.destination && onMove(r.source.index, r.destination.index)}>
+      <DragDropContext onDragEnd={(r) => r.destination && onMove?.(r.source.index, r.destination.index)}>
         <Droppable droppableId="spreads" direction="horizontal">
           {(dp) => (
             <div ref={dp.innerRef} {...dp.droppableProps} className="flex items-stretch gap-2">
               {doc.pages.map((p, i) => {
                 const filled = p.slots.filter((s) => s.assetId).length;
                 return (
-                  <Draggable key={p.id} draggableId={p.id} index={i}>
-                    {(dg) => (
-                      <div ref={dg.innerRef} {...dg.draggableProps} {...dg.dragHandleProps} className="group relative w-40 shrink-0">
+                  <Draggable key={p.id} draggableId={p.id} index={i} isDragDisabled={!onMove} disableInteractiveElementBlocking>
+                    {(dg, snap) => (
+                      <div ref={dg.innerRef} {...dg.draggableProps} {...dg.dragHandleProps} className={`group relative w-40 shrink-0 ${snap.isDragging ? "rounded shadow-2xl shadow-black/70 ring-2 ring-amber-400" : ""}`}>
                         <button
                           type="button"
+                          title={onMove ? "לחיצה = פתיחת הדף · גרירה = העברה למקום אחר" : undefined}
                           onClick={() => onSelect(p.id)}
                           onDragOver={(e) => {
                             if (![...e.dataTransfer.types].some((t) => t.startsWith("application/x-avira"))) return;

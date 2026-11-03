@@ -388,7 +388,7 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
                 onClear={() => setMultiSel([])}
               />
             )}
-            {!locked && <div className="text-[11px] text-slate-500">גוררים תמונה מהבנק · בין מסגרות = החלפה · ⌘+לחיצה (בבנק או בכפולה) = כמה תמונות · לחיצה על תמונה = זום, צבע, תיקון · ←/→ מעבר בין כפולות</div>}
+            {!locked && <div className="text-[11px] text-slate-500">גוררים תמונה מהבנק · בין מסגרות = החלפה · ⌘+לחיצה (בבנק או בכפולה) = כמה תמונות · לחיצה על תמונה = זום, צבע, תיקון · גוררים דף בפס למטה = שינוי הסדר · ←/→ מעבר בין כפולות</div>}
           </div>
           <button type="button" onClick={() => step(-1)} disabled={pageIndex <= 0} title="הכפולה הקודמת (← חץ שמאלה)" className="shrink-0 rounded-full p-2 text-slate-300 hover:bg-white/10 disabled:opacity-20">
             <ChevronLeft className="h-7 w-7" />
@@ -400,7 +400,7 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
             assetsById={assetsById}
             currentId={page.id}
             onSelect={goTo}
-            onMove={(from, to) => change((d) => movePage(d, from, to))}
+            onMove={locked ? null : (from, to) => change((d) => movePage(d, from, to))}
             onAdd={() => {
               if (locked) return;
               const next = addPage(doc, pageIndex);
