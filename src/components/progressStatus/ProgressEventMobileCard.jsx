@@ -3,6 +3,7 @@ import { Calendar, Camera, Video, Scissors } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
 import { EVENT_TEAM_ROLES } from "@/lib/staffRoles";
+import SentFromGallery from "./SentFromGallery";
 
 // Icons stay local (the shared staffRoles.js list uses emoji, not lucide components).
 // Was previously missing "videographer2" entirely (real bug — a videographer2 team
@@ -175,6 +176,7 @@ export default function ProgressEventMobileCard({
           {sendingCouple[event.id] ? '...' : event?.finalDoneManual ? '✓ נשלח' : '→ זוג'}
         </button>
       </div>
+      <SentFromGallery event={event} className="-mt-1" />
 
       {/* Album sketch row */}
       <div className="flex items-center gap-2">

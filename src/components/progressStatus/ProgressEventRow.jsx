@@ -4,6 +4,7 @@ import { Calendar, Camera, Video, Scissors } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EVENT_TEAM_ROLES } from "@/lib/staffRoles";
+import SentFromGallery from "./SentFromGallery";
 
 // One event's row on the work-status page (desktop), moved out of ProgressStatus.jsx
 // unchanged on 2026-10-09 — the dashboard's progress window shows the very same row.
@@ -128,7 +129,8 @@ export default function ProgressEventRow({ event, actions }) {
                   </button>
                 </div>
 
-                {/* Final Link + Status + Send to Couple */}
+                {/* Final Link + Status + Send to Couple (+ "נשלח מהגלריות" under it, 0109) */}
+                <div className="flex flex-col gap-0.5">
                 <div className="flex items-center gap-1">
                   <Input
                     type="url"
@@ -162,6 +164,8 @@ export default function ProgressEventRow({ event, actions }) {
                   >
                     {sendingCouple[event.id] ? '...' : event?.finalDoneManual ? '✓ נשלח' : '→ זוג'}
                   </button>
+                </div>
+                <SentFromGallery event={event} />
                 </div>
 
                 {/* Album Sketch — link + graphic + couple */}

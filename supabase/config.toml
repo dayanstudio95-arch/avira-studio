@@ -12,6 +12,10 @@
 [functions.google-calendar-oauth-callback]
 verify_jwt = false
 
+# google-drive-oauth-callback: the same, for the studio's Google Drive (gallery uploads, 0109).
+[functions.google-drive-oauth-callback]
+verify_jwt = false
+
 # calendar-sync-webhook is called by a Postgres trigger (via pg_net, see
 # supabase/migrations/0017_calendar_sync_trigger.sql), which cannot supply a
 # Supabase user JWT. It authenticates itself instead via the x-cron-secret

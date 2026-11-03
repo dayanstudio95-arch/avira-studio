@@ -3779,5 +3779,29 @@ console.log('\n— PART 75: album group messages + list order —');
   check('the size the drag shows, in cm', [ac.frameCm(p3a, 0, 'v'), ac.frameCm(p3d, 1, 'h')], [40, 15]);
 }
 
+{
+  section('gallery photos uploaded to Google Drive from the gallery page (2026-11-03, 0109)');
+  const du = await loadModule('src/lib/driveUploadPlan.js', 'du83');
+  const f = (path, size = 10) => ({ path, size });
+  const plan = du.planUpload([
+    f('עידן וליני/02 התארגנות/AVIRA-10.jpg'), f('עידן וליני/02 התארגנות/AVIRA-9.jpg'), f('עידן וליני/01 חופה/A.JPG'),
+    f('עידן וליני/01 חופה/sub/B.jpeg'), f('עידן וליני/01 חופה/A.jpg'), f('עידן וליני/cover.png'), f('עידן וליני/.DS_Store'), f('עידן וליני/clip.mp4'),
+  ]);
+  check('the dropped wedding folder: its sub-folders are the sets (by name), photos in it directly have no set, the rest is left out', [
+    plan.sets.map((s) => `${s.name}:${s.files.map((x) => x.name).join(',')}`), plan.loose.map((x) => x.name), plan.skipped, plan.count, plan.bytes,
+  ], [['01 חופה:A.JPG,A (2).jpg,B.jpeg', '02 התארגנות:AVIRA-9.jpg,AVIRA-10.jpg'], ['cover.png'], 2, 6, 60]);
+  check('set folders dropped by themselves (no wedding folder around them) are sets too', du.planUpload([f('01 חופה/a.jpg'), f('02 מסיבה/b.jpg')]).sets.map((s) => s.name), ['01 חופה', '02 מסיבה']);
+  check('the gallery\'s folder in "גלריות אווירה"; a stopped upload goes on with what is missing (name and size)', [
+    du.galleryFolderName('עידן & ליני', '2026-11-02'), du.galleryFolderName('א/ב', ''),
+    du.alreadyThere([{ name: 'A.jpg', size: '10' }], { name: 'A.jpg', size: 10 }), du.alreadyThere([{ name: 'A.jpg', size: '9' }], { name: 'A.jpg', size: 10 }),
+  ], ['עידן & ליני · 02.11.2026', 'א ב', true, false]);
+  check('time left and sizes, in plain words', [
+    du.etaText(4.7e9, 18e6), du.etaText(30e6, 18e6), du.etaText(2e10, 4e6), du.etaText(1e9, 0), du.sizeText(11.2 * 1024 ** 3), du.sizeText(840 * 1024 ** 2), du.sizeText(1.1 * 1024 ** 4), du.photosText(1), du.photosText(1548),
+  ], ['נשארו כ-5 דקות', 'נשארה פחות מדקה', 'נשארו כשעה ו-25 דקות', '', '11.2GB', '840MB', '1.1TB', 'תמונה אחת', '1,548 תמונות']);
+  check('whose materials: the event\'s photographers as work status shows them, each with the field it marks', du.teamPhotographers([
+    { role: 'photographer1', staffMemberName: 'ניר (דניאל)' }, { role: 'editor', staffMemberName: 'עורך' }, { role: 'photographer2', staffMemberName: 'שגיא' },
+  ]).map((m) => `${m.label}·${m.name}·${m.field}`), ['צלם 1·ניר (דניאל)·photographer1_done', 'צלם 2·שגיא·photographer2_done']);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useBottomBar } from "@/lib/bottomBar";
 import { confirmDialog, isConfirmOpen } from "@/lib/confirmDialog";
+import { registerEditor } from "@/lib/driveUpload";
+import DriveUploadPanel from "@/components/films/DriveUploadPanel";
 
 // The studio organizes a photo gallery: read the folder, sets, cover, hidden photos, and sees the
 // couple's hearts and Instagram marks. Ported from the Avira films app's admin (PhotosEditor.tsx,
@@ -47,8 +49,11 @@ function Progress({ done, total, children, testId }) {
   );
 }
 
-export default function PhotosEditor({ galleryId, initialFolder = "", coupleName = "", coupleUrl = "", guestUrl = "", guestHiddenSets = [] }) {
+export default function PhotosEditor({ galleryId, initialFolder = "", coupleName = "", coupleUrl = "", guestUrl = "", guestHiddenSets = [], eventId = null, date = "" }) {
   const [data, setData] = useState(null);
+  // "העלאה מהמחשב לגוגל דרייב" or a link (Avira, 2026-11-03, 0109); with photos, the upload opens on a click.
+  const [source, setSource] = useState("drive");
+  const [moreToDrive, setMoreToDrive] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [folder, setFolder] = useState(initialFolder);
   const [busy, setBusy] = useState("");
@@ -275,26 +280,27 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
    * Reads the folder again. When more than 10% of the photos the couple chose (hearts, Instagram,
    * lists, the album) would lose their photo, the Worker saves nothing and asks (fix plan P64, D16).
    */
-  const load = async (confirm = false) => {
+  const load = async (confirm = false, url = folder) => {
     setError("");
     setWarning("");
     setBusy("load");
     try {
-      const d = await filmsApi("POST", `/api/admin/galleries/${galleryId}/photos/load`, { url: folder, ...(confirm ? { confirm: true } : {}) });
+      const d = await filmsApi("POST", `/api/admin/galleries/${galleryId}/photos/load`, { url, ...(confirm ? { confirm: true } : {}) });
       if (d?.needsConfirm) {
         const go = await confirmDialog(
           `${d.lost.toLocaleString("he-IL")} מתוך ${d.total.toLocaleString("he-IL")} התמונות שהזוג בחר (לבבות, אינסטגרם, רשימות או האלבום) לא נמצאות בתיקייה הזו. לטעון בכל זאת? הבחירות האלה יישארו בלי תמונה.`,
         );
-        if (go) await load(true);
-        return;
+        return go ? await load(true, url) : false;
       }
       setData(d);
       toast.success(`נטענו ${d.items.length.toLocaleString("he-IL")} תמונות`);
       // Dropbox makes no preview of some files (HEIC, over 20MB): the Worker says which (fix plan P66).
       if (d.warnings?.length) setWarning(d.warnings.join(" "));
       datesTried.current = false;
+      return true;
     } catch (e) {
       setError(e.message);
+      return false;
     } finally {
       setBusy("");
     }
@@ -335,6 +341,18 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
     });
   }, [data, view, favs, insta, hideSorted]);
 
+  // A Drive upload of this gallery ending while it is open: the folder is loaded here (its questions, at once on screen).
+  const loadRef = useRef(load);
+  loadRef.current = load;
+  useEffect(
+    () =>
+      registerEditor(galleryId, async (url) => {
+        setFolder(url);
+        setMoreToDrive(false);
+        return loadRef.current(false, url);
+      }),
+    [galleryId],
+  );
   if (!loaded) {
     return (
       <div className="p-10 flex justify-center">
@@ -342,6 +360,17 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
       </div>
     );
   }
+
+  const drivePanel = <DriveUploadPanel galleryId={galleryId} coupleName={coupleName} date={date} eventId={eventId} existingFolderUrl={folder} />;
+  const sourceTabs = (
+    <div className="flex gap-1.5 text-sm">
+      {[["drive", "העלאה מהמחשב לגוגל דרייב"], ["link", "יש לי כבר קישור"]].map(([id, label]) => (
+        <button key={id} type="button" onClick={() => setSource(id)} className={`rounded-md border px-3 py-1 ${source === id ? "border-brand-400 bg-brand-400/15 text-white" : "border-gray-700 text-gray-300 hover:border-gray-500"}`} data-testid={`photo-source-${id}`}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
 
   const folderRow = (label) => (
     <div className="flex flex-wrap gap-2">
@@ -356,8 +385,15 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
     return (
       <section className={card}>
         <h2 className="text-lg font-semibold text-white">התמונות</h2>
-        <p className="text-sm text-gray-400">קישור לתיקייה עם התמונות: דרופבוקס, גוגל דרייב או pCloud. תיקיות בשם של סט ("02 התארגנות") ממלאות את הסט הזה.</p>
-        {folderRow("טעינת תמונות")}
+        {sourceTabs}
+        {source === "drive" ? (
+          drivePanel
+        ) : (
+          <>
+            <p className="text-sm text-gray-400">קישור לתיקייה עם התמונות: דרופבוקס, גוגל דרייב או pCloud. תיקיות בשם של סט ("02 התארגנות") ממלאות את הסט הזה.</p>
+            {folderRow("טעינת תמונות")}
+          </>
+        )}
         {error && <p className="text-red-400 text-sm">{error}</p>}
       </section>
     );
@@ -542,7 +578,13 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
           </span>
         </div>
         {folderRow("טעינה מחדש")}
-        <p className="text-xs text-gray-500">טעינה מחדש מוסיפה תמונות חדשות ושומרת את הסטים, תמונת השער והתמונות המוסתרות.</p>
+        <p className="text-xs text-gray-500">
+          טעינה מחדש מוסיפה תמונות חדשות ושומרת את הסטים, תמונת השער והתמונות המוסתרות.{" "}
+          <button type="button" onClick={() => setMoreToDrive((v) => !v)} className="text-brand-300 hover:underline" data-testid="drive-more">
+            {moreToDrive ? "סגירת ההעלאה" : "העלאת תמונות נוספות לדרייב (למשל של הצלם השני)"}
+          </button>
+        </p>
+        {moreToDrive && drivePanel}
         {error && (
           <p className="text-red-400 text-sm" data-testid="photos-error">
             {error}

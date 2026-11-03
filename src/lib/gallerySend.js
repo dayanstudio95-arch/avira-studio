@@ -3,6 +3,8 @@ import { base44 } from "@/api/base44Client";
 import { supabase } from "@/api/supabaseClient";
 // Avira's in-app question, as work status asks it (the galleries' @/lib/confirmDialog has no window mounted here).
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { closeFromSend } from "@films-shared/day";
+import { filmsApi } from "@/lib/filmsApi";
 
 // "שלח לזוג" from the galleries (Avira, 2026-10-31, the owner's request): the work-status "→ זוג" button's
 // send-to-couple function, with the gallery's couple link as the final link — in the gallery's own words since
@@ -21,8 +23,14 @@ export async function eventsInfo(eventIds) {
   return Object.fromEntries((data || []).map((e) => [e.id, { sent: e.final_done_manual === true, photographer: mainPhotographer(e.team), venue: e.venue || "" }]));
 }
 
-/** Sends the gallery's link to the couple on WhatsApp. True when it was sent. `expiresAt`: the gallery's closing time. */
-export async function sendGalleryToCouple(eventId, link, { expiresAt } = {}) {
+/**
+ * Sends the gallery's link to the couple on WhatsApp. `gallery` ({ id, kind, days, expiresAt }): its access days count
+ * from the send (2026-11-03) — the message says the new closing day and the gallery gets it once the message went out;
+ * work status shows it was sent from the galleries (0109: final_sent_via / final_sent_at / final_sent_gallery).
+ * false when nothing was sent, else { expiresAt } — the gallery's closing time now.
+ */
+export async function sendGalleryToCouple(eventId, link, { gallery = null } = {}) {
+  const expiresAt = gallery?.days >= 1 ? closeFromSend(gallery.expiresAt, gallery.days, Date.now()) : gallery?.expiresAt;
   if (!eventId) {
     toast.error("קודם לבחור את האירוע של הזוג בעריכת הגלריה");
     return false;
@@ -63,12 +71,25 @@ export async function sendGalleryToCouple(eventId, link, { expiresAt } = {}) {
     return false;
   }
   // After the send: a failed send never leaves the event looking done ("סופי" is green as soon as there is a link).
+  const sent = { expiresAt: gallery?.expiresAt };
+  if (gallery?.id && expiresAt && expiresAt !== gallery.expiresAt) {
+    try {
+      sent.expiresAt = (await filmsApi("PUT", `/api/admin/galleries/${gallery.id}`, { expiresAt })).expiresAt;
+    } catch (e) {
+      toast.warning(`נשלח, אבל תאריך הסגירה של הגלריה לא עודכן: ${e.message}`);
+    }
+  }
   try {
-    await base44.entities.Event.update(ev.id, { finalLink: link });
+    await base44.entities.Event.update(ev.id, {
+      finalLink: link,
+      finalSentVia: "gallery",
+      finalSentAt: new Date().toISOString(),
+      finalSentGallery: gallery?.id ? `${gallery.kind === "films" ? "films" : "photos"}/${gallery.id}` : null,
+    });
   } catch {
     toast.warning(`נשלח ל${names}, אבל הקישור לא נשמר ב"לינק סופי" בסטטוס עבודה`);
-    return true;
+    return sent;
   }
   toast.success(`נשלח ל${names} ✅`);
-  return true;
+  return sent;
 }

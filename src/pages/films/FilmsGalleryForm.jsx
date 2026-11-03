@@ -22,6 +22,8 @@ import { formatDateShort, formatDateTime, israelToday } from "@/lib/dates";
 import { confirmDialog } from "@/lib/confirmDialog";
 import { mainPhotographer, sendGalleryToCouple } from "@/lib/gallerySend";
 import EventPicker from "@/components/films/EventPicker";
+import DriveUploadPanel from "@/components/films/DriveUploadPanel";
+import { startUpload } from "@/lib/driveUpload";
 import ChoiceDialog from "@/components/films/ChoiceDialog";
 
 // Create / edit one couple's gallery (/films/new, /films/:id): films or photos. Ported from
@@ -90,6 +92,9 @@ export default function FilmsGalleryForm() {
     if (isNew && galleryKindOfPath(location.pathname) !== kind) navigate(`${galleryHome(kind)}/new`, { replace: true });
   }, [isNew, kind, location.pathname, navigate]);
   const [photoFolder, setPhotoFolder] = useState("");
+  // A new photo gallery's photos: uploaded to Google Drive from here (0109), or a link as before.
+  const [photoSource, setPhotoSource] = useState("drive");
+  const [drivePick, setDrivePick] = useState(null); // { plan, roles } — starts once the gallery is made
   const [music, setMusic] = useState("");
   const [password, setPassword] = useState("");
   const [downloadPin, setDownloadPin] = useState("");
@@ -288,7 +293,15 @@ export default function FilmsGalleryForm() {
       const existing = id || madeBefore;
       const g = existing ? await filmsApi("PUT", `/api/admin/galleries/${existing}`, body) : await filmsApi("POST", "/api/admin/galleries", { ...body, kind });
       if (isNew) created.current = g.id;
-      if (isNew && !madeBefore && kind === "photos" && photoFolder.trim()) {
+      // The Drive upload starts in the background as soon as the gallery exists (src/lib/driveUpload.js).
+      if (isNew && !madeBefore && kind === "photos" && photoSource === "drive" && drivePick?.plan) {
+        try {
+          startUpload({ galleryId: g.id, galleryKind: "photos", coupleName: g.coupleName || coupleName, date, eventId: (canEvents && eventId) || null, roles: drivePick.roles, plan: drivePick.plan });
+        } catch (upErr) {
+          toast.error(upErr.message);
+        }
+      }
+      if (isNew && !madeBefore && kind === "photos" && photoSource === "link" && photoFolder.trim()) {
         try {
           const d = await filmsApi("POST", `/api/admin/galleries/${g.id}/photos/load`, { url: photoFolder });
           toast.success(`נטענו ${d.items.length.toLocaleString("he-IL")} תמונות`);
@@ -340,7 +353,11 @@ export default function FilmsGalleryForm() {
     }
     setBusy("send");
     try {
-      if (await sendGalleryToCouple(gallery?.eventId, link, { expiresAt: gallery?.expiresAt })) setEventSent(true);
+      const sent = await sendGalleryToCouple(gallery?.eventId, link, { gallery: { ...gallery, kind } });
+      if (sent) {
+        setEventSent(true);
+        if (sent.expiresAt !== gallery?.expiresAt) setGallery((prev) => (prev ? { ...prev, expiresAt: sent.expiresAt } : prev));
+      }
     } finally {
       setBusy("");
     }
@@ -580,9 +597,20 @@ export default function FilmsGalleryForm() {
 
         {kind === "photos" && isNew && (
           <Section title="התמונות">
-            <Field label="קישור לתיקייה עם התמונות: דרופבוקס, גוגל דרייב או pCloud (אפשר גם אחרי היצירה)" hint={'תיקיות בשם של סט ("02 התארגנות") ממלאות את הסט הזה. MyAirBridge נתמך רק לסרטים.'}>
-              <Input className={inputCls} value={photoFolder} onChange={(e) => setPhotoFolder(e.target.value)} placeholder="https://www.dropbox.com/scl/fo/…" dir="ltr" data-testid="new-photo-folder" />
-            </Field>
+            <div className="flex gap-1.5 text-sm">
+              {[["drive", "העלאה מהמחשב לגוגל דרייב"], ["link", "יש לי כבר קישור"]].map(([sid, label]) => (
+                <button key={sid} type="button" onClick={() => setPhotoSource(sid)} className={`rounded-md border px-3 py-1 ${photoSource === sid ? "border-brand-400 bg-brand-400/15 text-white" : "border-gray-700 text-gray-300 hover:border-gray-500"}`} data-testid={`new-photo-source-${sid}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            {photoSource === "drive" ? (
+              <DriveUploadPanel coupleName={coupleName} date={date} eventId={(canEvents && eventId) || null} onReady={setDrivePick} />
+            ) : (
+              <Field label="קישור לתיקייה עם התמונות: דרופבוקס, גוגל דרייב או pCloud (אפשר גם אחרי היצירה)" hint={'תיקיות בשם של סט ("02 התארגנות") ממלאות את הסט הזה. MyAirBridge נתמך רק לסרטים.'}>
+                <Input className={inputCls} value={photoFolder} onChange={(e) => setPhotoFolder(e.target.value)} placeholder="https://www.dropbox.com/scl/fo/…" dir="ltr" data-testid="new-photo-folder" />
+              </Field>
+            )}
           </Section>
         )}
 
@@ -664,7 +692,7 @@ export default function FilmsGalleryForm() {
       </form>
       {gallery && kind === "photos" && (
         <div className="max-w-4xl mx-auto mt-5">
-          <PhotosEditor galleryId={gallery.id} initialFolder={gallery.folderUrl || ""} coupleName={coupleName} coupleUrl={link} guestUrl={guestLink} guestHiddenSets={gallery.guestHiddenSets || []} />
+          <PhotosEditor galleryId={gallery.id} initialFolder={gallery.folderUrl || ""} coupleName={coupleName} coupleUrl={link} guestUrl={guestLink} guestHiddenSets={gallery.guestHiddenSets || []} eventId={gallery.eventId || null} date={date} />
         </div>
       )}
       {gallery && kind === "photos" && (

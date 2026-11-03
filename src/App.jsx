@@ -2,6 +2,8 @@ import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/sonner';
+// The Drive upload pill: a gallery's photos keep uploading while the owner moves between pages (0109).
+import DriveUploadPill from '@/components/DriveUploadPill';
 import { ConfirmHost, GalleryConfirmBridge } from '@/components/ui/confirm-dialog';
 import { queryClientInstance } from '@/lib/query-client';
 import { AuthProvider, useAuth } from '@/lib/SupabaseAuthContext';
@@ -350,6 +352,7 @@ function App() {
             </Routes>
           </Suspense>
           <Toaster />
+          <DriveUploadPill />
           <ConfirmHost />
           <GalleryConfirmBridge />
         </BrowserRouter>

@@ -83,6 +83,8 @@ const FUNCTION_MAP = {
   automationEngine: 'automation-engine',
   // "חשבוניות מהצוות" (2026-11-02): the screen's scan of the staff chats (0106).
   staffInvoices: 'staff-invoices',
+  // The studio's Google Drive for gallery uploads: connect, status, short-lived upload tokens (Avira, 0109).
+  googleDrive: 'google-drive',
   approvePendingAutomation: 'approve-pending-automation',
 
   // Morning / Green Invoice — supports two business entities (sole_prop / company),

@@ -87,8 +87,11 @@ export function useProgressActions({ setEvents, staffMembers }) {
         phoneNumber: event?.phoneNumber,
         finalLink,
       });
+      // Sent from here: work status no longer says "נשלח מהגלריות" (0109).
+      const sentFields = { finalSentVia: 'status', finalSentAt: new Date().toISOString(), finalSentGallery: null };
+      await base44.entities.Event.update(event.id, sentFields).catch(() => {});
       setEvents(prev => prev.map(e => e?.id === event.id
-        ? { ...e, finalDoneManual: true }
+        ? { ...e, finalDoneManual: true, ...sentFields }
         : e
       ));
       toast.success('נשלח לזוג בהצלחה ✅');
