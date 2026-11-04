@@ -38,7 +38,7 @@ export function DriveJobProgress({ job, compact = false }) {
         <div className="divide-y divide-gray-800 text-xs">
           {job.sets.map((s) => (
             <div key={s.name} className="flex items-center gap-2 py-1">
-              <span className="flex-1 truncate text-gray-300">{s.name}</span>
+              <span className="flex-1 truncate text-gray-300">{s.name || "ישר בתיקיית האירוע"}</span>
               {s.done >= s.total ? <span className="text-green-400">✓ {s.total}</span> : <span className="text-gray-500">{s.done}/{s.total}</span>}
             </div>
           ))}
@@ -46,6 +46,12 @@ export function DriveJobProgress({ job, compact = false }) {
       )}
       {job.error && <p className="text-xs text-red-300">{job.error}</p>}
       {job.note && <p className="text-xs text-amber-300">{job.note}</p>}
+      {job.filedTo && job.phase !== "error" && (
+        <p className="text-xs text-gray-400">
+          {job.helperOld ? "עוזר הדרייב צריך עדכון כדי להעביר את התיקייה אל " : "עוזר הדרייב יעביר את התיקייה תוך כמה דקות אל "}
+          {[...job.filedTo, job.folderName].join(" › ")}
+        </p>
+      )}
       {job.phase === "done" && (
         <p className="text-xs text-green-300">
           {job.total.toLocaleString("he-IL")} תמונות בדרייב, התיקייה שותפה בקישור{job.loaded ? " והתמונות נטענו לגלריה" : ""}

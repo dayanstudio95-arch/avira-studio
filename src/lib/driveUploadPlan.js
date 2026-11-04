@@ -1,68 +1,81 @@
-// Photos uploaded to Google Drive from the gallery page (Avira, 2026-11-03, 0109): what goes where. The owner drops the
-// wedding's folder: its sub-folders are the gallery's sets ("02 התארגנות" fills that set, as a pasted Drive link does),
-// photos lying in it directly go in the gallery's own folder. Only photos the gallery reads (IMAGE_EXT, as
-// gallery-worker/worker/photos.ts); the rest is counted and left out. Pure — tested in scripts/test-whatsapp-bot.mjs.
+// Photos uploaded to Google Drive from the gallery page (Avira, 2026-11-03, 0109; 2026-11-04, 0110): what goes where.
+// What the owner drops keeps its folders (his decision): "צלם ראשון", "צלם שני", "טיזר"… each go into the event's
+// folder by their own name, with everything in them; photos dropped by themselves lie in it directly. The event's folder
+// is "ויקה ואיליה 1/11/26", filed by the Drive helper into "גלריות אווירה 2026 › גלריות 11/2026". Only photos the
+// gallery reads (IMAGE_EXT, as gallery-worker/worker/photos.ts); the rest is counted and left out. Pure — tested in
+// scripts/test-whatsapp-bot.mjs.
 
 export const IMAGE_EXT = /\.(jpe?g|png|webp|heic|heif|tiff?)$/i;
+/** The gallery reads this many folders down from the event's folder (gallery-worker photos.ts MAX_DEPTH). */
+export const READ_DEPTH = 3;
 
 const collator = new Intl.Collator("he", { numeric: true, sensitivity: "base" });
 const natural = (a, b) => collator.compare(a, b);
 
 /**
- * files: [{ path: "חתונה/02 התארגנות/AVIRA-1.jpg", size, file? }] (the dropped folder's relative paths) →
- * { sets: [{ name, files }], loose: [files], skipped, count, bytes }. One folder around everything is the wedding's
- * own folder and is not a set; deeper folders join their top folder's set. Two photos of one name in a set: the
- * second becomes "name (2).jpg" (Drive would keep both, the gallery would show one).
+ * files: [{ path: "צלם ראשון/01 התארגנות/AVIRA-1.jpg", size, file? }] (paths as dropped) →
+ * { files: [{ ...f, name, dir: ["צלם ראשון", "01 התארגנות"] }], groups: [{ name, count, bytes, folders }], skipped,
+ * deep, count, bytes }. `groups` = what was dropped, by its top folder ('' = photos dropped by themselves); `deep` =
+ * photos more than 3 folders down, which the gallery does not read. Two photos of one name in one folder: the second
+ * becomes "name (2).jpg" (Drive would keep both, the gallery would show one).
  */
 export function planUpload(files) {
-  const list = (files || []).filter((f) => f && typeof f.path === "string");
-  const parts = list.map((f) => f.path.split("/").filter(Boolean));
-  // The wedding's folder itself: every path starts with the same folder (and has more under it).
-  const top = parts.length && parts.every((p) => p.length > 1 && p[0] === parts[0][0]) ? 1 : 0;
-  const sets = new Map();
-  const loose = [];
   let skipped = 0;
-  list.forEach((f, i) => {
-    const p = parts[i].slice(top);
-    const name = p[p.length - 1] || "";
-    if (name.startsWith(".") || !IMAGE_EXT.test(name)) {
+  const kept = [];
+  for (const f of files || []) {
+    if (!f || typeof f.path !== "string") continue;
+    const parts = f.path.split("/").filter(Boolean);
+    const name = parts.pop() || "";
+    if (name.startsWith(".") || !IMAGE_EXT.test(name) || parts.some((p) => p.startsWith("."))) {
       skipped++;
-      return;
+      continue;
     }
-    const item = { ...f, name };
-    if (p.length > 1) {
-      const set = p[0].trim();
-      if (!sets.has(set)) sets.set(set, []);
-      sets.get(set).push(item);
-    } else loose.push(item);
+    kept.push({ ...f, name, dir: parts.map((p) => p.trim()) });
+  }
+  kept.sort((a, b) => natural([...a.dir, a.name].join("/"), [...b.dir, b.name].join("/")));
+  const seen = new Map();
+  const out = kept.map((it) => {
+    const key = `${it.dir.join("/")}/${it.name.toLowerCase()}`;
+    const n = (seen.get(key) || 0) + 1;
+    seen.set(key, n);
+    return n === 1 ? it : { ...it, name: it.name.replace(/(\.[^.]+)$/, ` (${n})$1`) };
   });
-  const unique = (items) => {
-    const seen = new Map();
-    return items
-      .sort((a, b) => natural(a.name, b.name))
-      .map((it) => {
-        const key = it.name.toLowerCase();
-        const n = (seen.get(key) || 0) + 1;
-        seen.set(key, n);
-        return n === 1 ? it : { ...it, name: it.name.replace(/(\.[^.]+)$/, ` (${n})$1`) };
-      });
+  const groups = new Map();
+  for (const it of out) {
+    const g = it.dir[0] || "";
+    if (!groups.has(g)) groups.set(g, { name: g, count: 0, bytes: 0, dirs: new Set() });
+    const x = groups.get(g);
+    x.count++;
+    x.bytes += Number(it.size) || 0;
+    if (it.dir.length > 1) x.dirs.add(it.dir.slice(1).join("/"));
+  }
+  return {
+    files: out,
+    groups: [...groups.values()].sort((a, b) => (a.name === "") - (b.name === "") || natural(a.name, b.name)).map(({ dirs, ...g }) => ({ ...g, folders: dirs.size })),
+    skipped,
+    deep: out.filter((it) => it.dir.length > READ_DEPTH).length,
+    count: out.length,
+    bytes: out.reduce((s, f) => s + (Number(f.size) || 0), 0),
   };
-  const out = [...sets.entries()].sort((a, b) => natural(a[0], b[0])).map(([name, items]) => ({ name, files: unique(items) }));
-  const looseOut = unique(loose);
-  const all = [...out.flatMap((s) => s.files), ...looseOut];
-  return { sets: out, loose: looseOut, skipped, count: all.length, bytes: all.reduce((s, f) => s + (Number(f.size) || 0), 0) };
+}
+
+/** "ויקה ואיליה 1/11/26" — the event's folder (the owner's own naming). */
+export function galleryFolderName(coupleName, date) {
+  const d = String(date || "").slice(0, 10);
+  const shown = /^\d{4}-\d{2}-\d{2}$/.test(d) ? `${Number(d.slice(8, 10))}/${Number(d.slice(5, 7))}/${d.slice(2, 4)}` : "";
+  const name = String(coupleName || "").replace(/\s+/g, " ").trim() || "גלריה";
+  return shown ? `${name} ${shown}` : name;
+}
+
+/** Where the Drive helper files it: ["גלריות אווירה 2026", "גלריות 11/2026"] (as _shared/driveHelper.ts galleryDrivePath), or null. */
+export function drivePath(date) {
+  const m = String(date || "").match(/^(\d{4})-(\d{2})-\d{2}/);
+  if (!m || Number(m[2]) < 1 || Number(m[2]) > 12) return null;
+  return [`גלריות אווירה ${m[1]}`, `גלריות ${Number(m[2])}/${m[1]}`];
 }
 
 /** "6 תמונות" / "תמונה אחת". */
 export const photosText = (n) => (n === 1 ? "תמונה אחת" : `${Number(n).toLocaleString("he-IL")} תמונות`);
-
-/** "עידן & ליני · 02.11.2026" — the gallery's folder in "גלריות אווירה". */
-export function galleryFolderName(coupleName, date) {
-  const d = String(date || "").slice(0, 10);
-  const shown = /^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d.slice(8, 10)}.${d.slice(5, 7)}.${d.slice(0, 4)}` : "";
-  const name = String(coupleName || "").replace(/[\\/]/g, " ").replace(/\s+/g, " ").trim() || "גלריה";
-  return shown ? `${name} · ${shown}` : name;
-}
 
 /** Already in Drive (an upload stopped half way and started again): same name and same size. */
 export const alreadyThere = (existing, file) => (existing || []).some((e) => e.name === file.name && Number(e.size) === Number(file.size));

@@ -3506,7 +3506,7 @@ console.log('\n— PART 75: album group messages + list order —');
   const ds = await loadModule('src/lib/driveScript.js', 'ds78');
   const id = '0f8fad5b-d9cb-469f-a165-70867728950e';
   check('the report: space and results', dh.parseSync({ storage: { used: 1.2e12, limit: '2000000000000' }, results: [{ id, ok: true, prevParentId: 'octoberFolder123' }, { id, ok: false, error: 'x'.repeat(500) }] }),
-    { storage: { used: 1.2e12, limit: 2e12 }, results: [{ id, ok: true, error: '', prevParentId: 'octoberFolder123' }, { id, ok: false, error: 'x'.repeat(300), prevParentId: '' }] });
+    { storage: { used: 1.2e12, limit: 2e12 }, results: [{ id, ok: true, error: '', prevParentId: 'octoberFolder123' }, { id, ok: false, error: 'x'.repeat(300), prevParentId: '' }], version: 1 });
   check('no space when it isn\'t two good numbers (an unlimited Drive says -1)', [dh.parseSync({ storage: { used: 5, limit: -1 } }).storage, dh.parseSync({}).storage, dh.parseSync(null).storage], [null, null, null]);
   check('a result without a real task id, or a bad parent, is dropped / blanked', dh.parseSync({ results: [{ id: 'nope', ok: true }, { id, ok: true, prevParentId: '../../x' }] }).results, [{ id, ok: true, error: '', prevParentId: '' }]);
   const script = ds.driveAppsScript({ url: 'https://example.supabase.co/functions/v1/drive-helper', token: 'tok_ABCDEFGHIJKLMNOPQRSTUVWX' });
@@ -3784,17 +3784,27 @@ console.log('\n— PART 75: album group messages + list order —');
   const du = await loadModule('src/lib/driveUploadPlan.js', 'du83');
   const f = (path, size = 10) => ({ path, size });
   const plan = du.planUpload([
-    f('עידן וליני/02 התארגנות/AVIRA-10.jpg'), f('עידן וליני/02 התארגנות/AVIRA-9.jpg'), f('עידן וליני/01 חופה/A.JPG'),
-    f('עידן וליני/01 חופה/sub/B.jpeg'), f('עידן וליני/01 חופה/A.jpg'), f('עידן וליני/cover.png'), f('עידן וליני/.DS_Store'), f('עידן וליני/clip.mp4'),
+    f('צלם ראשון/02 התארגנות/AVIRA-10.jpg'), f('צלם ראשון/02 התארגנות/AVIRA-9.jpg'), f('צלם ראשון/01 חופה/A.JPG'), f('צלם ראשון/01 חופה/A.jpg'),
+    f('צלם שני/B.jpeg'), f('טיזר/a/b/c/deep.jpg'), f('cover.png'), f('צלם שני/.DS_Store'), f('צלם שני/clip.mp4'), f('.hidden/x.jpg'),
   ]);
-  check('the dropped wedding folder: its sub-folders are the sets (by name), photos in it directly have no set, the rest is left out', [
-    plan.sets.map((s) => `${s.name}:${s.files.map((x) => x.name).join(',')}`), plan.loose.map((x) => x.name), plan.skipped, plan.count, plan.bytes,
-  ], [['01 חופה:A.JPG,A (2).jpg,B.jpeg', '02 התארגנות:AVIRA-9.jpg,AVIRA-10.jpg'], ['cover.png'], 2, 6, 60]);
-  check('set folders dropped by themselves (no wedding folder around them) are sets too', du.planUpload([f('01 חופה/a.jpg'), f('02 מסיבה/b.jpg')]).sets.map((s) => s.name), ['01 חופה', '02 מסיבה']);
-  check('the gallery\'s folder in "גלריות אווירה"; a stopped upload goes on with what is missing (name and size)', [
-    du.galleryFolderName('עידן & ליני', '2026-11-02'), du.galleryFolderName('א/ב', ''),
+  check('what is dropped keeps its folders: each top folder by its name, photos dropped by themselves lie in the event folder', [
+    plan.files.map((x) => [...x.dir, x.name].join('/')), plan.groups.map((g) => `${g.name}:${g.count}:${g.folders}`), plan.skipped, plan.deep, plan.count, plan.bytes,
+  ], [
+    ['טיזר/a/b/c/deep.jpg', 'צלם ראשון/01 חופה/A.JPG', 'צלם ראשון/01 חופה/A (2).jpg', 'צלם ראשון/02 התארגנות/AVIRA-9.jpg', 'צלם ראשון/02 התארגנות/AVIRA-10.jpg', 'צלם שני/B.jpeg', 'cover.png'],
+    ['טיזר:1:1', 'צלם ראשון:4:2', 'צלם שני:1:0', ':1:0'], 3, 1, 7, 70,
+  ]);
+  check('the event folder by the owner\'s naming, filed by its date; a stopped upload goes on with what is missing (name and size)', [
+    du.galleryFolderName('ויקה ואיליה', '2026-11-01'), du.galleryFolderName('עידן & ליני', '2027-01-09'), du.galleryFolderName('א', ''),
+    du.drivePath('2026-11-01'), du.drivePath('2027-01-09'), du.drivePath(''),
     du.alreadyThere([{ name: 'A.jpg', size: '10' }], { name: 'A.jpg', size: 10 }), du.alreadyThere([{ name: 'A.jpg', size: '9' }], { name: 'A.jpg', size: 10 }),
-  ], ['עידן & ליני · 02.11.2026', 'א ב', true, false]);
+  ], ['ויקה ואיליה 1/11/26', 'עידן & ליני 9/1/27', 'א', ['גלריות אווירה 2026', 'גלריות 11/2026'], ['גלריות אווירה 2027', 'גלריות 1/2027'], null, true, false]);
+  const dh = await loadModule('supabase/functions/_shared/driveHelper.ts', 'dh84');
+  check('the server files it the same way; the script says its version (an old one sends none)', [
+    dh.galleryDrivePath('2026-11-01'), dh.galleryDrivePath('2027-13-01'), dh.parseSync({ v: 2, results: [] }).version, dh.parseSync({ results: [] }).version,
+  ], [['גלריות אווירה 2026', 'גלריות 11/2026'], null, 2, 1]);
+  const ds = await loadModule('src/lib/driveScript.js', 'ds84');
+  const script = ds.driveAppsScript({ url: 'https://x.invalid/functions/v1/drive-helper', token: 'tok_' + 'a'.repeat(30) });
+  check('the Drive helper script files a gallery into its year / month folder and reports version 2', [script.includes("t.kind === 'file'"), script.includes('path_(t.path)'), (script.match(/v: 2/g) || []).length], [true, true, 2]);
   check('time left and sizes, in plain words', [
     du.etaText(4.7e9, 18e6), du.etaText(30e6, 18e6), du.etaText(2e10, 4e6), du.etaText(1e9, 0), du.sizeText(11.2 * 1024 ** 3), du.sizeText(840 * 1024 ** 2), du.sizeText(1.1 * 1024 ** 4), du.photosText(1), du.photosText(1548),
   ], ['נשארו כ-5 דקות', 'נשארה פחות מדקה', 'נשארו כשעה ו-25 דקות', '', '11.2GB', '840MB', '1.1TB', 'תמונה אחת', '1,548 תמונות']);

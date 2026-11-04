@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Camera, FolderDown, Loader2, PlugZap, Upload } from "lucide-react";
 import { supabase } from "@/api/supabaseClient";
 import { appFolderOf, connectDrive, driveQuota, driveStatus, filesFromDrop, filesFromInput, isOpen, jobFor, startUpload, subscribe } from "@/lib/driveUpload";
-import { photosText, planUpload, sizeText, teamPhotographers } from "@/lib/driveUploadPlan";
+import { drivePath, galleryFolderName, photosText, planUpload, READ_DEPTH, sizeText, teamPhotographers } from "@/lib/driveUploadPlan";
 import { DriveJobButtons, DriveJobProgress } from "@/components/DriveUploadPill";
 
 // "העלאה מהמחשב לגוגל דרייב" on a photo gallery (Avira, 2026-11-03, the owner's request; src/lib/driveUpload.js): the
@@ -148,7 +148,7 @@ export default function DriveUploadPanel({ galleryId = null, coupleName = "", da
         ) : (
           <>
             <FolderDown className="mx-auto mb-1 h-5 w-5" />
-            גוררים לכאן את התיקייה של החתונה (עם תיקיות הסטים), או{" "}
+            גוררים לכאן את התיקיות שמעלים (צלם ראשון, צלם שני, טיזר…), אחת או כמה ביחד, או{" "}
             <button type="button" onClick={() => inputRef.current?.click()} className="text-brand-300 underline">
               בוחרים מהמחשב
             </button>
@@ -160,22 +160,27 @@ export default function DriveUploadPanel({ galleryId = null, coupleName = "", da
       {plan && (
         <div className="space-y-3 rounded-lg border border-gray-700 p-3 text-sm">
           <p className="text-xs text-gray-400">
-            יעלה לדרייב אל: <span className="text-gray-200">{target.folderId ? "התיקייה של הגלריה בדרייב (מוסיף אליה)" : `גלריות אווירה › ${coupleName || "הגלריה"}`}</span>
+            יעלה לדרייב אל:{" "}
+            <span className="text-gray-200">
+              {target.folderId ? `התיקייה של הגלריה בדרייב (מוסיף אליה)` : [...(drivePath(date) || ["גלריות אווירה"]), galleryFolderName(coupleName, date)].join(" › ")}
+            </span>
             {!target.folderId && existingFolderUrl && target.checked && <span className="block text-amber-300">לגלריה כבר יש קישור לתיקייה אחרת. ההעלאה תיצור תיקייה חדשה בדרייב, והגלריה תיטען ממנה.</span>}
+            {!target.folderId && drivePath(date) && !(status.helperVersion >= 2) && (
+              <span className="block text-amber-300" data-testid="drive-helper-old">
+                כדי שהתיקייה תעבור לשם, מעדכנים פעם אחת את עוזר הדרייב: הגדרות ← חיבורים ← עוזר הדרייב ← "צור סקריפט חדש", ומדביקים אותו ב-script.google.com במקום הקודם. עד אז היא מחכה ב"גלריות אווירה".
+              </span>
+            )}
           </p>
           <div className="divide-y divide-gray-800 text-xs">
-            {plan.sets.map((s) => (
-              <div key={s.name} className="flex justify-between py-1">
-                <span className="text-gray-200">{s.name}</span>
-                <span className="text-gray-400">{photosText(s.files.length)}</span>
+            {plan.groups.map((g) => (
+              <div key={g.name || "-"} className="flex justify-between gap-3 py-1">
+                <span className="text-gray-200">
+                  {g.name ? `📁 ${g.name}` : "ישר בתיקיית האירוע"}
+                  {g.folders > 0 && <span className="text-gray-500"> · {g.folders === 1 ? "תיקייה אחת בתוכה" : `${g.folders} תיקיות בתוכה`}</span>}
+                </span>
+                <span className="shrink-0 text-gray-400">{photosText(g.count)}</span>
               </div>
             ))}
-            {plan.loose.length > 0 && (
-              <div className="flex justify-between py-1">
-                <span className="text-gray-200">בלי סט (ישר בתיקייה)</span>
-                <span className="text-gray-400">{photosText(plan.loose.length)}</span>
-              </div>
-            )}
             <div className="flex justify-between py-1 font-semibold text-white">
               <span>סה״כ</span>
               <span>
@@ -183,6 +188,7 @@ export default function DriveUploadPanel({ galleryId = null, coupleName = "", da
               </span>
             </div>
           </div>
+          {plan.deep > 0 && <p className="text-xs text-amber-300">{photosText(plan.deep)} יותר מ-{READ_DEPTH} תיקיות פנימה: הן יעלו לדרייב, אבל הגלריה לא תקרא אותן.</p>}
           {plan.skipped > 0 && <p className="text-xs text-gray-500">{plan.skipped === 1 ? "קובץ אחד שאינו תמונה לא יעלה." : `${plan.skipped.toLocaleString("he-IL")} קבצים שאינם תמונות לא יעלו.`}</p>}
 
           <div>

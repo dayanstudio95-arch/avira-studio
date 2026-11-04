@@ -2,8 +2,10 @@
 // each photo straight to the studio's Drive (resumable uploads, three at a time) with a short-lived token from the
 // google-drive function — nothing passes through our servers. The job lives here, outside any page: the owner moves
 // around the app and the pill (DriveUploadPill.jsx) shows it; only closing or reloading the tab stops it (and asks
-// first). At the end: the folder is shared by link, loaded into the gallery (the photos editor does it when it is open,
-// with its own questions), and the photographers chosen are marked "done" on work status.
+// first). The event's folder ("ויקה ואיליה 1/11/26") is made in the system's own "גלריות אווירה" and the Drive helper
+// files it into "גלריות אווירה 2026 › גלריות 11/2026" (0110; the system's drive.file reaches only what it made); what
+// was dropped goes in it by its own folders. At the end: the folder is shared by link, loaded into the gallery (the
+// photos editor does it when it is open, with its own questions), and the photographers chosen are marked "done".
 // What goes where is src/lib/driveUploadPlan.js (pure, tested).
 
 import { toast } from "sonner";
@@ -110,6 +112,26 @@ export async function driveQuota() {
 
 const q = (s) => String(s).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 
+/** The event's folder: the system's own of this name wherever it is now (the helper may have filed it), else a new one. */
+async function eventFolder(rootId, name) {
+  const found = await drive(`?q=${encodeURIComponent(`name = '${q(name)}' and mimeType = '${FOLDER_MIME}' and trashed = false`)}&fields=files(id)&pageSize=5`);
+  const own = (found?.files || []).find((f) => f.id !== rootId);
+  if (own) return own.id;
+  return (await drive("?fields=id", { method: "POST", body: { name, mimeType: FOLDER_MIME, parents: [rootId] } })).id;
+}
+
+/** Asks the Drive helper to file the event's folder by its date (0110). Never stops the upload. */
+async function fileFolder(job) {
+  try {
+    const r = await base44.functions.invoke("googleDrive", { action: "file", folderId: job.folderId, date: job.date, galleryId: job.galleryId, coupleName: job.coupleName });
+    const d = r?.data ?? r;
+    if (d?.path) job.filedTo = d.path;
+    job.helperOld = Boolean(d?.queued) && !(d?.helperVersion >= 2);
+  } catch {
+    // The folder stays in "גלריות אווירה" until the next upload asks again.
+  }
+}
+
 async function folderIn(parentId, name) {
   const found = await drive(`?q=${encodeURIComponent(`name = '${q(name)}' and '${q(parentId)}' in parents and mimeType = '${FOLDER_MIME}' and trashed = false`)}&fields=files(id)&pageSize=1`);
   if (found?.files?.[0]?.id) return found.files[0].id;
@@ -208,19 +230,21 @@ async function sendPhoto(job, item, parentId, onBytes) {
 export function startUpload({ galleryId, galleryKind = "photos", coupleName, date, eventId = null, roles = [], plan, folderId = null }) {
   const old = jobFor(galleryId);
   if (old && isOpen(old)) throw new Error("כבר יש העלאה לגלריה הזו");
-  const items = [...plan.sets.flatMap((s) => s.files.map((f) => ({ ...f, set: s.name }))), ...plan.loose.map((f) => ({ ...f, set: "" }))];
+  const items = plan.files.map((f) => ({ ...f, set: f.dir[0] || "", dirKey: f.dir.join("/") }));
   const job = {
     id: `${galleryId}:${Date.now()}`,
     galleryId,
     galleryKind,
     coupleName,
     folderName: galleryFolderName(coupleName, date),
+    date,
     eventId,
     roles,
     folderId,
     folderUrl: "",
     items,
-    sets: plan.sets.map((s) => ({ name: s.name, total: s.files.length, done: 0 })),
+    // What was dropped, by its top folder ('' = photos dropped by themselves).
+    sets: plan.groups.map((g) => ({ name: g.name, total: g.count, done: 0 })),
     total: items.length,
     done: 0,
     failed: [],
@@ -282,14 +306,21 @@ async function run(job) {
   try {
     patch(job, { phase: "preparing", error: "" });
     const t = await getToken();
-    if (!job.folderId) job.folderId = await folderIn(t.rootFolderId, job.folderName);
+    if (!job.folderId) job.folderId = await eventFolder(t.rootFolderId, job.folderName);
     job.folderUrl = `https://drive.google.com/drive/folders/${job.folderId}`;
-    // Each set's folder, and what is already in it (an upload stopped half way: only what is missing goes).
+    await fileFolder(job);
+    // Every folder that was dropped, as it was, and what is already in each (stopped half way: only what is missing goes).
     const parents = { "": job.folderId };
-    for (const s of job.sets) parents[s.name] = await folderIn(job.folderId, s.name);
-    for (const [name, id] of Object.entries(parents)) {
+    for (const it of job.items) {
+      for (let i = 1; i <= it.dir.length; i++) {
+        const key = it.dir.slice(0, i).join("/");
+        if (!parents[key]) parents[key] = await folderIn(parents[it.dir.slice(0, i - 1).join("/")], it.dir[i - 1]);
+      }
+    }
+    for (const [key, id] of Object.entries(parents)) {
+      if (!job.items.some((it) => it.dirKey === key && !it.state)) continue;
       const there = await filesIn(id);
-      for (const it of job.items) if (it.set === name && !it.state && alreadyThere(there, it)) it.state = "done";
+      for (const it of job.items) if (it.dirKey === key && !it.state && alreadyThere(there, it)) it.state = "done";
     }
     recount(job);
     patch(job, { phase: "uploading" });
@@ -332,7 +363,7 @@ async function uploadAll(job, parents) {
       const it = queue.shift();
       it.state = "sending";
       try {
-        await sendPhoto(job, it, parents[it.set], (loaded) => inflight.set(it, loaded));
+        await sendPhoto(job, it, parents[it.dirKey], (loaded) => inflight.set(it, loaded));
         inflight.delete(it);
         it.state = "done";
         job.done++;

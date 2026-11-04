@@ -10,6 +10,22 @@ export const DRIVE_LIMIT_KEY = 'drive_storage_limit';
 /** Work older than this is not handed out: the owner meant it then, not weeks later. */
 export const DRIVE_TASK_DAYS = 7;
 export const DRIVE_TASKS_PER_RUN = 20;
+/** The script's own version (2 = files galleries into their year / month folders, 0110); older scripts send none. */
+export const DRIVE_VERSION_KEY = 'drive_helper_version';
+export const DRIVE_SCRIPT_VERSION = 2;
+
+/**
+ * Where an uploaded gallery's folder is filed (the owner's decision, 2026-11-04): by the event's date,
+ * ["גלריות אווירה 2026", "גלריות 11/2026"] from the top of My Drive (no leading zero: "גלריות 1/2027"). null without a
+ * date — the folder stays in the system's own "גלריות אווירה".
+ */
+export function galleryDrivePath(date: unknown): string[] | null {
+  const m = String(date ?? '').match(/^(\d{4})-(\d{2})-\d{2}/);
+  if (!m) return null;
+  const month = Number(m[2]);
+  if (month < 1 || month > 12) return null;
+  return [`גלריות אווירה ${m[1]}`, `גלריות ${month}/${m[1]}`];
+}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FOLDER = /^[A-Za-z0-9_-]{10,100}$/;
@@ -28,7 +44,7 @@ function bytes(v: unknown): number | null {
 }
 
 /** The script's report: the Drive's used / total space (when sent) and what each task came to. */
-export function parseSync(body: unknown): { storage: { used: number; limit: number } | null; results: DriveResult[] } {
+export function parseSync(body: unknown): { storage: { used: number; limit: number } | null; results: DriveResult[]; version: number } {
   const b = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>;
   const s = (b.storage && typeof b.storage === 'object' ? b.storage : null) as Record<string, unknown> | null;
   const used = s ? bytes(s.used) : null;
@@ -43,5 +59,6 @@ export function parseSync(body: unknown): { storage: { used: number; limit: numb
       error: String(r.error ?? '').slice(0, 300),
       prevParentId: FOLDER.test(String(r.prevParentId ?? '')) ? String(r.prevParentId) : '',
     }));
-  return { storage: used !== null && limit !== null ? { used, limit } : null, results };
+  const v = Number(b.v);
+  return { storage: used !== null && limit !== null ? { used, limit } : null, results, version: Number.isInteger(v) && v > 0 && v < 100 ? v : 1 };
 }
