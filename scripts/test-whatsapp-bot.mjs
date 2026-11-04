@@ -3813,5 +3813,62 @@ console.log('\n— PART 75: album group messages + list order —');
   ]).map((m) => `${m.label}·${m.name}·${m.field}`), ['צלם 1·ניר (דניאל)·photographer1_done', 'צלם 2·שגיא·photographer2_done']);
 }
 
+{
+  section('album editor export: a dropped request is tried again, Drive falls back to the image server (2026-11-05)');
+  const nr = await loadModule('src/lib/netRetry.js', 'nr85');
+  const net = new TypeError('Failed to fetch');
+  check('which failures are worth another try', [
+    nr.isTransient(net), nr.isTransient({ message: 'TypeError: Failed to fetch' }), nr.isTransient({ name: 'StorageUnknownError', message: 'Failed to fetch' }),
+    nr.isTransient({ status: 503 }), nr.isTransient({ statusCode: '502' }), nr.isTransient({ status: 429 }), nr.isTransient({ status: 403, transient: true }),
+    nr.isTransient({ status: 404 }), nr.isTransient({ status: 403 }), nr.isTransient({ code: '23505', message: 'duplicate key' }), nr.isTransient(null),
+  ], [true, true, true, true, true, true, true, false, false, false, false]);
+  let calls = 0;
+  const retries = [];
+  const ok = await nr.withRetry(async () => { calls++; if (calls < 3) throw net; return 'done'; }, { delays: [0, 0, 0, 0], onRetry: (n) => retries.push(n) });
+  let gaveUp = null;
+  let tries404 = 0;
+  await nr.withRetry(async () => { tries404++; throw Object.assign(new Error('x'), { status: 404 }); }, { delays: [0, 0] }).catch((e) => { gaveUp = e.status; });
+  let tries = 0;
+  const last = await nr.withRetry(async () => { tries++; throw net; }, { delays: [0, 0, 0, 0] }).catch((e) => e);
+  let stopped = 0;
+  await nr.withRetry(async () => { stopped++; throw net; }, { delays: [0, 0, 0], isCancelled: () => stopped >= 2 }).catch(() => {});
+  check('tried again until it works; a missing file is not; four more tries at most; "ביטול" stops the tries', [ok, calls, retries, gaveUp, tries404, tries, last === net, stopped], ['done', 3, [1, 2], 404, 1, 5, true, 2]);
+  check('the reason in words', [
+    nr.reasonText(net), nr.reasonText(net, { drive: true }), nr.reasonText({ status: 429 }), nr.reasonText({ status: 500 }), nr.reasonText({ message: 'התמונה הגיעה קטנה', hebrew: true, transient: true }),
+  ], ['החיבור לאינטרנט נקטע', 'גוגל דרייב לא ענה, או שהחיבור לאינטרנט נקטע', 'גוגל ביקש להאט (יותר מדי הורדות ברצף)', 'שגיאה 500', 'התמונה הגיעה קטנה']);
+
+  const gd = await loadModule('src/lib/googleDrive.js', 'gd85');
+  const realFetch = globalThis.fetch;
+  const seen = [];
+  const blob = (n) => ({ size: n });
+  try {
+    // the API refuses like on 2026-11-05 (503 without CORS → TypeError) → the image server, and the API rests
+    globalThis.fetch = async (url, opts = {}) => {
+      seen.push(`${url.includes('googleapis') ? 'api' : 'img'}${opts.referrerPolicy === 'no-referrer' ? ':noref' : ''}`);
+      if (url.includes('googleapis')) throw new TypeError('Failed to fetch');
+      return { ok: true, status: 200, blob: async () => blob(7) };
+    };
+    const a = await gd.fetchDriveImage('ID1');
+    const b = await gd.fetchDriveImage('ID2');
+    check('the API refuses → the full-size image from the image server, without a referrer; the API is left alone for a while', [a.via, b.via, seen], ['image', 'image', ['api', 'img:noref', 'img:noref']]);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  const gd2 = await loadModule('src/lib/googleDrive.js', 'gd85b');
+  try {
+    globalThis.fetch = async (url) => (url.includes('googleapis')
+      ? { ok: false, status: 404, json: async () => ({ error: { errors: [{ reason: 'notFound' }] } }) }
+      : { ok: true, status: 200, blob: async () => blob(7) });
+    const e = await gd2.fetchDriveImage('GONE').catch((x) => x);
+    globalThis.fetch = async (url) => (url.includes('googleapis')
+      ? { ok: false, status: 403, json: async () => ({ error: { errors: [{ reason: 'userRateLimitExceeded' }] } }) }
+      : { ok: true, status: 200, blob: async () => blob(7) });
+    const rl = await gd2.fetchDriveImage('RL');
+    check('a file that is gone is not looked for elsewhere; a rate limit (403) is', [e.status, e.transient, rl.via], [404, false, 'image']);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

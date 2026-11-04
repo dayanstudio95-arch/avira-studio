@@ -70,8 +70,51 @@ export async function listFolderImages(folderId) {
 
 export const thumbUrl = (id, width = 400) => `https://lh3.googleusercontent.com/d/${id}=w${width}`;
 
+// Throws with .status, and .transient for Drive's rate limits (a 403 that clears by itself), so the caller can
+// retry those (netRetry.js) but not a file that's gone or no longer shared.
+// After many big downloads in a row the API answers 503 for minutes, for every file, and without CORS headers — the
+// browser only says "Failed to fetch" (measured 2026-11-05 on a 31-spread export; the owner's "אור ונועה" export
+// stopped the same way). fetchDriveImage below falls back to Google's image server then.
 export async function fetchOriginal(id) {
   const res = await fetch(`${API}/${id}?alt=media&key=${KEY}`);
-  if (!res.ok) throw new Error(`הורדת התמונה המקורית נכשלה (${res.status})`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const reason = body?.error?.errors?.[0]?.reason || "";
+    const e = new Error(`הורדת התמונה המקורית נכשלה (${res.status})`);
+    e.status = res.status;
+    e.transient = /ratelimit|quotaexceeded|backenderror/i.test(reason);
+    throw e;
+  }
   return res.blob();
+}
+
+// The same photo from Google's image server (the one the thumbnails come from), at full size (=s0). It answers with
+// CORS (only with no referrer, like the thumbnails) and kept working while the API refused. Checked 2026-11-05 on 4
+// photos: same width × height as the original, colour profile (ICC) kept; the file is 0–0.4% smaller — part of the
+// camera metadata (EXIF / XMP) is left out, not the picture.
+export async function fetchFullSizeImage(id) {
+  const res = await fetch(`https://lh3.googleusercontent.com/d/${id}=s0`, { referrerPolicy: "no-referrer" });
+  if (!res.ok) {
+    const e = new Error(`הורדת התמונה נכשלה (${res.status})`);
+    e.status = res.status;
+    throw e;
+  }
+  return res.blob();
+}
+
+// The original for printing: the Drive API; while it refuses (503 / rate limit / connection dropped) the image server
+// instead, and the API is left alone for 5 minutes (every refused call costs 7–10s). → { blob, via: "api" | "image" }
+let apiRestUntil = 0;
+export async function fetchDriveImage(id) {
+  if (Date.now() >= apiRestUntil) {
+    try {
+      return { blob: await fetchOriginal(id), via: "api" };
+    } catch (e) {
+      const status = Number(e?.status);
+      const refused = e?.name === "TypeError" || e?.transient || status === 429 || status >= 500;
+      if (!refused) throw e;
+      apiRestUntil = Date.now() + 5 * 60 * 1000;
+    }
+  }
+  return { blob: await fetchFullSizeImage(id), via: "image" };
 }

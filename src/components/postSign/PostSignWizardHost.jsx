@@ -16,9 +16,10 @@ import PostSignWizard, { isSessionSnoozed, isAnyWizardOpen } from "./PostSignWiz
 const POLL_MS = 60_000;
 
 // Never on top of something the owner is in the middle of (a side panel, an invoice, a form):
-// any open dialog/sheet postpones the popup to the next check.
+// any open dialog/sheet postpones the popup to the next check. So does the full-screen album editor (2026-11-05):
+// the popup opened hidden behind it and made the whole editor unclickable.
 function isOtherDialogOpen() {
-  return !!document.querySelector('[role="dialog"]');
+  return !!document.querySelector('[role="dialog"], [data-fullscreen-editor]');
 }
 
 export default function PostSignWizardHost() {

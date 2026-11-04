@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { Plus, Copy, Trash2, Scissors } from "lucide-react";
 import SpreadView from "./SpreadView";
@@ -9,10 +9,34 @@ import SpreadView from "./SpreadView";
 // drags that start on one unless told otherwise — before, only the small "דף N" line under it moved the page.
 // Dragging a photo over a page in the strip opens that page (after a moment), so the photo can be
 // dropped on one of its frames — that's how a photo moves between pages.
+// The hold used to restart on every small move (2026-11-05, the owner couldn't get a page to open): moving between
+// the photos of the small page, or onto the green note, counted as leaving the page. Now a page is left only when
+// the pointer is outside it (enter / leave counted per page), the note lets the pointer through, and it opens after
+// 0.7s.
 let hoverTimer = null;
+const HOLD_MS = 700;
+const isPhotoDrag = (e) => [...(e.dataTransfer?.types || [])].some((t) => t.startsWith("application/x-avira"));
 
 export default function SpreadStrip({ doc, assetsById, currentId, onSelect, onMove, onAdd, onInsertAt, onDuplicate, onRemove, onSplit, onDragHoverPage, onDropOnPage }) {
   const [over, setOver] = useState(null);
+  const depth = useRef({}); // pageId → how many of its elements the dragged photo is over
+  const stopHover = () => {
+    clearTimeout(hoverTimer);
+    hoverTimer = null;
+  };
+  useEffect(() => {
+    const reset = () => {
+      depth.current = {};
+      stopHover();
+      setOver(null);
+    };
+    window.addEventListener("dragend", reset);
+    window.addEventListener("drop", reset);
+    return () => {
+      window.removeEventListener("dragend", reset);
+      window.removeEventListener("drop", reset);
+    };
+  }, []);
   return (
     <div className="flex items-stretch gap-2 overflow-x-auto px-3 py-2" dir="ltr">
       <DragDropContext onDragEnd={(r) => r.destination && onMove?.(r.source.index, r.destination.index)}>
@@ -29,18 +53,27 @@ export default function SpreadStrip({ doc, assetsById, currentId, onSelect, onMo
                           type="button"
                           title={onMove ? "לחיצה = פתיחת הדף · גרירה = העברה למקום אחר" : undefined}
                           onClick={() => onSelect(p.id)}
+                          onDragEnter={(e) => {
+                            if (!isPhotoDrag(e)) return;
+                            depth.current[p.id] = (depth.current[p.id] || 0) + 1;
+                          }}
                           onDragOver={(e) => {
-                            if (![...e.dataTransfer.types].some((t) => t.startsWith("application/x-avira"))) return;
+                            if (!isPhotoDrag(e)) return;
                             e.preventDefault();
                             setOver(p.id);
-                            // hold a second = open that page (to drop on a specific frame)
-                            if (onDragHoverPage && !hoverTimer) hoverTimer = setTimeout(() => { hoverTimer = null; onDragHoverPage(p.id); }, 1100);
+                            // hold = open that page (to drop on a specific frame)
+                            if (onDragHoverPage && !hoverTimer && p.id !== currentId) hoverTimer = setTimeout(() => { hoverTimer = null; onDragHoverPage(p.id); }, HOLD_MS);
                           }}
-                          onDragLeave={() => { clearTimeout(hoverTimer); hoverTimer = null; setOver(null); }}
+                          onDragLeave={() => {
+                            depth.current[p.id] = Math.max(0, (depth.current[p.id] || 0) - 1);
+                            if (depth.current[p.id]) return; // still over this page — moved between its own photos
+                            stopHover();
+                            setOver((o) => (o === p.id ? null : o));
+                          }}
                           onDrop={(e) => {
                             e.preventDefault();
-                            clearTimeout(hoverTimer);
-                            hoverTimer = null;
+                            depth.current[p.id] = 0;
+                            stopHover();
                             setOver(null);
                             // drop = the photo joins this page, both pages re-layout
                             const group = e.dataTransfer.getData("application/x-avira-group");
@@ -54,8 +87,8 @@ export default function SpreadStrip({ doc, assetsById, currentId, onSelect, onMo
                         >
                           <SpreadView page={p} assetsById={assetsById} mini />
                           {over === p.id && (
-                            <span className="absolute inset-0 z-40 flex items-center justify-center bg-emerald-500/70 text-[10px] font-bold leading-tight text-white">
-                              שחרר = הוסף לדף<br />החזק = פתח את הדף
+                            <span className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-emerald-500/70 text-[10px] font-bold leading-tight text-white" data-testid="strip-drop-note">
+                              {p.id === currentId ? <>שחררו = הוספה<br />לדף הזה</> : <>החזיקו = פתיחת הדף<br />שחררו = הוספה לדף</>}
                             </span>
                           )}
                         </button>

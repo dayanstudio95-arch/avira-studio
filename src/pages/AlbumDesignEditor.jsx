@@ -65,14 +65,16 @@ export default function AlbumDesignEditor() {
         setOrder(o);
         let display = o.coupleNamesManual || "";
         let date = o.weddingDateManual || "";
+        let phone = o.eventId ? "" : o.phoneManual || ""; // as on the order page: the event's phone, else the order's
         if (o.eventId) {
           const [ev] = await base44.entities.Event.filter({ id: o.eventId }).catch(() => []);
           if (ev) {
             display = ev.coupleNames || display;
             date = ev.date || date;
+            phone = ev.phoneNumber || "";
           }
         }
-        setNames({ display, date });
+        setNames({ display, date, phone });
         const { data: d, error } = await supabase.from("album_designs").select("*").eq("album_order_id", orderId).maybeSingle();
         if (error) throw error;
         setDesign(d || null);
@@ -117,12 +119,14 @@ export default function AlbumDesignEditor() {
     );
   }
   if (!design) return <Setup orderId={orderId} names={names} back={back} onCreated={setDesign} />;
-  return <Editor key={design.id} design={design} order={order} names={names} back={back} extraPrice={extraPrice} />;
+  return <Editor key={design.id} design={design} order={order} names={names} back={back} extraPrice={extraPrice} onDesign={setDesign} />;
 }
 
+// data-fullscreen-editor: the app's own popups (the after-signing wizard) wait while it's open — opened under it they
+// were hidden behind the editor, and still took every click away from it (a modal makes the rest of the page inert).
 function Shell({ children }) {
   return (
-    <div className="fixed inset-0 z-[60] flex bg-[#070F1F]" dir="rtl">
+    <div className="fixed inset-0 z-[60] flex bg-[#070F1F]" dir="rtl" data-fullscreen-editor>
       {children}
     </div>
   );
@@ -210,7 +214,7 @@ function SaveBadge({ state, error }) {
   return <span className="flex items-center gap-1 text-xs text-emerald-300"><Check className="h-3.5 w-3.5" /> נשמר</span>;
 }
 
-function Editor({ design, order, names, back, extraPrice }) {
+function Editor({ design, order, names, back, extraPrice, onDesign }) {
   const { doc, edit, undo, redo, canUndo, canRedo, saveState, saveError, snapshot, saveNow } = useDesignDoc(design);
   const [showAuto, setShowAuto] = useState(false); // false | "time" | "tags"
   const [showExport, setShowExport] = useState(false);
@@ -519,11 +523,14 @@ function Editor({ design, order, names, back, extraPrice }) {
         <ExportDialog
           design={design}
           doc={doc}
-          orderId={design.album_order_id}
+          order={order}
+          names={names.display}
+          phone={names.phone}
           tenantId={order?.tenantId || design.tenant_id}
           branding={branding.data}
           beforeExport={saveNow}
           onClose={() => setShowExport(false)}
+          onExported={(r) => onDesign((d) => ({ ...d, status: "exported", last_exported_version_id: r.versionId }))}
         />
       )}
       {showRevisions && (

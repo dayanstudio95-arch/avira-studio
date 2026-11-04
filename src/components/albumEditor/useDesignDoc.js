@@ -23,6 +23,9 @@ export function useDesignDoc(design, { persist = null, initialVersion = null } =
   const docRef = useRef(state.doc);
   docRef.current = state.doc;
   const conflictRef = useRef(false);
+  // Something not in the database yet. "Leave site?" used to ask whenever a save timer had ever been set — so even
+  // after "נשמר" (2026-11-05); now only while a change is waiting, saving, or failed to save.
+  const unsavedRef = useRef(false);
 
   const save = useCallback(async () => {
     if (conflictRef.current) return;
@@ -39,6 +42,7 @@ export function useDesignDoc(design, { persist = null, initialVersion = null } =
         setSaveError(r.error);
       } else {
         versionRef.current = r.version;
+        if (docRef.current === doc) unsavedRef.current = false;
         setSaveState(docRef.current === doc ? "saved" : "dirty");
       }
       return;
@@ -62,6 +66,7 @@ export function useDesignDoc(design, { persist = null, initialVersion = null } =
       return;
     }
     versionRef.current = loaded + 1;
+    if (docRef.current === doc) unsavedRef.current = false;
     setSaveState(docRef.current === doc ? "saved" : "dirty");
     if (Date.now() - lastRevisionRef.current > REVISION_EVERY_MS) {
       lastRevisionRef.current = Date.now();
@@ -72,13 +77,14 @@ export function useDesignDoc(design, { persist = null, initialVersion = null } =
   const scheduleSave = useCallback(() => {
     setSaveState((s) => (s === "conflict" ? s : "dirty"));
     clearTimeout(timerRef.current);
+    unsavedRef.current = true;
     timerRef.current = setTimeout(save, SAVE_DEBOUNCE_MS);
   }, [save]);
 
   // Save on leave (tab close / navigation) if something is pending.
   useEffect(() => {
     const onBeforeUnload = (e) => {
-      if (timerRef.current && !conflictRef.current) {
+      if (unsavedRef.current && !conflictRef.current) {
         e.preventDefault();
         e.returnValue = "";
       }

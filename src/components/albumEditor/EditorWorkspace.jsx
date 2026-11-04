@@ -110,9 +110,11 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
 
   // Leaving a spread with a face on the fold needs a "yes, it's fine" (remembered per spread
   // until its photos/crops change again).
-  const goTo = async (id) => {
+  // quiet: opened by holding a dragged photo over the page in the strip — a question would stop the drag in the middle
+  // (the warning comes back the next time the spread is left the normal way).
+  const goTo = async (id, { quiet = false } = {}) => {
     if (id === page?.id) return;
-    if (Object.keys(faces).length && page.foldOk !== slotsKey) {
+    if (!quiet && Object.keys(faces).length && page.foldOk !== slotsKey) {
       const ok = await confirmDialog("⚠️ בכפולה הזו יש פנים של אדם בדיוק על הקפל (אמצע האלבום) — בהדפסה הן ייחתכו בתפר.\n\nאישור = להמשיך בכל זאת · ביטול = להישאר ולתקן (להזיז / לזום / להחליף פריסה)");
       if (!ok) return;
       change((d) => setPageProps(d, page.id, { foldOk: slotsKey }));
@@ -341,7 +343,7 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
             </div>
             {dragging && !locked && (
               <div className={`w-full max-w-[1400px] rounded-lg border-2 border-dashed px-3 py-2 text-center text-xs transition ${areaOver ? "border-emerald-400 bg-emerald-500/15 text-emerald-200" : "border-white/20 text-slate-400"}`}>
-                ⬇ שחררו כאן (מחוץ למסגרות) כדי <b>להוסיף</b> לדף הזה — הפריסה תשתנה לפי כמות התמונות · על מסגרת = החלפה
+                ⬇ שחררו כאן (מחוץ למסגרות) כדי <b>להוסיף</b> לדף הזה — הפריסה תשתנה לפי כמות התמונות · על מסגרת = <b>בדיוק לשם</b> (תפוסה בדף אחר → בוחרים: להחליף ביניהן או רק להעביר) · לדף אחר: מחזיקים על הדף ברצועה למטה עד שהוא נפתח
               </div>
             )}
             <div className="w-full max-w-[1400px] shadow-2xl shadow-black/50">
@@ -389,7 +391,7 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
                 onClear={() => setMultiSel([])}
               />
             )}
-            {!locked && <div className="text-[11px] text-slate-500">גוררים תמונה מהבנק · בין מסגרות = החלפה · ⌘+לחיצה (בבנק או בכפולה) = כמה תמונות · לחיצה על תמונה = זום, צבע, תיקון · גוררים את הקו הלבן בין תמונות = שינוי הגודל · גוררים דף בפס למטה = שינוי הסדר · ←/→ מעבר בין כפולות</div>}
+            {!locked && <div className="text-[11px] text-slate-500">גוררים תמונה מהבנק · בין מסגרות = החלפה · תמונה מסומנת נגררת מ-"✥ גרירה" · לדף אחר = מחזיקים על הדף ברצועה · ⌘+לחיצה (בבנק או בכפולה) = כמה תמונות · לחיצה על תמונה = זום, צבע, תיקון · גוררים את הקו הלבן בין תמונות = שינוי הגודל · גוררים דף בפס למטה = שינוי הסדר · ←/→ מעבר בין כפולות</div>}
           </div>
           <button type="button" onClick={() => step(-1)} disabled={pageIndex <= 0} title="הכפולה הקודמת (← חץ שמאלה)" className="shrink-0 rounded-full p-2 text-slate-300 hover:bg-white/10 disabled:opacity-20">
             <ChevronLeft className="h-7 w-7" />
@@ -423,7 +425,7 @@ export default function EditorWorkspace({ doc, edit, undo, redo, locked = false,
               edit((d) => removePage(d, id));
             }}
             onSplit={locked ? null : (id) => setSplitFor(id)}
-            onDragHoverPage={locked ? null : (id) => id !== page.id && goTo(id)}
+            onDragHoverPage={locked ? null : (id) => id !== page.id && goTo(id, { quiet: true })}
             onDropOnPage={locked ? null : (pageId, payload) => addPhotosHere(payload, {}, pageId)}
           />
         </div>
@@ -514,8 +516,8 @@ function MoveDialog({ onClose, onSwap, onMove }) {
           <div className="text-xs text-slate-400">כל תמונה עוברת לדף של השנייה</div>
         </button>
         <button type="button" onClick={onMove} className="w-full rounded-lg border border-white/15 p-3 text-right hover:border-amber-400/60 hover:bg-white/5">
-          <div className="font-semibold text-white">→ להעביר לכאן</div>
-          <div className="text-xs text-slate-400">התמונה שהייתה כאן חוזרת לבנק התמונות, והמקום הישן מתרוקן</div>
+          <div className="font-semibold text-white">→ רק להעביר</div>
+          <div className="text-xs text-slate-400">התמונה שהייתה כאן חוזרת לבנק התמונות, והמסגרת שממנה הגיעה נשארת ריקה</div>
         </button>
         <button type="button" onClick={onClose} className="w-full text-sm text-slate-400 hover:text-white">ביטול</button>
       </div>

@@ -3,7 +3,8 @@
 //  - enlargement files for the print shop → album-files/<tenant>/<order>/enlargements/
 //    (the original photo, untouched; album-print-access lists them as a separate download).
 import { supabase } from "@/api/supabaseClient";
-import { fetchOriginal } from "./googleDrive";
+import { fetchDriveImage } from "./googleDrive";
+import { withRetry } from "./netRetry";
 
 const BUCKET = "album-files";
 const safe = (n) => String(n || "photo").replace(/[^a-zA-Z0-9._-]/g, "_").slice(-80);
@@ -38,7 +39,7 @@ async function originalBlob(asset) {
     if (error) throw new Error(`הורדת ${asset.name} נכשלה`);
     return data;
   }
-  return fetchOriginal(asset.id);
+  return withRetry(async () => (await fetchDriveImage(asset.id)).blob);
 }
 
 // → the same list with fileKey filled in for every entry.

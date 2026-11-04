@@ -1551,6 +1551,8 @@ export default function AlbumOrderDetail() {
                 {printLinks.map((link) => (
                   <div key={link.id} className="flex items-center justify-between border border-gray-800 rounded-lg p-2 text-sm">
                     <span className="text-gray-400">
+                      {/* a download link the album editor made for one version (0111), not the print shop's */}
+                      {link.versionId ? `קישור להורדת גרסה ${versions.find((v) => v.id === link.versionId)?.versionNumber ?? ""} · ` : ""}
                       נוצר {link.createdDate?.slice(0, 10)}
                       {link.revokedAt ? " · בוטל" : ""}
                     </span>

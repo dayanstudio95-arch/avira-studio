@@ -12,6 +12,9 @@
 // Delivers only the order's APPROVED version's spreads (album_orders.approved_version_id)
 // — never the couple's current in-review draft — so a print shop can only ever receive
 // files the couple has actually signed off on.
+// Except a link made for one version (print_access_links.version_id, 0111 — the album editor's
+// "קישור להורדה באיכות מלאה", 2026-11-05): it serves that version, approved or not, and only when
+// the version belongs to the link's own order and studio.
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createServiceRoleClient } from '../_shared/supabaseClients.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
@@ -81,6 +84,22 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (!order) return jsonResponse({ error: 'ההזמנה המקושרת לא נמצאה' }, { status: 404 });
 
+    // Which version this link serves: its own (a sketch link), else the order's approved one (the print shop's).
+    let versionId: string | null = order.approved_version_id;
+    let versionNumber: number | null = null;
+    if (link.version_id) {
+      const { data: v } = await supabase
+        .from('album_versions')
+        .select('id, version_number')
+        .eq('id', link.version_id)
+        .eq('album_order_id', order.id)
+        .eq('tenant_id', order.tenant_id)
+        .maybeSingle();
+      if (!v) return jsonResponse({ error: 'הגרסה של הקישור לא נמצאה' }, { status: 404 });
+      versionId = v.id;
+      versionNumber = v.version_number;
+    }
+
     let coupleNames = order.couple_names_manual;
     let weddingDate = order.wedding_date_manual;
     if (order.event_id) {
@@ -101,13 +120,15 @@ Deno.serve(async (req) => {
       return jsonResponse({
         coupleNames,
         weddingDate,
-        ready: !!order.approved_version_id,
-        enlargementCount: (await enlargementFiles()).length,
+        ready: !!versionId,
+        kind: link.version_id ? 'version' : 'print',
+        versionNumber,
+        enlargementCount: link.version_id ? 0 : (await enlargementFiles()).length,
       });
     }
 
     if (action === 'listEnlargements') {
-      const list = await enlargementFiles();
+      const list = link.version_id ? [] : await enlargementFiles();
       if (!list.length) return jsonResponse({ files: [] });
       const { data: signed, error: signError } = await supabase.storage.from(BUCKET).createSignedUrls(list.map((e: any) => e.fileKey), SIGNED_URL_TTL_SECONDS);
       if (signError) return jsonResponse({ error: signError.message }, { status: 500 });
@@ -124,13 +145,13 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'listFiles') {
-      if (!order.approved_version_id) {
+      if (!versionId) {
         return jsonResponse({ error: 'האלבום עדיין לא אושר על ידי הזוג' }, { status: 400 });
       }
       const { data: spreads, error: spreadsError } = await supabase
         .from('album_spreads')
         .select('sequence_number, file_key')
-        .eq('version_id', order.approved_version_id)
+        .eq('version_id', versionId)
         .order('sequence_number', { ascending: true });
       if (spreadsError) return jsonResponse({ error: spreadsError.message }, { status: 500 });
       if (!spreads?.length) return jsonResponse({ files: [] });

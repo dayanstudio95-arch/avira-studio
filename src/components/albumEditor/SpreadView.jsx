@@ -464,6 +464,27 @@ function Cell({ index, rect, slot, asset, pageId, mini, selected, multi = false,
       {multi && !mini && (
         <div className="pointer-events-none absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-sky-500 text-xs font-bold text-white shadow">{multiOrder}</div>
       )}
+      {/* A selected photo pans inside its frame, so it can't be dragged by itself — this handle drags it out: to another
+          frame, or to another page (hold on the page in the strip until it opens). 2026-11-05, the owner's request. */}
+      {selected && asset && !mini && !healing && !multi && (
+        <div
+          draggable
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          onDragStart={(e) => {
+            e.stopPropagation();
+            e.dataTransfer.setData(SLOT_MIME, JSON.stringify({ pageId, index }));
+            e.dataTransfer.effectAllowed = "move";
+            setDragAssets([asset]);
+          }}
+          onDragEnd={() => setDragAssets(null)}
+          title="גררו מכאן: למסגרת אחרת, או לדף אחר (מחזיקים על הדף ברצועה למטה עד שהוא נפתח)"
+          className="absolute left-1/2 top-1.5 z-30 -translate-x-1/2 cursor-grab select-none rounded-full bg-sky-500 px-2.5 py-1 text-[11px] font-semibold text-white shadow-lg hover:bg-sky-400 active:cursor-grabbing"
+          data-testid="cell-drag-handle"
+        >
+          ✥ גרירה
+        </div>
+      )}
       {over === "bad" && (
         <div className="pointer-events-none absolute inset-x-1 top-1 rounded bg-rose-600 px-1.5 py-1 text-center text-[10px] font-semibold leading-tight text-white">
           {(dragAssets?.[0]?.w || 0) < (dragAssets?.[0]?.h || 0) ? "תמונה לאורך במשבצת לרוחב — רוב התמונה ייחתך. עדיף תמונה לרוחב" : "תמונה לרוחב במשבצת לאורך — רוב התמונה ייחתך. עדיף תמונה לאורך"}

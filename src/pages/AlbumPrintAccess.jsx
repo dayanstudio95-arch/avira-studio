@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Loader2, AlertTriangle, FileDown, CheckCircle2, ImageOff } from "lucide-react";
 
 // Public, no-login print-shop file-download page -- /print-access/:token.
-// Delivers only the order's APPROVED spreads. Never builds a ZIP server-side --
+// Delivers only the order's APPROVED spreads — or, for a link the album editor made for one
+// version (print_access_links.version_id, 2026-11-05), that version's. Never builds a ZIP server-side --
 // streams each spread's signed Storage URL straight into a client-side ZIP via
 // client-zip, per CLAUDE.md's iron rule (Edge Functions here are capped at
 // ~2s CPU / 400s wall-clock, unreliable for 30-40+ full-resolution files).
@@ -176,6 +177,8 @@ export default function AlbumPrintAccess() {
       <div className="max-w-md w-full bg-gray-900 border border-gray-800 rounded-2xl p-8 text-center space-y-5">
         <h1 className="text-xl font-bold text-white">{info.coupleNames || "הזמנת אלבום"}</h1>
         {info.weddingDate && <p className="text-gray-400 text-sm">{formatDate(info.weddingDate)}</p>}
+        {/* a link the album editor made for one version (2026-11-05) — not necessarily the approved one */}
+        {info.kind === "version" && <p className="text-amber-300 text-sm" data-testid="print-version-note">הסקיצה של האלבום — גרסה {info.versionNumber}, בגודל הדפסה מלא</p>}
 
         {!info.ready ? (
           <div className="flex flex-col items-center gap-2 text-gray-400 text-sm py-4">
