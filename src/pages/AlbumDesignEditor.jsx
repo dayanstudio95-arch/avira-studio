@@ -9,7 +9,7 @@ import {
   setPageCount, resetSketch,
 } from "@/lib/albumDesign";
 import { presetFromDoc } from "@/lib/albumAutoLayout";
-import { useStudioBranding, savePresetToSettings } from "@/lib/albumStudioSettings";
+import { useStudioBranding, savePresetToSettings, useChapterSettings } from "@/lib/albumStudioSettings";
 import { parseFolderId, listFolderImages, hasDriveKey } from "@/lib/googleDrive";
 import { useDesignDoc } from "@/components/albumEditor/useDesignDoc";
 import EditorWorkspace from "@/components/albumEditor/EditorWorkspace";
@@ -264,6 +264,13 @@ function Editor({ design, order, names, back, extraPrice, onDesign }) {
 
   // ---- studio branding on the opening spread: logo + Instagram QR + phone (Settings → studio) ----
   const branding = useStudioBranding(order?.tenantId || design.tenant_id);
+  // ---- the album's chapters: the studio's list + importance (settings); which photo is in which chapter (doc) ----
+  const chapterSettings = useChapterSettings();
+  const addChapter = (label) => {
+    const id = `c_${Date.now().toString(36)}`;
+    chapterSettings.save({ chapters: [...chapterSettings.chapters, { id, label, importance: "mid" }] }).catch(() => toast.error("שמירת הפרק החדש נכשלה"));
+    return id;
+  };
 
   const toggleClientEdit = async () => {
     const enabled = !client.enabled;
@@ -277,7 +284,7 @@ function Editor({ design, order, names, back, extraPrice, onDesign }) {
     if (!await confirmDialog("לקחת את הגרסה של הזוג לעורך? הגרסה הנוכחית שלך נשמרת בהיסטוריה (ואפשר ⌘Z).")) return;
     await snapshot("manual");
     const theirs = client.doc;
-    edit(() => ({ ...theirs, cameraOffsets: doc.cameraOffsets, tags: doc.tags }));
+    edit(() => ({ ...theirs, cameraOffsets: doc.cameraOffsets, tags: doc.tags, chapterOf: doc.chapterOf }));
     await supabase.from("album_designs").update({ client_submitted_at: null, client_note: null, client_doc: null }).eq("id", design.id);
     toast.success("הגרסה של הזוג נטענה. בדקו, תקנו אם צריך, ו'ייצוא לזוג' כשמוכן.");
     loadClient();
@@ -409,11 +416,12 @@ function Editor({ design, order, names, back, extraPrice, onDesign }) {
             <button type="button" onClick={() => setShowAuto("time")} className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-amber-200 hover:bg-white/10"><Sparkles className="h-4 w-4" /> סקיצה אוטומטית</button>
             <button
               type="button"
-              onClick={() => (Object.keys(doc.tags || {}).length ? setShowAuto("tags") : toast.info("קודם מתייגים תמונות בבנק (⌘+לחיצה ← תגית)"))}
-              title="פרק לכל תווית — תמונות של תוויות שונות לא מתערבבות באותו דף"
+              onClick={() => (Object.keys(doc.chapterOf || {}).length ? setShowAuto("chapters") : toast.info("קודם מסמנים פרקים בבנק התמונות, בתצוגת 'הכל': ⫶ חוצץ על התמונה האחרונה של כל פרק"))}
+              title="כל פרק (התארגנות, צילומי חוץ…) מקבל דפים לפי כמות התמונות, הצורה שלהן והחשיבות של הפרק"
               className="rounded-md px-2 py-1 text-xs text-amber-200 hover:bg-white/10"
+              data-testid="sketch-by-chapters"
             >
-              🏷️ סקיצה לפי תוויות
+              📑 סקיצה לפי פרקים
             </button>
             <button type="button" onClick={resetAll} title="מוציא את כל התמונות מהכפולות (עם אישור). ⌘Z מחזיר." className="rounded-md px-2 py-1 text-xs text-rose-300 hover:bg-rose-500/10">↺ איפוס סקיצה</button>
             <button type="button" onClick={savePreset} title="שומר את סדר הפריסות של הסקיצה הזו כתבנית לאלבומים הבאים" className="rounded-md px-2 py-1 text-xs text-slate-300 hover:bg-white/10">⭐ שמור כפריסט</button>
@@ -487,6 +495,9 @@ function Editor({ design, order, names, back, extraPrice, onDesign }) {
             refreshing,
             skipped,
             onCameraOffset: (cam, m) => edit((d) => ({ ...d, cameraOffsets: { ...d.cameraOffsets, [cam]: m } })),
+            chapters: chapterSettings.chapters,
+            onChapterOf: (fn) => edit((d) => ({ ...d, chapterOf: fn(d.chapterOf || {}) })),
+            onAddChapter: addChapter,
           }}
         />
       </div>
@@ -508,7 +519,13 @@ function Editor({ design, order, names, back, extraPrice, onDesign }) {
       {showAuto && (
         <AutoSketchDialog
           doc={doc}
-          byTags={showAuto === "tags"}
+          byChapters={showAuto === "chapters"}
+          chapters={chapterSettings.chapters}
+          perPage={chapterSettings.perPage}
+          extraPrice={extraPrice}
+          onImportance={(id, importance) =>
+            chapterSettings.save({ chapters: chapterSettings.chapters.map((c) => (c.id === id ? { ...c, importance } : c)) }).catch(() => toast.error("שמירת החשיבות נכשלה"))
+          }
           onClose={() => setShowAuto(false)}
           onApply={async (pages) => {
             await snapshot("manual");

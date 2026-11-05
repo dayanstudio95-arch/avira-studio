@@ -3870,5 +3870,69 @@ console.log('\n— PART 75: album group messages + list order —');
   }
 }
 
+{
+  section('album editor chapters: dividers in the bank, pages by count / shape / importance, sketch by chapters (2026-11-05)');
+  const ch = await loadModule('src/lib/albumChapters.js', 'ch86');
+  const photo = (i, land = false) => ({ id: `p${i}`, w: land ? 6000 : 4000, h: land ? 4000 : 6000, time: `2026:08:27 1${String(i).padStart(3, '0')}` });
+  const ten = Array.from({ length: 10 }, (_, i) => photo(i, i % 3 === 0));
+  let m = {};
+  m = ch.setDivider(m, ten, 3, 'prep');
+  const afterPrep = ch.suggestChapter(ch.DEFAULT_CHAPTERS, ten, m, 7);
+  m = ch.setDivider(m, ten, 7, 'outdoor');
+  const runs = ch.chapterRuns(ten, m).map((r) => `${r.chapterId}:${r.start}-${r.end}`);
+  check('a divider closes the photos since the previous one; the next chapter in his order is offered first', [runs, afterPrep, ch.suggestChapter(ch.DEFAULT_CHAPTERS, ten, m, 9), ch.dividerRange(ten, m, 9).ids.length],
+    [['prep:0-3', 'outdoor:4-7', 'null:8-9'], 'outdoor', 'venue', 2]);
+  const split = ch.setDivider(m, ten, 5, 'families');
+  const up = ch.shiftBoundary(m, ten, 1, -1);
+  const down = ch.shiftBoundary(m, ten, 1, 1);
+  check('a divider inside a chapter splits it; ↑ ↓ move the line by one photo; × takes a chapter off', [
+    ch.chapterRuns(ten, split).map((r) => `${r.chapterId}:${r.start}-${r.end}`),
+    ch.chapterRuns(ten, up).map((r) => `${r.chapterId}:${r.start}-${r.end}`),
+    ch.chapterRuns(ten, down).map((r) => `${r.chapterId}:${r.start}-${r.end}`),
+    ch.chapterRuns(ten, ch.setRun(m, ['p0', 'p1', 'p2', 'p3'], null)).map((r) => `${r.chapterId}:${r.start}-${r.end}`),
+    ch.suggestChapter(ch.DEFAULT_CHAPTERS, ten, m, 5),
+  ], [
+    ['prep:0-3', 'families:4-5', 'outdoor:6-7', 'null:8-9'],
+    ['prep:0-4', 'outdoor:5-7', 'null:8-9'],
+    ['prep:0-2', 'outdoor:3-7', 'null:8-9'],
+    ['null:0-3', 'outdoor:4-7', 'null:8-9'],
+    'outdoor',
+  ]);
+
+  // the owner's example: ~150 photos, 2 on the opening, six chapters
+  let n = 0;
+  const make = (count, landscape) => Array.from({ length: count }, (_, i) => photo(n++, i < landscape));
+  const imp = { prep: 'low', outdoor: 'high', venue: 'low', families: 'high', chuppah: 'mid', dancing: 'low' };
+  const spec = [['prep', 22, 6], ['outdoor', 34, 14], ['venue', 12, 7], ['families', 30, 24], ['chuppah', 24, 14], ['dancing', 26, 18]];
+  const sections = spec.map(([id, c, l]) => ({ id, label: id, importance: imp[id], photos: make(c, l) }));
+  const p150 = ch.planPages(sections, { openingPhotos: 2 });
+  const per = (k) => sections[k].photos.length / p150.pages[k];
+  check('150 photos → 30 pages with the opening; important chapters get fewer photos a page', [p150.total, p150.extra, p150.photos, per(1) < per(0), per(3) < per(5), per(4) < per(5), p150.pages.every((x) => x >= 1)], [30, 0, 150, true, true, true, true]);
+  const more = sections.map((x) => ({ ...x, photos: [...x.photos, ...make(5, 2)] }));
+  const p180 = ch.planPages(more, { openingPhotos: 2 });
+  const sq = ch.planPages(more, { openingPhotos: 2, squeeze: true });
+  check('180 photos → an extra page for every 5 over 150; "לדחוס" keeps 30', [p180.photos, p180.total, p180.extra, sq.total, sq.extra], [180, 36, 6, 30, 0]);
+  const fixed = ch.planPages(sections, { openingPhotos: 2, overrides: { 1: 12 } });
+  const crowded = ch.planPages([{ importance: 'low', photos: make(25, 0) }, { importance: 'high', photos: make(40, 20) }], { openingPhotos: 0, pagesIncluded: 4, baselinePhotos: 999 });
+  check('pages fixed by hand stay, the others even out; never more than 10 photos a page', [fixed.pages[1], fixed.total, crowded.pages[0] >= 3, crowded.pages[1] >= 4], [12, 30, true, true]);
+
+  const al = await loadModule('src/lib/albumAutoLayout.js', 'al86');
+  const assets = sections.flatMap((x) => x.photos);
+  const opening = [sections[1].photos[0].id, sections[1].photos[1].id];
+  const secs = ch.chapterSections(assets, Object.fromEntries(sections.flatMap((x) => x.photos.map((a) => [a.id, x.id]))), ch.DEFAULT_CHAPTERS, { skip: opening });
+  const plan = ch.planPages(secs, { openingPhotos: 2 });
+  const built = al.autoLayoutByChapters(assets, { openingCount: 2, openingIds: opening, sections: secs, pages: plan.pages });
+  const chapterOfId = Object.fromEntries(secs.flatMap((x) => x.photos.map((a) => [a.id, x.label])));
+  const pagesBy = {};
+  for (const pg of built.pages.slice(1)) pagesBy[pg.section] = (pagesBy[pg.section] || 0) + 1;
+  const placed = built.pages.flatMap((pg) => pg.slots.map((x) => x.assetId)).filter(Boolean);
+  check('the sketch: the opening, then each chapter on exactly its pages — no page mixes chapters, every photo is in', [
+    built.pages.length, built.pages.slice(1).every((pg) => pg.slots.every((x) => chapterOfId[x.assetId] === pg.section)),
+    secs.map((x) => pagesBy[x.label]), placed.length, new Set(placed).size, built.pages[0].slots.map((x) => x.assetId).sort(),
+  ], [30, true, plan.pages, assets.length, assets.length, [...opening].sort()]);
+  const tight = al.autoLayoutByChapters(assets, { openingCount: 2, openingIds: opening, sections: secs, pages: secs.map(() => 3) });
+  check('a chapter squeezed onto few pages keeps all its photos (more than 10 a page)', tight.pages.flatMap((pg) => pg.slots.map((x) => x.assetId)).filter(Boolean).length, assets.length);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

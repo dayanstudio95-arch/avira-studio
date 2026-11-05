@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { RefreshCw, Loader2, Clock, Tag, X, PlusSquare } from "lucide-react";
+import { RefreshCw, Loader2, Clock, Tag, X, PlusSquare, ChevronUp, ChevronDown } from "lucide-react";
 import { sortAssets } from "@/lib/albumDesign";
+import { chapterRuns, dividerRange, setDivider, setRun, shiftBoundary, suggestChapter, shapeCounts } from "@/lib/albumChapters";
 import { assetSrc } from "@/lib/albumAssets";
 import { ASSET_MIME, GROUP_MIME, setDragAssets } from "./SpreadView";
 
@@ -27,7 +28,11 @@ const TAG_LABEL = Object.fromEntries(PHOTO_TAGS.map((t) => [t.id, t.label]));
 //  - ⌘/Ctrl+click = multi-select, Shift+click = a range → tag them, or put them on a new spread
 //    (or drag the whole group onto a spread);
 //  - hover = big preview; used photos are greyed out.
-export default function PhotoBank({ doc, usage, onPick, onRefresh, refreshing, onCameraOffset, skipped = [], headerExtra = null, onTag, onNewSpread }) {
+//  - chapters (2026-11-05, studio only): in "הכל", "⫶ חוצץ" on a photo closes a chapter there — the photos from the
+//    previous divider up to it — and asks which chapter they are (the next one in the studio's order is offered
+//    first). A line with the chapter's name, count and shapes heads each chapter; ↑ ↓ move the line by one photo,
+//    × takes the chapter off. Kept in doc.chapterOf; the page planner ("סקיצה לפי פרקים") builds on it.
+export default function PhotoBank({ doc, usage, onPick, onRefresh, refreshing, onCameraOffset, skipped = [], headerExtra = null, onTag, onNewSpread, chapters = null, onChapterOf = null, onAddChapter = null }) {
   const [filter, setFilter] = useState("all");
   const [showCameras, setShowCameras] = useState(false);
   const [selected, setSelected] = useState(() => new Set());
@@ -39,6 +44,17 @@ export default function PhotoBank({ doc, usage, onPick, onRefresh, refreshing, o
   const tags = doc.tags || {};
 
   const sorted = useMemo(() => sortAssets(doc.assets, doc.cameraOffsets), [doc.assets, doc.cameraOffsets]);
+  const chapterOf = useMemo(() => doc.chapterOf || {}, [doc.chapterOf]);
+  const chaptersOn = filter === "all" && Boolean(chapters?.length && onChapterOf);
+  const chapterLabel = useMemo(() => Object.fromEntries((chapters || []).map((c) => [c.id, c.label])), [chapters]);
+  const runs = useMemo(() => (chaptersOn ? chapterRuns(sorted, chapterOf) : []), [chaptersOn, sorted, chapterOf]);
+  const runAtStart = useMemo(() => Object.fromEntries(runs.map((r, k) => [r.start, k])), [runs]);
+  const [ask, setAsk] = useState(null); // { x, left, top } — the divider question
+  const openAsk = (x, e) => {
+    const left = Math.max(8, Math.min(window.innerWidth - 340, e.clientX - 300));
+    const top = Math.max(8, Math.min(window.innerHeight - 260, e.clientY + 10));
+    setAsk({ x, left, top });
+  };
   const shown = sorted.filter((a) => {
     if (filter === "all") return true;
     if (filter === "unused") return !usage[a.id];
@@ -186,7 +202,21 @@ export default function PhotoBank({ doc, usage, onPick, onRefresh, refreshing, o
             const used = usage[a.id];
             const isSel = selected.has(a.id);
             const t = tags[a.id] || [];
-            return (
+            const k = chaptersOn ? runAtStart[index] : undefined;
+            return [
+              k != null && (
+                <ChapterBar
+                  key={`run-${a.id}`}
+                  run={runs[k]}
+                  index={k}
+                  photos={sorted.slice(runs[k].start, runs[k].end + 1)}
+                  chapters={chapters}
+                  label={chapterLabel[runs[k].chapterId]}
+                  onlyLoose={runs.length === 1 && !runs[0].chapterId}
+                  onSet={(cid) => onChapterOf((m) => setRun(m, runs[k].ids, cid))}
+                  onShift={(dir) => onChapterOf((m) => shiftBoundary(m, sorted, k, dir))}
+                />
+              ),
               <button
                 key={a.id}
                 type="button"
@@ -229,14 +259,139 @@ export default function PhotoBank({ doc, usage, onPick, onRefresh, refreshing, o
                 {t.length > 0 && (
                   <span className="absolute bottom-0.5 right-0.5 max-w-[90%] truncate rounded bg-black/60 px-1 text-[9px] text-amber-200">{t.map((x) => TAG_LABEL[x]).join(" · ")}</span>
                 )}
-              </button>
-            );
+                {chaptersOn && (
+                  <span
+                    role="button"
+                    tabIndex={-1}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openAsk(index, e);
+                    }}
+                    title="חוצץ אחרי התמונה הזו — סוגר פרק (התמונות מהחוצץ הקודם ועד כאן)"
+                    className="absolute bottom-1 left-1 hidden items-center gap-0.5 rounded bg-amber-400 px-1.5 py-0.5 text-[10px] font-bold text-gray-900 shadow group-hover:flex"
+                    data-testid="bank-divider"
+                  >
+                    ⫶ חוצץ
+                  </span>
+                )}
+              </button>,
+            ];
           })}
         </div>
         {!shown.length && <div className="py-10 text-center text-xs text-slate-500">אין תמונות בסינון הזה</div>}
       </div>
       {preview && <HoverPreview {...preview} bankLeft={rootRef.current?.getBoundingClientRect().left ?? window.innerWidth} />}
+      {ask && chaptersOn && (
+        <DividerQuestion
+          {...ask}
+          range={dividerRange(sorted, chapterOf, ask.x)}
+          chapters={chapters}
+          suggested={suggestChapter(chapters, sorted, chapterOf, ask.x)}
+          onChoose={(cid) => {
+            onChapterOf((m) => setDivider(m, sorted, ask.x, cid));
+            setAsk(null);
+          }}
+          onAdd={
+            onAddChapter
+              ? (label) => {
+                  const cid = onAddChapter(label);
+                  if (cid) onChapterOf((m) => setDivider(m, sorted, ask.x, cid));
+                  setAsk(null);
+                }
+              : null
+          }
+          onClose={() => setAsk(null)}
+        />
+      )}
     </div>
+  );
+}
+
+// The line over a chapter in the bank: its name (change it here), how many photos and of which shape; ↑ ↓ move the
+// line between it and the chapter above by one photo; × = these photos are in no chapter again.
+function ChapterBar({ run, index, photos, chapters, label, onlyLoose, onSet, onShift }) {
+  const { portrait, landscape } = shapeCounts(photos);
+  const loose = !run.chapterId;
+  return (
+    <div style={{ gridColumn: "1 / -1" }} className={`flex items-center gap-1.5 pt-1 text-[11px] ${index ? "mt-1" : ""} ${loose ? "border-t border-dashed border-white/20 text-slate-400" : "border-t-2 border-amber-400/80 text-amber-100"}`} data-testid="bank-chapter">
+      {loose ? (
+        <span className="font-semibold">בלי פרק</span>
+      ) : (
+        <select value={run.chapterId} onChange={(e) => onSet(e.target.value)} title="שינוי הפרק של התמונות האלה" className="h-6 max-w-[45%] rounded border border-amber-400/40 bg-[#0B1529] px-1 text-[11px] font-semibold text-amber-100">
+          {chapters.map((c) => (
+            <option key={c.id} value={c.id}>{c.label}</option>
+          ))}
+          {!label && <option value={run.chapterId}>פרק שנמחק</option>}
+        </select>
+      )}
+      <span className="truncate text-slate-400">
+        {photos.length} · {portrait} לאורך · {landscape} לרוחב
+      </span>
+      {onlyLoose && <span className="truncate text-slate-500">— ⫶ על התמונה האחרונה של כל פרק</span>}
+      <span className="ms-auto flex shrink-0 items-center">
+        {index > 0 && (
+          <>
+            <button type="button" onClick={() => onShift(-1)} title="התמונה הראשונה כאן עוברת לפרק שמעל" className="rounded p-0.5 hover:bg-white/10"><ChevronUp className="h-3.5 w-3.5" /></button>
+            <button type="button" onClick={() => onShift(1)} title="התמונה האחרונה של הפרק שמעל עוברת לכאן" className="rounded p-0.5 hover:bg-white/10"><ChevronDown className="h-3.5 w-3.5" /></button>
+          </>
+        )}
+        {!loose && (
+          <button type="button" onClick={() => onSet(null)} title="ביטול הפרק — התמונות חוזרות להיות בלי פרק" className="rounded p-0.5 hover:bg-white/10 hover:text-rose-300"><X className="h-3.5 w-3.5" /></button>
+        )}
+      </span>
+    </div>
+  );
+}
+
+// "⫶ חוצץ" asks which chapter the photos up to here are; the suggested one has the focus (Enter = it).
+// data-confirm-dialog: the editor's keys (arrows, Delete, ⌘Z) wait while it's open.
+function DividerQuestion({ left, top, range, chapters, suggested, onChoose, onAdd, onClose }) {
+  const [label, setLabel] = useState("");
+  useEffect(() => {
+    const esc = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", esc);
+    return () => window.removeEventListener("keydown", esc);
+  }, [onClose]);
+  if (!range) return null;
+  return createPortal(
+    <div className="fixed inset-0 z-[80]" onClick={onClose} data-confirm-dialog>
+      <div className="absolute w-[330px] space-y-2 rounded-xl border border-white/15 bg-[#0B1529] p-3 text-sm text-slate-200 shadow-2xl" style={{ left, top }} onClick={(e) => e.stopPropagation()} dir="rtl" data-testid="divider-question">
+        <div>
+          התמונות {range.from + 1} עד {range.to + 1} <span className="text-slate-400">({range.ids.length})</span> הן:
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {chapters.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              autoFocus={c.id === suggested}
+              onClick={() => onChoose(c.id)}
+              className={`rounded-full border px-2.5 py-1 text-xs ${c.id === suggested ? "border-amber-400 bg-amber-400/15 text-amber-100" : "border-white/15 hover:border-white/40"}`}
+            >
+              {c.label}
+              {c.id === suggested ? " · הבא בסדר" : ""}
+            </button>
+          ))}
+        </div>
+        {onAdd && (
+          <form
+            className="flex gap-1.5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (label.trim()) onAdd(label.trim());
+            }}
+          >
+            <input value={label} onChange={(e) => setLabel(e.target.value)} maxLength={40} placeholder="פרק חדש (למשל מפגש)" className="h-8 min-w-0 flex-1 rounded border border-white/10 bg-[#070F1F] px-2 text-xs text-white" />
+            <button type="submit" disabled={!label.trim()} className="rounded border border-white/15 px-2 text-xs hover:bg-white/10 disabled:opacity-40">הוספה</button>
+          </form>
+        )}
+        <div className="flex items-center justify-between text-[11px] text-slate-500">
+          <span>Enter = {chapters.find((c) => c.id === suggested)?.label}</span>
+          <button type="button" onClick={onClose} className="hover:text-white">ביטול</button>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 

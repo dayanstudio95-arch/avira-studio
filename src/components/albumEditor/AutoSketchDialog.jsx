@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { X, Sparkles, ChevronUp, ChevronDown } from "lucide-react";
-import { autoLayout, applyPreset, OPENING_TEMPLATE, autoLayoutByTags } from "@/lib/albumAutoLayout";
+import { autoLayout, applyPreset, OPENING_TEMPLATE, autoLayoutByChapters } from "@/lib/albumAutoLayout";
+import { chapterSections, planPages, shapeCounts, IMPORTANCE, DEFAULT_PER_PAGE } from "@/lib/albumChapters";
 import { getTemplate, cellRects, textRect } from "@/lib/albumTemplates";
 import { loadPresets } from "@/lib/albumStudioSettings";
 import { sortAssets, PAGE_BASELINE } from "@/lib/albumDesign";
 import { assetSrc } from "@/lib/albumAssets";
-import { PHOTO_TAGS } from "./PhotoBank";
 
 // "✨ סקיצה אוטומטית" (2026-10-08, the owner's flow):
 //   1. how many photos on the opening page (1–3);
@@ -13,9 +13,10 @@ import { PHOTO_TAGS } from "./PhotoBank";
 //      how many pages → "צור סקיצה". The picked photos fill the opening and don't repeat later;
 //      everything else is laid out in shooting order. The current sketch is snapshotted first
 //      (היסטוריה) and the whole thing is one ⌘Z away.
-// byTags (2026-10-08, "🏷️ סקיצה לפי תוויות"): a third step orders the tag sections; each tag gets
-// its own pages, photos of different tags never share a page.
-export default function AutoSketchDialog({ doc, onClose, onApply, byTags = false }) {
+// byChapters (2026-11-05, "📑 סקיצה לפי פרקים" — replaced "סקיצה לפי תוויות"): a third step plans the pages of each
+// chapter marked in the bank (albumChapters.planPages: count, shape, importance; 30 pages for 150 photos, extra pages
+// with their price above that) — each chapter on its own pages, photos of two chapters never share a page.
+export default function AutoSketchDialog({ doc, onClose, onApply, byChapters = false, chapters = [], perPage = DEFAULT_PER_PAGE, onImportance = null, extraPrice = 0 }) {
   const [step, setStep] = useState(1);
   const [openingCount, setOpeningCount] = useState(2);
   const [picked, setPicked] = useState([]);
@@ -40,28 +41,13 @@ export default function AutoSketchDialog({ doc, onClose, onApply, byTags = false
   const sorted = useMemo(() => sortAssets(doc.assets, doc.cameraOffsets), [doc.assets, doc.cameraOffsets]);
   const n = preset ? preset.pages.length : Math.max(2, Math.min(80, Number(spreads) || PAGE_BASELINE));
   const title = doc.pages.find((p) => p.title)?.title || null;
-  const tags = doc.tags || {};
-  const tagTabs = PHOTO_TAGS.filter((t) => Object.values(tags).some((l) => (l || []).includes(t.id)));
-  const shown = tab === "all" ? sorted : sorted.filter((a) => (tags[a.id] || []).includes(tab));
-  const [order, setOrder] = useState(() => tagTabs.map((t) => t.id));
-  const [includeUntagged, setIncludeUntagged] = useState(true);
-  const tagCount = (id) => sorted.filter((a) => !picked.includes(a.id) && (tags[a.id] || []).includes(id)).length;
-  const untaggedCount = sorted.filter((a) => !picked.includes(a.id) && !(tags[a.id] || []).length).length;
-  const moveTag = (i, d) =>
-    setOrder((o) => {
-      const n = [...o];
-      const j = i + d;
-      if (j < 0 || j >= n.length) return o;
-      [n[i], n[j]] = [n[j], n[i]];
-      return n;
-    });
-  const totalSteps = byTags ? 3 : 2;
+  const chapterOf = doc.chapterOf || {};
+  // step 2: the opening photos can be looked for by chapter (usually in "צילומי חוץ")
+  const chapterTabs = byChapters ? chapters.filter((c) => Object.values(chapterOf).includes(c.id)).map((c) => ({ id: c.id, label: c.label })) : [];
+  const shown = tab === "all" ? sorted : sorted.filter((a) => chapterOf[a.id] === tab);
+  const totalSteps = byChapters ? 3 : 2;
 
   const build = () => {
-    if (byTags) {
-      const sections = order.map((id) => ({ id, label: PHOTO_TAGS.find((t) => t.id === id)?.label || id }));
-      return autoLayoutByTags(sorted, { spreads: n, title, openingCount, openingIds: picked, sections, tags, includeUntagged });
-    }
     if (preset) {
       const r = applyPreset(sorted.filter((a) => !picked.includes(a.id)), preset, { title });
       // the preset's opening gets the picked photos
@@ -80,9 +66,9 @@ export default function AutoSketchDialog({ doc, onClose, onApply, byTags = false
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className={`max-h-[92vh] w-full space-y-4 overflow-y-auto rounded-2xl border border-white/10 bg-[#0B1529] p-5 text-slate-200 ${step === 2 ? "max-w-7xl" : "max-w-md"}`} onClick={(e) => e.stopPropagation()} dir="rtl">
+      <div className={`max-h-[92vh] w-full space-y-4 overflow-y-auto rounded-2xl border border-white/10 bg-[#0B1529] p-5 text-slate-200 ${step === 2 ? "max-w-7xl" : step === 3 ? "max-w-2xl" : "max-w-md"}`} onClick={(e) => e.stopPropagation()} dir="rtl">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-lg font-semibold text-white"><Sparkles className="h-5 w-5 text-amber-300" /> {byTags ? "סקיצה לפי תוויות" : "סקיצה אוטומטית"}</div>
+          <div className="flex items-center gap-2 text-lg font-semibold text-white"><Sparkles className="h-5 w-5 text-amber-300" /> {byChapters ? "סקיצה לפי פרקים" : "סקיצה אוטומטית"}</div>
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
         </div>
 
@@ -102,46 +88,29 @@ export default function AutoSketchDialog({ doc, onClose, onApply, byTags = false
             <button type="button" onClick={() => setStep(2)} className="h-11 w-full rounded-lg bg-amber-400 font-bold text-gray-900 hover:bg-amber-500">המשך — בחירת התמונות</button>
           </>
         ) : step === 3 ? (
-          <>
-            <div className="text-sm text-slate-400">
-              <b className="text-white">שלב 3 מתוך 3 — סדר הפרקים.</b> כל תווית מקבלת דפים משלה (בלי לערבב תוויות באותו דף), ובתוכה התמונות לפי שעת הצילום. אפשר לשנות את הסדר בחצים.
-            </div>
-            <div className="space-y-1.5">
-              {order.map((id, i) => (
-                <div key={id} className="flex items-center gap-2 rounded-lg bg-white/[0.04] px-3 py-2 text-sm">
-                  <span className="w-6 text-slate-500">{i + 1}.</span>
-                  <span className="flex-1">{PHOTO_TAGS.find((t) => t.id === id)?.label}</span>
-                  <span className="text-xs text-slate-400">{tagCount(id)} תמונות</span>
-                  <button type="button" onClick={() => moveTag(i, -1)} disabled={i === 0} className="rounded p-1 hover:bg-white/10 disabled:opacity-20"><ChevronUp className="h-4 w-4" /></button>
-                  <button type="button" onClick={() => moveTag(i, 1)} disabled={i === order.length - 1} className="rounded p-1 hover:bg-white/10 disabled:opacity-20"><ChevronDown className="h-4 w-4" /></button>
-                </div>
-              ))}
-            </div>
-            {untaggedCount > 0 && (
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={includeUntagged} onChange={(e) => setIncludeUntagged(e.target.checked)} />
-                להוסיף בסוף את {untaggedCount} התמונות בלי תווית (פרק "ללא תווית")
-              </label>
-            )}
-            <label className="block w-40 text-sm">
-              כמה דפים בערך (כולל הפתיחה)
-              <input type="number" min={2} max={80} value={spreads} onChange={(e) => setSpreads(e.target.value)} className="mt-1 h-9 w-full rounded-lg border border-white/10 bg-[#070F1F] px-2 text-white" />
-            </label>
-            {hasWork && <div className="text-xs text-amber-200">⚠️ הסקיצה הנוכחית תוחלף. היא נשמרת בהיסטוריה, ואפשר גם לבטל עם ⌘Z.</div>}
-            <div className="flex gap-2">
-              <button type="button" onClick={() => setStep(2)} className="h-11 rounded-lg border border-white/15 px-4 text-sm hover:bg-white/5">חזרה</button>
-              <button type="button" onClick={() => onApply(build().pages)} className="h-11 flex-1 rounded-lg bg-amber-400 font-bold text-gray-900 hover:bg-amber-500">צור סקיצה לפי תוויות</button>
-            </div>
-          </>
+          <ChapterPlanner
+            sorted={sorted}
+            chapterOf={chapterOf}
+            chapters={chapters}
+            perPage={perPage}
+            picked={picked}
+            title={title}
+            openingCount={openingCount}
+            extraPrice={extraPrice}
+            hasWork={hasWork}
+            onImportance={onImportance}
+            onBack={() => setStep(2)}
+            onApply={onApply}
+          />
         ) : (
           <>
             <div className="text-sm text-slate-400">
               <b className="text-white">שלב 2 מתוך {totalSteps} — בחרו {openingCount === 1 ? "תמונה אחת" : `${openingCount} תמונות`} לדף הפתיחה</b> (לחיצה = בחירה, המספר = הסדר).
               הן לא יופיעו שוב בהמשך האלבום.
             </div>
-            {tagTabs.length > 0 && (
+            {chapterTabs.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
-                {[{ id: "all", label: "הכל" }, ...tagTabs].map((t) => (
+                {[{ id: "all", label: "הכל" }, ...chapterTabs].map((t) => (
                   <button key={t.id} type="button" onClick={() => setTab(t.id)} className={`rounded-md border px-2.5 py-1 text-xs ${tab === t.id ? "border-amber-400/80 bg-amber-400/10 text-amber-200" : "border-white/10 text-slate-300"}`}>{t.label}</button>
                 ))}
               </div>
@@ -162,7 +131,7 @@ export default function AutoSketchDialog({ doc, onClose, onApply, byTags = false
               </div>
               <PreviewPane asset={hovered || sorted.find((a) => a.id === picked[picked.length - 1]) || null} pickedIndex={hovered ? picked.indexOf(hovered.id) : picked.length - 1} onToggle={toggle} />
             </div>
-            {!byTags && <div className="flex flex-wrap items-end gap-3 rounded-lg bg-white/[0.04] p-3 text-sm">
+            {!byChapters && <div className="flex flex-wrap items-end gap-3 rounded-lg bg-white/[0.04] p-3 text-sm">
               {presets.length > 0 && (
                 <label className="min-w-[200px] flex-1">
                   לפי
@@ -183,16 +152,16 @@ export default function AutoSketchDialog({ doc, onClose, onApply, byTags = false
                 {n > PAGE_BASELINE && <div className="text-amber-300">{n - PAGE_BASELINE} דפים מעבר ל-{PAGE_BASELINE} הכלולים</div>}
               </div>
             </div>}
-            {hasWork && !byTags && <div className="text-xs text-amber-200">⚠️ הסקיצה הנוכחית תוחלף. היא נשמרת בהיסטוריה, ואפשר גם לבטל עם ⌘Z.</div>}
+            {hasWork && !byChapters && <div className="text-xs text-amber-200">⚠️ הסקיצה הנוכחית תוחלף. היא נשמרת בהיסטוריה, ואפשר גם לבטל עם ⌘Z.</div>}
             <div className="flex gap-2">
               <button type="button" onClick={() => setStep(1)} className="h-11 rounded-lg border border-white/15 px-4 text-sm hover:bg-white/5">חזרה</button>
               <button
                 type="button"
                 disabled={picked.length !== openingCount}
-                onClick={() => (byTags ? setStep(3) : onApply(build().pages))}
+                onClick={() => (byChapters ? setStep(3) : onApply(build().pages))}
                 className="h-11 flex-1 rounded-lg bg-amber-400 font-bold text-gray-900 hover:bg-amber-500 disabled:opacity-40"
               >
-                {picked.length === openingCount ? (byTags ? "המשך — סדר הפרקים" : "צור סקיצה") : `בחרו עוד ${openingCount - picked.length} ${openingCount - picked.length === 1 ? "תמונה" : "תמונות"}`}
+                {picked.length === openingCount ? (byChapters ? "המשך — כמה דפים לכל פרק" : "צור סקיצה") : `בחרו עוד ${openingCount - picked.length} ${openingCount - picked.length === 1 ? "תמונה" : "תמונות"}`}
               </button>
             </div>
           </>
@@ -235,5 +204,134 @@ function PreviewPane({ asset, pickedIndex, onToggle }) {
         <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-slate-500">העבירו את העכבר על תמונה כדי לראות אותה כאן בגדול</div>
       )}
     </div>
+  );
+}
+
+const IMPORTANCE_LOOK = {
+  high: "border-emerald-400/50 bg-emerald-400/15 text-emerald-100",
+  mid: "border-sky-400/50 bg-sky-400/15 text-sky-100",
+  low: "border-white/15 bg-white/[0.04] text-slate-300",
+};
+
+// Step 3 of "סקיצה לפי פרקים": the chapters in shooting order (↑ ↓ to change), each with its photos, shapes,
+// importance and pages. Importance is the studio's (saved for the next albums too); − / + fixes one chapter's pages
+// for this album and the others even out. Over 150 photos → extra pages, with the price; "לדחוס ל-30" undoes that.
+function ChapterPlanner({ sorted, chapterOf, chapters, perPage, picked, title, openingCount, extraPrice, hasWork, onImportance, onBack, onApply }) {
+  const all = useMemo(() => chapterSections(sorted, chapterOf, chapters, { skip: picked }), [sorted, chapterOf, chapters, picked]);
+  const [order, setOrder] = useState(() => all.map((x) => x.id ?? "_loose"));
+  const [includeLoose, setIncludeLoose] = useState(true);
+  const [looseImportance, setLooseImportance] = useState("low");
+  const [overrides, setOverrides] = useState({}); // sectionKey → pages
+  const [squeeze, setSqueeze] = useState(false);
+  const keyOf = (x) => x.id ?? "_loose";
+  const byKey = Object.fromEntries(all.map((x) => [keyOf(x), x]));
+  const listed = [...order.filter((k) => byKey[k]), ...all.map(keyOf).filter((k) => !order.includes(k))].map((k) => byKey[k]);
+  const sections = listed.filter((x) => x.id || includeLoose).map((x) => (x.id ? x : { ...x, importance: looseImportance }));
+  const plan = planPages(sections, {
+    perPage,
+    openingPhotos: picked.length,
+    squeeze,
+    overrides: Object.fromEntries(sections.map((x, i) => [i, overrides[keyOf(x)]]).filter(([, v]) => v != null)),
+  });
+  const pagesOf = (x) => plan.pages[sections.indexOf(x)] ?? 0;
+  const move = (i, d) =>
+    setOrder(() => {
+      const keys = listed.map(keyOf);
+      const j = i + d;
+      if (j < 0 || j >= keys.length) return keys;
+      [keys[i], keys[j]] = [keys[j], keys[i]];
+      return keys;
+    });
+  const bump = (x, d) => setOverrides((o) => ({ ...o, [keyOf(x)]: Math.max(1, pagesOf(x) + d) }));
+  const setImportance = (x, imp) => {
+    setOverrides((o) => ({ ...o, [keyOf(x)]: undefined }));
+    if (!x.id) setLooseImportance(imp);
+    else onImportance?.(x.id, imp);
+  };
+  const build = () =>
+    onApply(autoLayoutByChapters(sorted, { title, openingCount, openingIds: picked, sections: sections.map((x) => ({ label: x.label, photos: x.photos })), pages: plan.pages }).pages);
+
+  return (
+    <>
+      <div className="text-sm text-slate-400">
+        <b className="text-white">שלב 3 מתוך 3 — כמה דפים לכל פרק.</b> לפי כמות התמונות, הצורה שלהן והחשיבות (גבוהה = פחות תמונות בדף). החשיבות נשמרת גם לאלבומים הבאים. − / + = תיקון לאלבום הזה, והפרקים האחרים מתאזנים.
+      </div>
+      <div className="divide-y divide-white/5 rounded-lg bg-white/[0.03]" data-testid="chapter-planner">
+        {listed.map((x, i) => {
+          const on = x.id || includeLoose;
+          const { portrait, landscape } = shapeCounts(x.photos);
+          const imp = x.id ? x.importance : looseImportance;
+          const n = pagesOf(x);
+          return (
+            <div key={keyOf(x)} className={`flex items-center gap-2 px-2 py-2 text-sm ${on ? "" : "opacity-40"}`} data-testid="planner-row">
+              <span className="flex flex-col">
+                <button type="button" onClick={() => move(i, -1)} disabled={i === 0} className="rounded hover:bg-white/10 disabled:opacity-20"><ChevronUp className="h-3.5 w-3.5" /></button>
+                <button type="button" onClick={() => move(i, 1)} disabled={i === listed.length - 1} className="rounded hover:bg-white/10 disabled:opacity-20"><ChevronDown className="h-3.5 w-3.5" /></button>
+              </span>
+              <span className="w-28 shrink-0">
+                {x.id ? (
+                  <span className="font-semibold text-white">{x.label}</span>
+                ) : (
+                  <label className="flex items-center gap-1.5 text-slate-300">
+                    <input type="checkbox" checked={includeLoose} onChange={(e) => setIncludeLoose(e.target.checked)} /> בלי פרק
+                  </label>
+                )}
+                <span className="block text-[11px] text-slate-400">{x.photos.length} · {portrait} לאורך · {landscape} לרוחב</span>
+              </span>
+              <span className="flex flex-1 justify-center gap-1">
+                {IMPORTANCE.map((m) => (
+                  <button key={m.id} type="button" disabled={!on} onClick={() => setImportance(x, m.id)} className={`rounded-md border px-2 py-0.5 text-xs ${imp === m.id ? IMPORTANCE_LOOK[m.id] : "border-white/10 text-slate-500 hover:text-slate-200"}`}>
+                    {m.label}
+                  </button>
+                ))}
+              </span>
+              <span className="w-32 shrink-0 text-left">
+                <span className="flex items-center justify-end gap-1.5">
+                  <button type="button" disabled={!on || n <= 1} onClick={() => bump(x, -1)} className="h-6 w-6 rounded border border-white/15 hover:bg-white/10 disabled:opacity-30" aria-label="פחות דפים">−</button>
+                  <b className="w-6 text-center text-white" data-testid="planner-pages">{on ? n : 0}</b>
+                  <button type="button" disabled={!on} onClick={() => bump(x, 1)} className="h-6 w-6 rounded border border-white/15 hover:bg-white/10 disabled:opacity-30" aria-label="יותר דפים">+</button>
+                </span>
+                <span className="block text-[10px] text-slate-500">
+                  {on && n ? `כ-${Math.round((x.photos.length / n) * 10) / 10} בדף` : ""}
+                  {overrides[keyOf(x)] != null && (
+                    <button type="button" onClick={() => setOverrides((o) => ({ ...o, [keyOf(x)]: undefined }))} className="mr-1 text-amber-300 hover:underline">ידני ↺</button>
+                  )}
+                </span>
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="space-y-1 text-sm" data-testid="planner-total">
+        <div>
+          פתיח ({picked.length} תמונות) + {plan.total - 1} דפים = <b className="text-white">{plan.total} דפים</b> · {plan.photos} תמונות ·{" "}
+          {plan.extra > 0 ? (
+            <span className="text-amber-300">{plan.extra === 1 ? "דף נוסף אחד" : `${plan.extra} דפים נוספים`}{extraPrice ? ` · +₪${(plan.extra * extraPrice).toLocaleString()}` : ""}</span>
+          ) : (
+            <span className="text-emerald-300">בתוך ה-{PAGE_BASELINE} הכלולים</span>
+          )}
+        </div>
+        {(plan.extra > 0 || squeeze) && (
+          <button type="button" onClick={() => setSqueeze((v) => !v)} className="text-xs text-sky-300 hover:underline">
+            {squeeze ? "לבטל את הדחיסה (דפים נוספים לפי כמות התמונות)" : `לדחוס ל-${PAGE_BASELINE} דפים, בלי תוספת`}
+          </button>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-1" dir="rtl">
+        <span className="flex h-6 w-9 items-center justify-center rounded border border-amber-400/60 text-[9px] text-amber-200">פתיח</span>
+        {sections.map((x) =>
+          Array.from({ length: pagesOf(x) }, (_, j) => (
+            <span key={`${keyOf(x)}-${j}`} className={`flex h-6 w-9 items-center justify-center truncate rounded border text-[9px] ${IMPORTANCE_LOOK[x.importance]}`}>{j === 0 ? x.label.split(" ")[0] : ""}</span>
+          ))
+        )}
+      </div>
+      {hasWork && <div className="text-xs text-amber-200">⚠️ הסקיצה הנוכחית תוחלף. היא נשמרת בהיסטוריה, ואפשר גם לבטל עם ⌘Z.</div>}
+      <div className="flex gap-2">
+        <button type="button" onClick={onBack} className="h-11 rounded-lg border border-white/15 px-4 text-sm hover:bg-white/5">חזרה</button>
+        <button type="button" onClick={build} disabled={!sections.length} className="h-11 flex-1 rounded-lg bg-amber-400 font-bold text-gray-900 hover:bg-amber-500 disabled:opacity-40" data-testid="planner-build">
+          צור סקיצה לפי הפרקים ({plan.total} דפים)
+        </button>
+      </div>
+    </>
   );
 }

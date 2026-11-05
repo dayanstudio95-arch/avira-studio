@@ -320,3 +320,33 @@ export function autoLayoutByTags(assets, { spreads = 30, title = null, openingCo
   const left = assets.filter((a) => !taken.has(a.id)).length; // tagged with a tag left out / untagged excluded
   return { pages, unused: left, sections: groups.map((g) => ({ label: g.label, photos: g.photos.length })) };
 }
+
+// "📑 סקיצה לפי פרקים" (2026-11-05): the opening, then each chapter on exactly the pages the planner gave it
+// (albumChapters.planPages) — photos of two chapters never share a page; inside a chapter, shooting order.
+// `sections`: [{ label, photos }] without the opening photos; `pages`: pages per section.
+export function autoLayoutByChapters(assets, { title = null, openingCount = 2, openingIds = [], sections = [], pages = [] } = {}) {
+  const opening = autoLayout(assets, { spreads: 2, title, openingCount, openingIds }).pages[0];
+  const taken = new Set(opening.slots.map((s) => s.assetId).filter(Boolean));
+  const out = [opening];
+  let prev = null;
+  sections.forEach((sec, i) => {
+    const photos = sec.photos.filter((a) => !taken.has(a.id));
+    photos.forEach((a) => taken.add(a.id));
+    const n = Math.max(0, Math.min(pages[i] || 0, photos.length));
+    if (!n) return;
+    // distributeCounts keeps a page to 10 photos and would drop the rest of a crowded chapter — then an even split
+    // (the layouts go up to 20 photos), so every photo of the chapter is in the sketch
+    let counts = distributeCounts(photos.length, n);
+    if (counts.reduce((a, b) => a + b, 0) !== photos.length) counts = Array.from({ length: n }, (_, k) => Math.round((photos.length * (k + 1)) / n) - Math.round((photos.length * k) / n));
+    let at = 0;
+    for (const c of counts) {
+      const page = pageFor(photos.slice(at, at + c), prev);
+      at += c;
+      if (!page) continue;
+      page.section = sec.label;
+      out.push(page);
+      prev = page.templateId;
+    }
+  });
+  return { pages: out };
+}
