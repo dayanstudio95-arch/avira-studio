@@ -37,3 +37,14 @@ export function crewCostWarning(member, staffList) {
   const hasAnyRate = Number(staff.defaultRate) > 0 || (staff.ratesByRole || []).some((r) => Number(r.rate) > 0);
   return hasAnyRate ? { kind: "no_rate" } : null;
 }
+
+// The staff member's fixed price for this slot set to `rate` (the payments page's "לעדכן גם את התעריף הקבוע",
+// 2026-11-06): the per-role override when he has one for this slot, otherwise his default rate — the same place
+// getStaffRateForRole reads from. → the fields to update on staff_members.
+export function rateUpdateForRole(staff, roleKey, rate) {
+  const overrides = staff?.ratesByRole || [];
+  if (overrides.some((r) => r.role === roleKey)) {
+    return { ratesByRole: overrides.map((r) => (r.role === roleKey ? { ...r, rate } : r)) };
+  }
+  return { defaultRate: rate };
+}

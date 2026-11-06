@@ -15,6 +15,7 @@ import { SUPPLIER_VAT_RATE } from '@/lib/financialCalculations';
 import StaffPaymentDetailDialog from '@/components/payments/StaffPaymentDetailDialog';
 import RecordStaffPaymentDialog from '@/components/payments/RecordStaffPaymentDialog';
 import ConfirmStaffPaymentDialog from '@/components/payments/ConfirmStaffPaymentDialog';
+import EventCostEditor from '@/components/payments/EventCostEditor';
 import { STAFF_PAYERS_KEY } from '@/lib/staffInvoices';
 import { addsVat, requestFor, STAFF_TRACK_SINCE, israelDayOf } from '@/lib/staffPaymentMessages';
 import { useAuth } from '@/lib/SupabaseAuthContext';
@@ -95,6 +96,14 @@ export default function Payments() {
     useEffect(() => {
         loadData();
     }, []);
+
+    // After a cost change (EventCostEditor): the events and the staff list again, without the loading skeleton —
+    // the open card stays open.
+    const refreshQuietly = async () => {
+        const [allEvents, allStaff] = await Promise.all([Event.list('-date'), StaffMember.list()]);
+        setEvents(allEvents);
+        setStaffMembers(allStaff);
+    };
 
     const filteredEvents = useMemo(() => {
         return events.filter(event => {
@@ -556,11 +565,18 @@ export default function Payments() {
                                                                     className="border-gray-600 flex-shrink-0"
                                                                 />
                                                                 <div className="flex flex-col gap-0.5 min-w-0">
-                                                                   <div className="flex items-center gap-1.5">
+                                                                   <div className="flex items-center gap-1.5 flex-wrap">
                                                                         <Calendar className="w-3 h-3 text-gray-500 flex-shrink-0" />
                                                                         <span className="text-gray-300 text-xs">{format(new Date(event.date), 'd/M/yy')}</span>
                                                                         <Coins className="w-3 h-3 text-yellow-500 flex-shrink-0 mr-1" />
-                                                                        <span className="text-yellow-400 text-xs font-semibold">₪{event.cost.toLocaleString()}</span>
+                                                                        <EventCostEditor
+                                                                            event={events.find((e) => e.id === event.eventId)}
+                                                                            memberIndex={event.memberIndexInEvent}
+                                                                            staffName={name}
+                                                                            staff={staffMembers.find((s) => s.name === name) || null}
+                                                                            requestOpen={!!requestFor(requests, name, [event])}
+                                                                            onSaved={refreshQuietly}
+                                                                        />
                                                                     </div>
                                                                      <div className="flex items-center gap-1.5">
                                                                         <span className="text-gray-300 text-sm font-medium truncate">{event.coupleNames}</span>

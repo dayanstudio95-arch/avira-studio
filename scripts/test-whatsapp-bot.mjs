@@ -3942,5 +3942,18 @@ console.log('\n— PART 75: album group messages + list order —');
   ], ['2026-11-06', '2026-11-06', '', '', '2026-10-01']);
 }
 
+{
+  section('payments: a team member\'s cost for one event, and his fixed rate if asked (2026-11-06)');
+  const sr = await loadModule('src/lib/staffRates.js', 'sr88');
+  const yonatan = { defaultRate: 1100, ratesByRole: [{ role: 'videographer2', rate: 900 }] };
+  check('the fixed rate is changed where it is read from: the per-role price when there is one, else the default', [
+    sr.rateUpdateForRole(yonatan, 'videographer2', 950), sr.rateUpdateForRole(yonatan, 'photographer1', 1150), sr.rateUpdateForRole({ defaultRate: 1100 }, 'photographer1', 1150),
+    sr.getStaffRateForRole({ ...yonatan, ...sr.rateUpdateForRole(yonatan, 'videographer2', 950) }, 'videographer2'),
+  ], [{ ratesByRole: [{ role: 'videographer2', rate: 950 }] }, { defaultRate: 1150 }, { defaultRate: 1150 }, 950]);
+  const pc = await loadModule('src/lib/profitCalculations.js', 'pc88');
+  const ev = { totalAmountGross: 10620, vatAmount: 1620, team: [{ cost: 3600 }, { cost: 1100 }] };
+  check('the event\'s profit follows the cost: 1,100 → 1,150 = 50 less', [pc.calculateNetProfit(ev), pc.calculateNetProfit({ ...ev, team: [{ cost: 3600 }, { cost: 1150 }] })], [4300, 4250]);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
