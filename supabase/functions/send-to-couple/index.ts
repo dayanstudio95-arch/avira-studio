@@ -69,7 +69,8 @@ Deno.serve(async (req) => {
           venue: venue || '',
           link: finalLink,
           expires: israelDay(body?.expiresAt),
-          album_guide_link: albumGuideLink,
+          // the guide's version for the studio's own gallery (0114, 2026-11-06)
+          album_guide_link: albumGuideLink ? `${albumGuideLink}?v=gallery` : '',
         })
       : template
           .replace(/{{names}}/g, coupleNames || '')

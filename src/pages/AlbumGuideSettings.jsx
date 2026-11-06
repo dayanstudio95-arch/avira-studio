@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import { DEFAULT_GALLERY_INTRO, DEFAULT_GALLERY_SUBMISSION, GALLERY_VARIANT } from "@/lib/albumGuideVariants";
 
 // Album Guide Page — studio-owner-editable, generic (one row per tenant)
 // couple-facing informational page explaining the album-ordering process,
@@ -43,9 +44,14 @@ const BUCKET = "album-guide-assets";
 
 const sanitizeFileName = (name) => name.replace(/[^a-zA-Z0-9._-]/g, "_");
 
+// 2026-11-06: "איך בוחרים" / "סיימתם לבחור" in two versions (Pixieset, the studio's own gallery — ?v=gallery), and
+// "מה קורה לאחר ההזמנה" shared by both (0114). The gallery version starts from the built-in wording.
 const EMPTY_CONTENT_FORM = {
   photo_selection_intro: "",
   submission_instructions: "",
+  photo_selection_intro_gallery: DEFAULT_GALLERY_INTRO,
+  submission_instructions_gallery: DEFAULT_GALLERY_SUBMISSION,
+  after_order_text: "",
   cancellation_policy: "",
   is_published: true,
 };
@@ -62,6 +68,7 @@ export default function AlbumGuideSettings() {
   const [form, setForm] = useState(EMPTY_CONTENT_FORM);
   const [isLoadingGuide, setIsLoadingGuide] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [variantTab, setVariantTab] = useState("pixieset"); // which version of the two sections is being edited
 
   useEffect(() => {
     if (user?.tenant_id) loadGuide();
@@ -77,6 +84,9 @@ export default function AlbumGuideSettings() {
         setForm({
           photo_selection_intro: row.photoSelectionIntro || "",
           submission_instructions: row.submissionInstructions || "",
+          photo_selection_intro_gallery: row.photoSelectionIntroGallery || DEFAULT_GALLERY_INTRO,
+          submission_instructions_gallery: row.submissionInstructionsGallery || DEFAULT_GALLERY_SUBMISSION,
+          after_order_text: row.afterOrderText || "",
           cancellation_policy: row.cancellationPolicy || "",
           is_published: row.isPublished ?? true,
         });
@@ -96,6 +106,9 @@ export default function AlbumGuideSettings() {
       const payload = {
         photoSelectionIntro: form.photo_selection_intro,
         submissionInstructions: form.submission_instructions,
+        photoSelectionIntroGallery: form.photo_selection_intro_gallery,
+        submissionInstructionsGallery: form.submission_instructions_gallery,
+        afterOrderText: form.after_order_text,
         cancellationPolicy: form.cancellation_policy,
         isPublished: form.is_published,
         updatedBy: user.id,
@@ -584,7 +597,17 @@ export default function AlbumGuideSettings() {
                 className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-yellow-400"
               >
                 <ExternalLink className="w-4 h-4 ml-2" />
-                תצוגה מקדימה
+                תצוגה מקדימה (פיקסיסט)
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => window.open(`${guideLink}?v=${GALLERY_VARIANT}`, "_blank")}
+                className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-yellow-400"
+                data-testid="guide-preview-gallery"
+              >
+                <ExternalLink className="w-4 h-4 ml-2" />
+                תצוגה מקדימה (הגלריה שלנו)
               </Button>
             </div>
           )}
@@ -611,14 +634,32 @@ export default function AlbumGuideSettings() {
               <div className="h-40 bg-gray-800 rounded-lg animate-pulse" />
             ) : (
               <>
+                <div className="space-y-2 rounded-xl border border-gray-800 p-3" data-testid="guide-variants">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {[["pixieset", "גלריה בפיקסיסט"], [GALLERY_VARIANT, "הגלריה שלנו"]].map(([v, label]) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setVariantTab(v)}
+                        className={`rounded-full border px-3 py-1 text-xs ${variantTab === v ? "border-yellow-400/60 bg-yellow-400/15 text-yellow-200" : "border-gray-700 text-gray-300 hover:border-gray-500"}`}
+                        data-testid={`guide-tab-${v}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                    <span className="text-xs text-gray-500">
+                      {variantTab === GALLERY_VARIANT ? 'זוגות שקיבלו גלריה מ"שלח לזוג" בגלריות (❤ ו"סיימנו לבחור")' : 'זוגות שקיבלו לינק פיקסיסט ("→ זוג" בסטטוס עבודה)'}
+                    </span>
+                  </div>
                 <div className="space-y-2">
                   <Label className="text-gray-300 font-medium">
                     איך בוחרים תמונות + כמה תמונות כלולות בחבילה
                   </Label>
                   <Textarea
-                    value={form.photo_selection_intro}
+                    value={variantTab === GALLERY_VARIANT ? form.photo_selection_intro_gallery : form.photo_selection_intro}
                     disabled={!canManage}
-                    onChange={(e) => setForm({ ...form, photo_selection_intro: e.target.value })}
+                    onChange={(e) => setForm({ ...form, [variantTab === GALLERY_VARIANT ? "photo_selection_intro_gallery" : "photo_selection_intro"]: e.target.value })}
+                    data-testid="guide-intro"
                     className="bg-gray-800/50 border-gray-700 text-white min-h-[100px]"
                     placeholder="לדוגמה: החבילה כוללת בחירה של עד 60 תמונות מתוך הגלריה המלאה..."
                   />
@@ -627,12 +668,27 @@ export default function AlbumGuideSettings() {
                 <div className="space-y-2">
                   <Label className="text-gray-300 font-medium">מה עושים אחרי שסיימתם לבחור</Label>
                   <Textarea
-                    value={form.submission_instructions}
+                    value={variantTab === GALLERY_VARIANT ? form.submission_instructions_gallery : form.submission_instructions}
                     disabled={!canManage}
-                    onChange={(e) => setForm({ ...form, submission_instructions: e.target.value })}
+                    onChange={(e) => setForm({ ...form, [variantTab === GALLERY_VARIANT ? "submission_instructions_gallery" : "submission_instructions"]: e.target.value })}
                     className="bg-gray-800/50 border-gray-700 text-white min-h-[100px]"
                     placeholder="לדוגמה: שלחו לנו את רשימת מספרי התמונות שבחרתם בוואטסאפ..."
+                    data-testid="guide-submission"
                   />
+                </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-gray-300 font-medium">מה קורה לאחר ההזמנה (משותף לשתי הגרסאות)</Label>
+                  <Textarea
+                    value={form.after_order_text}
+                    disabled={!canManage}
+                    onChange={(e) => setForm({ ...form, after_order_text: e.target.value })}
+                    className="bg-gray-800/50 border-gray-700 text-white min-h-[100px]"
+                    placeholder="לדוגמה: לאחר קבלת הבחירה שלכם נתחיל לעבוד על סקיצת האלבום..."
+                    data-testid="guide-after-order"
+                  />
+                  <p className="text-xs text-gray-500">מופיע בדף מתחת ל"סיימתם לבחור", בשתי הגרסאות.</p>
                 </div>
 
                 <div className="space-y-2">

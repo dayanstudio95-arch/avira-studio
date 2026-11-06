@@ -128,6 +128,10 @@ Deno.serve(async (req) => {
             id: guide.id,
             photoSelectionIntro: guide.photo_selection_intro,
             submissionInstructions: guide.submission_instructions,
+            // 0114: the version for the studio's own gallery (?v=gallery) and the shared "after the order" text
+            photoSelectionIntroGallery: guide.photo_selection_intro_gallery ?? null,
+            submissionInstructionsGallery: guide.submission_instructions_gallery ?? null,
+            afterOrderText: guide.after_order_text ?? null,
             sketchExampleImageUrl: guide.sketch_example_image_url,
             cancellationPolicy: guide.cancellation_policy,
           }

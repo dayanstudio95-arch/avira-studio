@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useLocation, useParams } from "react-router-dom";
+import { guideTexts, guideVariant } from "@/lib/albumGuideVariants";
 import { base44 } from "@/api/base44Client";
 import {
   Loader2,
@@ -28,6 +29,8 @@ import {
 // reads (via the get-album-guide-public Edge Function) album_products/
 // album_covers/album_addons, and never touches the legacy
 // events.album_status marker.
+// 2026-11-06: two versions of "איך בוחרים" / "סיימתם לבחור" — ?v=gallery for couples choosing in the studio's own
+// gallery (❤ + "סיימנו לבחור"), the plain link for Pixieset; "מה קורה לאחר ההזמנה" is shared (src/lib/albumGuideVariants.js).
 
 function formatPrice(amount) {
   if (amount === null || amount === undefined) return null;
@@ -223,6 +226,7 @@ function SketchExampleLightbox({ example, imageIndex, onClose, onPrev, onNext })
 
 export default function AlbumGuide() {
   const { tenantId } = useParams();
+  const variant = guideVariant(useLocation().search);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [data, setData] = useState(null);
@@ -316,17 +320,24 @@ export default function AlbumGuide() {
           </div>
         ) : (
           <>
-            {guide.photoSelectionIntro && (
-              <SectionCard icon={Camera} title="איך בוחרים תמונות לאלבום">
-                {guide.photoSelectionIntro}
-              </SectionCard>
-            )}
-
-            {guide.submissionInstructions && (
-              <SectionCard icon={Send} title="סיימתם לבחור? הנה מה שנשאר לעשות">
-                {guide.submissionInstructions}
-              </SectionCard>
-            )}
+            {(() => {
+              const t = guideTexts(guide, variant);
+              const done = [t.submission, t.afterOrder].filter(Boolean).join("\n\n\n");
+              return (
+                <>
+                  {t.intro && (
+                    <SectionCard icon={Camera} title="איך בוחרים תמונות לאלבום">
+                      {t.intro}
+                    </SectionCard>
+                  )}
+                  {done && (
+                    <SectionCard icon={Send} title="סיימתם לבחור? הנה מה שנשאר לעשות">
+                      {done}
+                    </SectionCard>
+                  )}
+                </>
+              );
+            })()}
 
             {products.length > 0 && (
               <SectionCard icon={ShoppingBag} title="מחירון אלבומים">

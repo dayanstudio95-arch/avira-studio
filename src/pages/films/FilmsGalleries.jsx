@@ -37,7 +37,7 @@ const GALLERY_TEXT_VARS = [
   ["{{expires}}", "= היום שהגלריה נסגרת"],
   ["{{event_date}}", "= תאריך"],
   ["{{venue}}", "= אולם"],
-  ["{{album_guide_link}}", "= מדריך האלבום"],
+  ["{{album_guide_link}}", "= מדריך האלבום (הגרסה של הגלריה שלנו)"],
 ];
 const GALLERY_SAMPLE = {
   link: "https://gallery.avira-studio.com/…",
@@ -45,7 +45,7 @@ const GALLERY_SAMPLE = {
   expires: "6.1.2027",
   event_date: "22.10.2026",
   venue: "חוות צאן קידר",
-  album_guide_link: "https://new.avira-studio.com/album-guide/…",
+  album_guide_link: "https://new.avira-studio.com/album-guide/…?v=gallery",
 };
 
 // The couples' galleries: photo galleries under "גלריות" (/photos), film galleries under "סרטים" (/films).

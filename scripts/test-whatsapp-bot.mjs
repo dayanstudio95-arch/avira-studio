@@ -4052,5 +4052,25 @@ console.log('\n— PART 75: album group messages + list order —');
   ], [true, true, true, 'היי נועה ונועם\nהגלריה: https://g/x\nעד 6.1.2027', true]);
 }
 
+{
+  section('album guide in two versions (Pixieset / our gallery), and the galleries\' message from the Pixieset one (2026-11-06)');
+  const gv = await loadModule('src/lib/albumGuideVariants.js', 'gv93');
+  check('?v=gallery is the gallery version; anything else is Pixieset', [gv.guideVariant('?v=gallery'), gv.guideVariant(''), gv.guideVariant('?v=x'), gv.guideVariant('?a=1&v=gallery')], ['gallery', 'pixieset', 'pixieset', 'gallery']);
+  const g = { photoSelectionIntro: 'פיקסיסט 1-3', submissionInstructions: 'Favorites…', afterOrderText: ' אחרי ההזמנה ' };
+  check('each version its own two sections (the gallery one has a built-in start); "after the order" shared', [
+    gv.guideTexts(g, 'pixieset'), gv.guideTexts(g, 'gallery').intro === gv.DEFAULT_GALLERY_INTRO, gv.guideTexts({ ...g, submissionInstructionsGallery: 'משלנו' }, 'gallery').submission, gv.guideTexts(g, 'gallery').afterOrder, gv.guideTexts(null, 'pixieset'),
+  ], [{ intro: 'פיקסיסט 1-3', submission: 'Favorites…', afterOrder: 'אחרי ההזמנה' }, true, 'משלנו', 'אחרי ההזמנה', { intro: '', submission: '', afterOrder: '' }]);
+  const { readFileSync } = await import('node:fs');
+  const mig = readFileSync(resolve(repoRoot, 'supabase/migrations/0114_album_guide_gallery.sql'), 'utf8');
+  const msg = mig.split('$msg$')[1];
+  const gl = await loadModule('src/lib/galleryLinkMessage.js', 'gl93');
+  const vars = { names: 'נועה ונועם', link: 'https://g/x', expires: '6.1.2027', album_guide_link: 'https://a/g?v=gallery' };
+  const out = gl.renderGalleryLink(msg, vars);
+  check('the approved message: only known variables; with no closing day that line drops; no Pixieset steps left', [
+    [...new Set([...msg.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]))].sort(), out.includes('הגלריה פתוחה עד 6.1.2027 בלבד'), gl.renderGalleryLink(msg, { ...vars, expires: '' }).includes('פתוחה עד'),
+    /Favorites|Send To Photographer|High Resolution/.test(msg), out.split('\n')[0], out.includes('🔗 https://a/g?v=gallery'),
+  ], [['album_guide_link', 'expires', 'link', 'names'], true, false, false, 'היושש נועה ונועם 😊', true]);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
