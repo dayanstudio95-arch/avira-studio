@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { ENTITIES } from "@/lib/paymentEntity";
 import { todayInIsrael } from "@/lib/localDate";
 import {
-  CONFIRM_TEMPLATE_KEY, INVOICE_AFTER_KEY, addsVat, confirmMessage, fmt, paymentTotals, totalLine, transferEvents,
+  CONFIRM_TEMPLATE_KEY, INVOICE_AFTER_KEY, addsVat, confirmMessage, fmt, paymentTotals, totalLine, transferEvents, israelDayOf,
 } from "@/lib/staffPaymentMessages";
 
 // "שילמתי" (2026-11-02, the owner's request; 0108). He pays a team member in the bank's app, comes back, and confirms
@@ -18,6 +18,10 @@ import {
 // he said it (no guessing the business from the account number later), the events are marked paid, and the team
 // member gets the events, the screenshot and the invoice details on WhatsApp. The screenshot is read first (staff-
 // invoices "read_transfer") so a wrong amount or the other business's account shows before anything is saved.
+// 2026-11-06: one event's "שילמתי" opens this window too (its small button used to only mark the event, and the owner
+// didn't notice that nothing went out); "רק לסמן שולם" here is the old mark-only. `alreadyPaid`: the events were marked
+// "שולם" without the screenshot — this sends it now; the marks stay as they are, and `existing` (the transfer the scan
+// opened for those marks, if any) becomes this payment instead of a second one.
 
 const BUCKET = "staff-invoices";
 const MIME_EXT = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "application/pdf": "pdf" };
@@ -25,7 +29,7 @@ const MAX_BYTES = 10 * 1024 * 1024;
 const btn = "border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700";
 const day = (d) => (d ? `${Number(d.slice(8, 10))}/${Number(d.slice(5, 7))}/${d.slice(2, 4)}` : "");
 
-export default function ConfirmStaffPaymentDialog({ open, onOpenChange, staffName, phone, rows, staffType, payers, request, tenantId, onMarkPaid, onDone }) {
+export default function ConfirmStaffPaymentDialog({ open, onOpenChange, staffName, phone, rows, staffType, payers, request, alreadyPaid = false, existing = null, tenantId, onMarkPaid, onDone }) {
   const file = useRef(null);
   const [proof, setProof] = useState(null); // { path, name }
   const [reading, setReading] = useState(null); // null | "reading" | { read, isTransfer, amount, date, entity }
@@ -43,7 +47,7 @@ export default function ConfirmStaffPaymentDialog({ open, onOpenChange, staffNam
     if (!open) return;
     setProof(null);
     setReading(null);
-    setEntity(request?.entity || "");
+    setEntity(request?.entity || existing?.entity || "");
     setPaid(String(totals.gross));
     setSend(!!phone);
     kept.current = { path: null, saved: false };
@@ -112,11 +116,25 @@ export default function ConfirmStaffPaymentDialog({ open, onOpenChange, staffNam
     try {
       const today = todayInIsrael();
       const monthAgo = new Date(Date.parse(today) - 30 * 86400000).toISOString().slice(0, 10);
-      const paidOn = read?.date && read.date <= today && read.date >= monthAgo ? read.date : today;
+      // already marked: the day it was marked (or the transfer the scan opened for it), unless the screenshot says
+      const markedOn = existing?.paid_on || rows.map((r) => israelDayOf(r.paidAt)).filter(Boolean).sort().pop() || today;
+      const fromShot = read?.date && read.date <= today && read.date >= monthAgo ? read.date : null;
+      const paidOn = fromShot || (alreadyPaid ? markedOn : today);
       const works = transferEvents(rows);
       const now = new Date().toISOString();
-      let transferId = request?.id;
-      if (request) {
+      let transferId = request?.id || existing?.id;
+      if (existing) {
+        // the transfer opened from the "שולם" mark: now with the screenshot, the business and the amount sent
+        const have = new Set((existing.events || []).map((w) => `${w.eventId}|${w.role}`));
+        const { error } = await supabase
+          .from("staff_transfers")
+          .update({
+            source: "confirmed", amount, paid_on: paidOn, entity, proof_path: proof?.path || null,
+            events: [...(existing.events || []), ...works.filter((w) => !have.has(`${w.eventId}|${w.role}`))], reminders_on: true, updated_at: now,
+          })
+          .eq("id", existing.id);
+        if (error) throw error;
+      } else if (request) {
         // The invoice was asked for before paying: that row is now this payment.
         const have = new Set((request.events || []).map((w) => `${w.eventId}|${w.role}`));
         const { error } = await supabase
@@ -137,7 +155,7 @@ export default function ConfirmStaffPaymentDialog({ open, onOpenChange, staffNam
       }
       kept.current.saved = true;
       // The transfer first, then the marks: the scan never sees the marks without the transfer that holds them.
-      await onMarkPaid(rows);
+      if (!alreadyPaid) await onMarkPaid(rows);
       if (send && phone) {
         const res = await base44.functions.invoke("staffInvoices", { action: "send_payment", transferId, to: phone, message });
         if (res.data?.error) toast.warning(`התשלום נשמר, אבל ההודעה ל${staffName} לא נשלחה: ${res.data.error}`, { duration: 10000 });
@@ -153,14 +171,29 @@ export default function ConfirmStaffPaymentDialog({ open, onOpenChange, staffNam
     setBusy(false);
   };
 
+  // The old "שולם": the events marked paid, nothing recorded or sent here (the hourly scan opens the transfer).
+  const markOnly = async () => {
+    setBusy(true);
+    try {
+      await onMarkPaid(rows);
+      toast.success(rows.length === 1 ? "סומן כשולם" : `${rows.length} אירועים סומנו כשולם`);
+      onOpenChange(false);
+      onDone?.();
+    } catch (e) {
+      toast.error("הסימון נכשל: " + (e?.message || ""));
+    }
+    setBusy(false);
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent dir="rtl" className="bg-gray-900 border-gray-700 text-white max-w-lg max-h-[92vh] overflow-y-auto" data-testid="confirm-payment">
         <DialogHeader>
           <DialogTitle className="text-right flex items-center gap-2">
             <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-            שילמתי ל{staffName}
+            {alreadyPaid ? `שליחת צילום ופירוט ל${staffName}` : `שילמתי ל${staffName}`}
           </DialogTitle>
+          {alreadyPaid && <p className="text-right text-xs text-gray-400">{rows.length === 1 ? "האירוע כבר מסומן" : "האירועים כבר מסומנים"} &quot;שולם&quot;. כאן רק מוסיפים את צילום ההעברה ושולחים את הפירוט.</p>}
         </DialogHeader>
 
         <div className="space-y-4">
@@ -261,7 +294,12 @@ export default function ConfirmStaffPaymentDialog({ open, onOpenChange, staffNam
             />
           )}
 
-          <div className="flex gap-2 justify-end">
+          <div className="flex gap-2 justify-end items-center">
+            {!alreadyPaid && !request && (
+              <button type="button" onClick={markOnly} disabled={busy} className="ml-auto text-xs text-gray-400 underline hover:text-white disabled:opacity-50" data-testid="confirm-mark-only">
+                רק לסמן שולם, בלי צילום והודעה
+              </button>
+            )}
             <Button variant="outline" className={btn} onClick={() => onOpenChange(false)} disabled={busy}>
               ביטול
             </Button>

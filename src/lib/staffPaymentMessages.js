@@ -99,6 +99,16 @@ export function confirmMessage({ template, afterTemplate, name, events, type, pa
 export const transferEvents = (events) =>
   (events || []).map((e) => ({ eventId: e.eventId, role: String(e.role ?? ""), date: String(e.date || "").slice(0, 10), venue: e.venue || "", amount: Number(e.cost) || 0 }));
 
+/** Invoice tracking starts here — the same day as TRACK_SINCE in supabase/functions/_shared/staffInvoices.ts. */
+export const STAFF_TRACK_SINCE = "2026-10-01";
+
+/** Israel's calendar day of an instant ("2026-11-05T22:30Z" → "2026-11-06"); "" when it isn't a date. */
+export function israelDayOf(iso) {
+  const d = new Date(String(iso ?? ""));
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+}
+
 /** The open invoice request ("requested") this payment settles: the team member's own, sharing a work with it. */
 export function requestFor(requests, staffName, events) {
   const keys = new Set((events || []).map((e) => `${e.eventId}|${e.role ?? ""}`));

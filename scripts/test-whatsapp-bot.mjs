@@ -3934,5 +3934,13 @@ console.log('\n— PART 75: album group messages + list order —');
   check('a chapter squeezed onto few pages keeps all its photos (more than 10 a page)', tight.pages.flatMap((pg) => pg.slots.map((x) => x.assetId)).filter(Boolean).length, assets.length);
 }
 
+{
+  section('payments: one event\'s "שילמתי", and the screenshot sent later for an event marked "שולם" (2026-11-06)');
+  const pm = await loadModule('src/lib/staffPaymentMessages.js', 'pm87');
+  check('the day a mark was made, in Israel (late UTC evening is the next day there); tracking starts 1/10/26', [
+    pm.israelDayOf('2026-11-06T08:47:30.114Z'), pm.israelDayOf('2026-11-05T22:30:00Z'), pm.israelDayOf(''), pm.israelDayOf('x'), pm.STAFF_TRACK_SINCE,
+  ], ['2026-11-06', '2026-11-06', '', '', '2026-10-01']);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

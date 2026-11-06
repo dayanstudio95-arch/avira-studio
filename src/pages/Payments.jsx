@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { WalletCards, Check, User, Calendar, Coins, CalendarDays, MessageCircle, History, Receipt, Banknote, Undo2, FileCheck2 } from 'lucide-react';
+import { WalletCards, Check, User, Calendar, Coins, CalendarDays, MessageCircle, History, Receipt, Banknote, Undo2, FileCheck2, ImageUp } from 'lucide-react';
 import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -16,7 +16,7 @@ import StaffPaymentDetailDialog from '@/components/payments/StaffPaymentDetailDi
 import RecordStaffPaymentDialog from '@/components/payments/RecordStaffPaymentDialog';
 import ConfirmStaffPaymentDialog from '@/components/payments/ConfirmStaffPaymentDialog';
 import { STAFF_PAYERS_KEY } from '@/lib/staffInvoices';
-import { addsVat, requestFor } from '@/lib/staffPaymentMessages';
+import { addsVat, requestFor, STAFF_TRACK_SINCE, israelDayOf } from '@/lib/staffPaymentMessages';
 import { useAuth } from '@/lib/SupabaseAuthContext';
 import { supabase } from '@/api/supabaseClient';
 import { toast } from 'sonner';
@@ -46,17 +46,24 @@ export default function Payments() {
     const [undoingPaymentId, setUndoingPaymentId] = useState(null);
     // "שילמתי" and invoices asked for before paying (2026-11-02; 0108): the two businesses' invoice details, and the
     // open requests with whether their invoice already came.
-    const [confirmFor, setConfirmFor] = useState(null); // { name, phone, rows } | null
+    const [confirmFor, setConfirmFor] = useState(null); // { name, phone, rows, paid?, existing? } | null
     const [payers, setPayers] = useState({});
     const [requests, setRequests] = useState([]);
+    // Which transfer holds each paid work ("eventId|role") — an event marked "שולם" without the screenshot can get it
+    // later ("שליחת צילום ופירוט" in the paid tab, 2026-11-06), into that same transfer.
+    const [transferOfWork, setTransferOfWork] = useState({});
 
     // Tolerant: a role without access to the invoice tracking just sees no badges.
     const loadInvoiceTracking = async () => {
-        const [p, r] = await Promise.all([
+        const [p, r, t] = await Promise.all([
             supabase.from('app_settings').select('value').eq('key', STAFF_PAYERS_KEY).maybeSingle(),
             supabase.from('staff_transfers').select('id, staff_member_name, amount, entity, events, paid_on').eq('status', 'requested'),
+            supabase.from('staff_transfers').select('id, staff_member_name, amount, entity, events, paid_on, proof_path, source, status').neq('status', 'requested').gte('paid_on', STAFF_TRACK_SINCE),
         ]);
         try { setPayers(JSON.parse(p.data?.value || '{}')); } catch { setPayers({}); }
+        const byWork = {};
+        for (const tr of t.data || []) for (const w of tr.events || []) byWork[`${w.eventId}|${w.role ?? ''}`] = tr;
+        setTransferOfWork(byWork);
         const rows = r.data || [];
         if (!rows.length) return setRequests([]);
         const { data: links } = await supabase.from('staff_invoice_transfers').select('invoice_id, transfer_id').in('transfer_id', rows.map((x) => x.id));
@@ -173,23 +180,6 @@ export default function Payments() {
             return Event.update(event.id, { team: newTeam });
         }));
         setSelectedPayments({});
-    };
-
-    const handleMarkAsPaid = async (eventId, memberIndexInEvent) => {
-        setUpdatingPayment(`${eventId}-${memberIndexInEvent}`);
-        try {
-            const eventToUpdate = events.find(e => e.id === eventId);
-            if (eventToUpdate && eventToUpdate.team && eventToUpdate.team[memberIndexInEvent]) {
-                const newTeam = [...eventToUpdate.team];
-                newTeam[memberIndexInEvent] = { ...newTeam[memberIndexInEvent], isPaid: true, paidAt: new Date().toISOString() };
-                await Event.update(eventId, { team: newTeam });
-                await loadData();
-            }
-        } catch (error) {
-            console.error("Error updating payment:", error);
-        } finally {
-            setUpdatingPayment(null);
-        }
     };
 
     // "התקבלה קבלה" toggle in the payments-history tab — lets the studio track,
@@ -577,14 +567,16 @@ export default function Payments() {
                                                                     </div>
                                                                 </div>
                                                             </div>
+                                                            {/* one event = the same "שילמתי" window (2026-11-06: this button used to only mark it,
+                                                                and the screenshot and the message to the team member were skipped without notice) */}
                                                             <Button
                                                                 size="sm"
-                                                                onClick={() => handleMarkAsPaid(event.eventId, event.memberIndexInEvent)}
-                                                                disabled={updatingPayment === `${event.eventId}-${event.memberIndexInEvent}`}
+                                                                onClick={() => setConfirmFor({ name, phone: getStaffPhone(name) || event.phone || null, rows: [event] })}
                                                                 className="bg-green-500 hover:bg-green-600 text-white text-xs px-2 flex-shrink-0"
+                                                                data-testid="pay-one"
                                                             >
                                                                 <Check className="w-3 h-3 ml-1"/>
-                                                                {updatingPayment === `${event.eventId}-${event.memberIndexInEvent}` ? 'מעדכן...' : 'שולם'}
+                                                                שילמתי
                                                             </Button>
                                                         </div>
                                                     );
@@ -736,6 +728,24 @@ export default function Payments() {
                                                                     שולם ב-{format(new Date(event.paidAt), 'd/M/yy')}
                                                                 </span>
                                                             )}
+                                                            {(() => {
+                                                                // marked "שולם" without the screenshot (since invoice tracking began): send it now, into
+                                                                // the transfer the scan opened for the mark (with the other works it holds), or a new one
+                                                                const tr = transferOfWork[`${event.eventId}|${event.role ?? ''}`];
+                                                                if (!event.paidAt || israelDayOf(event.paidAt) < STAFF_TRACK_SINCE || tr?.proof_path) return null;
+                                                                const rows = tr ? data.events.filter((ev) => (tr.events || []).some((w) => w.eventId === ev.eventId && (w.role ?? '') === (ev.role ?? ''))) : [event];
+                                                                return (
+                                                                    <Button
+                                                                        size="sm"
+                                                                        onClick={() => setConfirmFor({ name, phone: getStaffPhone(name) || event.phone || null, rows: rows.length ? rows : [event], paid: true, existing: tr || null })}
+                                                                        className="bg-sky-600/20 border border-sky-500 text-sky-200 hover:bg-sky-600/30 text-xs px-2"
+                                                                        data-testid="send-proof-later"
+                                                                    >
+                                                                        <ImageUp className="w-3 h-3 ml-1"/>
+                                                                        שליחת צילום ופירוט
+                                                                    </Button>
+                                                                );
+                                                            })()}
                                                             <Button
                                                                 size="sm"
                                                                 onClick={() => handleToggleReceipt(event.eventId, event.memberIndexInEvent)}
@@ -801,10 +811,12 @@ export default function Payments() {
                     rows={confirmFor?.rows || []}
                     staffType={confirmFor ? staffTypeOf(confirmFor.name) : null}
                     payers={payers}
-                    request={confirmFor ? requestFor(requests, confirmFor.name, confirmFor.rows) : null}
+                    request={confirmFor && !confirmFor.paid ? requestFor(requests, confirmFor.name, confirmFor.rows) : null}
+                    alreadyPaid={!!confirmFor?.paid}
+                    existing={confirmFor?.existing || null}
                     tenantId={tenant?.id}
                     onMarkPaid={markRowsPaid}
-                    onDone={loadData}
+                    onDone={() => { loadData(); loadInvoiceTracking().catch(() => {}); }}
                 />
 
             </div>
