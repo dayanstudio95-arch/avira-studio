@@ -4084,5 +4084,16 @@ console.log('\n— PART 75: album group messages + list order —');
   ], [true, false, 'חסרים חומרים: צלם 2 (שמואל)', 'כל הצלמים העלו חומרים: צלם 1 (יונתן), צלם 2 (שמואל)', { all: true, items: [{ label: 'צלם וידאו', name: 'רודי', done: true }] }, null, null, '']);
 }
 
+{
+  section('Google Drive folder colours: red until sent, green after — only the system\'s own uploads (2026-11-06)');
+  const dc = await loadModule('src/lib/driveColors.js', 'dc95');
+  const tasks = [{ gallery_id: 'g1', folder_id: 'F1' }, { gallery_id: 'g2', folder_id: 'F2' }, { gallery_id: 'g2', folder_id: 'F2' }, { gallery_id: 'gX', folder_id: null }];
+  check('each system folder once, by the gallery\'s sent state; folders it never made and colours already painted are skipped', [
+    dc.colorPlan(tasks, [{ galleryId: 'g1', sent: false }, { galleryId: 'g2', sent: true }, { galleryId: 'g3', sent: true }]),
+    dc.colorPlan(tasks, [{ galleryId: 'g1', sent: false }, { galleryId: 'g2', sent: true }], { F1: 'open', F2: 'open' }),
+    dc.colorPlan([], [{ galleryId: 'g1', sent: true }]), dc.DRIVE_RED, dc.DRIVE_GREEN,
+  ], [[{ folderId: 'F1', sent: false }, { folderId: 'F2', sent: true }], [{ folderId: 'F2', sent: true }], [], '#f83a22', '#16a765']);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

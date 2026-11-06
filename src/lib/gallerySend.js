@@ -6,6 +6,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { closeFromSend } from "@films-shared/day";
 import { filmsApi } from "@/lib/filmsApi";
 import { uploadsOf } from "@/lib/galleryUploads";
+import { markGallerySentInDrive } from "@/lib/driveUpload";
 
 // "שלח לזוג" from the galleries (Avira, 2026-10-31, the owner's request): the work-status "→ זוג" button's
 // send-to-couple function, with the gallery's couple link as the final link — in the gallery's own words since
@@ -82,6 +83,8 @@ export async function sendGalleryToCouple(eventId, link, { gallery = null } = {}
   }
   // After the send: a failed send never leaves the event looking done ("סופי" is green as soon as there is a link).
   const sent = { expiresAt: gallery?.expiresAt };
+  // The gallery's folder in Drive turns green (2026-11-06) — in the background, only a folder the system made.
+  if (gallery?.id) markGallerySentInDrive(gallery.id);
   if (gallery?.id && expiresAt && expiresAt !== gallery.expiresAt) {
     try {
       sent.expiresAt = (await filmsApi("PUT", `/api/admin/galleries/${gallery.id}`, { expiresAt })).expiresAt;

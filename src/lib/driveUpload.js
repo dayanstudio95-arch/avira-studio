@@ -13,6 +13,7 @@ import { base44 } from "@/api/base44Client";
 import { supabase } from "@/api/supabaseClient";
 import { filmsApi } from "@/lib/filmsApi";
 import { alreadyThere, galleryFolderName, MATERIAL_ROLES } from "@/lib/driveUploadPlan";
+import { colorPlan, DRIVE_GREEN, DRIVE_RED } from "@/lib/driveColors";
 
 const API = "https://www.googleapis.com/drive/v3/files";
 const UPLOAD = "https://www.googleapis.com/upload/drive/v3/files";
@@ -416,8 +417,79 @@ async function finish(job) {
     if (error) job.note = `${job.note ? `${job.note} ` : ""}הסימון בסטטוס עבודה לא נשמר.`;
     else marked = MATERIAL_ROLES.filter((r) => job.roles.includes(r.role)).map((r) => r.label);
   }
+  // Drive: red until the couple got the gallery (green when it already went out — more photos added after the send).
+  let sentAlready = false;
+  if (job.eventId) {
+    const { data: ev } = await supabase.from("events").select("final_done_manual").eq("id", job.eventId).maybeSingle();
+    sentAlready = ev?.final_done_manual === true;
+  }
+  await colorFolder(job.folderId, sentAlready);
   patch(job, { phase: "done", loaded, marked, finishedAt: Date.now() });
   toast.success(`הגלריה של ${job.coupleName} עלתה לדרייב: ${job.total.toLocaleString("he-IL")} תמונות${marked.length ? ` · ${marked.join(" ו")} ${marked.length > 1 ? "סומנו" : "סומן"} בסטטוס עבודה` : ""}`);
+}
+
+// ---- folder colours (2026-11-06): red = uploaded, not sent to the couple yet; green = sent ------------------------
+
+const COLORS_KEY = "avira_drive_folder_colors"; // { folderId: "sent" | "open" } — what this browser painted
+const readSeen = () => {
+  try {
+    return JSON.parse(localStorage.getItem(COLORS_KEY) || "{}") || {};
+  } catch {
+    return {};
+  }
+};
+const writeSeen = (seen) => {
+  try {
+    localStorage.setItem(COLORS_KEY, JSON.stringify(seen));
+  } catch {
+    /* painted again next time */
+  }
+};
+
+/** Paints one folder the system made. true = painted; false = not ours / failed; "no-drive" = not connected. */
+export async function colorFolder(folderId, sent) {
+  if (!folderId) return false;
+  try {
+    await drive(`/${encodeURIComponent(folderId)}?fields=id`, { method: "PATCH", body: { folderColorRgb: sent ? DRIVE_GREEN : DRIVE_RED } });
+    const seen = readSeen();
+    seen[folderId] = sent ? "sent" : "open";
+    writeSeen(seen);
+    return true;
+  } catch (e) {
+    return e?.notConnected ? "no-drive" : false;
+  }
+}
+
+/** The system's folder of a gallery (its last upload), or null. */
+async function uploadFolderOf(galleryId) {
+  if (!galleryId) return null;
+  const { data } = await supabase.from("drive_tasks").select("folder_id, created_at").eq("kind", "file").eq("gallery_id", galleryId).order("created_at", { ascending: false }).limit(1);
+  return data?.[0]?.folder_id || null;
+}
+
+/** "שלח לזוג" went out: the gallery's folder turns green (when the system made it). Never in the way of the send. */
+export async function markGallerySentInDrive(galleryId) {
+  try {
+    const folderId = await uploadFolderOf(galleryId);
+    if (folderId) await colorFolder(folderId, true);
+  } catch {
+    /* the galleries list paints it next time */
+  }
+}
+
+/**
+ * The galleries list: every folder the system uploaded gets its colour (once per change, per browser), one at a time.
+ * items = [{ galleryId, sent }].
+ */
+export async function syncFolderColors(items) {
+  try {
+    const { data } = await supabase.from("drive_tasks").select("gallery_id, folder_id").eq("kind", "file");
+    for (const p of colorPlan(data || [], items, readSeen())) {
+      if ((await colorFolder(p.folderId, p.sent)) === "no-drive") return;
+    }
+  } catch {
+    /* nothing — the next visit tries again */
+  }
 }
 
 // Closing or reloading the tab stops the upload: ask first.

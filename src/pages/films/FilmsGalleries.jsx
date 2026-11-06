@@ -19,6 +19,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { confirmDialog } from "@/lib/confirmDialog";
 import { eventsInfo, mainPhotographer, sendGalleryToCouple } from "@/lib/gallerySend";
 import { uploadsTitle } from "@/lib/galleryUploads";
+import { syncFolderColors } from "@/lib/driveUpload";
 import ChoiceDialog from "@/components/films/ChoiceDialog";
 import EventPicker from "@/components/films/EventPicker";
 import { base44 } from "@/api/base44Client";
@@ -213,18 +214,33 @@ export default function FilmsGalleries() {
   // the main photographer ("צלם 1") and the venue, by event id.
   const canEvents = hasModule("crm");
   const [infoByEvent, setInfoByEvent] = useState({});
+  const [infoReady, setInfoReady] = useState(false);
   const [sending, setSending] = useState("");
   const eventKey = (list || []).map((g) => g.eventId || "").join(",");
   useEffect(() => {
     if (!canEvents || !eventKey) return;
     let live = true;
-    eventsInfo(eventKey.split(",")).then((m) => live && setInfoByEvent(m));
+    eventsInfo(eventKey.split(",")).then((m) => {
+      if (!live) return;
+      setInfoByEvent(m);
+      setInfoReady(true);
+    });
     return () => {
       live = false;
     };
   }, [canEvents, eventKey]);
   const photographerOf = (g) => g.photographer || infoByEvent[g.eventId]?.photographer || "";
   const uploadsFor = (g) => (g.eventId ? infoByEvent[g.eventId]?.uploads?.[kindOf(g)] || null : null);
+  // The folders in Google Drive (2026-11-06, the owner's request): a gallery uploaded through the system is red there until
+  // it went to the couple, then green — painted once the "sent" states are in, only when one changed (driveUpload.js).
+  const colorKey = (list || [])
+    .filter((g) => kindOf(g) === "photos" && g.folderProvider === "gdrive")
+    .map((g) => `${g.id}:${g.eventId && infoByEvent[g.eventId]?.sent ? 1 : 0}`)
+    .join(",");
+  useEffect(() => {
+    if (!canEvents || !colorKey || (eventKey.replace(/,/g, "") && !infoReady)) return;
+    syncFolderColors(colorKey.split(",").map((x) => ({ galleryId: x.split(":")[0], sent: x.endsWith(":1") })));
+  }, [canEvents, colorKey, infoReady, eventKey]);
   // The couple's album order (Avira, 2026-11-02): by the gallery (an album they designed, 0096) or by its event; the newest.
   const [ordersBy, setOrdersBy] = useState({ event: {}, gallery: {} });
   const galleryKey = (list || []).filter((g) => kindOf(g) === "photos").map((g) => g.id).join(",");
