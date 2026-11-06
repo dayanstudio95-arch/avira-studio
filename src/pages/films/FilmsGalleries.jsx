@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { confirmDialog } from "@/lib/confirmDialog";
 import { eventsInfo, mainPhotographer, sendGalleryToCouple } from "@/lib/gallerySend";
+import { uploadsTitle } from "@/lib/galleryUploads";
 import ChoiceDialog from "@/components/films/ChoiceDialog";
 import EventPicker from "@/components/films/EventPicker";
 import { base44 } from "@/api/base44Client";
@@ -30,6 +31,14 @@ import { DEFAULT_GALLERY_LINK_TEMPLATE, GALLERY_LINK_TEMPLATE_KEY, renderGallery
 // "המלל לזוג" (2026-11-06, the owner's request, as on "עריכת וידאו"): the words of "שלח לזוג" (template_gallery_link),
 // edited from the galleries page — the same setting as Settings ← תבניות הודעה. "→ זוג" on work status (Pixieset)
 // keeps its own message (the owner's choice).
+// The dot beside the photo count (2026-11-06, the owner's request): green = every photographer on the event uploaded
+// (work status "צלם 1" / "צלם 2"), red = one is missing. Nothing for a gallery without a linked event.
+function UploadDot({ up }) {
+  if (!up) return null;
+  const title = uploadsTitle(up);
+  return <span title={title} aria-label={title} className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${up.all ? "bg-emerald-400" : "bg-rose-500"}`} data-testid="upload-dot" data-state={up.all ? "all" : "missing"} />;
+}
+
 const GALLERY_TEXTS = [{ key: GALLERY_LINK_TEMPLATE_KEY, label: "הגלריה לזוג", fallback: DEFAULT_GALLERY_LINK_TEMPLATE, render: renderGalleryLink }];
 const GALLERY_TEXT_VARS = [
   ["{{link}}", "= הקישור לגלריה"],
@@ -215,6 +224,7 @@ export default function FilmsGalleries() {
     };
   }, [canEvents, eventKey]);
   const photographerOf = (g) => g.photographer || infoByEvent[g.eventId]?.photographer || "";
+  const uploadsFor = (g) => (g.eventId ? infoByEvent[g.eventId]?.uploads?.[kindOf(g)] || null : null);
   // The couple's album order (Avira, 2026-11-02): by the gallery (an album they designed, 0096) or by its event; the newest.
   const [ordersBy, setOrdersBy] = useState({ event: {}, gallery: {} });
   const galleryKey = (list || []).filter((g) => kindOf(g) === "photos").map((g) => g.id).join(",");
@@ -554,7 +564,7 @@ export default function FilmsGalleries() {
   if (goOther) return <Navigate to={galleryHome(otherKind)} replace />;
   return (
     <div className="min-h-screen bg-gray-950 p-4 md:p-8" dir="rtl">
-      <div className="max-w-7xl mx-auto space-y-5">
+      <div className="mx-auto max-w-[1800px] space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
             {kind === "photos" ? <Images className="w-6 h-6 text-brand-400" /> : <Clapperboard className="w-6 h-6 text-brand-400" />}
@@ -709,6 +719,7 @@ export default function FilmsGalleries() {
                       {g.coupleName}
                     </Link>
                     <div className="text-xs text-gray-400 truncate">
+                      <UploadDot up={uploadsFor(g)} />{uploadsFor(g) && " "}
                       {kindOf(g) === "photos" ? `${(g.photoCount || 0).toLocaleString("he-IL")} תמונות` : `${g.films.length} סרטים`}
                       {g.date && <> · {formatDate(g.date)}</>}
                       {g.venue && <> · {g.venue}</>}
@@ -813,7 +824,12 @@ export default function FilmsGalleries() {
                         </td>
                         <td className="p-3 text-gray-400">{g.venue || ""}</td>
                         <td className="p-3 text-gray-300 whitespace-nowrap" data-testid="photographer">{photographerOf(g)}</td>
-                        <td className="p-3">{contentCount(g).toLocaleString("he-IL")}</td>
+                        <td className="p-3">
+                          <span className="inline-flex items-center gap-1.5">
+                            <UploadDot up={uploadsFor(g)} />
+                            {contentCount(g).toLocaleString("he-IL")}
+                          </span>
+                        </td>
                         {kind === "photos" && (
                           <td className="p-3">
                             {g.choiceDoneAt ? (
@@ -927,7 +943,7 @@ export default function FilmsGalleries() {
         <>
           <div style={{ height: 80 }} aria-hidden="true" />
           <div ref={bulkBarRef} className="fixed bottom-0 inset-x-0 z-40 border-t border-gray-700 bg-gray-950/95 backdrop-blur p-3" data-testid="bulk-bar" dir="rtl">
-            <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-2">
+            <div className="mx-auto max-w-[1800px] flex flex-wrap items-center gap-2">
               <b className="text-white ml-2">נבחרו {pickedList.length}</b>
               {inTrash ? (
                 <>

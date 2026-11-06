@@ -5,6 +5,7 @@ import { supabase } from "@/api/supabaseClient";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { closeFromSend } from "@films-shared/day";
 import { filmsApi } from "@/lib/filmsApi";
+import { uploadsOf } from "@/lib/galleryUploads";
 
 // "שלח לזוג" from the galleries (Avira, 2026-10-31, the owner's request): the work-status "→ זוג" button's
 // send-to-couple function, with the gallery's couple link as the final link — in the gallery's own words since
@@ -15,12 +16,21 @@ import { filmsApi } from "@/lib/filmsApi";
 /** The wedding's main photographer: the event's "צלם 1" ('' when none). */
 export const mainPhotographer = (team) => (Array.isArray(team) ? team.find((m) => m?.role === "photographer1")?.staffMemberName || "" : "");
 
-/** What the galleries list shows of each linked event, by event id: sent to the couple (work status), photographer, venue. */
+/** What the galleries list shows of each linked event, by event id: sent to the couple (work status), photographer, venue,
+ *  and who uploaded their material (2026-11-06: the dot beside the photo count — work status' photographer squares). */
 export async function eventsInfo(eventIds) {
   const ids = [...new Set(eventIds.filter(Boolean))];
   if (ids.length === 0) return {};
-  const { data } = await supabase.from("events").select("id, final_done_manual, team, venue").in("id", ids);
-  return Object.fromEntries((data || []).map((e) => [e.id, { sent: e.final_done_manual === true, photographer: mainPhotographer(e.team), venue: e.venue || "" }]));
+  const { data } = await supabase
+    .from("events")
+    .select("id, final_done_manual, team, venue, photographer1_done, photographer2_done, video1_done, video2_done")
+    .in("id", ids);
+  return Object.fromEntries(
+    (data || []).map((e) => [
+      e.id,
+      { sent: e.final_done_manual === true, photographer: mainPhotographer(e.team), venue: e.venue || "", uploads: { photos: uploadsOf(e, "photos"), films: uploadsOf(e, "films") } },
+    ])
+  );
 }
 
 /**

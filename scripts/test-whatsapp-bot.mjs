@@ -4072,5 +4072,17 @@ console.log('\n— PART 75: album group messages + list order —');
   ], [['album_guide_link', 'expires', 'link', 'names'], true, false, false, 'היושש נועה ונועם 😊', true]);
 }
 
+{
+  section('galleries: the dot beside the photo count — did every photographer upload (2026-11-06)');
+  const gu = await loadModule('src/lib/galleryUploads.js', 'gu94');
+  const team = [{ role: 'photographer1', staffMemberName: 'יונתן ' }, { role: 'photographer2', staffMemberName: 'שמואל' }, { role: 'videographer', staffMemberName: 'רודי' }];
+  const both = gu.uploadsOf({ team, photographer1_done: true, photographer2_done: true }, 'photos');
+  const one = gu.uploadsOf({ team, photographer1_done: true, photographer2_done: false }, 'photos');
+  check('green when every photographer on the event uploaded, red when one is missing; films look at the videographers', [
+    both.all, one.all, gu.uploadsTitle(one), gu.uploadsTitle(both), gu.uploadsOf({ team, video1_done: true }, 'films'),
+    gu.uploadsOf({ team: [{ role: 'editor', staffMemberName: 'דרור' }] }, 'photos'), gu.uploadsOf(null), gu.uploadsTitle(null),
+  ], [true, false, 'חסרים חומרים: צלם 2 (שמואל)', 'כל הצלמים העלו חומרים: צלם 1 (יונתן), צלם 2 (שמואל)', { all: true, items: [{ label: 'צלם וידאו', name: 'רודי', done: true }] }, null, null, '']);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
