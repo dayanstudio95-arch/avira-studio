@@ -3955,5 +3955,46 @@ console.log('\n— PART 75: album group messages + list order —');
   check('the event\'s profit follows the cost: 1,100 → 1,150 = 50 less', [pc.calculateNetProfit(ev), pc.calculateNetProfit({ ...ev, team: [{ cost: 3600 }, { cost: 1150 }] })], [4300, 4250]);
 }
 
+{
+  section('video editing: the editor\'s page, the film message and his password (2026-11-06)');
+  const ep = await loadModule('supabase/functions/_shared/editorPortal.ts', 'ep89');
+  const ve = await loadModule('src/lib/videoEditing.js', 've89');
+  check('the film message: the editor\'s own words, the same on the screen and on the server', [ep.DEFAULT_FILM_TEMPLATE === ve.DEFAULT_FILM_TEMPLATE, ep.FILM_TEMPLATE_KEY, ve.FILM_TEMPLATE_KEY], [true, 'template_film_link', 'template_film_link']);
+  const msg = ep.renderFilmMessage('', { link: 'https://my-wedd.com/watch/abc', names: 'דן ובר' });
+  check('by default: the link first, then his text, its blank lines kept', [msg.split('\n')[0], msg.split('\n')[1], msg.includes('VLC'), ve.renderFilmMessage(null, { link: 'https://my-wedd.com/watch/abc' }) === msg], ['https://my-wedd.com/watch/abc', '', true, true]);
+  check('a line whose variable is empty is dropped', ep.renderFilmMessage('היי {{names}}\n{{venue}}\n{{link}}', { names: 'דן', venue: '', link: 'L' }), 'היי דן\nL');
+  check('a film link: http(s), trimmed — anything else is not one', [
+    ep.cleanFilmLink(' https://my-wedd.com/watch/x '), ep.cleanFilmLink('my-wedd.com/x'), ep.cleanFilmLink('javascript:alert(1)'), ep.cleanFilmLink('https://a b'), ep.cleanFilmLink('https://x/' + 'a'.repeat(600)), ve.cleanFilmLink('https://vimeo.com/1'),
+  ], ['https://my-wedd.com/watch/x', null, null, null, null, 'https://vimeo.com/1']);
+  const h = await ep.hashPassword('dror1234', 1000);
+  check('his password: hashed with its own salt; the right one passes, a wrong one does not', [
+    h.startsWith('pbkdf2$sha256$1000$'), await ep.verifyPassword('dror1234', h), await ep.verifyPassword('dror1235', h), await ep.verifyPassword('dror1234', 'x'), (await ep.hashPassword('dror1234', 1000)) !== h,
+  ], [true, true, false, false, true]);
+  check('a password of 6 characters at least', [ep.passwordProblem('12345'), ep.passwordProblem('123456'), ep.passwordProblem('x'.repeat(101))], ['סיסמה של 6 תווים לפחות', '', 'סיסמה ארוכה מדי']);
+  const t1 = ep.newSessionToken();
+  check('a sign-in token: 43 url-safe characters, a new one each time', [/^[A-Za-z0-9_-]{43}$/.test(t1), t1 !== ep.newSessionToken()], [true, true]);
+  const row = {
+    id: 'e1', date: '2026-11-04', couple_names: 'נויה ושגיב', venue: 'סרה', phone_number: '0552281525', total_amount_gross: 12500, raw_link: 'https://mab.to/x', raw_sent_to_editor: true, editor_done: false, film_link: null,
+    team: [{ role: 'photographer1', staffMemberName: 'יונתן', cost: 1150 }, { role: 'videographer', staffMemberName: 'רודי', cost: 1500 }, { role: 'videographer2', staffMemberName: 'שמואל' }, { role: 'editor', staffMemberName: 'דרור ', cost: '1200', isPaid: 'true', paidAt: '2026-11-06T10:07:28Z' }],
+  };
+  const view = ep.portalEventView(row, 'דרור');
+  const seen = JSON.stringify(view);
+  check('what the editor sees: his weddings only — no couple phone, no prices but his own pay', [
+    ep.isEditorOf(row.team, 'דרור'), ep.isEditorOf(row.team, 'רודי'), seen.includes('0552281525') || seen.includes('12500') || seen.includes('1150') || seen.includes('1500'),
+    view.videographers, view.pay, view.rawSent, view.coupleNames,
+  ], [true, false, false, [{ label: 'וידאו 1', name: 'רודי' }, { label: 'וידאו 2', name: 'שמואל' }], { cost: 1200, isPaid: true, paidAt: '2026-11-06T10:07:28Z' }, true, 'נויה ושגיב']);
+  check('the film, step by step', [
+    ve.filmStateOf({}), ve.filmStateOf(view), ve.filmStateOf({ ...view, filmLink: 'https://x' }), ve.filmStateOf({ ...view, filmLink: 'https://x', filmSentAt: '2026-11-06' }), ve.filmStateOf({ editorDone: true }), ve.filmStateOf({ rawSentToEditor: true }),
+  ], ['no_raw', 'editing', 'ready', 'sent', 'sent', 'editing']);
+  check('backup is asked only of films sent from the page; the menu counts the films waiting to be sent', [
+    ve.needsBackup({ filmSentAt: 'x' }), ve.needsBackup({ filmSentAt: 'x', filmBackedUpAt: 'y' }), ve.needsBackup({ editorDone: true }), ve.isFilmWaiting({ filmLink: 'https://x' }), ve.isFilmWaiting({ filmLink: 'https://x', editorDone: 'true' }),
+  ], [true, false, false, true, false]);
+  check('the editor\'s pay as the payments page keeps it (team[editor]), and a day as d/M in Israel', [
+    ve.editorPayOf({ team: row.team }), ve.editorPayOf({ team: [] }), ve.dayMonth('2026-11-05T22:30:00Z'), ve.dayMonth(''),
+  ], [{ cost: 1200, isPaid: true, paidAt: '2026-11-06T10:07:28Z' }, { cost: 0, isPaid: false, paidAt: null }, '6/11', '']);
+  const nc = await loadModule('src/lib/notificationCategories.js', 'nc89');
+  check('"התראה בדף עצמו": the bell and the count beside "עריכת וידאו", in the staff tab', [nc.navRouteForNotification('staff_film_ready'), nc.notificationTab('staff_film_ready')], ['/VideoEditing', 'staff']);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

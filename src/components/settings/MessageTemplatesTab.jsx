@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Save, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
+import { DEFAULT_FILM_TEMPLATE, FILM_TEMPLATE_KEY } from "@/lib/videoEditing";
 
 const TEMPLATES = [
   {
@@ -207,6 +208,14 @@ const TEMPLATES = [
     description: "ההודעה לקבוצת האלבומים כשזוג לוחץ \"שלח לצלם\" על המועדפים בפיקסיסט (הגדרות ← חיבורים ← פיקסיסט). שורה שהמשתנה שלה ריק לא תופיע — למשל אין תאריך כשהאירוע לא נמצא.",
     defaultValue: `✅ {{names}} סיימו לבחור תמונות בפיקסיסט\n📅 חתונה: {{event_date}}\n💬 {{message}}\n🔗 המועדפים: {{link}}`,
     variables: ["{{names}}", "{{event_date}}", "{{message}}", "{{link}}"],
+  },
+  {
+    // Mirrors DEFAULT_FILM_TEMPLATE in supabase/functions/_shared/editorPortal.ts (and src/lib/videoEditing.js)
+    key: FILM_TEMPLATE_KEY,
+    label: "שליחת הסרט לזוג (עריכת וידאו)",
+    description: "ההודעה מהכפתור \"שלח לזוג\" בעריכת וידאו — הסרט שהעורך הדביק בדף שלו. ברירת המחדל היא המלל שהעורך שלח עם כל סרט. {{link}} = הלינק של הסרט. שורה שהמשתנה שלה ריק לא תופיע.",
+    defaultValue: DEFAULT_FILM_TEMPLATE,
+    variables: ["{{link}}", "{{names}}", "{{event_date}}", "{{venue}}"],
   },
   {
     // Mirrors DEFAULT_GALLERY_LINK_TEMPLATE in supabase/functions/_shared/galleryLinkMessage.ts

@@ -136,6 +136,10 @@ const FUNCTION_MAP = {
   // hashed+looked-up server-side on every request against
   // staff_availability_requests.token_hash.
   respondStaffAvailabilityPublic: 'respond-staff-availability-public',
+
+  // The video editor's own page (2026-11-06): public /editor (phone + password → a hashed session token, every
+  // request re-checked server-side) and the studio's admin_* actions (set his password, sign him out).
+  editorPortal: 'editor-portal',
 };
 
 // Names that intentionally have NO Edge Function port yet — either confirmed dead

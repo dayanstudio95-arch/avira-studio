@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EVENT_TEAM_ROLES } from "@/lib/staffRoles";
 import SentFromGallery from "./SentFromGallery";
+import FilmLine from "./FilmLine";
 
 // One event's row on the work-status page (desktop), moved out of ProgressStatus.jsx
 // unchanged on 2026-10-09 — the dashboard's progress window shows the very same row.
@@ -82,6 +83,7 @@ export default function ProgressEventRow({ event, actions }) {
                             {member.staffMemberName}
                           </span>
                         )}
+                        {roleKey === "editor" && <FilmLine event={event} />}
                       </div>
                     );
                   })}

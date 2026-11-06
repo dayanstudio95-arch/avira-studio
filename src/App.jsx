@@ -31,6 +31,8 @@ const Packages = lazy(() => import('./pages/Packages'));
 const TeamMembers = lazy(() => import('./pages/TeamMembers'));
 const StaffScheduling = lazy(() => import('./pages/StaffScheduling'));
 const ProgressStatus = lazy(() => import('./pages/ProgressStatus'));
+const VideoEditing = lazy(() => import('./pages/VideoEditing'));
+const EditorPortal = lazy(() => import('./pages/EditorPortal'));
 const Reports = lazy(() => import('./pages/Reports'));
 const Payments = lazy(() => import('./pages/Payments'));
 const AllInvoicesPage = lazy(() => import('./pages/AllInvoicesPage'));
@@ -264,6 +266,7 @@ const AuthenticatedApp = () => {
           <Route path="/TeamMembers" element={<TeamMembers />} />
           <Route path="/StaffScheduling" element={<StaffScheduling />} />
           <Route path="/ProgressStatus" element={<ProgressStatus />} />
+          <Route path="/VideoEditing" element={<VideoEditing />} />
           <Route path="/Reports" element={<Reports />} />
           <Route path="/Payments" element={<Payments />} />
           <Route path="/AllInvoicesPage" element={<AllInvoicesPage />} />
@@ -331,6 +334,10 @@ function App() {
                   CLAUDE.md's "Wedding Albums module" section. */}
               <Route path="/album/:token" element={<AlbumPortal />} />
               <Route path="/print-access/:token" element={<AlbumPrintAccess />} />
+
+              {/* The video editor's own page (2026-11-06) -- public, phone + password; every request is checked
+                  server-side by the editor-portal Edge Function against a hashed session token. */}
+              <Route path="/editor" element={<EditorPortal />} />
 
               {/* Album Guide Page -- separate, generic (identical per couple) informational
                   page, sent as a companion link alongside the gallery link. Public,

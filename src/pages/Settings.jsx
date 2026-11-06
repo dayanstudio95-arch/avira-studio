@@ -28,6 +28,7 @@ import StaffImportDialog from "../components/settings/StaffImportDialog";
 import PricingManagement from "../components/settings/PricingManagement";
 import MessageTemplatesTab from "../components/settings/MessageTemplatesTab";
 import StaffRatesEditor from "../components/settings/StaffRatesEditor";
+import EditorPortalAccess from "../components/settings/EditorPortalAccess";
 import UsersTab from "../components/settings/UsersTab";
 import WorkspaceTab from "../components/settings/WorkspaceTab";
 import StudioDetailsCard from "../components/settings/StudioDetailsCard";
@@ -656,6 +657,7 @@ export default function Settings() {
                             </select>
                           </div>
                         </div>
+                        {editStaffData.role === "editor" && editStaffData.id && <EditorPortalAccess staff={editStaffData} />}
                         <div className="space-y-2 border-t border-gray-800 pt-4">
                           <Label>תיקון תעריף רטרואקטיבי (אופציונלי)</Label>
                           <p className="text-xs text-gray-500">

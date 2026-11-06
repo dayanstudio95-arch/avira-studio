@@ -6,6 +6,7 @@ import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createUserClient, getRequestUser } from '../_shared/supabaseClients.ts';
 import { sendWhatsApp } from '../_shared/whatsapp.ts';
 import { GALLERY_LINK_TEMPLATE_KEY, israelDay, renderGalleryLink } from '../_shared/galleryLinkMessage.ts';
+import { FILM_TEMPLATE_KEY, renderFilmMessage } from '../_shared/editorPortal.ts';
 
 const DEFAULT_FINAL_LINK_TEMPLATE = `שלום {{names}} 😊
 האלבום/סרטון הסופי שלכם מוכן!
@@ -28,6 +29,9 @@ Deno.serve(async (req) => {
     // The galleries' "שלח לזוג" (2026-11-02): the gallery's own words (template_gallery_link) and its closing day.
     // Without it — work status — everything below is as before.
     const fromGallery = body?.template === 'gallery';
+    // "עריכת וידאו" (2026-11-06): the editor's film, in his own words (template_film_link). It lights the editor's
+    // square on work status (editor_done + film_sent_at) — not "סופי" / "→ זוג", which are the photo gallery's.
+    const fromFilm = body?.template === 'film';
 
     if (!finalLink) return jsonResponse({ error: 'חסר לינק סופי' }, { status: 400 });
     if (!phoneNumber) return jsonResponse({ error: 'חסר טלפון זוג' }, { status: 400 });
@@ -48,11 +52,13 @@ Deno.serve(async (req) => {
     const { data: settings } = await supabase
       .from('app_settings')
       .select('key, value')
-      .eq('key', fromGallery ? GALLERY_LINK_TEMPLATE_KEY : 'template_final_link');
+      .eq('key', fromGallery ? GALLERY_LINK_TEMPLATE_KEY : fromFilm ? FILM_TEMPLATE_KEY : 'template_final_link');
     const template = settings?.[0]?.value || DEFAULT_FINAL_LINK_TEMPLATE;
 
     const formattedDate = eventDate ? new Date(eventDate).toLocaleDateString('he-IL') : '';
-    const message = fromGallery
+    const message = fromFilm
+      ? renderFilmMessage(settings?.[0]?.value, { link: finalLink, names: coupleNames || '', event_date: formattedDate, venue: venue || '' })
+      : fromGallery
       ? renderGalleryLink(settings?.[0]?.value, {
           names: coupleNames || '',
           event_date: formattedDate,
@@ -76,7 +82,7 @@ Deno.serve(async (req) => {
 
     const { error: updateErr } = await supabase
       .from('events')
-      .update({ final_done_manual: true })
+      .update(fromFilm ? { editor_done: true, film_sent_at: new Date().toISOString(), film_link: finalLink } : { final_done_manual: true })
       .eq('id', eventId);
 
     if (updateErr) return jsonResponse({ error: updateErr.message }, { status: 500 });

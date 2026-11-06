@@ -27,6 +27,7 @@ export const NAV_ROUTE_BY_NOTIFICATION_TYPE = {
   gallery_choice_done: "/photos", // the couple pressed "סיימנו לבחור" in their gallery (gallery-choice-notify, 0099)
   films_link_broken: "/photos", // Studio Plan's film-link check (films are off in Avira; kept for the same code)
   staff_availability_response: "/StaffScheduling",
+  staff_film_ready: "/VideoEditing", // editor-portal: the editor pasted a film's link (2026-11-06)
   meeting_reminder: "/Meetings",
   whatsapp_return_reminder: "/chat",
 };

@@ -27,6 +27,7 @@ import {
   GripVertical,
   CalendarClock,
   Images,
+  Scissors,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -62,6 +63,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/lib/SupabaseAuthContext";
 import { isLeadCoordinator, isPhotographerRole, isAlbumManagerRole, isEditorRole } from "@/lib/permissions";
 import { buildAvailabilityInbox } from "@/lib/availabilityInbox";
+import { isFilmWaiting } from "@/lib/videoEditing";
 
 const ROLE_LABELS = {
   owner: "בעלים",
@@ -120,6 +122,8 @@ const primaryNavItems = [
   { title: "רשימת אירועים",   url: createPageUrl("Events"),          icon: Calendar, section: "events" },
   { title: "שיבוץ צוות",      url: createPageUrl("StaffScheduling"), icon: Users, section: "events" },
   { title: "סטטוס עבודה",     url: createPageUrl("ProgressStatus"),  icon: CheckSquare, section: "events" },
+  // 2026-11-06: the editor pastes the film on his own page (/editor); here it is sent to the couple and marked backed up.
+  { title: "🎬 עריכת וידאו",   url: "/VideoEditing",                   icon: Scissors, section: "events", label: "עריכת וידאו" },
   // 2026-10-30: the photo galleries (from Studio Plan) — the couples' galleries, face search, the couple's album.
   { title: "🖼️ גלריות",        url: "/photos",                         icon: Images, section: "events", label: "גלריות" },
   { title: "📅 יומן Google",   url: "/GoogleCalendarSync",           icon: Calendar, section: "events", label: "יומן Google" },
@@ -284,6 +288,7 @@ function LayoutShell({ children }) {
           meetingsToday: (meetings || []).filter((m) => utcToIsraelParts(m.startsAt).date === today).length,
           availabilityToDecide: buildAvailabilityInbox({ requests: availability || [], events, today }).toDecide,
           albumsAwaitingPayment: (albumOrders || []).filter(isAwaitingPayment).length,
+          filmsToSend: events.filter(isFilmWaiting).length,
         });
       } catch (error) {
         console.error('Failed to load stats:', error);
@@ -488,6 +493,7 @@ function LayoutShell({ children }) {
                 [createPageUrl("StaffScheduling")]: { value: stats.urgentStaffing, tone: 'red', extra: stats.availabilityToDecide ? { value: `✋${stats.availabilityToDecide}`, tone: 'green', title: 'תשובות "פנוי" שמחכות להחלטה' } : null },
                 [createPageUrl("ProgressStatus")]: { value: stats.editingBacklog, tone: 'amber' },
                 [createPageUrl("AlbumOrders")]: { value: stats.albumsAwaitingPayment, tone: 'amber' },
+                '/VideoEditing': { value: stats.filmsToSend, tone: 'amber' },
               }[url] || {});
               const row = (item) => {
                 const on = isActive(item);

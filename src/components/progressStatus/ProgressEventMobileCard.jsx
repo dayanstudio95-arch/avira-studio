@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
 import { EVENT_TEAM_ROLES } from "@/lib/staffRoles";
 import SentFromGallery from "./SentFromGallery";
+import FilmLine from "./FilmLine";
 
 // Icons stay local (the shared staffRoles.js list uses emoji, not lucide components).
 // Was previously missing "videographer2" entirely (real bug — a videographer2 team
@@ -101,6 +102,7 @@ export default function ProgressEventMobileCard({
                     {member.staffMemberName}
                   </span>
                 )}
+                {roleKey === "editor" && <FilmLine event={event} />}
               </div>
             );
           })}
