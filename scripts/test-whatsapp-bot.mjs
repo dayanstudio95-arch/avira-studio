@@ -3996,5 +3996,35 @@ console.log('\n— PART 75: album group messages + list order —');
   check('"התראה בדף עצמו": the bell and the count beside "עריכת וידאו", in the staff tab', [nc.navRouteForNotification('staff_film_ready'), nc.notificationTab('staff_film_ready')], ['/VideoEditing', 'staff']);
 }
 
+{
+  section('video editing: months, the editor\'s corrections and their message (2026-11-06)');
+  const ep = await loadModule('supabase/functions/_shared/editorPortal.ts', 'ep90');
+  const ve = await loadModule('src/lib/videoEditing.js', 've90');
+  check('the correction message: the same on the screen and on the server; the link line drops when there is none', [
+    ep.DEFAULT_FILM_FIX_TEMPLATE === ve.DEFAULT_FILM_FIX_TEMPLATE, ep.FILM_FIX_TEMPLATE_KEY, ve.FILM_FIX_TEMPLATE_KEY,
+    ep.renderFilmMessage('', { names: 'דן ובר', link: 'https://x/1' }, ep.DEFAULT_FILM_FIX_TEMPLATE).split('\n').slice(0, 3),
+    ep.renderFilmMessage(null, { names: 'דן ובר', link: '' }, ep.DEFAULT_FILM_FIX_TEMPLATE).includes('לצפייה'),
+    ve.renderFilmMessage('', { link: 'L' }) === ep.renderFilmMessage('', { link: 'L' }),
+  ], [true, 'template_film_fix_link', 'template_film_fix_link', ['היי דן ובר 😊', 'הסרט שלכם עודכן עם התיקונים שביקשתם 🎬', 'לצפייה: https://x/1'], false, true]);
+  const f1 = ep.applyFix([], { at: '2026-11-09T10:00:00Z', link: 'https://x/1', newLink: false, note: '  החלפתי שיר  ' });
+  const f1b = ep.applyFix(f1, { at: '2026-11-09T12:00:00Z', link: 'https://x/2', newLink: true, note: 'גם קיצרתי' });
+  const sent = ep.markFixSent(f1b, '2026-11-10T08:00:00Z');
+  const f2 = ep.applyFix(sent, { at: '2026-11-12T08:00:00Z', link: 'https://x/2', newLink: false });
+  check('"עשיתי תיקונים": round 1; pressed again before it was sent = the same round; after it was sent = round 2', [
+    f1, f1b.length, f1b[0].n, f1b[0].link, sent[0].sentAt, ep.pendingFix(sent), f2.map((f) => [f.n, Boolean(f.sentAt)]), ep.pendingFix(f2).n, ep.markFixSent([], 'x'), ep.pendingFix('junk'),
+  ], [[{ n: 1, at: '2026-11-09T10:00:00Z', link: 'https://x/1', newLink: false, note: 'החלפתי שיר', sentAt: null }], 1, 1, 'https://x/2', '2026-11-10T08:00:00Z', null, [[1, true], [2, false]], 2, [], null]);
+  check('a note is at most 300 characters; at most 30 rounds are kept', [ep.applyFix([], { at: 'a', link: null, newLink: false, note: 'x'.repeat(400) })[0].note.length, Array.from({ length: 35 }).reduce((l, _, i) => ep.markFixSent(ep.applyFix(l, { at: String(i), link: null, newLink: false }), 'y'), []).length], [300, 30]);
+  const view = ep.portalEventView({ id: 'e', team: [{ role: 'editor', staffMemberName: 'דרור' }], film_fixes: f2, film_sent_at: 'x' }, 'דרור');
+  check('the editor sees his rounds; a corrected film waits like a new one (menu count, work status)', [
+    view.fixes.length, ve.pendingFix(view).n, ve.lastFix({ filmFixes: sent }).sentAt, ve.isFilmWaiting({ filmSentAt: 'x', filmFixes: f2 }), ve.isFilmWaiting({ filmSentAt: 'x', filmFixes: sent }), ve.pendingFix({}),
+  ], [2, 2, '2026-11-10T08:00:00Z', true, false, null]);
+  const rows = [{ id: 'a', date: '2026-10-15' }, { id: 'b', date: '2026-10-22' }, { id: 'c', date: '2026-11-02' }, { id: 'd', date: null }];
+  check('months as on work status: cut where the month changes, in the order given', [
+    ve.monthGroups(rows).map((g) => [g.label, g.items.map((x) => x.id)]), ve.monthLabel('2026-01-31'), ve.eventsCount(1), ve.eventsCount(5),
+  ], [[['אוקטובר 2026', ['a', 'b']], ['נובמבר 2026', ['c']], ['בלי תאריך', ['d']]], 'ינואר 2026', 'אירוע אחד', '5 אירועים']);
+  const nc = await loadModule('src/lib/notificationCategories.js', 'nc90');
+  check('the correction notice goes to "עריכת וידאו", staff tab', [nc.navRouteForNotification('staff_film_fix'), nc.notificationTab('staff_film_fix')], ['/VideoEditing', 'staff']);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

@@ -1,13 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
-import { Check, Clock, ExternalLink, HardDriveDownload, Loader2, LogOut, Pencil, Scissors } from "lucide-react";
+import { Check, Clock, ExternalLink, HardDriveDownload, Loader2, LogOut, Pencil, Scissors, Wrench } from "lucide-react";
 import { base44 } from "@/api/base44Client";
-import { cleanFilmLink, dayMonth, editorPayOf, filmStateOf } from "@/lib/videoEditing";
+import { cleanFilmLink, dayMonth, editorPayOf, filmStateOf, lastFix, monthGroups, pendingFix } from "@/lib/videoEditing";
+import MonthHeader from "@/components/videoEditing/MonthHeader";
 
 // The video editor's own page (2026-11-06, the owner's request) — public, /editor. He signs in with his phone and the
 // password the owner set (Settings ← אנשי צוות), sees only his weddings, and pastes each final film's link; the owner
 // sends it to the couple from "עריכת וידאו". Every request goes through the editor-portal Edge Function with the
 // sign-in token kept in this browser — he has no user in the system and reaches nothing else.
+// 2026-11-06: the weddings by month (as on work status), and "עשיתי תיקונים" on a film the couple got — the couple
+// asks him for changes directly; he marks the fix (same link or a new one) and the studio sends it to them.
 
 const TOKEN_KEY = "avira_editor_portal_token";
 const fmt = (n) => `₪${Math.round(Number(n) || 0).toLocaleString()}`;
@@ -30,8 +33,8 @@ const call = (payload) => base44.functions.invoke("editorPortal", payload).then(
 
 const TABS = [
   { key: "work", label: "לעבודה", test: (e) => ["editing", "no_raw"].includes(filmStateOf(e)) },
-  { key: "ready", label: "ממתין לשליחה", test: (e) => filmStateOf(e) === "ready" },
-  { key: "sent", label: "נשלחו", test: (e) => filmStateOf(e) === "sent" },
+  { key: "ready", label: "ממתין לשליחה", test: (e) => filmStateOf(e) === "ready" || Boolean(pendingFix(e)) },
+  { key: "sent", label: "נשלחו", test: (e) => filmStateOf(e) === "sent" && !pendingFix(e) },
 ];
 
 export default function EditorPortal() {
@@ -128,14 +131,19 @@ export default function EditorPortal() {
         <p className="py-12 text-center text-sm text-slate-500">{tab === "work" ? "אין כרגע אירועים שמחכים לעריכה" : tab === "ready" ? "אין סרטים שמחכים לשליחה" : "עוד אין כאן סרטים"}</p>
       ) : (
         <div className="space-y-2">
-          {ordered.map((ev) => (
-            <EventCard
-              key={ev.id}
-              ev={ev}
-              token={token}
-              onChange={(next) => setEvents((prev) => prev.map((e) => (e.id === next.id ? next : e)))}
-              onRelogin={() => signOut("צריך להתחבר שוב")}
-            />
+          {monthGroups(ordered).map((m) => (
+            <React.Fragment key={m.key}>
+              <MonthHeader label={m.label} count={m.items.length} />
+              {m.items.map((ev) => (
+                <EventCard
+                  key={ev.id}
+                  ev={ev}
+                  token={token}
+                  onChange={(next) => setEvents((prev) => prev.map((e) => (e.id === next.id ? next : e)))}
+                  onRelogin={() => signOut("צריך להתחבר שוב")}
+                />
+              ))}
+            </React.Fragment>
           ))}
         </div>
       )}
@@ -297,9 +305,11 @@ function EventCard({ ev, token, onChange, onRelogin }) {
                 הסטודיו גיבה
               </span>
             )}
+            <FixStatus ev={ev} />
           </>
         )}
       </div>
+      {state === "sent" && <FixForm ev={ev} token={token} onChange={onChange} onRelogin={onRelogin} />}
 
       {showInput && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -327,6 +337,126 @@ function EventCard({ ev, token, onChange, onRelogin }) {
         </div>
       )}
       {error && <p className="mt-1.5 text-xs text-rose-300">{error}</p>}
+    </div>
+  );
+}
+
+// Where the corrections stand: the round waiting for the studio, or the last one sent.
+function FixStatus({ ev }) {
+  const open = pendingFix(ev);
+  const last = lastFix(ev);
+  if (open) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/15 px-2 py-0.5 text-amber-200" data-testid="ep-fix-open">
+        <Wrench className="h-3 w-3" />
+        תיקון {open.n} · {dayMonth(open.at)} · ממתין לשליחה
+      </span>
+    );
+  }
+  if (last?.sentAt) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-green-500/15 px-2 py-0.5 text-green-300">
+        <Wrench className="h-3 w-3" />
+        תיקון {last.n} נשלח {dayMonth(last.sentAt)}
+      </span>
+    );
+  }
+  return null;
+}
+
+// "עשיתי תיקונים": the same link or a new one, and what was fixed. Without a link in the system (films from before
+// this page) only a new link can be given.
+function FixForm({ ev, token, onChange, onRelogin }) {
+  const open = pendingFix(ev);
+  const hasLink = Boolean(String(ev.filmLink || "").trim());
+  const [editing, setEditing] = useState(false);
+  const [newLink, setNewLink] = useState(!hasLink);
+  const [link, setLink] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const start = () => {
+    setNewLink(open ? open.newLink || !hasLink : !hasLink);
+    setLink(open?.newLink ? open.link || "" : "");
+    setNote(open?.note || "");
+    setError("");
+    setEditing(true);
+  };
+
+  const save = async () => {
+    if (newLink && !cleanFilmLink(link)) return setError("זה לא נראה כמו לינק — צריך להתחיל ב-https://");
+    setBusy(true);
+    setError("");
+    try {
+      const d = await call({ action: "report_fix", token, eventId: ev.id, newLink, link: newLink ? link.trim() : "", note });
+      if (d.relogin) return onRelogin();
+      if (d.event) {
+        onChange(d.event);
+        setEditing(false);
+      } else setError(d.error || "השמירה נכשלה");
+    } catch (e) {
+      setError(e?.message || "השמירה נכשלה");
+    }
+    setBusy(false);
+  };
+
+  if (!editing) {
+    return (
+      <div className="mt-2">
+        <button type="button" onClick={start} className="inline-flex items-center gap-1 rounded-lg border border-white/15 px-2.5 py-1 text-xs text-slate-200 hover:bg-white/5" data-testid="ep-fix-open-form">
+          <Wrench className="h-3.5 w-3.5" />
+          {open ? "עדכון התיקון" : "עשיתי תיקונים"}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 space-y-2 rounded-lg border border-dashed border-amber-400/40 bg-amber-400/5 p-2.5" data-testid="ep-fix-form">
+      <p className="text-xs text-amber-200">עשיתי תיקונים — איפה הסרט המתוקן?</p>
+      <div className="flex flex-wrap gap-3 text-xs text-slate-200">
+        <label className={`inline-flex items-center gap-1.5 ${hasLink ? "" : "opacity-40"}`}>
+          <input type="radio" checked={!newLink} disabled={!hasLink} onChange={() => setNewLink(false)} />
+          באותו קישור
+        </label>
+        <label className="inline-flex items-center gap-1.5">
+          <input type="radio" checked={newLink} onChange={() => setNewLink(true)} />
+          בקישור חדש
+        </label>
+        {!hasLink && <span className="text-slate-500">(הקישור הקודם לא שמור כאן — מדביקים אותו)</span>}
+      </div>
+      {newLink && (
+        <input
+          value={link}
+          onChange={(e) => {
+            setLink(e.target.value);
+            setError("");
+          }}
+          dir="ltr"
+          placeholder="https://my-wedd.com/watch/…"
+          className="h-9 w-full rounded-lg border border-white/15 bg-[#070F1F] px-3 text-sm text-white"
+          data-testid="ep-fix-link"
+        />
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          maxLength={300}
+          placeholder="מה תוקן? (לא חובה)"
+          className="h-9 min-w-[200px] flex-1 rounded-lg border border-white/15 bg-[#070F1F] px-3 text-sm text-white placeholder:text-slate-500"
+          data-testid="ep-fix-note"
+        />
+        <button type="button" onClick={save} disabled={busy} className="flex h-9 items-center gap-1 rounded-lg bg-amber-400 px-3 text-sm font-semibold text-gray-900 hover:bg-amber-300 disabled:opacity-60" data-testid="ep-fix-save">
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+          עדכון
+        </button>
+        <button type="button" onClick={() => setEditing(false)} className="h-9 rounded-lg border border-white/15 px-3 text-sm text-slate-300 hover:bg-white/5">
+          ביטול
+        </button>
+      </div>
+      {error && <p className="text-xs text-rose-300">{error}</p>}
     </div>
   );
 }

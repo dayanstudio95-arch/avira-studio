@@ -6,6 +6,7 @@
 //   login      { phone, password }        → { token, name }
 //   list       { token }                  → { name, events }   (open ones, and those delivered in the last 120 days)
 //   set_link   { token, eventId, link }   → { event }          (the final film's link; '' takes it off; not once sent)
+//   report_fix { token, eventId, newLink, link?, note? } → { event } ("עשיתי תיקונים" on a film the couple got)
 //   logout     { token }
 // The studio's side (a signed-in owner/admin of the editor's studio):
 //   admin_status / admin_set_password { staffMemberId, password } / admin_remove { staffMemberId }
@@ -17,11 +18,11 @@ import { hashToken } from '../_shared/albumTokens.ts';
 import { normalizeIsraeliPhone } from '../_shared/phone.ts';
 import { getCallerProfile, isAdmin } from '../_shared/permissions.ts';
 import {
-  LOCK_MINUTES, MAX_FAILED, SESSION_DAYS, cleanFilmLink, hashPassword, isEditorOf, newSessionToken, passwordProblem,
-  portalEventView, verifyPassword,
+  LOCK_MINUTES, MAX_FAILED, SESSION_DAYS, applyFix, cleanFilmLink, hashPassword, isEditorOf, newSessionToken, passwordProblem,
+  pendingFix, portalEventView, verifyPassword,
 } from '../_shared/editorPortal.ts';
 
-const EVENT_COLUMNS = 'id, tenant_id, date, couple_names, venue, team, raw_link, raw_sent_to_editor, film_link, film_link_at, film_sent_at, film_backed_up_at, editor_done';
+const EVENT_COLUMNS = 'id, tenant_id, date, couple_names, venue, team, raw_link, raw_sent_to_editor, film_link, film_link_at, film_sent_at, film_backed_up_at, editor_done, film_fixes';
 const DAY = 24 * 60 * 60 * 1000;
 const RELOGIN = { relogin: true, error: 'צריך להתחבר שוב' };
 
@@ -116,7 +117,7 @@ async function list(db: any, who: any) {
   const since = Date.now() - 120 * DAY;
   const events = (data || [])
     .filter((e: any) => isEditorOf(e.team, who.staff.name))
-    .filter((e: any) => !delivered(e) || new Date(e.date).getTime() >= since)
+    .filter((e: any) => !delivered(e) || pendingFix(e.film_fixes) || new Date(e.date).getTime() >= since)
     .map((e: any) => portalEventView(e, who.staff.name));
   return jsonResponse({ name: who.staff.name, events });
 }
@@ -149,6 +150,38 @@ async function setLink(db: any, who: any, body: any) {
     }
   }
   return jsonResponse({ event: portalEventView({ ...ev, film_link: link, film_link_at: at }, who.staff.name) });
+}
+
+// "עשיתי תיקונים" (2026-11-06): the couple asked him for changes on a film they got; he fixed it, in the same link or
+// a new one. The owner gets a notice and sends it from "עריכת וידאו". A new round asks for a backup again (the film
+// changed). Pressed again before the owner sent it, it updates that same round.
+async function reportFix(db: any, who: any, body: any) {
+  const eventId = typeof body?.eventId === 'string' ? body.eventId : '';
+  const { data: ev } = await db.from('events').select(EVENT_COLUMNS).eq('id', eventId).eq('tenant_id', who.staff.tenant_id).maybeSingle();
+  if (!ev || !isEditorOf(ev.team, who.staff.name)) return jsonResponse({ error: 'האירוע לא נמצא' }, { status: 404 });
+  if (!delivered(ev)) return jsonResponse({ error: 'הסרט עוד לא נשלח לזוג — מדביקים את הלינק בשדה של הסרט' }, { status: 409 });
+  const newLink = body?.newLink === true;
+  const link = newLink ? cleanFilmLink(body?.link) : null;
+  if (newLink && !link) return jsonResponse({ error: 'זה לא נראה כמו לינק — צריך להתחיל ב-https://' }, { status: 400 });
+  const note = typeof body?.note === 'string' ? body.note : '';
+  const at = new Date().toISOString();
+  const fixes = applyFix(ev.film_fixes, { at, link: link || ev.film_link || null, newLink, note });
+  const patch: Record<string, unknown> = { film_fixes: fixes, film_backed_up_at: null };
+  if (link) Object.assign(patch, { film_link: link, film_link_at: at });
+  const { error } = await db.from('events').update(patch).eq('id', ev.id).eq('tenant_id', who.staff.tenant_id);
+  if (error) return jsonResponse({ error: 'השמירה נכשלה, נסו שוב' }, { status: 500 });
+  try {
+    const fix = fixes[fixes.length - 1];
+    await db.from('notifications').insert({
+      tenant_id: who.staff.tenant_id,
+      type: 'staff_film_fix',
+      title: `🛠️ ${who.staff.name} סיים תיקון ${fix.n} לסרט של ${ev.couple_names || 'הזוג'}`,
+      body: [newLink ? 'בקישור חדש' : 'באותו קישור', fix.note].filter(Boolean).join(' · '),
+    });
+  } catch (e) {
+    console.error('[editor-portal] notification insert failed:', (e as Error)?.message || e);
+  }
+  return jsonResponse({ event: portalEventView({ ...ev, ...patch }, who.staff.name) });
 }
 
 // ── the studio's side ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -220,6 +253,7 @@ Deno.serve(async (req) => {
     if (!who) return jsonResponse(RELOGIN);
     if (action === 'list') return await list(db, who);
     if (action === 'set_link') return await setLink(db, who, body);
+    if (action === 'report_fix') return await reportFix(db, who, body);
     return jsonResponse({ error: 'פעולה לא מוכרת' }, { status: 400 });
   } catch (e) {
     console.error('[editor-portal]', (e as Error)?.message || e);

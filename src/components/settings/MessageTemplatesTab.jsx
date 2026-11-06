@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Save, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
-import { DEFAULT_FILM_TEMPLATE, FILM_TEMPLATE_KEY } from "@/lib/videoEditing";
+import { DEFAULT_FILM_FIX_TEMPLATE, DEFAULT_FILM_TEMPLATE, FILM_FIX_TEMPLATE_KEY, FILM_TEMPLATE_KEY } from "@/lib/videoEditing";
 
 const TEMPLATES = [
   {
@@ -215,6 +215,14 @@ const TEMPLATES = [
     label: "שליחת הסרט לזוג (עריכת וידאו)",
     description: "ההודעה מהכפתור \"שלח לזוג\" בעריכת וידאו — הסרט שהעורך הדביק בדף שלו. ברירת המחדל היא המלל שהעורך שלח עם כל סרט. {{link}} = הלינק של הסרט. שורה שהמשתנה שלה ריק לא תופיע.",
     defaultValue: DEFAULT_FILM_TEMPLATE,
+    variables: ["{{link}}", "{{names}}", "{{event_date}}", "{{venue}}"],
+  },
+  {
+    // Mirrors DEFAULT_FILM_FIX_TEMPLATE in supabase/functions/_shared/editorPortal.ts (and src/lib/videoEditing.js)
+    key: FILM_FIX_TEMPLATE_KEY,
+    label: "שליחת סרט מתוקן לזוג (עריכת וידאו)",
+    description: "ההודעה מהכפתור \"שלח לזוג את התיקון\" בעריכת וידאו — אחרי שהעורך סימן \"עשיתי תיקונים\". {{link}} = הקישור לסרט המתוקן (אותו קישור או חדש). אפשר לערוך גם מהכפתור \"המלל לזוג\" בעריכת וידאו.",
+    defaultValue: DEFAULT_FILM_FIX_TEMPLATE,
     variables: ["{{link}}", "{{names}}", "{{event_date}}", "{{venue}}"],
   },
   {

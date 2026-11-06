@@ -26,10 +26,18 @@ export const DEFAULT_FILM_TEMPLATE = `{{link}}
 תודה שבחרתם בנו לתעד את היום שלכם.
 מאחלים לכם צפייה מרגשת בכל פעם מחדש. 🎬`;
 
+// The corrected film (2026-11-06): the couple asked the editor for changes, he fixed them, the owner sends it.
+// Mirrored in src/lib/videoEditing.js.
+export const FILM_FIX_TEMPLATE_KEY = 'template_film_fix_link';
+export const DEFAULT_FILM_FIX_TEMPLATE = `היי {{names}} 😊
+הסרט שלכם עודכן עם התיקונים שביקשתם 🎬
+לצפייה: {{link}}
+צפייה מהנה! 🤍`;
+
 // {{link}} {{names}} {{event_date}} {{venue}}. A line whose variable came out empty is dropped; an empty template
 // falls back to the default. Blank lines stay — the editor's text is made of paragraphs.
-export function renderFilmMessage(template: string | null | undefined, vars: Record<string, string>): string {
-  const tpl = String(template || '').trim() ? String(template) : DEFAULT_FILM_TEMPLATE;
+export function renderFilmMessage(template: string | null | undefined, vars: Record<string, string>, fallback = DEFAULT_FILM_TEMPLATE): string {
+  const tpl = String(template || '').trim() ? String(template) : fallback;
   return tpl
     .split('\n')
     .filter((line) => [...line.matchAll(/\{\{(\w+)\}\}/g)].every((x) => String(vars[x[1]] ?? '').trim()))
@@ -48,6 +56,34 @@ export function cleanFilmLink(raw: unknown): string | null {
   } catch {
     return null;
   }
+}
+
+// ── corrections ──────────────────────────────────────────────────────────────────────────────────────────────────
+export type FilmFix = { n: number; at: string; link: string | null; newLink: boolean; note: string; sentAt: string | null };
+
+const fixesOf = (raw: unknown): FilmFix[] => (Array.isArray(raw) ? raw.filter((f) => f && typeof f === 'object') : []);
+
+/** The round the editor finished and the couple did not get yet, or null. */
+export function pendingFix(raw: unknown): FilmFix | null {
+  const list = fixesOf(raw);
+  const last = list[list.length - 1];
+  return last && !last.sentAt ? last : null;
+}
+
+/** "עשיתי תיקונים": a new round — or, while the last one was not sent yet, that round again with the new details. */
+export function applyFix(raw: unknown, fix: { at: string; link: string | null; newLink: boolean; note?: string }): FilmFix[] {
+  const list = fixesOf(raw);
+  const open = pendingFix(list);
+  const base = open ? list.slice(0, -1) : list;
+  const n = open ? open.n : (list[list.length - 1]?.n || 0) + 1;
+  return [...base, { n, at: fix.at, link: fix.link || null, newLink: Boolean(fix.newLink), note: String(fix.note || '').trim().slice(0, 300), sentAt: null }].slice(-30);
+}
+
+/** After the owner sent it: the open round gets its day. */
+export function markFixSent(raw: unknown, at: string): FilmFix[] {
+  const list = fixesOf(raw);
+  if (!pendingFix(list)) return list;
+  return list.map((f, i) => (i === list.length - 1 ? { ...f, sentAt: at } : f));
 }
 
 // ── sign-in ──────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -130,6 +166,7 @@ export function portalEventView(ev: Record<string, any>, editorName: string) {
     filmSentAt: ev.film_sent_at || null,
     filmBackedUpAt: ev.film_backed_up_at || null,
     editorDone: truthy(ev.editor_done),
+    fixes: fixesOf(ev.film_fixes).map((f) => ({ n: f.n, at: f.at, link: f.link, newLink: f.newLink, note: f.note, sentAt: f.sentAt })),
     pay: { cost: Number(me.cost) || 0, isPaid: truthy(me.isPaid), paidAt: me.paidAt || null },
   };
 }
