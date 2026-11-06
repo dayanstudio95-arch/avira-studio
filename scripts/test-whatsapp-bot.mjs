@@ -4026,5 +4026,19 @@ console.log('\n— PART 75: album group messages + list order —');
   check('the correction notice goes to "עריכת וידאו", staff tab', [nc.navRouteForNotification('staff_film_fix'), nc.notificationTab('staff_film_fix')], ['/VideoEditing', 'staff']);
 }
 
+{
+  section('video editing: before sending — did the couple pay, did their photo gallery go out (2026-11-06)');
+  const ve = await loadModule('src/lib/videoEditing.js', 've91');
+  check('the events page\'s payment status; nothing set counts as not paid', [
+    ve.couplePayOf({ clientPaymentStatus: 'Paid' }).label, ve.couplePayOf({ clientPaymentStatus: 'Partially Paid' }).tone, ve.couplePayOf({}).label, ve.couplePayOf({ clientPaymentStatus: 'weird' }).key,
+  ], ['הזוג שילם', 'amber', 'הזוג לא שילם', 'Unpaid']);
+  check('the gallery: sent from the galleries (with the day), from Pixieset, only marked, or not yet', [
+    ve.galleryOf({ finalDoneManual: true, finalSentVia: 'gallery', finalSentAt: '2026-11-03T08:00:00Z' }).label,
+    ve.galleryOf({ finalDoneManual: true, finalLink: 'https://aviramedia.pixieset.com/x/' }).label,
+    ve.galleryOf({ finalDoneManual: 'true' }).label,
+    ve.galleryOf({ finalLink: 'https://aviramedia.pixieset.com/x/' }),
+  ], ['הגלריה נשלחה מהגלריות 3/11', 'הגלריה נשלחה (פיקסיסט)', 'הגלריה נשלחה', { sent: false, label: 'הגלריה עוד לא נשלחה' }]);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

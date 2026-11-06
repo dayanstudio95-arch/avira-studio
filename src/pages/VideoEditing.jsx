@@ -9,7 +9,7 @@ import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { israelToday } from "@/lib/dates";
 import {
   DEFAULT_FILM_FIX_TEMPLATE, DEFAULT_FILM_TEMPLATE, FILM_FIX_TEMPLATE_KEY, FILM_TEMPLATE_KEY, cleanFilmLink, dayMonth,
-  editorOf, editorPayOf, filmStateOf, lastFix, monthGroups, needsBackup, pendingFix, renderFilmMessage,
+  couplePayOf, editorOf, editorPayOf, filmStateOf, galleryOf, lastFix, monthGroups, needsBackup, pendingFix, renderFilmMessage,
 } from "@/lib/videoEditing";
 import MonthHeader from "@/components/videoEditing/MonthHeader";
 
@@ -20,6 +20,8 @@ import MonthHeader from "@/components/videoEditing/MonthHeader";
 // 2026-11-06 (round 2): the list by month; the editor's corrections ("עשיתי תיקונים" on his page) wait here under
 // "תיקונים לשליחה" and go to the couple in their own short message (template_film_fix_link); "המלל לזוג" at the top
 // edits both messages (the same settings as Settings ← תבניות הודעה).
+// 2026-11-06 (round 3): every row says whether the couple paid (the events page's payment status) and whether their
+// photo gallery went out (Pixieset or the galleries) — to know before sending; the send window says it too.
 
 const Event = base44.entities.Event;
 const fmt = (n) => `₪${Math.round(Number(n) || 0).toLocaleString()}`;
@@ -33,6 +35,29 @@ const FILTERS = [
   { key: "sent", label: "נשלחו", test: (e) => filmStateOf(e) === "sent" && !pendingFix(e) },
 ];
 const TEMPLATE_KEYS = [FILM_TEMPLATE_KEY, FILM_FIX_TEMPLATE_KEY];
+
+const TONE = {
+  green: "bg-green-500/15 text-green-300",
+  amber: "bg-amber-400/15 text-amber-200",
+  red: "bg-rose-500/15 text-rose-300",
+  gray: "bg-white/5 text-gray-400",
+};
+
+// The couple: paid? gallery sent? (round 3)
+function CoupleStatus({ ev }) {
+  const pay = couplePayOf(ev);
+  const gallery = galleryOf(ev);
+  return (
+    <>
+      <span className={`rounded-full px-2 py-0.5 text-[11px] ${TONE[pay.tone]}`} title="סטטוס התשלום מדף רשימת האירועים" data-testid="ve-couple-pay">
+        💳 {pay.label}
+      </span>
+      <span className={`rounded-full px-2 py-0.5 text-[11px] ${gallery.sent ? TONE.green : TONE.amber}`} title="גלריית התמונות — מסטטוס עבודה (→ זוג) או מהגלריות" data-testid="ve-gallery">
+        📸 {gallery.label}
+      </span>
+    </>
+  );
+}
 
 const shortLink = (url) => {
   try {
@@ -215,6 +240,7 @@ function FilmRow({ ev, onSave, onSend }) {
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
         <span className="text-sm font-semibold text-white min-w-[110px]">{ev.coupleNames || "—"}</span>
         <span className="text-xs text-gray-400">{ev.date ? format(new Date(ev.date), "d/M/yy") : ""}{ev.venue ? ` · ${ev.venue}` : ""}{videos.length ? ` · ${videos.join(", ")}` : ""}</span>
+        <CoupleStatus ev={ev} />
         {state === "no_raw" && <span className="rounded-full bg-white/5 px-2 py-0.5 text-[11px] text-gray-400">הגלם עוד לא נשלח ל{editor}</span>}
         {state === "editing" && <span className="rounded-full bg-sky-500/10 px-2 py-0.5 text-[11px] text-sky-300">אצל {editor}{ev.rawSentAt ? ` מ-${dayMonth(ev.rawSentAt)}` : ""}</span>}
         {ev.filmLink && !editing && (
@@ -358,6 +384,9 @@ function SendFilmDialog({ ev, mode = "film", template, onClose, onSent }) {
           בוואטסאפ מהמספר של הסטודיו, ל-<span dir="ltr">{ev.phoneNumber}</span>. {isFix ? "אחרי השליחה התיקון מסומן כנשלח." : "אחרי השליחה משבצת העורך בסטטוס עבודה נצבעת בירוק."} את הנוסח משנים ב"המלל לזוג" בראש הדף.
         </p>
         {!link && <p className="text-xs text-rose-300">אין קישור לסרט — אי אפשר לשלוח.</p>}
+        <div className="flex flex-wrap gap-1.5">
+          <CoupleStatus ev={ev} />
+        </div>
         <div className="max-h-[50vh] overflow-y-auto whitespace-pre-wrap rounded-lg border border-white/10 bg-black/30 p-3 text-sm leading-relaxed text-gray-100" data-testid="ve-preview">
           {message}
         </div>

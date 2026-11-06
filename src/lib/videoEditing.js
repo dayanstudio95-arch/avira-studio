@@ -128,3 +128,25 @@ export function monthGroups(rows) {
 
 /** "אירוע אחד" / "3 אירועים". */
 export const eventsCount = (n) => (n === 1 ? "אירוע אחד" : `${n} אירועים`);
+
+// ── before sending (2026-11-06, the owner: "ככה אני יוכל לדעת לפני שאני שולח לזוג") ─────────────────────────────
+// Whether the couple paid — the events page's payment status (clientPaymentStatus) — and whether their photo gallery
+// went out: work status "→ זוג" / "סופי" (finalDoneManual), from Pixieset or from the galleries ("שלח לזוג" there).
+const PAY = {
+  Paid: { label: "הזוג שילם", tone: "green" },
+  "Partially Paid": { label: "הזוג שילם חלקית", tone: "amber" },
+  Unpaid: { label: "הזוג לא שילם", tone: "red" },
+};
+
+export function couplePayOf(ev) {
+  const key = PAY[ev?.clientPaymentStatus] ? ev.clientPaymentStatus : "Unpaid";
+  return { key, ...PAY[key] };
+}
+
+export function galleryOf(ev) {
+  const sent = truthy(ev?.finalDoneManual);
+  if (!sent) return { sent: false, label: "הגלריה עוד לא נשלחה" };
+  if (ev?.finalSentVia === "gallery") return { sent: true, label: `הגלריה נשלחה מהגלריות${ev.finalSentAt ? ` ${dayMonth(ev.finalSentAt)}` : ""}` };
+  if (/pixieset\./i.test(String(ev?.finalLink || ""))) return { sent: true, label: "הגלריה נשלחה (פיקסיסט)" };
+  return { sent: true, label: "הגלריה נשלחה" };
+}
