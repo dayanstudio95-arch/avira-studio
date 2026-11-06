@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Save, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import { DEFAULT_FILM_FIX_TEMPLATE, DEFAULT_FILM_TEMPLATE, FILM_FIX_TEMPLATE_KEY, FILM_TEMPLATE_KEY } from "@/lib/videoEditing";
+import { DEFAULT_GALLERY_LINK_TEMPLATE } from "@/lib/galleryLinkMessage";
 
 const TEMPLATES = [
   {
@@ -226,11 +227,11 @@ const TEMPLATES = [
     variables: ["{{link}}", "{{names}}", "{{event_date}}", "{{venue}}"],
   },
   {
-    // Mirrors DEFAULT_GALLERY_LINK_TEMPLATE in supabase/functions/_shared/galleryLinkMessage.ts
+    // Mirrors DEFAULT_GALLERY_LINK_TEMPLATE in supabase/functions/_shared/galleryLinkMessage.ts (src/lib/galleryLinkMessage.js)
     key: "template_gallery_link",
     label: "שליחת הגלריה לזוג (הגלריה שלנו)",
-    description: "ההודעה מהכפתור \"שלח לזוג\" בגלריות. {{link}} = הקישור של הזוג לגלריה, {{expires}} = היום שבו הגלריה נסגרת. שורה שהמשתנה שלה ריק לא תופיע. (\"→ זוג\" בסטטוס עבודה ממשיך לשלוח את \"לינק סופי\".)",
-    defaultValue: `היי {{names}} 😊\nהגלריה מהחתונה שלכם מוכנה! 🎉\nלצפייה, הורדה ובחירת תמונות: {{link}}\nהגלריה פתוחה עד {{expires}}.\n❤ סמנו לב על התמונות לאלבום, וכשסיימתם לחצו "סיימנו לבחור".\n👥 לשיתוף עם האורחים — הכפתור "שתפו עם האורחים" בגלריה.\nבאהבה, אווירה סטודיו`,
+    description: "ההודעה מהכפתור \"שלח לזוג\" בגלריות. {{link}} = הקישור של הזוג לגלריה, {{expires}} = היום שבו הגלריה נסגרת. שורה שהמשתנה שלה ריק לא תופיע. (\"→ זוג\" בסטטוס עבודה ממשיך לשלוח את \"לינק סופי\".) אפשר לערוך גם מהכפתור \"המלל לזוג\" בדף הגלריות.",
+    defaultValue: DEFAULT_GALLERY_LINK_TEMPLATE,
     variables: ["{{names}}", "{{link}}", "{{expires}}", "{{event_date}}", "{{venue}}", "{{album_guide_link}}"],
   },
   {

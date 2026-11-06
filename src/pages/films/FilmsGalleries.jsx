@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
-import { Camera, Clapperboard, Copy, ExternalLink, HardDrive, Images, LayoutGrid, List, Loader2, Pencil, Plus, RotateCcw, ScanFace, Search, Send, Star, Timer, Trash2, Upload } from "lucide-react";
+import { Camera, Clapperboard, Copy, ExternalLink, HardDrive, Images, LayoutGrid, List, Loader2, MessageSquareText, Pencil, Plus, RotateCcw, ScanFace, Search, Send, Star, Timer, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { parseEventList } from "@films-shared/event";
 import { coupleMatches, withAmpersand } from "@films-shared/names";
@@ -24,6 +24,29 @@ import { base44 } from "@/api/base44Client";
 import { supabase } from "@/api/supabaseClient";
 import { WORKFLOW_STATUS_COLORS, WORKFLOW_STATUS_LABELS } from "@/pages/AlbumOrders";
 import { bytesText, driveSpace } from "@/lib/driveSpace";
+import MessageTextsDialog from "@/components/common/MessageTextsDialog";
+import { DEFAULT_GALLERY_LINK_TEMPLATE, GALLERY_LINK_TEMPLATE_KEY, renderGalleryLink } from "@/lib/galleryLinkMessage";
+
+// "המלל לזוג" (2026-11-06, the owner's request, as on "עריכת וידאו"): the words of "שלח לזוג" (template_gallery_link),
+// edited from the galleries page — the same setting as Settings ← תבניות הודעה. "→ זוג" on work status (Pixieset)
+// keeps its own message (the owner's choice).
+const GALLERY_TEXTS = [{ key: GALLERY_LINK_TEMPLATE_KEY, label: "הגלריה לזוג", fallback: DEFAULT_GALLERY_LINK_TEMPLATE, render: renderGalleryLink }];
+const GALLERY_TEXT_VARS = [
+  ["{{link}}", "= הקישור לגלריה"],
+  ["{{names}}", "= שמות הזוג"],
+  ["{{expires}}", "= היום שהגלריה נסגרת"],
+  ["{{event_date}}", "= תאריך"],
+  ["{{venue}}", "= אולם"],
+  ["{{album_guide_link}}", "= מדריך האלבום"],
+];
+const GALLERY_SAMPLE = {
+  link: "https://gallery.avira-studio.com/…",
+  names: "נועה ונועם",
+  expires: "6.1.2027",
+  event_date: "22.10.2026",
+  venue: "חוות צאן קידר",
+  album_guide_link: "https://new.avira-studio.com/album-guide/…",
+};
 
 // The couples' galleries: photo galleries under "גלריות" (/photos), film galleries under "סרטים" (/films).
 // Ported from the films app's admin: same filters, month grouping and actions; data from the
@@ -168,6 +191,7 @@ export default function FilmsGalleries() {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState(readFilter);
   const [importing, setImporting] = useState(false);
+  const [editTexts, setEditTexts] = useState(false);
   const [picked, setPicked] = useState(() => new Set());
   const [extending, setExtending] = useState(null); // galleries to extend (one, or the picked ones)
   // The couple's choice for the album (Avira, 0099): the gallery whose choice window is open.
@@ -536,7 +560,11 @@ export default function FilmsGalleries() {
             {kind === "photos" ? <Images className="w-6 h-6 text-brand-400" /> : <Clapperboard className="w-6 h-6 text-brand-400" />}
             {kind === "photos" ? "גלריות תמונות" : "גלריות סרטים"}
           </h1>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setEditTexts(true)} className="border-amber-400/40 bg-amber-400/10 text-amber-200 hover:bg-amber-400/20" data-testid="gallery-edit-texts">
+              <MessageSquareText className="w-4 h-4 ml-2" />
+              המלל לזוג
+            </Button>
             {kind === "photos" && (
               <Button asChild variant="outline" className="border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700">
                 <Link to="/photos/photographers" data-testid="photographer-pages-link">
@@ -985,6 +1013,16 @@ export default function FilmsGalleries() {
         />
       )}
 
+      {editTexts && (
+        <MessageTextsDialog
+          title={'המלל שנשלח לזוג עם הגלריה ("שלח לזוג")'}
+          texts={GALLERY_TEXTS}
+          vars={GALLERY_TEXT_VARS}
+          sample={GALLERY_SAMPLE}
+          note="שורה שהמשתנה שלה ריק לא תופיע — למשל בלי אולם, או בגלריה בלי תאריך סגירה."
+          onClose={() => setEditTexts(false)}
+        />
+      )}
       {importing && (
         <BulkImport
           kind={kind}

@@ -12,6 +12,7 @@ import {
   couplePayOf, editorOf, editorPayOf, filmStateOf, galleryOf, lastFix, monthGroups, needsBackup, pendingFix, renderFilmMessage,
 } from "@/lib/videoEditing";
 import MonthHeader from "@/components/videoEditing/MonthHeader";
+import MessageTextsDialog from "@/components/common/MessageTextsDialog";
 
 // "עריכת וידאו" (2026-11-06, the owner's request): the editor pastes the final film's link on his own page (/editor,
 // phone + password), and here the owner sends it to the couple — in the editor's own words (template_film_link) —
@@ -210,7 +211,16 @@ export default function VideoEditing() {
           setSendFor(null);
         }}
       />
-      {editTexts && <TextsDialog templates={templates} onClose={() => setEditTexts(false)} onSaved={(key, row) => setTemplates((prev) => ({ ...prev, [key]: row }))} />}
+      {editTexts && (
+        <MessageTextsDialog
+          title="המלל שנשלח לזוג עם הקישור"
+          texts={TEXTS}
+          vars={TEXT_VARS}
+          sample={SAMPLE}
+          onClose={() => setEditTexts(false)}
+          onSaved={(key, row) => setTemplates((prev) => ({ ...prev, [key]: row }))}
+        />
+      )}
     </div>
   );
 }
@@ -402,88 +412,10 @@ function SendFilmDialog({ ev, mode = "film", template, onClose, onSent }) {
   );
 }
 
-// "המלל לזוג" (2026-11-06, the owner's request): the two messages that go with the link — the film and a correction —
-// edited right here; the same app_settings rows as Settings ← תבניות הודעה. A preview with a sample couple.
+// "המלל לזוג" (2026-11-06, the owner's request): the two messages that go with the link — the film and a correction.
 const TEXTS = [
-  { key: FILM_TEMPLATE_KEY, label: "הסרט לזוג", fallback: DEFAULT_FILM_TEMPLATE },
-  { key: FILM_FIX_TEMPLATE_KEY, label: "סרט מתוקן", fallback: DEFAULT_FILM_FIX_TEMPLATE },
+  { key: FILM_TEMPLATE_KEY, label: "הסרט לזוג", fallback: DEFAULT_FILM_TEMPLATE, resetLabel: "חזרה למלל המקורי של העורך", render: (v, sample) => renderFilmMessage(v, sample, DEFAULT_FILM_TEMPLATE) },
+  { key: FILM_FIX_TEMPLATE_KEY, label: "סרט מתוקן", fallback: DEFAULT_FILM_FIX_TEMPLATE, render: (v, sample) => renderFilmMessage(v, sample, DEFAULT_FILM_FIX_TEMPLATE) },
 ];
+const TEXT_VARS = [["{{link}}", "= הקישור לסרט"], ["{{names}}", "= שמות הזוג"], ["{{event_date}}", "= תאריך"], ["{{venue}}", "= אולם"]];
 const SAMPLE = { link: "https://my-wedd.com/watch/…", names: "נועה ונועם", event_date: "22.10.2026", venue: "חוות צאן קידר" };
-
-function TextsDialog({ templates, onClose, onSaved }) {
-  const [tab, setTab] = useState(TEXTS[0].key);
-  const [drafts, setDrafts] = useState(() => Object.fromEntries(TEXTS.map((t) => [t.key, templates[t.key]?.value || t.fallback])));
-  const [busy, setBusy] = useState(false);
-  const t = TEXTS.find((x) => x.key === tab);
-  const value = drafts[tab];
-
-  const save = async () => {
-    if (!value.trim()) return toast.error("ההודעה ריקה");
-    if (!value.includes("{{link}}") && !(await confirmDialog({ title: "אין {{link}} בהודעה", message: "הזוג יקבל את ההודעה בלי הקישור לסרט. לשמור בכל זאת?", confirmText: "לשמור" }))) return;
-    setBusy(true);
-    try {
-      const id = templates[tab]?.id;
-      const row = id ? await base44.entities.AppSetting.update(id, { value }) : await base44.entities.AppSetting.create({ key: tab, value });
-      onSaved(tab, { id: row?.id || id, value });
-      toast.success(`הנוסח של "${t.label}" נשמר`);
-    } catch (e) {
-      toast.error("השמירה נכשלה: " + (e?.message || ""));
-    }
-    setBusy(false);
-  };
-
-  return (
-    <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="bg-gray-900 border-gray-800 text-white max-w-3xl" dir="rtl" data-testid="ve-texts">
-        <DialogHeader>
-          <DialogTitle className="text-right">המלל שנשלח לזוג עם הקישור</DialogTitle>
-        </DialogHeader>
-        <div className="flex gap-2">
-          {TEXTS.map((x) => (
-            <button
-              key={x.key}
-              type="button"
-              onClick={() => setTab(x.key)}
-              className={`rounded-full border px-3 py-1 text-xs ${tab === x.key ? "border-amber-400/60 bg-amber-400/15 text-amber-100" : "border-white/15 text-gray-300 hover:border-white/30"}`}
-            >
-              {x.label}
-            </button>
-          ))}
-        </div>
-        <p className="text-xs text-gray-400">
-          <span className="font-mono text-amber-300" dir="ltr">{"{{link}}"}</span> = הקישור לסרט ·
-          <span className="font-mono text-amber-300 mx-1" dir="ltr">{"{{names}}"}</span> = שמות הזוג ·
-          <span className="font-mono text-amber-300 mx-1" dir="ltr">{"{{event_date}}"}</span> = תאריך ·
-          <span className="font-mono text-amber-300 mx-1" dir="ltr">{"{{venue}}"}</span> = אולם
-        </p>
-        <div className="grid gap-3 md:grid-cols-2">
-          <textarea
-            value={value}
-            onChange={(e) => setDrafts((d) => ({ ...d, [tab]: e.target.value }))}
-            rows={14}
-            className="w-full rounded-lg border border-gray-700 bg-gray-950 p-3 text-sm leading-relaxed text-white"
-            data-testid="ve-texts-input"
-          />
-          <div>
-            <p className="mb-1 text-xs text-gray-500">כך זה ייראה (זוג לדוגמה):</p>
-            <div className="max-h-[22rem] overflow-y-auto whitespace-pre-wrap rounded-lg border border-white/10 bg-black/30 p-3 text-sm leading-relaxed text-gray-100" data-testid="ve-texts-preview">
-              {renderFilmMessage(value, SAMPLE, t.fallback)}
-            </div>
-          </div>
-        </div>
-        <DialogFooter className="gap-2 sm:gap-2 sm:justify-between">
-          <button type="button" onClick={() => setDrafts((d) => ({ ...d, [tab]: t.fallback }))} className="text-xs text-gray-400 hover:text-white">
-            {tab === FILM_TEMPLATE_KEY ? "חזרה למלל המקורי של העורך" : "חזרה לנוסח ההתחלתי"}
-          </button>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose} disabled={busy} className="border-gray-700 bg-gray-800 text-gray-300">סגירה</Button>
-            <Button onClick={save} disabled={busy} className="bg-amber-400 hover:bg-amber-300 text-gray-900" data-testid="ve-texts-save">
-              {busy ? <Loader2 className="w-4 h-4 ml-1 animate-spin" /> : <Check className="w-4 h-4 ml-1" />}
-              שמירה
-            </Button>
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}

@@ -4040,5 +4040,17 @@ console.log('\n— PART 75: album group messages + list order —');
   ], ['הגלריה נשלחה מהגלריות 3/11', 'הגלריה נשלחה (פיקסיסט)', 'הגלריה נשלחה', { sent: false, label: 'הגלריה עוד לא נשלחה' }]);
 }
 
+{
+  section('galleries: "המלל לזוג" — the preview says what is sent (2026-11-06)');
+  const ts = await loadModule('supabase/functions/_shared/galleryLinkMessage.ts', 'gl92');
+  const js = await loadModule('src/lib/galleryLinkMessage.js', 'gl92js');
+  const vars = { names: 'נועה ונועם', link: 'https://g/x', expires: '6.1.2027', event_date: '22.10.2026', venue: '', album_guide_link: '' };
+  const custom = 'היי {{names}}\nהגלריה: {{link}}\nאולם: {{venue}}\nעד {{expires}}';
+  check('the same default, key and text on the screen and on the server (a line with an empty variable drops)', [
+    js.DEFAULT_GALLERY_LINK_TEMPLATE === ts.DEFAULT_GALLERY_LINK_TEMPLATE, js.GALLERY_LINK_TEMPLATE_KEY === ts.GALLERY_LINK_TEMPLATE_KEY,
+    js.renderGalleryLink('', vars) === ts.renderGalleryLink('', vars), js.renderGalleryLink(custom, vars), js.renderGalleryLink(custom, vars) === ts.renderGalleryLink(custom, vars),
+  ], [true, true, true, 'היי נועה ונועם\nהגלריה: https://g/x\nעד 6.1.2027', true]);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
