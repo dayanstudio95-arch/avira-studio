@@ -21,7 +21,8 @@ import {
 // 2026-11-06: one event's "שילמתי" opens this window too (its small button used to only mark the event, and the owner
 // didn't notice that nothing went out); "רק לסמן שולם" here is the old mark-only. `alreadyPaid`: the events were marked
 // "שולם" without the screenshot — this sends it now; the marks stay as they are, and `existing` (the transfer the scan
-// opened for those marks, if any) becomes this payment instead of a second one.
+// opened for those marks, if any) becomes this payment instead of a second one. `textOnly`: he already sent the
+// screenshot himself in the chat (that transfer came from it) — only the breakdown and the invoice request go out.
 
 const BUCKET = "staff-invoices";
 const MIME_EXT = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "application/pdf": "pdf" };
@@ -29,7 +30,7 @@ const MAX_BYTES = 10 * 1024 * 1024;
 const btn = "border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700";
 const day = (d) => (d ? `${Number(d.slice(8, 10))}/${Number(d.slice(5, 7))}/${d.slice(2, 4)}` : "");
 
-export default function ConfirmStaffPaymentDialog({ open, onOpenChange, staffName, phone, rows, staffType, payers, request, alreadyPaid = false, existing = null, tenantId, onMarkPaid, onDone }) {
+export default function ConfirmStaffPaymentDialog({ open, onOpenChange, staffName, phone, rows, staffType, payers, request, alreadyPaid = false, existing = null, textOnly = false, tenantId, onMarkPaid, onDone }) {
   const file = useRef(null);
   const [proof, setProof] = useState(null); // { path, name }
   const [reading, setReading] = useState(null); // null | "reading" | { read, isTransfer, amount, date, entity }
@@ -108,7 +109,31 @@ export default function ConfirmStaffPaymentDialog({ open, onOpenChange, staffNam
   const otherBusiness = read?.entity && entity && read.entity !== entity;
   const payer = entity ? payers?.[entity] : null;
 
+  // The screenshot is already in the chat: the business (for the invoice details) on that transfer, and the text.
+  const sendText = async () => {
+    if (!entity) return toast.error("בוחרים מאיזה חשבון העברת");
+    if (!phone || !message.trim()) return toast.error("אין טלפון או שההודעה ריקה");
+    setBusy(true);
+    try {
+      if (existing && entity !== existing.entity) {
+        const { error } = await supabase.from("staff_transfers").update({ entity, updated_at: new Date().toISOString() }).eq("id", existing.id);
+        if (error) throw error;
+      }
+      const res = await base44.functions.invoke("staffInvoices", { action: "send_payment", transferId: existing.id, to: phone, message });
+      if (res.data?.error) toast.error(`ההודעה ל${staffName} לא נשלחה: ${res.data.error}`, { duration: 10000 });
+      else {
+        toast.success(`הפירוט נשלח ל${staffName} ✓`);
+        onOpenChange(false);
+        onDone?.();
+      }
+    } catch (e) {
+      toast.error("השליחה נכשלה: " + (e?.message || ""));
+    }
+    setBusy(false);
+  };
+
   const confirm = async () => {
+    if (textOnly && existing) return sendText();
     if (!entity) return toast.error("בוחרים מאיזה חשבון העברת");
     if (!(amount > 0)) return toast.error("חסר הסכום שהועבר");
     if (send && !message.trim()) return toast.error("ההודעה ריקה");
@@ -191,9 +216,10 @@ export default function ConfirmStaffPaymentDialog({ open, onOpenChange, staffNam
         <DialogHeader>
           <DialogTitle className="text-right flex items-center gap-2">
             <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-            {alreadyPaid ? `שליחת צילום ופירוט ל${staffName}` : `שילמתי ל${staffName}`}
+            {textOnly ? `שליחת פירוט ל${staffName}` : alreadyPaid ? `שליחת צילום ופירוט ל${staffName}` : `שילמתי ל${staffName}`}
           </DialogTitle>
-          {alreadyPaid && <p className="text-right text-xs text-gray-400">{rows.length === 1 ? "האירוע כבר מסומן" : "האירועים כבר מסומנים"} &quot;שולם&quot;. כאן רק מוסיפים את צילום ההעברה ושולחים את הפירוט.</p>}
+          {textOnly && <p className="text-right text-xs text-gray-400">צילום ההעברה כבר נשלח בוואטסאפ, ולא יישלח שוב. כאן נשלחים רק הפירוט ובקשת החשבונית.</p>}
+          {alreadyPaid && !textOnly && <p className="text-right text-xs text-gray-400">{rows.length === 1 ? "האירוע כבר מסומן" : "האירועים כבר מסומנים"} &quot;שולם&quot;. כאן רק מוסיפים את צילום ההעברה ושולחים את הפירוט.</p>}
         </DialogHeader>
 
         <div className="space-y-4">
@@ -216,7 +242,7 @@ export default function ConfirmStaffPaymentDialog({ open, onOpenChange, staffNam
           {!addsVat(staffType) && <p className="text-xs text-gray-400 -mt-2">{staffType === "exempt" ? "עוסק פטור — בלי מע״מ, מבקשים קבלה." : "לא מוציא מסמכים (לפי הסכם) — בלי מע״מ ובלי בקשת חשבונית."}</p>}
           {request?.arrived && <p className="text-xs text-emerald-300 -mt-2">📄 החשבונית שביקשת לפני התשלום כבר הגיעה — ההעברה תיסגר מיד.</p>}
 
-          <div>
+          {!textOnly && <div>
             <input ref={file} type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => upload(e.target.files?.[0])} data-testid="confirm-proof-input" />
             <button type="button" onClick={() => file.current?.click()} className="w-full rounded-lg border border-dashed border-gray-600 p-3 text-right hover:border-gray-400" data-testid="confirm-proof">
               <div className="flex items-center gap-3">
@@ -243,7 +269,7 @@ export default function ConfirmStaffPaymentDialog({ open, onOpenChange, staffNam
                 )}
               </div>
             )}
-          </div>
+          </div>}
 
           <div>
             <p className="text-sm mb-1.5">מאיזה חשבון העברת?</p>
@@ -271,16 +297,16 @@ export default function ConfirmStaffPaymentDialog({ open, onOpenChange, staffNam
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-2 items-end">
+          {!textOnly && <div className="grid grid-cols-2 gap-2 items-end">
             <div>
               <p className="text-xs text-gray-400 mb-1">הועבר בפועל</p>
               <Input type="number" min="1" step="0.01" value={paid} onChange={(e) => setPaid(e.target.value)} dir="ltr" className="bg-gray-800 border-gray-700 text-white" data-testid="confirm-amount" />
             </div>
             <p className="text-xs text-gray-500 pb-2">סה״כ: {totalLine(totals)}</p>
-          </div>
+          </div>}
 
           <label className="flex items-center gap-2 text-sm">
-            <Checkbox checked={send} disabled={!phone} onCheckedChange={(v) => setSend(!!v)} className="border-gray-600" data-testid="confirm-send" />
+            <Checkbox checked={send} disabled={!phone || textOnly} onCheckedChange={(v) => setSend(!!v)} className="border-gray-600" data-testid="confirm-send" />
             {phone ? `לשלוח ל${staffName} את הפירוט${proof ? " + הצילום" : ""}${staffType === "none" ? "" : request?.arrived ? "" : " + בקשה לחשבונית"}` : "אין טלפון לאיש הצוות — ההודעה לא תישלח"}
           </label>
           {send && phone && (

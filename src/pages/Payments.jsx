@@ -734,6 +734,22 @@ export default function Payments() {
                                                                 const tr = transferOfWork[`${event.eventId}|${event.role ?? ''}`];
                                                                 if (!event.paidAt || israelDayOf(event.paidAt) < STAFF_TRACK_SINCE || tr?.proof_path) return null;
                                                                 const rows = tr ? data.events.filter((ev) => (tr.events || []).some((w) => w.eventId === ev.eventId && (w.role ?? '') === (ev.role ?? ''))) : [event];
+                                                                // the owner sent the screenshot himself in the chat (the scan found it, source 'screenshot'):
+                                                                // not again — only the breakdown and the invoice request, if he wants them
+                                                                if (tr?.source === 'screenshot') return (
+                                                                    <span className="flex items-center gap-1.5">
+                                                                        <span className="text-xs text-sky-300">📎 הצילום נשלח בוואטסאפ</span>
+                                                                        <Button
+                                                                            size="sm"
+                                                                            onClick={() => setConfirmFor({ name, phone: getStaffPhone(name) || event.phone || null, rows: rows.length ? rows : [event], paid: true, existing: tr, textOnly: true })}
+                                                                            className="bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs px-2"
+                                                                            data-testid="send-text-later"
+                                                                        >
+                                                                            <MessageCircle className="w-3 h-3 ml-1"/>
+                                                                            שליחת פירוט
+                                                                        </Button>
+                                                                    </span>
+                                                                );
                                                                 return (
                                                                     <Button
                                                                         size="sm"
@@ -813,6 +829,7 @@ export default function Payments() {
                     payers={payers}
                     request={confirmFor && !confirmFor.paid ? requestFor(requests, confirmFor.name, confirmFor.rows) : null}
                     alreadyPaid={!!confirmFor?.paid}
+                    textOnly={!!confirmFor?.textOnly}
                     existing={confirmFor?.existing || null}
                     tenantId={tenant?.id}
                     onMarkPaid={markRowsPaid}
