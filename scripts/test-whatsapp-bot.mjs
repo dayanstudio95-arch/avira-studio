@@ -3811,6 +3811,15 @@ console.log('\n— PART 75: album group messages + list order —');
   check('whose materials: the event\'s photographers as work status shows them, each with the field it marks', du.teamPhotographers([
     { role: 'photographer1', staffMemberName: 'ניר (דניאל)' }, { role: 'editor', staffMemberName: 'עורך' }, { role: 'photographer2', staffMemberName: 'שגיא' },
   ]).map((m) => `${m.label}·${m.name}·${m.field}`), ['צלם 1·ניר (דניאל)·photographer1_done', 'צלם 2·שגיא·photographer2_done']);
+  const two = du.teamPhotographers([{ role: 'photographer1', staffMemberName: 'ג׳וני' }, { role: 'photographer2', staffMemberName: 'סלבה' }]);
+  check('chosen at first (2026-11-07): the first photographer not marked yet — the second one\'s upload after the first\'s', [
+    du.defaultUploadRoles(two, { photographer1_done: false, photographer2_done: false }),
+    du.defaultUploadRoles(two, { photographer1_done: true, photographer2_done: false }),
+    du.defaultUploadRoles(two, { photographer1_done: true, photographer2_done: true }),
+    du.defaultUploadRoles(two, null),
+    du.defaultUploadRoles(du.teamPhotographers([{ role: 'photographer2', staffMemberName: 'סלבה' }]), { photographer2_done: false }),
+    du.defaultUploadRoles([], { photographer1_done: false }),
+  ], [['photographer1'], ['photographer2'], ['photographer1'], ['photographer1'], ['photographer2'], []]);
 }
 
 {

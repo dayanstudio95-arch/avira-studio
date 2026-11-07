@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/sonner';
 // The Drive upload pill: a gallery's photos keep uploading while the owner moves between pages (0109).
@@ -71,6 +71,13 @@ const AlbumOrders = lazy(() => import('./pages/AlbumOrders'));
 // served by the gallery Worker (gallery-worker/); these are the studio's screens.
 const FilmsGalleries = lazy(() => import('./pages/films/FilmsGalleries'));
 const FilmsGalleryForm = lazy(() => import('./pages/films/FilmsGalleryForm'));
+// A gallery's page starts fresh for every gallery (2026-11-07): going from one gallery straight to another (the upload
+// pill's "לעמוד הגלריה", the browser's back) kept the first one's photos and Drive folder on screen, and an upload
+// there went into the other couple's folder.
+function GalleryPage() {
+  const { id } = useParams();
+  return <FilmsGalleryForm key={id} />;
+}
 const FilmsSettings = lazy(() => import('./pages/films/FilmsSettings'));
 // A page per photographer for couples who ask to see his work (2026-11-02; 0102).
 const PhotographerPages = lazy(() => import('./pages/films/PhotographerPages'));
@@ -303,7 +310,7 @@ const AuthenticatedApp = () => {
           <Route path="/photos/new" element={<FilmsGalleryForm key="pn" />} />
           <Route path="/photos/settings" element={<FilmsSettings key="ps" />} />
           <Route path="/photos/photographers" element={<PhotographerPages />} />
-          <Route path="/photos/:id" element={<FilmsGalleryForm key="pe" />} />
+          <Route path="/photos/:id" element={<GalleryPage />} />
           <Route path="/films" element={<FilmsToPhotos />} />
           <Route path="/films/*" element={<FilmsToPhotos />} />
 

@@ -215,16 +215,20 @@ export default function FilmsGalleries() {
   const canEvents = hasModule("crm");
   const [infoByEvent, setInfoByEvent] = useState({});
   const [infoReady, setInfoReady] = useState(false);
-  const [sending, setSending] = useState("");
+  // The galleries being sent now, each on its own (2026-11-07: one shared mark let a second click re-send the first).
+  const [sending, setSending] = useState(() => new Set());
   const eventKey = (list || []).map((g) => g.eventId || "").join(",");
   useEffect(() => {
     if (!canEvents || !eventKey) return;
     let live = true;
-    eventsInfo(eventKey.split(",")).then((m) => {
-      if (!live) return;
-      setInfoByEvent(m);
-      setInfoReady(true);
-    });
+    eventsInfo(eventKey.split(","))
+      .then((m) => {
+        if (!live) return;
+        setInfoByEvent(m);
+        setInfoReady(true);
+      })
+      // Not read: nothing is painted in Drive (a failed read is not "not sent") — the next visit tries again.
+      .catch(() => {});
     return () => {
       live = false;
     };
@@ -277,7 +281,8 @@ export default function FilmsGalleries() {
       setLinking({ g, then: "send" });
       return;
     }
-    setSending(g.id);
+    if (sending.has(g.id)) return;
+    setSending((s) => new Set(s).add(g.id));
     try {
       // The access days count from the send (2026-11-03): gallerySend moves the closing day once the message went out.
       const sent = await sendGalleryToCouple(g.eventId, coupleLink(slug, g.id), { gallery: { ...g, kind } });
@@ -289,12 +294,25 @@ export default function FilmsGalleries() {
         }
       }
     } finally {
-      setSending("");
+      setSending((s) => {
+        const next = new Set(s);
+        next.delete(g.id);
+        return next;
+      });
     }
   };
   const createOrder = async (g) => {
     if (!g.eventId) {
       setLinking({ g, then: "album" });
+      return;
+    }
+    // The event may have an order already (2026-11-07: a gallery just linked to its event — the list knew only the
+    // orders of the events it had): that order opens, never a second one.
+    const { data: had, error: hadError } = await supabase.from("album_orders").select("id").eq("event_id", g.eventId).order("created_at", { ascending: false }).limit(1);
+    if (hadError) return toast.error("לא הצלחנו לבדוק אם יש לזוג הזמנת אלבום. נסו שוב.");
+    if (had?.[0]) {
+      toast.info(`ל${g.coupleName} כבר יש הזמנת אלבום`);
+      navigate(`/AlbumOrders/${had[0].id}`);
       return;
     }
     if (!(await confirmDialog({ title: `אין הזמנת אלבום ל${g.coupleName}`, message: "ליצור לזוג הזמנת אלבום חדשה?", confirmText: "יצירת הזמנה" }))) return;
@@ -751,7 +769,7 @@ export default function FilmsGalleries() {
                         <div className="flex gap-1">
                           <IconButton onClick={() => toggleStar(g)} title={g.studioFavorite ? "מועדפת (לחיצה מורידה)" : "סימון כמועדפת"} icon={Star} />
                           {canEvents && !isEmpty(g) && (
-                            <IconButton onClick={() => sending !== g.id && sendToCouple(g)} title={g.eventId && infoByEvent[g.eventId]?.sent ? "נשלח לזוג (לחיצה שולחת שוב, אחרי אישור)" : "שלח לזוג בוואטסאפ"} icon={Send} />
+                            <IconButton onClick={() => sendToCouple(g)} title={g.eventId && infoByEvent[g.eventId]?.sent ? "נשלח לזוג (לחיצה שולחת שוב, אחרי אישור)" : "שלח לזוג בוואטסאפ"} icon={Send} />
                           )}
                           {kindOf(g) === "photos" && !isEmpty(g) && <IconButton onClick={() => openFaces(g)} title={faceOn.has(g.id) ? "זיהוי פנים פעיל — פתיחת הסריקה" : "זיהוי פנים כבוי"} icon={ScanFace} />}
                           <IconButton onClick={() => copyText(link).then((ok) => ok && toast.success("הקישור הועתק"))} title="העתקת הקישור לזוג" icon={Copy} />
@@ -917,14 +935,14 @@ export default function FilmsGalleries() {
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    disabled={sending === g.id}
+                                    disabled={sending.has(g.id)}
                                     onClick={() => sendToCouple(g)}
                                     className={sent ? "border-green-500/50 bg-green-500/20 text-green-300 hover:bg-green-500/30" : "border-purple-500/40 bg-purple-600/20 text-purple-300 hover:bg-purple-600/30"}
                                     title={sent ? "הזוג כבר קיבל את הקישור. לחיצה שולחת שוב (אחרי אישור)" : g.eventId ? "הקישור לזוג בוואטסאפ" : "הקישור לזוג בוואטסאפ (קודם בוחרים לאיזה אירוע הגלריה שייכת)"}
                                     data-testid="row-send-to-couple"
                                   >
                                     <Send className="w-3.5 h-3.5 ml-1" />
-                                    {sending === g.id ? "שולח…" : sent ? "✓ נשלח" : "שלח לזוג"}
+                                    {sending.has(g.id) ? "שולח…" : sent ? "✓ נשלח" : "שלח לזוג"}
                                   </Button>
                                 )}
                                 <Button size="sm" className="bg-brand-400 hover:bg-brand-500 text-brand-fg" onClick={() => copyText(link).then((ok) => ok && toast.success("הקישור הועתק"))}>

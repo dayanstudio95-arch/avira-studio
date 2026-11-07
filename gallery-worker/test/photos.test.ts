@@ -1,7 +1,7 @@
 // Ported from the Avira films app's test/photos.test.ts (2026-09-26). MyAirBridge examples use
 // Dropbox shared-link paths instead (MyAirBridge is not a photo source here).
-import { describe, expect, it } from 'vitest';
-import { applyPhotoEdits, buildPhotoData, favoritesMessage, mergePhotoData, photoKey, publicPhotos, setNameFromFolder, sortByName } from '../worker/photos';
+import { describe, expect, it, vi } from 'vitest';
+import { applyPhotoEdits, buildPhotoData, favoritesMessage, listPhotos, mergePhotoData, photoKey, publicPhotos, setNameFromFolder, sortByName } from '../worker/photos';
 import { PRESET_SETS, presetForFolder } from '../shared/photosets';
 import { exifTakenAt } from '../shared/exif';
 
@@ -385,6 +385,34 @@ describe('P67: hidden copies and pictures that are only pictures', () => {
     try {
       const d = await listPhotos({} as never, { googleApiKey: 'AIzaTestKey' } as never, 'https://drive.google.com/drive/folders/ROOTFOLDER1234', 'https://x');
       expect(d.items.map((i) => i.name).sort()).toEqual(['a.jpg', 'd.heic']);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  // Avira, 2026-11-07: two photographers' folders, each with its sets, passed the free plan's 40.
+  const driveTree = (photographers: number, sets: number) =>
+    vi.stubGlobal('fetch', async (u: string | URL) => {
+      const parent = /'([^']+)' in parents/.exec(new URL(String(u)).searchParams.get('q') || '')?.[1] || '';
+      const folder = (id: string, name: string) => ({ id, name, mimeType: 'application/vnd.google-apps.folder' });
+      if (parent === 'ROOTFOLDER1234') return Response.json({ files: Array.from({ length: photographers }, (_, p) => folder(`photog${p}xxxxx`, `צלם ${p + 1}`)) });
+      if (parent.startsWith('photog') && !parent.includes('-set')) return Response.json({ files: Array.from({ length: sets }, (_, s) => folder(`${parent}-set${s}`, `סט ${s + 1}`)) });
+      return Response.json({ files: [{ id: `${parent}-img`, name: `${parent}.jpg`, mimeType: 'image/jpeg' }] });
+    });
+  it('up to 150 inner folders are read (two photographers with 22 sets each = 46)', async () => {
+    driveTree(2, 22);
+    try {
+      const d = await listPhotos({} as never, { googleApiKey: 'AIzaTestKey' } as never, 'https://drive.google.com/drive/folders/ROOTFOLDER1234', 'https://x');
+      expect(d.items).toHaveLength(44);
+      expect(new Set(d.items.map((i) => i.folder))).toEqual(new Set(['צלם 1', 'צלם 2']));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it('more than 150 inner folders: refused, saying how many may be', async () => {
+    driveTree(2, 80);
+    try {
+      await expect(listPhotos({} as never, { googleApiKey: 'AIzaTestKey' } as never, 'https://drive.google.com/drive/folders/ROOTFOLDER1234', 'https://x')).rejects.toMatchObject({ status: 400, message: expect.stringContaining('עד 150') });
     } finally {
       vi.unstubAllGlobals();
     }

@@ -117,6 +117,9 @@ export default function FilmsGalleryForm() {
   // The days go to the Worker only when edited (or for a new gallery): a form sent back never reopens a gallery
   // that was closed or extended meanwhile (P71).
   const [daysTouched, setDaysTouched] = useState(false);
+  // A new gallery's days came from the studio's settings (2026-11-07): until they did, the field's 30 is not sent and the
+  // Worker gives the studio's own (60) — a gallery made in the first second got 30.
+  const [daysFromSettings, setDaysFromSettings] = useState(false);
   // The gallery's event (P57); sent only when the studio changed it.
   const [eventId, setEventId] = useState("");
   const [eventLabel, setEventLabel] = useState("");
@@ -133,6 +136,8 @@ export default function FilmsGalleryForm() {
   const [singleUrl, setSingleUrl] = useState("");
   const [gallery, setGallery] = useState(null);
   const [busy, setBusy] = useState("");
+  // "שלח לזוג" has its own mark (2026-11-07): a save ending meanwhile freed the button and a second click sent again.
+  const [sendingNow, setSendingNow] = useState(false);
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(isNew);
   const fileInput = useRef(null);
@@ -148,7 +153,10 @@ export default function FilmsGalleryForm() {
     if (!filmsConfigured()) return;
     filmsApi("GET", "/api/admin/settings")
       .then((s) => {
-        if (isNew) setDays(s.defaultDays);
+        if (isNew) {
+          setDays(s.defaultDays);
+          setDaysFromSettings(true);
+        }
         setSongs({ list: s.music || [], defaultId: s.musicDefault || "" });
       })
       .catch(() => {});
@@ -283,7 +291,7 @@ export default function FilmsGalleryForm() {
         hideDate,
         hideVenue,
         photographer,
-        ...(isNew || daysTouched ? { days } : {}),
+        ...(daysTouched || (isNew && daysFromSettings) ? { days } : {}),
         ...(seesSecrets ? { password, downloadPin } : {}),
         ...(canEvents && eventTouched ? { eventId } : {}),
       };
@@ -351,7 +359,8 @@ export default function FilmsGalleryForm() {
       toast.error("קודם לשמור את הגלריה עם האירוע שנבחר");
       return;
     }
-    setBusy("send");
+    if (sendingNow) return;
+    setSendingNow(true);
     try {
       const sent = await sendGalleryToCouple(gallery?.eventId, link, { gallery: { ...gallery, kind } });
       if (sent) {
@@ -359,7 +368,7 @@ export default function FilmsGalleryForm() {
         if (sent.expiresAt !== gallery?.expiresAt) setGallery((prev) => (prev ? { ...prev, expiresAt: sent.expiresAt } : prev));
       }
     } finally {
-      setBusy("");
+      setSendingNow(false);
     }
   };
   const pickEvent = (idPicked, labelPicked, ev) => {
@@ -403,14 +412,14 @@ export default function FilmsGalleryForm() {
                 <Button
                   type="button"
                   variant="outline"
-                  disabled={busy === "send"}
+                  disabled={sendingNow}
                   onClick={sendToCouple}
                   className={eventSent ? "border-green-500/50 bg-green-500/20 text-green-300 hover:bg-green-500/30" : "border-purple-500/40 bg-purple-600/20 text-purple-300 hover:bg-purple-600/30"}
                   title={gallery.eventId ? "הקישור לזוג בוואטסאפ, עם ההודעה של סטטוס עבודה" : "קודם לבחור את האירוע של הזוג"}
                   data-testid="send-to-couple"
                 >
                   <Send className="w-4 h-4 ml-2" />
-                  {busy === "send" ? "שולח…" : eventSent ? "✓ נשלח לזוג" : "שלח לזוג"}
+                  {sendingNow ? "שולח…" : eventSent ? "✓ נשלח לזוג" : "שלח לזוג"}
                 </Button>
               )}
               {kind === "photos" && (

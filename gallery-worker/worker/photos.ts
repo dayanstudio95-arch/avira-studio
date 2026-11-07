@@ -330,7 +330,7 @@ async function listDropbox(settings: Settings, env: Env, url: string): Promise<P
     for (const e of await listEverything(token, { path, shared_link: { url: link.canonical } })) {
       if (e['.tag'] === 'file') found.push({ name: e.name, folder: top, ref: `l:${path}/${e.name}`, ...(e.size ? { size: e.size } : {}), ...versionFrom(e) });
       else if (e['.tag'] === 'folder' && depth < MAX_DEPTH) {
-        if (++folders > 40) throw new HttpError(400, 'יש בתיקייה יותר מדי תיקיות פנימיות (עד 40).');
+        if (++folders > MAX_FOLDERS) throw new HttpError(400, `יש בתיקייה יותר מדי תיקיות פנימיות (עד ${MAX_FOLDERS}).`);
         await walk(`${path}/${e.name}`, top || e.name, depth + 1);
       }
     }
@@ -375,7 +375,7 @@ async function walkOwnById(session: Session, top: Entry[]): Promise<Found[]> {
       if (e['.tag'] === 'file') {
         if (e.id || e.path_lower) found.push(ownFile(e, folder));
       } else if (e['.tag'] === 'folder' && depth < MAX_DEPTH && (e.id || e.path_lower)) {
-        if (++folders > 40) throw new HttpError(400, 'יש בתיקייה יותר מדי תיקיות פנימיות (עד 40).');
+        if (++folders > MAX_FOLDERS) throw new HttpError(400, `יש בתיקייה יותר מדי תיקיות פנימיות (עד ${MAX_FOLDERS}).`);
         await walk(await listEverything(session, { path: e.id ?? e.path_lower }), folder || e.name, depth + 1);
       }
     }
@@ -402,6 +402,13 @@ async function listEverything(session: Session | string, arg: Record<string, unk
 
 /** How many levels of folders inside the shared folder are read (the shared folder itself is level 0). */
 const MAX_DEPTH = 3;
+
+/**
+ * How many folders inside it are read, at most: one outside call or more each. 40 was the free plan's (about 50 calls a
+ * request); the account is on Workers Paid (1000), so 150 (Avira, 2026-11-07: two photographers' folders, each with
+ * its sets, passed 40).
+ */
+const MAX_FOLDERS = 150;
 
 /**
  * A public Drive folder's contents without an API key: Google's own "embedded folder view" page
@@ -438,7 +445,7 @@ async function listDriveNoKey(folderId: string, canonical: string): Promise<Phot
     for (const f of await children(id)) {
       if (f.folder) {
         if (depth >= MAX_DEPTH) continue;
-        if (++folders > 40) throw new HttpError(400, 'יש בתיקייה יותר מדי תיקיות פנימיות (עד 40).');
+        if (++folders > MAX_FOLDERS) throw new HttpError(400, `יש בתיקייה יותר מדי תיקיות פנימיות (עד ${MAX_FOLDERS}).`);
         await walk(f.id, top || f.name, depth + 1);
       } else found.push({ name: f.name, folder: top, ref: `g:${f.id}` });
     }
@@ -480,7 +487,7 @@ async function listDrive(settings: Settings, url: string, origin: string): Promi
     for (const f of await listChildren(id)) {
       if (f.mimeType === FOLDER) {
         if (depth >= MAX_DEPTH) continue;
-        if (++folders > 40) throw new HttpError(400, 'יש בתיקייה יותר מדי תיקיות פנימיות (עד 40).');
+        if (++folders > MAX_FOLDERS) throw new HttpError(400, `יש בתיקייה יותר מדי תיקיות פנימיות (עד ${MAX_FOLDERS}).`);
         await walk(f.id, top || f.name, depth + 1);
         // What Google says the file is, not only its name: "photo.jpg" that is really an SVG stays out.
       } else if (SAFE_IMAGE_TYPE.test(f.mimeType)) {

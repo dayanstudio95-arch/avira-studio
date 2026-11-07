@@ -198,9 +198,14 @@ function applyInput(g: Gallery, input: GalleryInput, settings: Settings, env: En
   const days = input.days === undefined ? undefined : Math.floor(Number(input.days));
   if (days !== undefined && (days !== g.days || !g.days)) {
     if (!Number.isFinite(days) || days < 1 || days > MAX_GALLERY_DAYS) throw new HttpError(400, 'מספר הימים לא תקין: לפחות יום אחד');
-    g.days = days;
+    const closes = Date.parse(g.expiresAt ?? '');
+    // A gallery that has its days and a closing day: the closing day moves by the change (Avira, 2026-11-07). Its
+    // days count from the send to the couple ("שלח לזוג", closeFromSend) — counted again from the day it was made,
+    // 60 → 90 on a gallery made in August and sent in November closed it at once.
+    if (g.days && Number.isFinite(closes)) g.expiresAt = new Date(closeAfterDays(closes, days - g.days)).toISOString();
     // Open to the end of the last day, 23:59 Israel time (P72, D15), not to the hour it was made.
-    g.expiresAt = new Date(closeAfterDays(Date.parse(g.createdAt), days)).toISOString();
+    else g.expiresAt = new Date(closeAfterDays(Date.parse(g.createdAt), days)).toISOString();
+    g.days = days;
   }
   if (input.expiresAt !== undefined) {
     const t = Date.parse(String(input.expiresAt));

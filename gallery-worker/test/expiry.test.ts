@@ -88,6 +88,27 @@ describe('galleries close at the end of the day', () => {
     // The gallery form sends its days back unchanged: the closing date from the send stays.
     expect((await updateGallery(store, env, settings, structuredClone(sent), { coupleName: 'א', days: 60 })).expiresAt).toBe(closes);
   });
+  it('days changed after the send (2026-11-07): the closing day moves by the change, never back to the day it was made', async () => {
+    const store = new MemoryStore();
+    const g = await createGallery(store, env, { ...settings, defaultDays: 60 }, { coupleName: 'א' }, 't1');
+    // Sent 100 days after it was made: closes 60 days from the send.
+    const sentAt = Date.parse(g.createdAt) + 100 * 86_400_000;
+    const sent = await updateGallery(store, env, settings, structuredClone(g), { expiresAt: closeFromSend(g.expiresAt, g.days, sentAt) });
+    const longer = await updateGallery(store, env, settings, structuredClone(sent), { days: 90 });
+    expect(longer.days).toBe(90);
+    expect(longer.expiresAt).toBe(new Date(closeAfterDays(sentAt, 90)).toISOString());
+    expect(daysLeft(longer, sentAt)).toBe(90);
+    const shorter = await updateGallery(store, env, settings, structuredClone(longer), { days: 30 });
+    expect(shorter.expiresAt).toBe(new Date(closeAfterDays(sentAt, 30)).toISOString());
+    // Not sent yet: from the day it was made, as before.
+    const fresh = await createGallery(store, env, { ...settings, defaultDays: 60 }, { coupleName: 'ב' }, 't1');
+    expect((await updateGallery(store, env, settings, structuredClone(fresh), { days: 45 })).expiresAt).toBe(new Date(closeAfterDays(Date.parse(fresh.createdAt), 45)).toISOString());
+  });
+  it('days changed across the switch to winter time keep whole calendar days', () => {
+    // Closes 20.10.26 (summer time); 30 more days lands on 19.11.26 (winter time), 23:59 there.
+    expect(closeAfterDays(endOfIsraelDay('2026-10-20'), 30)).toBe(endOfIsraelDay('2026-11-19'));
+    expect(closeAfterDays(endOfIsraelDay('2026-11-19'), -30)).toBe(endOfIsraelDay('2026-10-20'));
+  });
 });
 
 describe('the wedding date', () => {

@@ -3,8 +3,8 @@ import { useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import { Camera, FolderDown, Loader2, PlugZap, Upload } from "lucide-react";
 import { supabase } from "@/api/supabaseClient";
-import { appFolderOf, connectDrive, driveQuota, driveStatus, filesFromDrop, filesFromInput, isOpen, jobFor, startUpload, subscribe } from "@/lib/driveUpload";
-import { drivePath, galleryFolderName, photosText, planUpload, READ_DEPTH, sizeText, teamPhotographers } from "@/lib/driveUploadPlan";
+import { appFolderOf, connectDrive, dismissUpload, driveQuota, driveStatus, filesFromDrop, filesFromInput, isOpen, jobFor, startUpload, subscribe } from "@/lib/driveUpload";
+import { defaultUploadRoles, drivePath, galleryFolderName, photosText, planUpload, READ_DEPTH, sizeText, teamPhotographers } from "@/lib/driveUploadPlan";
 import { DriveJobButtons, DriveJobProgress } from "@/components/DriveUploadPill";
 
 // "העלאה מהמחשב לגוגל דרייב" on a photo gallery (Avira, 2026-11-03, the owner's request; src/lib/driveUpload.js): the
@@ -25,7 +25,19 @@ export default function DriveUploadPanel({ galleryId = null, coupleName = "", da
   const [job, setJob] = useState(() => (galleryId ? jobFor(galleryId) : null));
   const inputRef = useRef(null);
 
-  useEffect(() => (galleryId ? subscribe(() => setJob(jobFor(galleryId))) : undefined), [galleryId]);
+  // The job changes in place: a tick redraws its progress and buttons (2026-11-07 — the same object stopped React, and
+  // the panel stayed on "מכין את התיקיות" with no pause button while the pill below moved on).
+  const [, setTick] = useState(0);
+  useEffect(
+    () =>
+      galleryId
+        ? subscribe(() => {
+            setJob(jobFor(galleryId));
+            setTick((t) => t + 1);
+          })
+        : undefined,
+    [galleryId],
+  );
   useEffect(() => {
     let live = true;
     driveStatus()
@@ -35,20 +47,20 @@ export default function DriveUploadPanel({ galleryId = null, coupleName = "", da
       live = false;
     };
   }, []);
-  // The event's photographers, as work status shows them; "צלם 1" chosen at first.
+  // The event's photographers, as work status shows them; the first whose materials are not marked yet chosen at first.
   useEffect(() => {
     if (!eventId) return setTeam([]);
     let live = true;
     supabase
       .from("events")
-      .select("team")
+      .select("team, photographer1_done, photographer2_done")
       .eq("id", eventId)
       .maybeSingle()
       .then(({ data }) => {
         if (!live) return;
         const t = teamPhotographers(data?.team);
         setTeam(t);
-        setRoles(t.length ? [t[0].role] : []);
+        setRoles(defaultUploadRoles(t, data));
       });
     return () => {
       live = false;
@@ -104,7 +116,14 @@ export default function DriveUploadPanel({ galleryId = null, coupleName = "", da
         <DriveJobProgress job={job} />
         <div className="flex flex-wrap items-center justify-between gap-2">
           <DriveJobButtons job={job} />
-          {isOpen(job) ? <span className="text-[11px] text-gray-500">אפשר לעבור לדפים אחרים, ההעלאה ממשיכה (פס למטה במסך).</span> : null}
+          {isOpen(job) ? (
+            <span className="text-[11px] text-gray-500">אפשר לעבור לדפים אחרים, ההעלאה ממשיכה (פס למטה במסך).</span>
+          ) : (
+            // Done: the next photographer's materials the same day (2026-11-07; the finished upload hid the drop zone).
+            <button type="button" onClick={() => dismissUpload(job)} className="rounded-md border border-brand-400/60 px-2 py-1 text-xs text-brand-200 hover:bg-brand-400/10" data-testid="drive-upload-another">
+              העלאה נוספת
+            </button>
+          )}
         </div>
       </div>
     );

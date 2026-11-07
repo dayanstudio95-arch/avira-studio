@@ -8,7 +8,7 @@ import { etaText, sizeText } from "@/lib/driveUploadPlan";
 // The Drive upload in the background (Avira, 2026-11-03, src/lib/driveUpload.js): a small pill at the bottom of every
 // page while a gallery uploads, opened for its sets, pause / go on, and the result. Also says how the Google Drive
 // connection went when Google sends the browser back (?drive=connected / ?drive_error=…).
-const PHASE = { queued: "ממתין בתור", preparing: "מכין את התיקיות בדרייב…", uploading: "מעלה לדרייב", paused: "מושהה", finishing: "משתף את התיקייה וטוען לגלריה…", done: "עלה לדרייב", error: "ההעלאה נעצרה" };
+const PHASE = { queued: "ממתין בתור", preparing: "מכין את התיקיות בדרייב…", uploading: "מעלה לדרייב", paused: "מושהה", finishing: "טוען את התמונות לגלריה…", done: "עלה לדרייב", error: "ההעלאה נעצרה" };
 const CONNECT_ERRORS = { access_denied: "החיבור לגוגל דרייב בוטל.", no_drive_scope: "בחלון של גוגל לא אושרה הגישה לדרייב. מתחברים שוב ומסמנים את האישור לדרייב.", no_refresh_token: "גוגל לא השלימה את החיבור. מתחברים שוב." };
 
 export function DriveJobProgress({ job, compact = false }) {

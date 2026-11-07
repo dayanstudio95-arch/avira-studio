@@ -67,7 +67,7 @@ export default function PhotographerPages() {
     setPages(p.data || []);
     setTestimonials(t.data || []);
     setGalleries(photoGalleries);
-    const info = await eventsInfo(photoGalleries.map((g) => g.eventId).filter(Boolean));
+    const info = await eventsInfo(photoGalleries.map((g) => g.eventId).filter(Boolean)).catch(() => ({}));
     setByEvent(info);
     // The team's photographers, and anyone already named as a gallery's photographer or with a page.
     const all = [...(staff.data || []).map((s) => s.name), ...(p.data || []).map((x) => x.staff_name), ...photoGalleries.map((g) => g.photographer || info[g.eventId]?.photographer)];

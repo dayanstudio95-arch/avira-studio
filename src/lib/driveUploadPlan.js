@@ -111,3 +111,13 @@ export function teamPhotographers(team) {
     return m ? [{ ...r, name: String(m.staffMemberName || "") }] : [];
   });
 }
+
+/**
+ * Whose materials an upload is, chosen at first (2026-11-07): the first of the event's photographers whose materials
+ * are not marked on work status yet — the second photographer's upload comes after the first one's, and "צלם 1" was
+ * chosen again. Every one marked: the first. `team` = teamPhotographers(…), `ev` = the event's photographerN_done.
+ */
+export function defaultUploadRoles(team, ev) {
+  if (!team?.length) return [];
+  return [(team.find((t) => ev?.[t.field] !== true) || team[0]).role];
+}

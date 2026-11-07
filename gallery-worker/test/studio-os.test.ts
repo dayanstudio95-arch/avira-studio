@@ -140,9 +140,11 @@ describe('P71: a closed gallery stays closed', () => {
     const saved = await updateGallery(store, env, s, closed, { coupleName: 'Closed & Kept', venue: 'אולם', days: 30 });
     expect(saved.venue).toBe('אולם');
     expect(saved.expiresAt).toBe(closed.expiresAt);
-    // Days really changed: the closing day follows them.
+    // Days really changed: the closing day moves by the change (Avira, 2026-11-07) — 30 more days from the day it
+    // closed, open again.
     const longer = await updateGallery(store, env, s, saved, { days: 60 });
-    expect(Date.parse(longer.expiresAt)).toBeGreaterThan(Date.now() + 50 * 86_400_000);
+    expect(Date.parse(longer.expiresAt)).toBeGreaterThan(Date.now() + 28 * 86_400_000);
+    expect(Date.parse(longer.expiresAt)).toBeLessThan(Date.now() + 32 * 86_400_000);
     // Less than a day is refused.
     await expect(updateGallery(store, env, s, longer, { days: 0 })).rejects.toMatchObject({ status: 400 });
   });

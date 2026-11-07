@@ -4,8 +4,9 @@
 // around the app and the pill (DriveUploadPill.jsx) shows it; only closing or reloading the tab stops it (and asks
 // first). The event's folder ("ויקה ואיליה 1/11/26") is made in the system's own "גלריות אווירה" and the Drive helper
 // files it into "גלריות אווירה 2026 › גלריות 11/2026" (0110; the system's drive.file reaches only what it made); what
-// was dropped goes in it by its own folders. At the end: the folder is shared by link, loaded into the gallery (the
-// photos editor does it when it is open, with its own questions), and the photographers chosen are marked "done".
+// was dropped goes in it by its own folders. The folder is shared by link before the first photo (2026-11-07); at the end
+// it is loaded into the gallery (the photos editor does it when it is open, with its own questions; tried again while
+// Google catches up), and the photographers chosen are marked "done".
 // What goes where is src/lib/driveUploadPlan.js (pure, tested).
 
 import { toast } from "sonner";
@@ -80,6 +81,17 @@ export async function connectDrive(back) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// What trying again won't fix (2026-11-07): the whole upload stops at once and says what to do — a full Drive used to
+// retry every photo for about an hour and end in "738 תמונות לא עלו".
+const DRIVE_FULL = "אין מספיק מקום בגוגל דרייב. מפנים מקום (או מגדילים את האחסון) ולוחצים \"לנסות שוב\".";
+const FOLDER_GONE = "התיקייה בדרייב נמחקה או הועברה לפח באמצע ההעלאה. מחזירים אותה מהפח ולוחצים \"לנסות שוב\".";
+function uploadError(status, body, fallback) {
+  const fatal = status === 403 && /storageQuotaExceeded/.test(body) ? DRIVE_FULL : status === 404 ? FOLDER_GONE : "";
+  const e = new Error(fatal || fallback);
+  if (fatal) e.fatal = true;
+  return e;
+}
 
 async function drive(path, { method = "GET", body } = {}) {
   let fresh = false;
@@ -175,7 +187,9 @@ async function sendPhoto(job, item, parentId, onBytes) {
         body: JSON.stringify({ name: item.name, parents: [parentId] }),
       });
       item.lastStatus = init.status;
-      if (!init.ok) throw new Error(`init ${init.status}`);
+      if (!init.ok) throw uploadError(init.status, await init.text().catch(() => ""), `init ${init.status}`);
+      // Paused while the session was being opened: the bytes don't go (they would go on alone, unseen).
+      if (job.paused) throw PAUSED;
       const session = init.headers.get("Location");
       await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -194,7 +208,7 @@ async function sendPhoto(job, item, parentId, onBytes) {
           done();
           item.lastStatus = xhr.status;
           if (xhr.status >= 200 && xhr.status < 300) resolve();
-          else reject(new Error(`upload ${xhr.status}`));
+          else reject(xhr.status === 403 ? uploadError(403, xhr.responseText || "", `upload ${xhr.status}`) : new Error(`upload ${xhr.status}`));
         };
         xhr.onerror = () => {
           done();
@@ -215,7 +229,7 @@ async function sendPhoto(job, item, parentId, onBytes) {
     } catch (e) {
       onBytes(0);
       if (e === PAUSED || job.paused) throw PAUSED;
-      if (attempt === 4) throw e;
+      if (e?.fatal || attempt === 4) throw e;
       await sleep(1000 * 2 ** attempt);
     }
   }
@@ -242,6 +256,9 @@ export function startUpload({ galleryId, galleryKind = "photos", coupleName, dat
     eventId,
     roles,
     folderId,
+    // More photos into the gallery's own folder (it has photos): its page has "טעינה מחדש".
+    hadFolder: Boolean(folderId),
+    shared: false,
     folderUrl: "",
     items,
     // What was dropped, by its top folder ('' = photos dropped by themselves).
@@ -291,6 +308,8 @@ export function resumeUpload(job) {
     job.items.forEach((it) => it.state === "failed" && (it.state = ""));
     job.failed = [];
   }
+  // Paused a moment ago while a photo was still on its way: the same run goes on, and sends what stopped (run()).
+  if (running === job) return patch(job, { phase: "uploading", error: "" });
   patch(job, { phase: "queued", error: "" });
   next();
 }
@@ -309,6 +328,7 @@ async function run(job) {
     const t = await getToken();
     if (!job.folderId) job.folderId = await eventFolder(t.rootFolderId, job.folderName);
     job.folderUrl = `https://drive.google.com/drive/folders/${job.folderId}`;
+    await shareFolder(job);
     await fileFolder(job);
     // Every folder that was dropped, as it was, and what is already in each (stopped half way: only what is missing goes).
     const parents = { "": job.folderId };
@@ -325,7 +345,16 @@ async function run(job) {
     }
     recount(job);
     patch(job, { phase: "uploading" });
-    await uploadAll(job, parents);
+    // Until every photo is up (2026-11-07): a pause and a quick "להמשיך" left the photos whose upload stopped behind,
+    // and the upload still said it was done.
+    while (!job.paused && !job.fatal && job.items.some((it) => !it.state)) await uploadAll(job, parents);
+    if (job.fatal) {
+      const error = job.fatal;
+      job.fatal = "";
+      job.paused = false;
+      patch(job, { phase: "error", error });
+      return;
+    }
     if (job.paused) return;
     if (job.failed.length) {
       patch(job, { phase: "error", error: `${job.failed.length} תמונות לא עלו. אפשר לנסות שוב.` });
@@ -373,6 +402,12 @@ async function uploadAll(job, parents) {
         if (s) s.done++;
       } catch (e) {
         inflight.delete(it);
+        if (e?.fatal && !job.fatal) {
+          // Nothing else can go up either: the others stop now (run() shows why).
+          job.fatal = e.message;
+          job.paused = true;
+          job.xhrs.forEach((x) => x.abort());
+        }
         if (e === PAUSED || job.paused) {
           it.state = "";
           return;
@@ -391,24 +426,57 @@ async function uploadAll(job, parents) {
   }
 }
 
-async function finish(job) {
-  patch(job, { phase: "finishing", speed: 0 });
-  // The gallery reads the folder by its link: anyone with it can see (as a pasted Drive link has to be).
+/** The gallery reads the folder by its link: anyone with it can see (as a pasted Drive link has to be). Once a job. */
+async function shareFolder(job) {
+  if (job.shared) return;
   await drive(`/${encodeURIComponent(job.folderId)}/permissions?fields=id`, { method: "POST", body: { type: "anyone", role: "reader" } });
-  let loaded = false;
-  const editor = editors.get(job.galleryId);
-  if (editor) {
-    loaded = await editor(job.folderUrl).then((ok) => ok === true, () => false);
-    if (!loaded) job.note = "התמונות בדרייב, אבל לא נטענו לגלריה. בעמוד הגלריה לוחצים \"טעינה מחדש\".";
-  } else {
-    try {
-      const d = await filmsApi("POST", `/api/admin/galleries/${job.galleryId}/photos/load`, { url: job.folderUrl });
-      if (d?.needsConfirm) job.note = "בעמוד הגלריה לוחצים \"טעינה מחדש\": חלק מהבחירות של הזוג יישארו בלי תמונה.";
-      else loaded = true;
-    } catch (e) {
-      job.note = `התמונות בדרייב, אבל הטעינה לגלריה נכשלה: ${e.message}. בעמוד הגלריה לוחצים "טעינה מחדש".`;
+  job.shared = true;
+}
+
+// Before each try of loading the folder into the gallery (ms): Google may still be catching up with a folder just filled.
+const LOAD_TRIES = [0, 4000, 12000, 30000];
+
+/**
+ * The folder into the gallery: the open photos editor does it (its questions on screen), else the Worker; a failed load
+ * is tried again, four times in about 45 seconds (2026-11-07 — 738 photos in Drive, and the gallery stayed empty).
+ * "ok" | "confirm" (the couple's choices would lose photos: decided on the gallery page) | "declined" | "failed".
+ */
+async function loadIntoGallery(job) {
+  for (const wait of LOAD_TRIES) {
+    if (wait) {
+      patch(job, { note: "גוגל דרייב עוד מעדכן את התיקייה. מנסים לטעון שוב בעוד רגע…" });
+      await sleep(wait);
+    }
+    const editor = editors.get(job.galleryId);
+    if (editor) {
+      const r = await editor(job.folderUrl).catch(() => false);
+      if (r === true) return "ok";
+      if (r === "declined") return "declined";
+    } else {
+      try {
+        const d = await filmsApi("POST", `/api/admin/galleries/${job.galleryId}/photos/load`, { url: job.folderUrl });
+        return d?.needsConfirm ? "confirm" : "ok";
+      } catch {
+        // tried again
+      }
     }
   }
+  return "failed";
+}
+
+async function finish(job) {
+  patch(job, { phase: "finishing", speed: 0, note: "" });
+  await shareFolder(job);
+  const result = await loadIntoGallery(job);
+  const loaded = result === "ok";
+  job.note =
+    result === "failed"
+      ? `התמונות בדרייב, אבל עוד לא נטענו לגלריה. בעמוד הגלריה לוחצים "${job.hadFolder ? "טעינה מחדש" : "לטעון את התמונות מהדרייב"}".`
+      : result === "confirm"
+        ? "בעמוד הגלריה לוחצים \"טעינה מחדש\": חלק מהבחירות של הזוג יישארו בלי תמונה."
+        : result === "declined"
+          ? "התמונות בדרייב. כשתרצו לטעון אותן: \"טעינה מחדש\" בעמוד הגלריה."
+          : "";
   // Work status: the photographers whose materials these are.
   let marked = [];
   if (job.eventId && job.roles.length) {
@@ -461,7 +529,7 @@ export async function colorFolder(folderId, sent) {
 }
 
 /** The system's folder of a gallery (its last upload), or null. */
-async function uploadFolderOf(galleryId) {
+export async function uploadFolderOf(galleryId) {
   if (!galleryId) return null;
   const { data } = await supabase.from("drive_tasks").select("folder_id, created_at").eq("kind", "file").eq("gallery_id", galleryId).order("created_at", { ascending: false }).limit(1);
   return data?.[0]?.folder_id || null;
@@ -495,7 +563,8 @@ export async function syncFolderColors(items) {
 // Closing or reloading the tab stops the upload: ask first.
 if (typeof window !== "undefined") {
   window.addEventListener("beforeunload", (e) => {
-    if (!jobs.some((j) => ["preparing", "uploading", "finishing", "queued"].includes(j.phase))) return;
+    // A paused upload, or one that stopped with photos left, is lost too (2026-11-07).
+    if (!jobs.some((j) => isOpen(j) || j.phase === "error")) return;
     e.preventDefault();
     e.returnValue = "";
   });

@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useBottomBar } from "@/lib/bottomBar";
 import { confirmDialog, isConfirmOpen } from "@/lib/confirmDialog";
-import { registerEditor } from "@/lib/driveUpload";
+import { isOpen, jobFor, registerEditor, subscribe, uploadFolderOf } from "@/lib/driveUpload";
 import DriveUploadPanel from "@/components/films/DriveUploadPanel";
 
 // The studio organizes a photo gallery: read the folder, sets, cover, hidden photos, and sees the
@@ -290,7 +290,7 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
         const go = await confirmDialog(
           `${d.lost.toLocaleString("he-IL")} מתוך ${d.total.toLocaleString("he-IL")} התמונות שהזוג בחר (לבבות, אינסטגרם, רשימות או האלבום) לא נמצאות בתיקייה הזו. לטעון בכל זאת? הבחירות האלה יישארו בלי תמונה.`,
         );
-        return go ? await load(true, url) : false;
+        return go ? await load(true, url) : "declined";
       }
       setData(d);
       toast.success(`נטענו ${d.items.length.toLocaleString("he-IL")} תמונות`);
@@ -341,6 +341,27 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
     });
   }, [data, view, favs, insta, hideSorted]);
 
+  // Photos the system uploaded to Drive for this gallery that are not in it (2026-11-07: Google was still catching up
+  // when the upload's end loaded the folder, and the gallery stayed empty): that folder, loaded with one click.
+  const [uploading, setUploading] = useState(() => isOpen(jobFor(galleryId)));
+  useEffect(() => subscribe(() => setUploading(isOpen(jobFor(galleryId)))), [galleryId]);
+  const [driveFolder, setDriveFolder] = useState("");
+  useEffect(() => {
+    if (!loaded || data || uploading) return;
+    let live = true;
+    uploadFolderOf(galleryId)
+      .then((id) => {
+        if (!live || !id) return;
+        const url = `https://drive.google.com/drive/folders/${id}`;
+        setDriveFolder(url);
+        // "יש לי כבר קישור" and more photos to Drive (the second photographer) use the same folder.
+        setFolder((f) => f || url);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [galleryId, loaded, data, uploading]);
   // A Drive upload of this gallery ending while it is open: the folder is loaded here (its questions, at once on screen).
   const loadRef = useRef(load);
   loadRef.current = load;
@@ -385,6 +406,19 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
     return (
       <section className={card}>
         <h2 className="text-lg font-semibold text-white">התמונות</h2>
+        {driveFolder && !uploading && (
+          <div className="rounded-lg border border-amber-400/40 bg-amber-400/10 p-3" data-testid="drive-folder-pending">
+            <p className="text-sm text-amber-100">התמונות של הגלריה כבר עלו לגוגל דרייב, אבל עוד לא נטענו לכאן.</p>
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <Button type="button" disabled={busy === "load"} onClick={() => load(false, driveFolder)} className="bg-brand-400 hover:bg-brand-500 text-brand-fg" data-testid="drive-folder-load">
+                {busy === "load" ? <Loader2 className="w-4 h-4 animate-spin" /> : "לטעון את התמונות מהדרייב"}
+              </Button>
+              <a href={driveFolder} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-300 underline hover:text-white">
+                פתיחה בדרייב
+              </a>
+            </div>
+          </div>
+        )}
         {sourceTabs}
         {source === "drive" ? (
           drivePanel

@@ -19,15 +19,22 @@ export const mainPhotographer = (team) => (Array.isArray(team) ? team.find((m) =
 
 /** What the galleries list shows of each linked event, by event id: sent to the couple (work status), photographer, venue,
  *  and who uploaded their material (2026-11-06: the dot beside the photo count — work status' photographer squares). */
+// Throws when the events could not be read (2026-11-07): "nothing was read" must not look like "nothing was sent" — the
+// list would offer every couple "שלח לזוג" again, and the Drive colours would turn the sent folders red. 100 ids a
+// request, so a long list never outgrows the address.
 export async function eventsInfo(eventIds) {
   const ids = [...new Set(eventIds.filter(Boolean))];
   if (ids.length === 0) return {};
-  const { data } = await supabase
-    .from("events")
-    .select("id, final_done_manual, team, venue, photographer1_done, photographer2_done, video1_done, video2_done")
-    .in("id", ids);
+  const chunks = [];
+  for (let i = 0; i < ids.length; i += 100) chunks.push(ids.slice(i, i + 100));
+  const answers = await Promise.all(
+    chunks.map((part) => supabase.from("events").select("id, final_done_manual, team, venue, photographer1_done, photographer2_done, video1_done, video2_done").in("id", part)),
+  );
+  const failed = answers.find((a) => a.error);
+  if (failed) throw new Error(failed.error.message || "האירועים לא נקראו");
+  const data = answers.flatMap((a) => a.data || []);
   return Object.fromEntries(
-    (data || []).map((e) => [
+    data.map((e) => [
       e.id,
       { sent: e.final_done_manual === true, photographer: mainPhotographer(e.team), venue: e.venue || "", uploads: { photos: uploadsOf(e, "photos"), films: uploadsOf(e, "films") } },
     ])
