@@ -4104,5 +4104,39 @@ console.log('\n— PART 75: album group messages + list order —');
   ], [[{ folderId: 'F1', sent: false }, { folderId: 'F2', sent: true }], [{ folderId: 'F2', sent: true }], [], '#f83a22', '#16a765']);
 }
 
+{
+  section('galleries: past weddings since November with no gallery yet (2026-11-07)');
+  const gm = await loadModule('src/lib/galleryMissing.js', 'gm96');
+  const team = [{ role: 'photographer1', staffMemberName: 'יריב' }, { role: 'photographer2', staffMemberName: 'יונתן' }, { role: 'videographer', staffMemberName: 'רודי' }];
+  const ev = (id, date, couple_names, extra = {}) => ({ id, date, couple_names, venue: 'אולם', team, photographer1_done: false, photographer2_done: false, final_done_manual: false, ...extra });
+  const events = [
+    ev('e1', '2026-11-04', 'מישל ועדן ', { photographer1_done: true }),
+    ev('e2', '2026-11-04', 'נויה ושגיב'),
+    ev('e3', '2026-11-05', 'דן ובר'),
+    ev('e4', '2026-10-28', 'דורין וסתיו'),
+    ev('e5', '2026-11-06', 'שירה ותום', { final_done_manual: true }),
+    ev('e6', '2026-11-06', 'רק וידאו', { team: [{ role: 'videographer', staffMemberName: 'רודי' }] }),
+    ev('e7', '2026-11-07', 'היום והיום'),
+    ev('e8', '2026-11-03', 'גל ומאיה'),
+    ev('e9', '2026-11-02', 'רוני וליה'),
+    ev('e10', '2026-11-06', 'אלה ובן'),
+  ];
+  const galleries = [
+    { kind: 'photos', eventId: 'e2', coupleName: 'נויה & שגיב', date: '2026-11-04' },
+    { kind: 'photos', eventId: null, coupleName: 'בר & דן', date: '2026-11-05' },
+    { kind: 'films', eventId: 'e8', coupleName: 'גל & מאיה', date: '2026-11-03' },
+    { kind: 'photos', eventId: 'e9', coupleName: 'רוני & ליה', date: '2026-11-02', deletedAt: '2026-11-06T10:00:00Z' },
+    { kind: 'photos', eventId: null, coupleName: 'אלה & בן', date: '2026-10-06' },
+  ];
+  const rows = gm.missingGalleries(events, galleries, '2026-11-07');
+  check('only past weddings from 1.11 with a photographer, not sent, no photo gallery (linked, or by names on the day); trash does not count; oldest first', [
+    rows.map((r) => r.id), rows[1].names, rows[1].daysAgo, rows[1].uploads.items.map((i) => [i.name, i.done]),
+    gm.agoText(1), gm.agoText(2), gm.agoText(3), gm.missingGalleries(null, null, '2026-11-07'), gm.MISSING_FROM,
+  ], [['e9', 'e8', 'e1', 'e10'], 'גל & מאיה', 4, [['יריב', false], ['יונתן', false]], 'אתמול', 'לפני יומיים', 'לפני 3 ימים', [], '2026-11-01']);
+  check('the row of Michelle & Eden as on the page', gm.missingGalleries([events[0]], [], '2026-11-07'), [
+    { id: 'e1', date: '2026-11-04', names: 'מישל & עדן', venue: 'אולם', daysAgo: 3, uploads: { all: false, items: [{ label: 'צלם 1', name: 'יריב', done: true }, { label: 'צלם 2', name: 'יונתן', done: false }] } },
+  ]);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

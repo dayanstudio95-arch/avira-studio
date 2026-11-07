@@ -19,6 +19,9 @@ const longestName = (text) =>
 
 export const EVENT_FIELDS = "id, couple_names, date, venue, team";
 
+/** The picked event's line: "דן ובר · 5/11/2026". */
+export const eventPickLabel = (ev) => `${ev.couple_names || ""}${ev.date ? ` · ${formatDateShort(ev.date)}` : ""}`;
+
 /**
  * The studio's event a gallery belongs to (crm studios; fix plan P57): the couple's album order then joins the
  * order the studio opened for that wedding instead of making a second one. The films Worker checks the event is
@@ -93,7 +96,7 @@ export default function EventPicker({ eventId, label, onPick }) {
                   type="button"
                   className="block w-full rounded p-1.5 text-right text-sm text-gray-300 hover:bg-gray-800"
                   onClick={() => {
-                    onPick(ev.id, `${ev.couple_names || ""}${ev.date ? ` · ${formatDateShort(ev.date)}` : ""}`, ev);
+                    onPick(ev.id, eventPickLabel(ev), ev);
                     setSearch("");
                   }}
                   data-testid="gallery-event-option"

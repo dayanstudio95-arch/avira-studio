@@ -21,7 +21,7 @@ import { Label } from "@/components/ui/label";
 import { formatDateShort, formatDateTime, israelToday } from "@/lib/dates";
 import { confirmDialog } from "@/lib/confirmDialog";
 import { mainPhotographer, sendGalleryToCouple } from "@/lib/gallerySend";
-import EventPicker from "@/components/films/EventPicker";
+import EventPicker, { EVENT_FIELDS, eventPickLabel } from "@/components/films/EventPicker";
 import DriveUploadPanel from "@/components/films/DriveUploadPanel";
 import { startUpload } from "@/lib/driveUpload";
 import ChoiceDialog from "@/components/films/ChoiceDialog";
@@ -208,6 +208,26 @@ export default function FilmsGalleryForm() {
       navigate(galleryPath(gallery), { replace: true });
     }
   }, [gallery, location.pathname, navigate]);
+
+  // "יצירת גלריה" from the galleries page's "אירועים שעברו ועדיין אין להם גלריה" (2026-11-07): /photos/new?event=<id>
+  // opens with that event picked — the names, date, venue and photographer filled (pickEvent, below: never read on the
+  // "not configured" page, which returns before it is defined).
+  const askedEvent = isNew && canEvents && filmsConfigured() ? new URLSearchParams(location.search).get("event") || "" : "";
+  useEffect(() => {
+    if (!askedEvent) return;
+    let live = true;
+    supabase
+      .from("events")
+      .select(EVENT_FIELDS)
+      .eq("id", askedEvent)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (live && data) pickEvent(data.id, eventPickLabel(data), data);
+      });
+    return () => {
+      live = false;
+    };
+  }, [askedEvent]);
 
   if (!filmsConfigured()) return <FilmsNotConfigured />;
 

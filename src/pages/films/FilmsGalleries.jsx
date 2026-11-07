@@ -12,6 +12,7 @@ import { batchMessages, needsConfirm, readAllGalleries, runBatch, withoutSkipped
 import { makeFilmThumb } from "@/lib/filmThumbs";
 import FilmsNotConfigured from "@/components/films/FilmsNotConfigured";
 import GalleriesSummary from "@/components/films/GalleriesSummary";
+import MissingGalleries from "@/components/films/MissingGalleries";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -668,6 +669,8 @@ export default function FilmsGalleries() {
             )}
           </div>
         )}
+
+        {kind === "photos" && canEvents && <MissingGalleries galleries={list} />}
 
         <GalleriesSummary
           kind={kind}
