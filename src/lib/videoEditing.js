@@ -106,6 +106,19 @@ export const pendingFix = (ev) => {
   return f && !f.sentAt ? f : null;
 };
 
+/**
+ * What a send from "עריכת וידאו" saves on the event (`mode` 'film' | 'fix', `at` an ISO time) — also "כבר שלחתי
+ * בעצמי" (2026-11-08, the owner's request: films he forwarded on WhatsApp himself), which saves it with no message.
+ * The film: sent that day + the editor's square on work status. A correction: the open round gets its day; null when
+ * there is none.
+ */
+export function sentFields(ev, mode, at) {
+  if (mode !== "fix") return { filmSentAt: at, editorDone: true };
+  const list = fixesOf(ev);
+  if (!pendingFix(ev)) return null;
+  return { filmFixes: list.map((f, i) => (i === list.length - 1 ? { ...f, sentAt: at } : f)) };
+}
+
 // ── months, as on work status ────────────────────────────────────────────────────────────────────────────────────
 const HEBREW_MONTHS = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
 

@@ -4138,5 +4138,24 @@ console.log('\n— PART 75: album group messages + list order —');
   ]);
 }
 
+{
+  section('video editing: "כבר שלחתי בעצמי" — a film sent on WhatsApp outside the system (2026-11-08)');
+  const ve = await loadModule('src/lib/videoEditing.js', 've97');
+  const at = '2026-11-08T09:00:00Z';
+  const ready = { filmLink: 'https://my-wedd.com/watch/1', filmBackedUpAt: '2026-11-08T08:00:00Z', editorDone: false };
+  const marked = { ...ready, ...ve.sentFields(ready, 'film', at) };
+  const unbacked = { filmLink: 'https://x/2', ...ve.sentFields({ filmLink: 'https://x/2' }, 'film', at) };
+  const withEditor = { rawSentToEditor: true, ...ve.sentFields({ rawSentToEditor: true }, 'film', at) };
+  check('the film: marked sent today + the editor\'s square, exactly as a send — it leaves "ממתינים", and asks for a backup like one', [
+    ve.sentFields(ready, 'film', at), ve.filmStateOf(ready), ve.filmStateOf(marked), ve.isFilmWaiting(marked), ve.needsBackup(marked), ve.needsBackup(unbacked), ve.filmStateOf(withEditor), ve.sentFields(ready, undefined, at),
+  ], [{ filmSentAt: at, editorDone: true }, 'ready', 'sent', false, false, true, 'sent', { filmSentAt: at, editorDone: true }]);
+  const fixes = [{ n: 1, at: 'a', link: 'L1', newLink: false, sentAt: 'b' }, { n: 2, at: 'c', link: 'L2', newLink: true, note: 'קיצרתי', sentAt: null }];
+  const fixed = { filmSentAt: 'x', filmFixes: fixes };
+  const after = { ...fixed, ...ve.sentFields(fixed, 'fix', at) };
+  check('a correction: only the open round gets the day (the older ones untouched); nothing when no round is open', [
+    after.filmFixes, ve.pendingFix(after), ve.isFilmWaiting(fixed), ve.isFilmWaiting(after), ve.sentFields(after, 'fix', at), ve.sentFields({}, 'fix', at), fixes[1].sentAt,
+  ], [[fixes[0], { ...fixes[1], sentAt: at }], null, true, false, null, null, null]);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

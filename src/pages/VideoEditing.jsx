@@ -10,6 +10,7 @@ import { israelToday } from "@/lib/dates";
 import {
   DEFAULT_FILM_FIX_TEMPLATE, DEFAULT_FILM_TEMPLATE, FILM_FIX_TEMPLATE_KEY, FILM_TEMPLATE_KEY, cleanFilmLink, dayMonth,
   couplePayOf, editorOf, editorPayOf, filmStateOf, galleryOf, lastFix, monthGroups, needsBackup, pendingFix, renderFilmMessage,
+  sentFields,
 } from "@/lib/videoEditing";
 import MonthHeader from "@/components/videoEditing/MonthHeader";
 import MessageTextsDialog from "@/components/common/MessageTextsDialog";
@@ -23,6 +24,9 @@ import MessageTextsDialog from "@/components/common/MessageTextsDialog";
 // edits both messages (the same settings as Settings ← תבניות הודעה).
 // 2026-11-06 (round 3): every row says whether the couple paid (the events page's payment status) and whether their
 // photo gallery went out (Pixieset or the galleries) — to know before sending; the send window says it too.
+// 2026-11-08: "כבר שלחתי בעצמי" beside "שלח לזוג" (and beside a correction's) — a film the owner forwarded on WhatsApp
+// himself: after a confirmation it is marked sent today, exactly as a send from here, with no message to the couple.
+// Also on a wedding still "אצל העורך" (the film came on WhatsApp, no link here) — it gets the backup button too.
 
 const Event = base44.entities.Event;
 const fmt = (n) => `₪${Math.round(Number(n) || 0).toLocaleString()}`;
@@ -134,6 +138,22 @@ export default function VideoEditing() {
     setSendFor({ ev, mode });
   };
 
+  // "כבר שלחתי בעצמי": the same marks as a send, no WhatsApp.
+  const markSent = async (ev, mode = "film") => {
+    const isFix = mode === "fix";
+    const names = ev.coupleNames || "הזוג";
+    const ok = await confirmDialog({
+      title: isFix ? `לסמן שהתיקון של ${names} כבר נשלח?` : `לסמן שהסרט של ${names} כבר נשלח?`,
+      message: isFix
+        ? "לא תצא הודעה לזוג. התיקון יסומן כנשלח היום."
+        : 'לא תצא הודעה לזוג. האירוע יעבור ל"נשלחו" עם תאריך היום, ומשבצת העורך בסטטוס עבודה תיצבע בירוק.',
+      confirmText: "כן, סמן",
+    });
+    if (!ok) return;
+    const fields = sentFields(ev, mode, new Date().toISOString());
+    if (fields) await save(ev, fields, isFix ? "התיקון סומן כנשלח ✓" : "הסרט סומן כנשלח ✓");
+  };
+
   const editorLink = `${window.location.origin}/editor`;
 
   return (
@@ -192,7 +212,7 @@ export default function VideoEditing() {
             <React.Fragment key={m.key}>
               <MonthHeader label={m.label} count={m.items.length} />
               {m.items.map((ev) => (
-                <FilmRow key={ev.id} ev={ev} onSave={save} onSend={askSend} />
+                <FilmRow key={ev.id} ev={ev} onSave={save} onSend={askSend} onMarkSent={markSent} />
               ))}
             </React.Fragment>
           ))}
@@ -205,9 +225,8 @@ export default function VideoEditing() {
         template={templates[sendFor?.mode === "fix" ? FILM_FIX_TEMPLATE_KEY : FILM_TEMPLATE_KEY]?.value || ""}
         onClose={() => setSendFor(null)}
         onSent={(ev, mode) => {
-          const now = new Date().toISOString();
-          if (mode === "fix") patch(ev.id, { filmFixes: (ev.filmFixes || []).map((f, i, all) => (i === all.length - 1 && !f.sentAt ? { ...f, sentAt: now } : f)) });
-          else patch(ev.id, { filmSentAt: now, editorDone: true });
+          const fields = sentFields(ev, mode, new Date().toISOString());
+          if (fields) patch(ev.id, fields);
           setSendFor(null);
         }}
       />
@@ -225,7 +244,9 @@ export default function VideoEditing() {
   );
 }
 
-function FilmRow({ ev, onSave, onSend }) {
+const MARK_SENT_CLASS = "border-gray-600 bg-transparent text-gray-300 hover:bg-gray-800 hover:text-white text-xs";
+
+function FilmRow({ ev, onSave, onSend, onMarkSent }) {
   const state = filmStateOf(ev);
   const pay = editorPayOf(ev);
   const editor = editorOf(ev.team)?.staffMemberName || "העורך";
@@ -283,7 +304,7 @@ function FilmRow({ ev, onSave, onSend }) {
         </span>
       </div>
 
-      {(state !== "sent" || ev.filmLink) && (
+      {(state !== "sent" || ev.filmLink || ev.filmSentAt) && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {editing ? (
             <>
@@ -315,13 +336,25 @@ function FilmRow({ ev, onSave, onSend }) {
                   שלח לזוג את התיקון
                 </Button>
               )}
+              {fix && (
+                <Button size="sm" variant="outline" onClick={() => onMarkSent(ev, "fix")} className={MARK_SENT_CLASS} title="שלחת את התיקון לזוג בוואטסאפ בעצמך — מסמן בלי לשלוח" data-testid="ve-mark-fix-sent">
+                  <Check className="w-3.5 h-3.5 ml-1" />
+                  כבר שלחתי בעצמי
+                </Button>
+              )}
               {ev.filmLink && !fix && (
                 <Button size="sm" onClick={() => onSend(ev)} className={state === "sent" ? "bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs" : "bg-purple-600 hover:bg-purple-700 text-white text-xs"} data-testid="ve-send">
                   <Send className="w-3.5 h-3.5 ml-1" />
                   {state === "sent" ? "שליחה שוב" : "שלח לזוג"}
                 </Button>
               )}
-              {ev.filmLink && (
+              {state !== "sent" && !fix && (
+                <Button size="sm" variant="outline" onClick={() => onMarkSent(ev)} className={MARK_SENT_CLASS} title="שלחת את הסרט לזוג בוואטסאפ בעצמך — מסמן בלי לשלוח" data-testid="ve-mark-sent">
+                  <Check className="w-3.5 h-3.5 ml-1" />
+                  כבר שלחתי בעצמי
+                </Button>
+              )}
+              {(ev.filmLink || ev.filmSentAt) && (
                 <Button
                   size="sm"
                   variant="outline"
