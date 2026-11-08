@@ -1,31 +1,35 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { CalendarClock, Plus } from "lucide-react";
+import { ImageOff, Plus } from "lucide-react";
 import { supabase } from "@/api/supabaseClient";
 import { israelToday } from "@/lib/dates";
 import { galleryHome } from "@/lib/galleryRoutes";
 import { agoText, MISSING_EVENT_FIELDS, MISSING_FROM, missingGalleries } from "@/lib/galleryMissing";
+import ShooterDots from "@/components/films/ShooterDots";
+
+// The weddings with no gallery yet (Avira, 2026-11-07; 2026-11-09, the owner's request: "אני רוצה לראות במסך הזה את
+// הגלריות שעוד לא יצרתי") — red rows inside the photo galleries list, in their month, up to and including today;
+// "יצירת גלריה" opens a new gallery with the event picked (/photos/new?event=<id>). galleryMissing.js decides which.
 
 const shortDate = (key) => {
   const [y, m, d] = key.split("-");
   return `${Number(d)}.${Number(m)}.${y.slice(2)}`;
 };
 
-/**
- * "אירועים שעברו ועדיין אין להם גלריה" (Avira, 2026-11-07, the owner's request): under Google Drive on the photo
- * galleries page; "יצירת גלריה" opens a new gallery with the event picked (/photos/new?event=<id>). Nothing when every
- * past wedding has its gallery, or before the list and the events are read (galleryMissing.js).
- */
-export default function MissingGalleries({ galleries }) {
+const createLink = (r) => `${galleryHome("photos")}/new?event=${r.id}`;
+
+/** The rows ({ id, date, names, venue, daysAgo, uploads }) once the galleries and the events are read; [] before. */
+export function useMissingGalleries(galleries, enabled) {
   const today = israelToday();
   const [events, setEvents] = useState(null);
   useEffect(() => {
+    if (!enabled) return undefined;
     let live = true;
     supabase
       .from("events")
       .select(MISSING_EVENT_FIELDS)
       .gte("date", MISSING_FROM)
-      .lt("date", today)
+      .lte("date", today)
       .order("date")
       .limit(500)
       .then(({ data, error }) => {
@@ -34,46 +38,89 @@ export default function MissingGalleries({ galleries }) {
     return () => {
       live = false;
     };
-  }, [today]);
-  if (!galleries || !events) return null;
-  const rows = missingGalleries(events, galleries, today);
-  if (rows.length === 0) return null;
+  }, [enabled, today]);
+  if (!enabled || !galleries || !events) return [];
+  return missingGalleries(events, galleries, today);
+}
+
+function NoGalleryThumb({ r }) {
   return (
-    <div className="rounded-xl border border-amber-400/40 bg-amber-400/5 px-4 py-3" data-testid="missing-galleries">
-      <div className="mb-1 flex items-center gap-2">
-        <CalendarClock className="h-5 w-5 shrink-0 text-amber-400" />
-        <span className="text-sm font-semibold text-amber-200">אירועים שעברו ועדיין אין להם גלריה</span>
-        <span className="rounded-full bg-amber-400 px-2 text-xs font-semibold text-amber-950" data-testid="missing-galleries-count">
-          {rows.length}
-        </span>
-        <span className="ms-auto text-xs text-gray-400">מ-{shortDate(MISSING_FROM)}</span>
-      </div>
-      {rows.map((r) => (
-        <div key={r.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-white/5 py-2" data-testid="missing-gallery-row">
-          <div className="w-20 shrink-0">
-            <div className="text-sm text-gray-100">{shortDate(r.date)}</div>
-            <div className="text-xs text-rose-400">{agoText(r.daysAgo)}</div>
+    <Link to={createLink(r)} tabIndex={-1} aria-hidden="true" className="shrink-0 w-24 h-[68px] rounded-md border border-dashed border-rose-500/60 bg-rose-500/5 flex items-center justify-center">
+      <ImageOff className="w-5 h-5 text-rose-400" />
+    </Link>
+  );
+}
+
+function CreateButton({ r }) {
+  return (
+    <Link
+      to={createLink(r)}
+      className="inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-brand-400 px-3 py-1.5 text-sm font-semibold text-brand-fg hover:bg-brand-500"
+      data-testid="missing-gallery-create"
+    >
+      <Plus className="h-4 w-4" />
+      יצירת גלריה
+    </Link>
+  );
+}
+
+/** A table row in the galleries list (photos, with the events module: 11 columns). */
+export function MissingRow({ r }) {
+  return (
+    <tr className="border-t border-gray-800 bg-rose-500/[0.07] hover:bg-rose-500/10" data-testid="missing-gallery-row">
+      <td className="p-3 border-r-2 border-rose-500" />
+      <td className="p-1" />
+      <td className="p-3 whitespace-nowrap">
+        <div>{shortDate(r.date)}</div>
+        <div className="text-xs text-rose-400">{agoText(r.daysAgo)}</div>
+      </td>
+      <td className="p-2 font-medium">
+        <div className="flex items-center gap-3 min-w-[200px]">
+          <NoGalleryThumb r={r} />
+          <div className="min-w-0">
+            <div>{r.names}</div>
+            <div className="text-xs text-rose-400" data-testid="row-alert">עוד לא נוצרה גלריה</div>
           </div>
-          <div className="min-w-[8rem] flex-1 text-sm font-semibold text-white">{r.names}</div>
-          {r.venue && <div className="hidden w-40 truncate text-sm text-gray-400 sm:block">{r.venue}</div>}
-          <div className="flex flex-wrap gap-x-3 text-xs text-gray-300">
-            {r.uploads.items.map((i) => (
-              <span key={i.label} title={`${i.label}: ${i.done ? "העלה חומרים" : "עוד לא סומן שהעלה"}`} className="inline-flex items-center gap-1">
-                <span className={`inline-block h-2 w-2 rounded-full ${i.done ? "bg-emerald-400" : "bg-rose-500"}`} />
-                {i.name || i.label}
-              </span>
-            ))}
-          </div>
-          <Link
-            to={`${galleryHome("photos")}/new?event=${r.id}`}
-            className="ms-auto inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-brand-400 px-3 py-1.5 text-sm font-semibold text-brand-fg hover:bg-brand-500"
-            data-testid="missing-gallery-create"
-          >
-            <Plus className="h-4 w-4" />
-            יצירת גלריה
-          </Link>
         </div>
-      ))}
+      </td>
+      <td className="p-3 text-gray-400">{r.venue}</td>
+      <td className="p-3 text-gray-300" data-testid="photographer">
+        <ShooterDots up={r.uploads} />
+      </td>
+      <td className="p-3 text-gray-500">—</td>
+      <td className="p-3" />
+      <td className="p-3" />
+      <td className="p-3" />
+      <td className="p-3">
+        <div className="flex justify-end">
+          <CreateButton r={r} />
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+/** The same wedding in the cards view. */
+export function MissingCard({ r }) {
+  return (
+    <div className="relative rounded-xl border border-rose-500/60 bg-gray-900 overflow-hidden" data-testid="missing-gallery-card">
+      <Link to={createLink(r)} className="flex aspect-[3/2] items-center justify-center gap-2 border-b border-dashed border-rose-500/40 bg-rose-500/5 text-sm text-rose-300">
+        <ImageOff className="w-5 h-5" />
+        עוד לא נוצרה גלריה
+      </Link>
+      <div className="p-3 space-y-2">
+        <div className="font-semibold text-white truncate">{r.names}</div>
+        <div className="text-xs text-gray-400 truncate">
+          {shortDate(r.date)} · <span className="text-rose-400">{agoText(r.daysAgo)}</span>
+          {r.venue && <> · {r.venue}</>}
+        </div>
+        <div className="text-gray-300">
+          <ShooterDots up={r.uploads} inline />
+        </div>
+        <div className="flex justify-end">
+          <CreateButton r={r} />
+        </div>
+      </div>
     </div>
   );
 }

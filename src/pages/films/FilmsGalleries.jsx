@@ -12,14 +12,15 @@ import { batchMessages, needsConfirm, readAllGalleries, runBatch, withoutSkipped
 import { makeFilmThumb } from "@/lib/filmThumbs";
 import FilmsNotConfigured from "@/components/films/FilmsNotConfigured";
 import GalleriesSummary from "@/components/films/GalleriesSummary";
-import MissingGalleries from "@/components/films/MissingGalleries";
+import { MissingCard, MissingRow, useMissingGalleries } from "@/components/films/MissingGalleries";
+import ShooterDots from "@/components/films/ShooterDots";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { confirmDialog } from "@/lib/confirmDialog";
 import { eventsInfo, mainPhotographer, sendGalleryToCouple } from "@/lib/gallerySend";
-import { uploadsTitle } from "@/lib/galleryUploads";
+import { galleryAlert } from "@/lib/galleryUploads";
 import { syncFolderColors } from "@/lib/driveUpload";
 import ChoiceDialog from "@/components/films/ChoiceDialog";
 import EventPicker from "@/components/films/EventPicker";
@@ -33,14 +34,6 @@ import { DEFAULT_GALLERY_LINK_TEMPLATE, GALLERY_LINK_TEMPLATE_KEY, renderGallery
 // "המלל לזוג" (2026-11-06, the owner's request, as on "עריכת וידאו"): the words of "שלח לזוג" (template_gallery_link),
 // edited from the galleries page — the same setting as Settings ← תבניות הודעה. "→ זוג" on work status (Pixieset)
 // keeps its own message (the owner's choice).
-// The dot beside the photo count (2026-11-06, the owner's request): green = every photographer on the event uploaded
-// (work status "צלם 1" / "צלם 2"), red = one is missing. Nothing for a gallery without a linked event.
-function UploadDot({ up }) {
-  if (!up) return null;
-  const title = uploadsTitle(up);
-  return <span title={title} aria-label={title} className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${up.all ? "bg-emerald-400" : "bg-rose-500"}`} data-testid="upload-dot" data-state={up.all ? "all" : "missing"} />;
-}
-
 const GALLERY_TEXTS = [{ key: GALLERY_LINK_TEMPLATE_KEY, label: "הגלריה לזוג", fallback: DEFAULT_GALLERY_LINK_TEMPLATE, render: renderGalleryLink }];
 const GALLERY_TEXT_VARS = [
   ["{{link}}", "= הקישור לגלריה"],
@@ -236,6 +229,13 @@ export default function FilmsGalleries() {
   }, [canEvents, eventKey]);
   const photographerOf = (g) => g.photographer || infoByEvent[g.eventId]?.photographer || "";
   const uploadsFor = (g) => (g.eventId ? infoByEvent[g.eventId]?.uploads?.[kindOf(g)] || null : null);
+  // "חיפוש לפי צלם" finds both photographers of the wedding (2026-11-09: the column shows both).
+  const shooterText = (g) => [photographerOf(g), ...(uploadsFor(g)?.items || []).map((i) => i.name)].join(" ").toLowerCase();
+  // Why a photo gallery's row is red (2026-11-09): not sent to the couple and / or material missing — linked events only.
+  const alertFor = (g) => {
+    const info = g.eventId && !g.deletedAt && kindOf(g) === "photos" ? infoByEvent[g.eventId] : null;
+    return info ? galleryAlert(info.sent, info.uploads?.photos) : null;
+  };
   // The folders in Google Drive (2026-11-06, the owner's request): a gallery uploaded through the system is red there until
   // it went to the couple, then green — painted once the "sent" states are in, only when one changed (driveUpload.js).
   const colorKey = (list || [])
@@ -482,8 +482,19 @@ export default function FilmsGalleries() {
       .filter((g) => kindOf(g) === kind)
       .filter((g) => matches(g, filter))
       .filter((g) => !q || coupleMatches(g.coupleName, query) || `${g.coupleName} ${g.venue || ""} ${formatDate(g.date)} ${g.date}`.toLowerCase().includes(q))
-      .filter((g) => !sq || (g.photographer || infoByEvent[g.eventId]?.photographer || "").toLowerCase().includes(sq));
+      .filter((g) => !sq || shooterText(g).includes(sq));
   }, [list, query, filter, kind, shooter, infoByEvent]);
+
+  // The weddings with no gallery yet (2026-11-09, the owner's request): red rows in their month — under "הכל" only, and
+  // found by the same searches. `rows` = the galleries + those, newest first (on the same day the missing one first).
+  const missingAll = useMissingGalleries(list, kind === "photos" && canEvents);
+  const missing =
+    filter !== "all"
+      ? []
+      : missingAll
+          .filter((r) => !query.trim() || coupleMatches(r.names, query) || `${r.names} ${r.venue} ${formatDate(r.date)} ${r.date}`.toLowerCase().includes(query.trim().toLowerCase()))
+          .filter((r) => !shooter.trim() || r.uploads.items.some((i) => i.name.toLowerCase().includes(shooter.trim().toLowerCase())));
+  const rows = missing.length ? [...shown, ...missing.map((r) => ({ ...r, missing: true, createdAt: "9999" }))].sort(byEventDate) : shown;
 
   // The bulk bar is fixed at the bottom: the Layout floats its "המשך הקמה" pill above it.
   const bulkBarRef = useBottomBar();
@@ -670,8 +681,6 @@ export default function FilmsGalleries() {
           </div>
         )}
 
-        {kind === "photos" && canEvents && <MissingGalleries galleries={list} />}
-
         <GalleriesSummary
           kind={kind}
           refreshKey={list}
@@ -732,17 +741,19 @@ export default function FilmsGalleries() {
             עוד אין גלריות. צרו את הראשונה מהכפתור למעלה, או ייבאו רשימה שלמה.
           </div>
         )}
-        {list && list.length > 0 && shown.length === 0 && (
+        {list && list.length > 0 && rows.length === 0 && (
           <div className="rounded-xl border border-gray-800 bg-gray-900 p-10 text-center text-gray-400">אין גלריות שמתאימות לחיפוש.</div>
         )}
 
-        {shown.length > 0 && cards && (
+        {rows.length > 0 && cards && (
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" data-testid="gallery-cards">
-            {shown.map((g) => {
+            {rows.map((g) => {
+              if (g.missing) return <MissingCard key={`m-${g.id}`} r={g} />;
               const src = thumbSrc(g, true);
               const link = coupleLink(slug, g.id);
+              const alert = alertFor(g);
               return (
-                <div key={g.id} className={`relative rounded-xl border bg-gray-900 overflow-hidden ${picked.has(g.id) ? "border-brand-400" : "border-gray-800"}`} data-testid="gallery-card">
+                <div key={g.id} className={`relative rounded-xl border bg-gray-900 overflow-hidden ${picked.has(g.id) ? "border-brand-400" : alert ? "border-rose-500/60" : "border-gray-800"}`} data-testid="gallery-card">
                   <Link to={galleryPath(g)} className="block aspect-[3/2] bg-gray-800" aria-label={`עריכת ${g.coupleName}`}>
                     {src ? (
                       <img src={src} alt="" loading="lazy" className="w-full h-full object-cover" />
@@ -755,13 +766,18 @@ export default function FilmsGalleries() {
                     <Link to={galleryPath(g)} className="block font-semibold text-white hover:text-brand-400 truncate">
                       {g.coupleName}
                     </Link>
+                    {alert && <div className="text-xs text-rose-400" data-testid="row-alert">{alert}</div>}
                     <div className="text-xs text-gray-400 truncate">
-                      <UploadDot up={uploadsFor(g)} />{uploadsFor(g) && " "}
                       {kindOf(g) === "photos" ? `${(g.photoCount || 0).toLocaleString("he-IL")} תמונות` : `${g.films.length} סרטים`}
                       {g.date && <> · {formatDate(g.date)}</>}
                       {g.venue && <> · {g.venue}</>}
-                      {photographerOf(g) && <> · 📷 {photographerOf(g)}</>}
+                      {!uploadsFor(g) && photographerOf(g) && <> · 📷 {photographerOf(g)}</>}
                     </div>
+                    {uploadsFor(g) && (
+                      <div className="text-gray-300">
+                        <ShooterDots up={uploadsFor(g)} inline />
+                      </div>
+                    )}
                     <div className="flex items-center justify-between gap-2">
                       {g.deletedAt ? <TrashState g={g} /> : <State g={g} />}
                       {g.deletedAt ? (
@@ -787,7 +803,7 @@ export default function FilmsGalleries() {
           </div>
         )}
 
-        {shown.length > 0 && !cards && (
+        {rows.length > 0 && !cards && (
           <div className="rounded-xl border border-gray-800 bg-gray-900 overflow-x-auto">
             <table className="w-full text-sm text-white">
               <thead className="text-gray-400 border-b border-gray-800">
@@ -807,7 +823,8 @@ export default function FilmsGalleries() {
                   <th className="p-3 text-right font-medium">תאריך</th>
                   <th className="p-3 text-right font-medium">זוג</th>
                   <th className="p-3 text-right font-medium">אולם</th>
-                  <th className="p-3 text-right font-medium">צלם</th>
+                  {/* Both photographers, a dot each: uploaded or not (2026-11-09, as on work status). */}
+                  <th className="p-3 text-right font-medium">צלמים</th>
                   <th className="p-3 text-right font-medium">{kind === "photos" ? "תמונות" : "סרטים"}</th>
                   {kind === "photos" && <th className="p-3 text-right font-medium">בחירת אלבום</th>}
                   {kind === "photos" && canEvents && <th className="p-3 text-right font-medium">אלבום</th>}
@@ -816,24 +833,34 @@ export default function FilmsGalleries() {
                 </tr>
               </thead>
               <tbody>
-                {shown.map((g, i) => {
+                {rows.map((g, i) => {
                   const month = monthOf(g.date);
-                  const newMonth = i === 0 || monthOf(shown[i - 1].date) !== month;
-                  const inMonth = newMonth ? shown.filter((x) => monthOf(x.date) === month).length : 0;
+                  const newMonth = i === 0 || monthOf(rows[i - 1].date) !== month;
+                  const inMonth = newMonth ? rows.filter((x) => monthOf(x.date) === month).length : 0;
+                  const monthRow = newMonth && (
+                    <tr className="bg-gray-950/60">
+                      <td colSpan={kind === "photos" ? (canEvents ? 11 : 10) : 9} className="px-3 py-2 text-xs text-gray-400">
+                        <bdi className="font-semibold text-gray-300">{month}</bdi> · {inMonth === 1 ? "אירוע אחד" : `${inMonth} אירועים`}
+                      </td>
+                    </tr>
+                  );
+                  if (g.missing) {
+                    return (
+                      <Fragment key={`m-${g.id}`}>
+                        {monthRow}
+                        <MissingRow r={g} />
+                      </Fragment>
+                    );
+                  }
                   const link = coupleLink(slug, g.id);
                   const order = kind === "photos" ? orderOf(g) : null;
                   const sent = Boolean(g.eventId && infoByEvent[g.eventId]?.sent);
+                  const alert = alertFor(g);
                   return (
                     <Fragment key={g.id}>
-                      {newMonth && (
-                        <tr className="bg-gray-950/60">
-                          <td colSpan={kind === "photos" ? (canEvents ? 11 : 10) : 9} className="px-3 py-2 text-xs text-gray-400">
-                            <bdi className="font-semibold text-gray-300">{month}</bdi> · {inMonth === 1 ? "אירוע אחד" : `${inMonth} אירועים`}
-                          </td>
-                        </tr>
-                      )}
-                      <tr className="border-t border-gray-800 hover:bg-gray-800/40" data-testid="gallery-row">
-                        <td className="p-3">
+                      {monthRow}
+                      <tr className={`border-t border-gray-800 ${alert ? "bg-rose-500/[0.07] hover:bg-rose-500/10" : "hover:bg-gray-800/40"}`} data-testid="gallery-row" data-alert={alert ? "1" : "0"}>
+                        <td className={`p-3 ${alert ? "border-r-2 border-rose-500" : ""}`}>
                           <input type="checkbox" className="w-4 h-4" aria-label={`בחירת ${g.coupleName}`} checked={picked.has(g.id)} onChange={() => togglePick(g.id)} data-testid="pick" />
                         </td>
                         <td className="p-1">
@@ -856,17 +883,15 @@ export default function FilmsGalleries() {
                                 {g.coupleName}
                               </Link>
                               {g.studioName && <div className="text-xs text-gray-500">{g.studioName}</div>}
+                              {alert && <div className="text-xs font-normal text-rose-400" data-testid="row-alert">{alert}</div>}
                             </div>
                           </div>
                         </td>
                         <td className="p-3 text-gray-400">{g.venue || ""}</td>
-                        <td className="p-3 text-gray-300 whitespace-nowrap" data-testid="photographer">{photographerOf(g)}</td>
-                        <td className="p-3">
-                          <span className="inline-flex items-center gap-1.5">
-                            <UploadDot up={uploadsFor(g)} />
-                            {contentCount(g).toLocaleString("he-IL")}
-                          </span>
+                        <td className="p-3 text-gray-300 whitespace-nowrap" data-testid="photographer">
+                          <ShooterDots up={uploadsFor(g)} fallback={photographerOf(g)} />
                         </td>
+                        <td className="p-3">{contentCount(g).toLocaleString("he-IL")}</td>
                         {kind === "photos" && (
                           <td className="p-3">
                             {g.choiceDoneAt ? (

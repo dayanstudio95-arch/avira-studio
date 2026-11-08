@@ -2,11 +2,12 @@ import { coupleMatches, withAmpersand } from "@films-shared/names";
 import { dateKey } from "@/lib/dates";
 import { uploadsOf } from "@/lib/galleryUploads";
 
-// "אירועים שעברו ועדיין אין להם גלריה" (Avira, 2026-11-07, the owner's request): on the galleries page, under Google
-// Drive — the weddings that already happened (before today, Israel time) with a photographer on the team, not sent to
-// the couple yet (work status "→ זוג", e.g. a Pixieset link) and with no photo gallery: none linked to the event, and no
-// unlinked one with the couple's names on that day. A gallery in the trash does not count. Only from November 2026:
-// before it the galleries went out on Pixieset. Pure — tested in scripts/test-whatsapp-bot.mjs.
+// The weddings with no gallery yet (Avira, 2026-11-07, the owner's request; 2026-11-09: red rows inside the galleries
+// list, in their month, today's weddings too — no strip above it any more): the weddings that already happened (up to
+// and including today, Israel time) with a photographer on the team, not sent to the couple yet (work status "→ זוג",
+// e.g. a Pixieset link) and with no photo gallery: none linked to the event, and no unlinked one with the couple's names
+// on that day. A gallery in the trash does not count. Only from November 2026: before it the galleries went out on
+// Pixieset. Pure — tested in scripts/test-whatsapp-bot.mjs.
 
 export const MISSING_FROM = "2026-11-01";
 
@@ -26,7 +27,7 @@ export function missingGalleries(events, galleries, today, from = MISSING_FROM) 
   return (events || [])
     .map((ev) => ({ ev, day: dateKey(ev?.date) }))
     .filter(({ ev, day }) => {
-      if (!day || day < from || day >= today) return false;
+      if (!day || day < from || day > today) return false;
       if (ev.final_done_manual === true || linked.has(ev.id) || !uploadsOf(ev, "photos")) return false;
       return !unlinked.some((g) => dateKey(g.date) === day && coupleMatches(ev.couple_names || "", g.coupleName || ""));
     })
@@ -41,9 +42,10 @@ export function missingGalleries(events, galleries, today, from = MISSING_FROM) 
     .sort((a, b) => a.date.localeCompare(b.date) || a.names.localeCompare(b.names));
 }
 
-/** "אתמול" / "לפני יומיים" / "לפני 5 ימים". */
+/** "היום" / "אתמול" / "לפני יומיים" / "לפני 5 ימים". */
 export function agoText(days) {
-  if (days <= 1) return "אתמול";
+  if (days <= 0) return "היום";
+  if (days === 1) return "אתמול";
   if (days === 2) return "לפני יומיים";
   return `לפני ${days} ימים`;
 }

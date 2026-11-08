@@ -4129,12 +4129,28 @@ console.log('\n— PART 75: album group messages + list order —');
     { kind: 'photos', eventId: null, coupleName: 'אלה & בן', date: '2026-10-06' },
   ];
   const rows = gm.missingGalleries(events, galleries, '2026-11-07');
-  check('only past weddings from 1.11 with a photographer, not sent, no photo gallery (linked, or by names on the day); trash does not count; oldest first', [
-    rows.map((r) => r.id), rows[1].names, rows[1].daysAgo, rows[1].uploads.items.map((i) => [i.name, i.done]),
-    gm.agoText(1), gm.agoText(2), gm.agoText(3), gm.missingGalleries(null, null, '2026-11-07'), gm.MISSING_FROM,
-  ], [['e9', 'e8', 'e1', 'e10'], 'גל & מאיה', 4, [['יריב', false], ['יונתן', false]], 'אתמול', 'לפני יומיים', 'לפני 3 ימים', [], '2026-11-01']);
+  check('weddings from 1.11 up to and including today (2026-11-09) with a photographer, not sent, no photo gallery (linked, or by names on the day); trash does not count; oldest first', [
+    rows.map((r) => r.id), rows[1].names, rows[1].daysAgo, rows[1].uploads.items.map((i) => [i.name, i.done]), rows[4].daysAgo,
+    gm.agoText(0), gm.agoText(1), gm.agoText(2), gm.agoText(3), gm.missingGalleries(null, null, '2026-11-07'), gm.MISSING_FROM,
+    gm.missingGalleries(events, galleries, '2026-11-06').map((r) => r.id),
+  ], [['e9', 'e8', 'e1', 'e10', 'e7'], 'גל & מאיה', 4, [['יריב', false], ['יונתן', false]], 0, 'היום', 'אתמול', 'לפני יומיים', 'לפני 3 ימים', [], '2026-11-01', ['e9', 'e8', 'e1', 'e10']]);
   check('the row of Michelle & Eden as on the page', gm.missingGalleries([events[0]], [], '2026-11-07'), [
     { id: 'e1', date: '2026-11-04', names: 'מישל & עדן', venue: 'אולם', daysAgo: 3, uploads: { all: false, items: [{ label: 'צלם 1', name: 'יריב', done: true }, { label: 'צלם 2', name: 'יונתן', done: false }] } },
+  ]);
+}
+
+{
+  section('galleries list: red rows — not sent to the couple / a photographer did not upload (2026-11-09)');
+  const gu = await loadModule('src/lib/galleryUploads.js', 'gu98');
+  const team = [{ role: 'photographer1', staffMemberName: 'אני (דניאל)' }, { role: 'photographer2', staffMemberName: 'סלבה' }];
+  const up = (p1, p2, t = team) => gu.uploadsOf({ team: t, photographer1_done: p1, photographer2_done: p2 }, 'photos');
+  check('the reason under the couple\'s names; null when sent and both uploaded', [
+    gu.galleryAlert(false, up(true, false)), gu.galleryAlert(false, up(false, false)), gu.galleryAlert(true, up(true, false)),
+    gu.galleryAlert(false, up(true, true)), gu.galleryAlert(true, up(true, true)), gu.galleryAlert(true, null), gu.galleryAlert(false, null),
+    gu.galleryAlert(true, up(false, false, [{ role: 'photographer1', staffMemberName: '' }, { role: 'photographer2', staffMemberName: 'יונתן' }])),
+  ], [
+    'לא נשלח לזוג · סלבה עוד לא העלה', 'לא נשלח לזוג · אני (דניאל) וסלבה עוד לא העלו', 'סלבה עוד לא העלה',
+    'לא נשלח לזוג', null, null, 'לא נשלח לזוג', 'צלם 1 ויונתן עוד לא העלו',
   ]);
 }
 
