@@ -9,9 +9,10 @@ import { DriveJobButtons, DriveJobProgress } from "@/components/DriveUploadPill"
 
 // "העלאה מהמחשב לגוגל דרייב" on a photo gallery (Avira, 2026-11-03, the owner's request; src/lib/driveUpload.js): the
 // wedding's folder is dropped here, its sub-folders are the sets; whose materials they are (the event's photographers,
-// as on work status — marked "done" there at the end); then the upload runs in the background.
-// `galleryId` null = a new gallery not saved yet: `onReady({ plan, roles })` hands the choice to the form, which starts
-// the upload once the gallery is made.
+// as on work status — marked "done" there at the end; 2026-11-09: or "יהיו עוד בהמשך" — not marked, the end offers to
+// mark him); then the upload runs in the background.
+// `galleryId` null = a new gallery not saved yet: `onReady({ plan, roles, people, later })` hands the choice to the form,
+// which starts the upload once the gallery is made.
 export default function DriveUploadPanel({ galleryId = null, coupleName = "", date = "", eventId = null, existingFolderUrl = "", onReady = null }) {
   const location = useLocation();
   const [status, setStatus] = useState(null); // { connected, email } | { failed }
@@ -20,6 +21,9 @@ export default function DriveUploadPanel({ galleryId = null, coupleName = "", da
   const [over, setOver] = useState(false);
   const [team, setTeam] = useState([]);
   const [roles, setRoles] = useState([]);
+  // The chosen photographers with more of their materials to come (not marked "done" at the end).
+  const [later, setLater] = useState([]);
+  const people = team.filter((m) => roles.includes(m.role));
   const [quota, setQuota] = useState(null);
   const [target, setTarget] = useState({ checked: false, folderId: null });
   const [job, setJob] = useState(() => (galleryId ? jobFor(galleryId) : null));
@@ -83,7 +87,7 @@ export default function DriveUploadPanel({ galleryId = null, coupleName = "", da
         return;
       }
       setPlan(p);
-      onReady?.({ plan: p, roles });
+      onReady?.({ plan: p, roles, people, later: later.filter((r) => roles.includes(r)) });
     } catch {
       toast.error("לא הצלחנו לקרוא את התיקייה. גוררים אותה שוב, או בוחרים אותה מהמחשב.");
     } finally {
@@ -91,12 +95,12 @@ export default function DriveUploadPanel({ galleryId = null, coupleName = "", da
     }
   };
   useEffect(() => {
-    if (plan) onReady?.({ plan, roles });
-  }, [roles]);
+    if (plan) onReady?.({ plan, roles, people, later: later.filter((r) => roles.includes(r)) });
+  }, [roles, later]);
 
   const start = () => {
     try {
-      startUpload({ galleryId, coupleName, date, eventId, roles, plan, folderId: target.folderId });
+      startUpload({ galleryId, coupleName, date, eventId, roles, people, later: later.filter((r) => roles.includes(r)), plan, folderId: target.folderId });
       setPlan(null);
     } catch (e) {
       toast.error(e.message);
@@ -213,29 +217,47 @@ export default function DriveUploadPanel({ galleryId = null, coupleName = "", da
           <div>
             <p className="mb-1.5 text-xs text-gray-400">של מי החומרים? (מצוות האירוע, כמו בסטטוס עבודה)</p>
             {team.length ? (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-col gap-2">
                 {team.map((m) => {
                   const on = roles.includes(m.role);
+                  const more = later.includes(m.role);
+                  const seg = (active, tone) => `px-2.5 py-1 ${active ? tone : "text-gray-400 hover:text-gray-200"}`;
                   return (
-                    <button
-                      key={m.role}
-                      type="button"
-                      onClick={() => setRoles((r) => (on ? r.filter((x) => x !== m.role) : [...r, m.role]))}
-                      className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs ${on ? "border-brand-400 bg-brand-400/15 text-white ring-1 ring-brand-400" : "border-gray-600 text-gray-300 hover:border-gray-400"}`}
-                      aria-pressed={on}
-                      data-testid={`drive-role-${m.role}`}
-                    >
-                      <Camera className="h-3.5 w-3.5" /> {on ? "✓ " : ""}
-                      {m.label}
-                      {m.name ? ` · ${m.name}` : ""}
-                    </button>
+                    <div key={m.role} className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setRoles((r) => (on ? r.filter((x) => x !== m.role) : [...r, m.role]))}
+                        className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs ${on ? "border-brand-400 bg-brand-400/15 text-white ring-1 ring-brand-400" : "border-gray-600 text-gray-300 hover:border-gray-400"}`}
+                        aria-pressed={on}
+                        data-testid={`drive-role-${m.role}`}
+                      >
+                        <Camera className="h-3.5 w-3.5" /> {on ? "✓ " : ""}
+                        {m.label}
+                        {m.name ? ` · ${m.name}` : ""}
+                      </button>
+                      {/* All of his materials, or more to come (2026-11-09): only "all" is marked "done" at the end. */}
+                      {on && (
+                        <span className="inline-flex overflow-hidden rounded-md border border-gray-600 text-xs" role="group" aria-label={`החומרים של ${m.name || m.label}`}>
+                          <button type="button" onClick={() => setLater((l) => l.filter((x) => x !== m.role))} aria-pressed={!more} className={seg(!more, "bg-green-500/20 text-green-300")} data-testid={`drive-all-${m.role}`}>
+                            כל החומרים שלו
+                          </button>
+                          <button type="button" onClick={() => setLater((l) => (more ? l : [...l, m.role]))} aria-pressed={more} className={seg(more, "bg-amber-400/20 text-amber-200")} data-testid={`drive-later-${m.role}`}>
+                            יהיו עוד בהמשך
+                          </button>
+                        </span>
+                      )}
+                    </div>
                   );
                 })}
               </div>
             ) : (
               <p className="text-xs text-gray-500">{eventId ? "באירוע אין צלמים בצוות." : "הגלריה לא מקושרת לאירוע, אז שום צלם לא יסומן בסטטוס עבודה. אפשר לבחור אירוע ב\"פרטי הזוג\"."}</p>
             )}
-            {roles.length > 0 && <p className="mt-1.5 text-[11px] text-gray-500">כשההעלאה מסתיימת, הקובייה שלו בסטטוס עבודה הופכת לירוקה.</p>}
+            {roles.length > 0 && (
+              <p className="mt-1.5 text-[11px] text-gray-500">
+                כשההעלאה מסתיימת, מי שסימנת "כל החומרים שלו" נצבע בירוק בסטטוס עבודה. מי שסימנת "יהיו עוד בהמשך" נשאר אדום, ובסוף יופיע כפתור לסמן אותו.
+              </p>
+            )}
           </div>
 
           {!onReady && (

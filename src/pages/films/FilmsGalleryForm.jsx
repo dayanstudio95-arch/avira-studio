@@ -94,7 +94,7 @@ export default function FilmsGalleryForm() {
   const [photoFolder, setPhotoFolder] = useState("");
   // A new photo gallery's photos: uploaded to Google Drive from here (0109), or a link as before.
   const [photoSource, setPhotoSource] = useState("drive");
-  const [drivePick, setDrivePick] = useState(null); // { plan, roles } — starts once the gallery is made
+  const [drivePick, setDrivePick] = useState(null); // { plan, roles, people, later } — starts once the gallery is made
   const [music, setMusic] = useState("");
   const [password, setPassword] = useState("");
   const [downloadPin, setDownloadPin] = useState("");
@@ -324,7 +324,7 @@ export default function FilmsGalleryForm() {
       // The Drive upload starts in the background as soon as the gallery exists (src/lib/driveUpload.js).
       if (isNew && !madeBefore && kind === "photos" && photoSource === "drive" && drivePick?.plan) {
         try {
-          startUpload({ galleryId: g.id, galleryKind: "photos", coupleName: g.coupleName || coupleName, date, eventId: (canEvents && eventId) || null, roles: drivePick.roles, plan: drivePick.plan });
+          startUpload({ galleryId: g.id, galleryKind: "photos", coupleName: g.coupleName || coupleName, date, eventId: (canEvents && eventId) || null, roles: drivePick.roles, people: drivePick.people || [], later: drivePick.later || [], plan: drivePick.plan });
         } catch (upErr) {
           toast.error(upErr.message);
         }

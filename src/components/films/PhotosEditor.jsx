@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { PRESET_SETS, isTopFolder } from "@films-shared/photosets";
-import { readPhotoDates } from "@/lib/photoDates";
 import { copyText, filmsApi, photoUrl } from "@/lib/filmsApi";
 import { formatDateShort } from "@/lib/dates";
 import { Button } from "@/components/ui/button";
@@ -11,7 +10,10 @@ import { Input } from "@/components/ui/input";
 import { useBottomBar } from "@/lib/bottomBar";
 import { confirmDialog, isConfirmOpen } from "@/lib/confirmDialog";
 import { isOpen, jobFor, registerEditor, subscribe, uploadFolderOf } from "@/lib/driveUpload";
+import { isProcessing, processGallery, processingFor, subscribeProcessing } from "@/lib/photoProcessing";
+import { hasWork, isUnmarked, labelSetPatches } from "@/lib/photoProcessingPlan";
 import DriveUploadPanel from "@/components/films/DriveUploadPanel";
+import LoadedWhoseMaterials from "@/components/films/LoadedWhoseMaterials";
 
 // The studio organizes a photo gallery: read the folder, sets, cover, hidden photos, and sees the
 // couple's hearts and Instagram marks. Ported from the Avira films app's admin (PhotosEditor.tsx,
@@ -22,8 +24,6 @@ import DriveUploadPanel from "@/components/films/DriveUploadPanel";
 const LABELS = ["red", "yellow", "green", "blue", "purple", "none"];
 const LABEL_NAMES = { yellow: "צהוב", red: "אדום", blue: "כחול", purple: "סגול", green: "ירוק", none: "בלי צבע" };
 const LABEL_DOT = { yellow: "bg-yellow-400", red: "bg-red-500", blue: "bg-blue-500", purple: "bg-purple-500", green: "bg-green-500", none: "border border-gray-400" };
-/** A photo read with no colour, outside the teaser ("top") folders — those go to the teaser instead. */
-const isUnmarked = (it) => it.label === "" && !(it.folder && isTopFolder(it.folder));
 
 const card = "rounded-xl border border-gray-800 bg-gray-900 p-5 space-y-3";
 const chip = (on) => `rounded-full border px-3 py-1 text-sm transition-colors ${on ? "border-brand-400 bg-brand-400/15 text-brand-300" : "border-gray-700 text-gray-300 hover:text-white"}`;
@@ -62,8 +62,11 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
   const [warning, setWarning] = useState("");
   const [view, setView] = useState("all");
   const [selected, setSelected] = useState(() => new Set());
-  const [scan, setScan] = useState(null);
-  const [dating, setDating] = useState(null);
+  // After a load: measuring the photos, then their capture times and colours — in the background (2026-11-09,
+  // src/lib/photoProcessing.js); shown here while the page is open, the pill shows it on every page.
+  const [work, setWork] = useState(() => processingFor(galleryId));
+  // Loaded from a link: whose materials these were, asked once (2026-11-09).
+  const [askWhose, setAskWhose] = useState(false);
   const [labelsOn, setLabelsOn] = useState(false);
   const [labelMap, setLabelMap] = useState({});
   const [showLabelMap, setShowLabelMap] = useState(false);
@@ -113,7 +116,6 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
     }
   });
   const lastClicked = useRef(null);
-  const datesTried = useRef(false);
   const keyHandler = useRef(/** @type {(e: any) => void} */ (() => {}));
   // The selection dock is fixed at the bottom: the Layout floats its "המשך הקמה" pill above it.
   const selDockRef = useBottomBar();
@@ -173,13 +175,7 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
 
   /** Puts photos that have no set yet into the set their Lightroom colour stands for (no colour: the "none" set). */
   const applyLabels = async (d, map = labelMap) => {
-    const idByName = new Map(d.sets.map((x) => [x.name, x.id]));
-    const items = {};
-    for (const it of d.items) {
-      if (it.set || !(it.label || isUnmarked(it))) continue;
-      const id = idByName.get(map[it.label || "none"] || "");
-      if (id) items[it.key] = { set: id };
-    }
+    const items = labelSetPatches(d, map);
     const n = Object.keys(items).length;
     if (n) {
       await save({ items });
@@ -188,99 +184,14 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
     return n;
   };
 
-  /** Loads every small preview once to learn each photo's shape (and warm the cache for the couple). */
-  const measure = async (d) => {
-    const todo = d.items.filter((i) => !i.ar);
-    if (todo.length === 0) return;
-    setScan({ done: 0, total: todo.length });
-    let done = 0;
-    let pending = {};
-    const flush = async () => {
-      if (Object.keys(pending).length === 0) return;
-      const batch = pending;
-      pending = {};
-      await save({ items: batch });
-    };
-    const queue = [...todo];
-    const worker = async () => {
-      while (queue.length) {
-        const it = queue.shift();
-        await new Promise((resolve) => {
-          const img = new Image();
-          img.onload = () => {
-            if (img.naturalWidth && img.naturalHeight) pending[it.key] = { ar: img.naturalWidth / img.naturalHeight };
-            resolve();
-          };
-          img.onerror = () => resolve();
-          img.src = photoUrl(galleryId, it.key, "m", d.previewToken, d.gen);
-        });
-        done++;
-        setScan({ done, total: todo.length });
-        if (Object.keys(pending).length >= 40) await flush();
-      }
-    };
-    await Promise.all(Array.from({ length: 6 }, worker));
-    await flush();
-    setScan(null);
-  };
-
-  /**
-   * Several photographers → one timeline, and Lightroom colours: read the start of each photo once. In
-   * batches the Worker takes for this cloud; a photo it could not read is asked again (up to 3 times),
-   * and one that still failed is not marked as read (no label), so the next opening tries it again
-   * (fix plan P62). No made-up times (P64): a photo without one stays without, and the Worker puts it
-   * next to the photo before it by name. `again` = the "read times again" button: every photo when the
-   * list's times were read before P64 (they may be made up), else the photos without a time. When every
-   * photo was read this way, the list is marked `timesV: 2` ("full quality" trusts its times).
-   */
-  const readTimes = async (d, { again = false } = {}) => {
-    const old = d.timesV !== 2;
-    const keys = d.items.filter((i) => (again ? old || typeof i.t !== "number" : i.label === undefined)).map((i) => i.key);
-    datesTried.current = true;
-    if (keys.length === 0) return;
-    const whole = keys.length === d.items.length;
-    setDating({ done: 0, total: keys.length });
-    try {
-      const { dates: found, labels, failed } = await readPhotoDates({
-        keys,
-        provider: d.provider,
-        post: (batch) => filmsApi("POST", `/api/admin/galleries/${galleryId}/photos/dates`, { keys: batch }),
-        onProgress: (done, total) => setDating({ done, total }),
-      });
-      const skip = new Set(failed);
-      const patches = {};
-      for (const k of keys) {
-        // Not read: no label (tried again next time). Its old time goes only when every time is being
-        // replaced by one from the files.
-        if (skip.has(k)) {
-          if (whole && old) patches[k] = { t: null };
-          continue;
-        }
-        const t = found[k];
-        patches[k] = { t: typeof t === "number" ? t : null, label: labels[k] || "" };
-      }
-      const entries = Object.entries(patches);
-      let latest = null;
-      let saved = true;
-      for (let i = 0; i < entries.length; i += 1000) {
-        const next = await save({ items: Object.fromEntries(entries.slice(i, i + 1000)) });
-        saved = saved && Boolean(next);
-        latest = next || latest;
-      }
-      if (saved && whole && old) latest = (await save({ timesV: 2 })) || latest;
-      if (latest && labelsOn) await applyLabels(latest);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setDating(null);
-    }
-  };
+  // "קריאת זמנים מחדש" and switching the colours on: the same background work (photoProcessing.js).
+  const readTimes = (d, { again = false } = {}) => processGallery(galleryId, { coupleName, data: d, force: true, again });
 
   /**
    * Reads the folder again. When more than 10% of the photos the couple chose (hearts, Instagram,
    * lists, the album) would lose their photo, the Worker saves nothing and asks (fix plan P64, D16).
    */
-  const load = async (confirm = false, url = folder) => {
+  const load = async (confirm = false, url = folder, { ask = false } = {}) => {
     setError("");
     setWarning("");
     setBusy("load");
@@ -290,13 +201,16 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
         const go = await confirmDialog(
           `${d.lost.toLocaleString("he-IL")} מתוך ${d.total.toLocaleString("he-IL")} התמונות שהזוג בחר (לבבות, אינסטגרם, רשימות או האלבום) לא נמצאות בתיקייה הזו. לטעון בכל זאת? הבחירות האלה יישארו בלי תמונה.`,
         );
-        return go ? await load(true, url) : "declined";
+        return go ? await load(true, url, { ask }) : "declined";
       }
       setData(d);
       toast.success(`נטענו ${d.items.length.toLocaleString("he-IL")} תמונות`);
       // Dropbox makes no preview of some files (HEIC, over 20MB): the Worker says which (fix plan P66).
       if (d.warnings?.length) setWarning(d.warnings.join(" "));
-      datesTried.current = false;
+      // The rest goes on in the background, here or on any other page.
+      processGallery(galleryId, { coupleName, data: d, force: true });
+      // A folder the owner put in Drive himself: whose materials were they (an upload of the system asked before).
+      if (ask && eventId) setAskWhose(true);
       return true;
     } catch (e) {
       setError(e.message);
@@ -306,15 +220,35 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
     }
   };
 
-  // After loading: learn the shapes, then (once) capture times and colours, in the background.
+  // Opened with photos still to measure or read (an upload loaded while the page was closed): the background work starts
+  // — once a session (a photo that can't be read is not asked forever; the next opening tries it again).
   useEffect(() => {
-    if (!data) return;
-    (async () => {
-      if (data.items.some((i) => !i.ar) && !scan) await measure(data);
-      if (!datesTried.current && !dating && data.items.some((i) => i.label === undefined)) await readTimes(data);
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (data && hasWork(data) && !processingFor(galleryId)) processGallery(galleryId, { coupleName, data });
   }, [data?.items.length]);
+  // The background work's progress; when it ends, the list as it saved it (times, order, sets by colour) — read after
+  // this page's own saves, in the same queue.
+  useEffect(
+    () =>
+      subscribeProcessing(() => {
+        const job = processingFor(galleryId);
+        setWork(job ? { phase: job.phase, done: job.done, total: job.total, error: job.error, version: job.version, finishedAt: job.finishedAt } : null);
+      }),
+    [galleryId],
+  );
+  const workEnd = work?.phase === "done" && work.version > 0 ? work.finishedAt : 0;
+  useEffect(() => {
+    if (!workEnd) return;
+    saveQueue.current = saveQueue.current.then(async () => {
+      try {
+        const d = await filmsApi("GET", `/api/admin/galleries/${galleryId}/photos`);
+        if (d) setData(d);
+      } catch {
+        /* the next save brings it */
+      }
+    });
+  }, [workEnd, galleryId]);
+  const dating = isProcessing(work) && work.phase === "dates" ? work : null;
+  const scan = isProcessing(work) && work.phase === "measure" ? work : null;
 
   const favs = useMemo(() => new Set(data?.favorites || []), [data?.favorites]);
   const insta = useMemo(() => new Set(data?.insta || []), [data?.insta]);
@@ -396,7 +330,7 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
   const folderRow = (label) => (
     <div className="flex flex-wrap gap-2">
       <Input className="bg-gray-800 border-gray-700 text-white flex-1 min-w-[240px]" value={folder} onChange={(e) => setFolder(e.target.value)} placeholder="https://www.dropbox.com/scl/fo/…" dir="ltr" data-testid="photo-folder" />
-      <Button type="button" disabled={!folder || busy === "load"} onClick={() => load()} className="bg-brand-400 hover:bg-brand-500 text-brand-fg" data-testid="photos-load">
+      <Button type="button" disabled={!folder || busy === "load"} onClick={() => load(false, folder, { ask: true })} className="bg-brand-400 hover:bg-brand-500 text-brand-fg" data-testid="photos-load">
         {busy === "load" ? <Loader2 className="w-4 h-4 animate-spin" /> : label}
       </Button>
     </div>
@@ -591,7 +525,7 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
     setLabelsOn(on);
     await filmsApi("PUT", "/api/admin/settings", { labelSetsOn: on }).catch((e) => setError(e.message));
     if (on) {
-      if (data.items.some((i) => i.label === undefined)) await readTimes(data);
+      if (data.items.some((i) => i.label === undefined)) readTimes(data);
       else await applyLabels(data);
     }
   };
@@ -650,6 +584,9 @@ export default function PhotosEditor({ galleryId, initialFolder = "", coupleName
             סורק תמונות
           </Progress>
         )}
+        {(scan || dating) && <p className="text-[11px] text-gray-500">ממשיך ברקע גם כשעוברים לדף אחר (פס למטה במסך).</p>}
+        {work?.phase === "error" && <p className="text-sm text-red-400">העיבוד נעצר: {work.error}</p>}
+        {askWhose && <LoadedWhoseMaterials eventId={eventId} count={data.items.length} onClose={() => setAskWhose(false)} />}
       </section>
 
       {!topDone && topFolders.length > 0 && (

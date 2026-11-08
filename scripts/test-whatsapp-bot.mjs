@@ -4155,6 +4155,46 @@ console.log('\n— PART 75: album group messages + list order —');
 }
 
 {
+  section('photos after a load, in the background + whose materials: all of them / more to come (2026-11-09)');
+  const pp = await loadModule('src/lib/photoProcessingPlan.js', 'pp99');
+  const data = {
+    timesV: 2,
+    sets: [{ id: 's1', name: 'התארגנות' }, { id: 's2', name: 'אולם' }],
+    items: [
+      { key: 'a', ar: 1.5, t: 10, label: 'red' },
+      { key: 'b', t: 20, label: '' },
+      { key: 'c', ar: 0.66 },
+      { key: 'd', ar: 1.5, t: null, label: 'red', set: 's2' },
+      { key: 'e', ar: 1.5, t: 30, label: '', folder: 'טופ' },
+    ],
+  };
+  check('what is left: shapes (no ar) and reading (no label); "again" = the photos without a time', [
+    pp.processingTodo(data), pp.processingTodo(data, { again: true }).dates, pp.processingTodo({ ...data, timesV: 1 }, { again: true }).dates.length,
+    pp.hasWork(data), pp.hasWork({ items: [{ key: 'x', ar: 1, label: '' }] }), pp.processingTodo(null),
+  ], [{ measure: ['b'], dates: ['c'] }, ['c', 'd'], 5, true, false, { measure: [], dates: [] }]);
+  check('what was read → the patch; unread stays unread; the old time goes only when all are re-read before P64', [
+    pp.datePatches(data, ['c'], { dates: { c: 40 }, labels: { c: 'yellow' } }),
+    pp.datePatches(data, ['b', 'c'], { dates: { b: 5 }, labels: {}, failed: ['c'] }),
+    pp.datePatches({ ...data, timesV: 1 }, ['a', 'b', 'c', 'd', 'e'], { dates: {}, labels: {}, failed: ['a'] }).patches.a,
+    pp.datePatches({ ...data, timesV: 1 }, ['a', 'b', 'c', 'd', 'e'], { failed: [] }).markV2,
+    pp.datePatches(data, [], {}),
+  ], [
+    { patches: { c: { t: 40, label: 'yellow' } }, markV2: false },
+    { patches: { b: { t: 5, label: '' } }, markV2: false },
+    { t: null }, true, { patches: {}, markV2: false },
+  ]);
+  check('sets by colour: only photos with no set; no colour = "none"; the teaser folder is left alone', [
+    pp.labelSetPatches(data, { red: 'התארגנות', none: 'אולם' }), pp.labelSetPatches(data, {}), pp.isUnmarked(data.items[1]), pp.isUnmarked(data.items[4]),
+  ], [{ a: { set: 's1' }, b: { set: 's2' } }, {}, true, false]);
+  const people = [{ role: 'photographer1', label: 'צלם 1', field: 'photographer1_done', name: 'אני (דניאל)' }, { role: 'photographer2', label: 'צלם 2', field: 'photographer2_done', name: 'סלבה' }];
+  check('"כל החומרים שלו" is marked at the end, "יהיו עוד בהמשך" is not; names for the messages; who is still to ask', [
+    pp.uploadMarks(people, ['photographer2']).mark.map((p) => p.name), pp.uploadMarks(people, ['photographer2']).later.map((p) => p.name),
+    pp.uploadMarks(people).mark.length, pp.uploadMarks([], ['photographer1']), pp.peopleText(people), pp.peopleText([{ label: 'צלם 2', name: '' }]), pp.peopleText([]),
+    pp.notMarkedYet(people, { photographer1_done: true }).map((p) => p.role), pp.notMarkedYet(people, null).length,
+  ], [['אני (דניאל)'], ['סלבה'], 2, { mark: [], later: [] }, 'אני (דניאל) וסלבה', 'צלם 2', '', ['photographer2'], 2]);
+}
+
+{
   section('video editing: "כבר שלחתי בעצמי" — a film sent on WhatsApp outside the system (2026-11-08)');
   const ve = await loadModule('src/lib/videoEditing.js', 've97');
   const at = '2026-11-08T09:00:00Z';

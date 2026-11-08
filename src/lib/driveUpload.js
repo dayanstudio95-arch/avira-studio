@@ -6,7 +6,9 @@
 // files it into "גלריות אווירה 2026 › גלריות 11/2026" (0110; the system's drive.file reaches only what it made); what
 // was dropped goes in it by its own folders. The folder is shared by link before the first photo (2026-11-07); at the end
 // it is loaded into the gallery (the photos editor does it when it is open, with its own questions; tried again while
-// Google catches up), and the photographers chosen are marked "done".
+// Google catches up), its photos are measured and read in the background (src/lib/photoProcessing.js, 2026-11-09), and
+// the photographers chosen are marked "done" — except the ones with more materials to come ("יהיו עוד בהמשך"): the end
+// offers a button to mark them (markLater).
 // What goes where is src/lib/driveUploadPlan.js (pure, tested).
 
 import { toast } from "sonner";
@@ -14,6 +16,8 @@ import { base44 } from "@/api/base44Client";
 import { supabase } from "@/api/supabaseClient";
 import { filmsApi } from "@/lib/filmsApi";
 import { alreadyThere, galleryFolderName, MATERIAL_ROLES } from "@/lib/driveUploadPlan";
+import { processGallery } from "@/lib/photoProcessing";
+import { peopleText, uploadMarks } from "@/lib/photoProcessingPlan";
 import { colorPlan, DRIVE_GREEN, DRIVE_RED } from "@/lib/driveColors";
 
 const API = "https://www.googleapis.com/drive/v3/files";
@@ -239,10 +243,11 @@ async function sendPhoto(job, item, parentId, onBytes) {
 
 /**
  * Starts (or queues behind another one) an upload for a gallery. plan = planUpload(...) with each file's `file`;
- * roles = the work-status roles whose materials these are ("photographer1"…); folderId = the gallery's own Drive
+ * roles = the work-status roles whose materials these are ("photographer1"…), `people` their teamPhotographers rows
+ * (names), `later` = the roles with more materials to come (not marked at the end); folderId = the gallery's own Drive
  * folder when it already has one the system made (more photos into it), else a new one in "גלריות אווירה".
  */
-export function startUpload({ galleryId, galleryKind = "photos", coupleName, date, eventId = null, roles = [], plan, folderId = null }) {
+export function startUpload({ galleryId, galleryKind = "photos", coupleName, date, eventId = null, roles = [], people = [], later = [], plan, folderId = null }) {
   const old = jobFor(galleryId);
   if (old && isOpen(old)) throw new Error("כבר יש העלאה לגלריה הזו");
   const items = plan.files.map((f) => ({ ...f, set: f.dir[0] || "", dirKey: f.dir.join("/") }));
@@ -255,6 +260,9 @@ export function startUpload({ galleryId, galleryKind = "photos", coupleName, dat
     date,
     eventId,
     roles,
+    // The chosen photographers by name (an old caller with roles only: the role's label).
+    people: people.length ? people.filter((p) => roles.includes(p.role)) : MATERIAL_ROLES.filter((r) => roles.includes(r.role)),
+    later: later.filter((r) => roles.includes(r)),
     folderId,
     // More photos into the gallery's own folder (it has photos): its page has "טעינה מחדש".
     hadFolder: Boolean(folderId),
@@ -477,13 +485,19 @@ async function finish(job) {
         : result === "declined"
           ? "התמונות בדרייב. כשתרצו לטעון אותן: \"טעינה מחדש\" בעמוד הגלריה."
           : "";
-  // Work status: the photographers whose materials these are.
+  // The photos are measured and read in the background, on any page (2026-11-09).
+  if (loaded) processGallery(job.galleryId, { coupleName: job.coupleName, force: true });
+  // Work status: the photographers whose materials these are — all of them; "יהיו עוד בהמשך" waits (markLater).
   let marked = [];
-  if (job.eventId && job.roles.length) {
-    const fields = Object.fromEntries(MATERIAL_ROLES.filter((r) => job.roles.includes(r.role)).map((r) => [r.field, true]));
-    const { error } = await supabase.from("events").update(fields).eq("id", job.eventId);
-    if (error) job.note = `${job.note ? `${job.note} ` : ""}הסימון בסטטוס עבודה לא נשמר.`;
-    else marked = MATERIAL_ROLES.filter((r) => job.roles.includes(r.role)).map((r) => r.label);
+  let later = [];
+  if (job.eventId && job.people.length) {
+    const plan = uploadMarks(job.people, job.later);
+    later = plan.later;
+    if (plan.mark.length) {
+      const { error } = await supabase.from("events").update(Object.fromEntries(plan.mark.map((p) => [p.field, true]))).eq("id", job.eventId);
+      if (error) job.note = `${job.note ? `${job.note} ` : ""}הסימון בסטטוס עבודה לא נשמר.`;
+      else marked = plan.mark;
+    }
   }
   // Drive: red until the couple got the gallery (green when it already went out — more photos added after the send).
   let sentAlready = false;
@@ -492,8 +506,20 @@ async function finish(job) {
     sentAlready = ev?.final_done_manual === true;
   }
   await colorFolder(job.folderId, sentAlready);
-  patch(job, { phase: "done", loaded, marked, finishedAt: Date.now() });
-  toast.success(`הגלריה של ${job.coupleName} עלתה לדרייב: ${job.total.toLocaleString("he-IL")} תמונות${marked.length ? ` · ${marked.join(" ו")} ${marked.length > 1 ? "סומנו" : "סומן"} בסטטוס עבודה` : ""}`);
+  patch(job, { phase: "done", loaded, marked, laterLeft: later, finishedAt: Date.now() });
+  toast.success(`הגלריה של ${job.coupleName} עלתה לדרייב: ${job.total.toLocaleString("he-IL")} תמונות${marked.length ? ` · ${peopleText(marked)} ${marked.length > 1 ? "סומנו" : "סומן"} בסטטוס עבודה` : ""}`);
+}
+
+/** "לסמן ש… סיים" at the end of an upload: a photographer marked "יהיו עוד בהמשך" turned out to be all (2026-11-09). */
+export async function markLater(job, person) {
+  if (!job?.eventId || !person?.field) return;
+  const { error } = await supabase.from("events").update({ [person.field]: true }).eq("id", job.eventId);
+  if (error) {
+    toast.error("הסימון בסטטוס עבודה לא נשמר");
+    return;
+  }
+  patch(job, { marked: [...(job.marked || []), person], laterLeft: (job.laterLeft || []).filter((p) => p.role !== person.role) });
+  toast.success(`${person.name || person.label} סומן בסטטוס עבודה`);
 }
 
 // ---- folder colours (2026-11-06): red = uploaded, not sent to the couple yet; green = sent ------------------------
