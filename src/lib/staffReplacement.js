@@ -1,4 +1,5 @@
 import { getStaffRateForRole } from "@/lib/staffRates";
+import { isPlaceholder } from "@/lib/sameDayCrew";
 
 // "Find a replacement" (2026-09-15): a booked photographer or videographer drops out,
 // and one click asks everyone in that role whether they are free on the event's date.
@@ -51,11 +52,16 @@ export function pickReplacementCandidates({
 
 // Puts `staffMember` into `roleSlot` on a copy of `team`, replacing whoever held the
 // slot. The cost is snapshotted the same way every other assignment site does it
-// (getStaffRateForRole). Other slots are untouched — the same person can legitimately
-// hold two slots on two events, and this never reaches across.
+// (getStaffRateForRole). 2026-11-09: one person, one slot on an event — someone already in
+// another photo / video slot here MOVES to this one ("לחץ לשינוי התפקיד" used to leave him in
+// both); "אין סטילס" / "אין וידאו" (a mark, not a person) and the editor slot are left alone.
 export function buildTeamWithAssignment(team, roleSlot, staffMember) {
   const cost = getStaffRateForRole(staffMember, roleSlot);
-  const next = (team || []).filter((m) => m?.role !== roleSlot);
+  const who = String(staffMember?.name || "").trim();
+  const moves = roleSlot !== "editor" && who && !isPlaceholder(who);
+  const next = (team || []).filter(
+    (m) => m?.role !== roleSlot && !(moves && m?.role !== "editor" && String(m?.staffMemberName || "").trim() === who)
+  );
   next.push({
     role: roleSlot,
     staffMemberName: staffMember.name,

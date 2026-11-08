@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { base44 } from "@/api/base44Client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -7,6 +8,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { eventTeamRoleLabel, teamRoleSlotsForJobRole } from "@/lib/staffRoles";
 import { assignStaffToEventSlot } from "@/lib/assignStaffToEvent";
+import { bookedElsewhere, doubleBookingText } from "@/lib/sameDayCrew";
 import StaffBookingMessageDialog from "./StaffBookingMessageDialog";
 
 // The row of "who said what" pills under an event's team, plus the click-to-assign
@@ -21,8 +23,22 @@ export default function AvailabilityPills({ requests, staffMembers, event, team,
   const [isAssigning, setIsAssigning] = useState(false);
   // After a booking: the "you're booked" message preview (2026-10-07).
   const [booked, setBooked] = useState(null); // { staff, roleSlot }
+  // That day's events (2026-11-09): who said "פנוי" but is already on another wedding that day — not assignable.
+  const [sameDay, setSameDay] = useState([]);
+  const day = String(event?.date || "").slice(0, 10);
+  useEffect(() => {
+    if (!day || !requests?.length) return undefined;
+    let live = true;
+    base44.entities.Event.filter({ date: day })
+      .then((list) => live && setSameDay(list || []))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [day, event?.id, requests?.length]);
 
   if (!requests || requests.length === 0) return null;
+  const busyFor = (staffName) => (event && staffName ? bookedElsewhere(sameDay, { date: event.date, eventId: event.id }, staffName) : null);
 
   const currentTeam = team ?? (event?.team || []);
   const candidateStaff = candidate ? staffMembers?.find((s) => s.id === candidate.staffMemberId) : null;
@@ -31,6 +47,7 @@ export default function AvailabilityPills({ requests, staffMembers, event, team,
   const slots = candidate ? teamRoleSlotsForJobRole(jobRole) : [];
   const occupiedBy = candidate ? currentTeam.find((m) => m.role === roleSlot)?.staffMemberName : null;
   const alreadyHere = !!occupiedBy && occupiedBy === candidateName;
+  const candidateBusy = candidate && roleSlot !== "editor" ? busyFor(candidateName) : null;
 
   const open = (request) => {
     if (!event) return;
@@ -68,7 +85,7 @@ export default function AvailabilityPills({ requests, staffMembers, event, team,
       close();
     } catch (error) {
       console.error("Error assigning staff to event team:", error);
-      toast.error("שגיאה בשיבוץ איש הצוות");
+      toast.error("השיבוץ לא נשמר", { description: error?.message });
     } finally {
       setIsAssigning(false);
     }
@@ -82,6 +99,19 @@ export default function AvailabilityPills({ requests, staffMembers, event, team,
           // Already on this event's team (2026-10-09) → say where, instead of "פנוי".
           const name = staffMembers?.find((s) => s.id === r.staffMemberId)?.name || r.staffNameSnapshot;
           const onTeam = currentTeam.find((m) => m.staffMemberName && m.staffMemberName === name);
+          const elsewhere = !onTeam && r.status !== "declined" && r.role !== "editor" && r.teamRole !== "editor" ? busyFor(name) : null;
+          if (elsewhere) {
+            return (
+              <Badge
+                key={r.id}
+                className="text-xs font-medium border bg-rose-500/15 text-rose-300 border-rose-500/30"
+                title="כבר משובץ/ת באותו יום באירוע אחר — אי אפשר לשבץ כאן"
+                data-testid="pill-busy"
+              >
+                {r.staffNameSnapshot} — ⛔ משובץ/ת באותו יום אצל {elsewhere.couple} ({eventTeamRoleLabel(elsewhere.role)})
+              </Badge>
+            );
+          }
           return (
             <Badge
               key={r.id}
@@ -129,7 +159,11 @@ export default function AvailabilityPills({ requests, staffMembers, event, team,
                 </Select>
               </div>
             )}
-            {alreadyHere ? (
+            {candidateBusy ? (
+              <div className="bg-rose-900/20 border border-rose-700/50 rounded-lg p-3 text-sm text-rose-200" data-testid="pill-dialog-busy">
+                {doubleBookingText(candidateName, event?.date, candidateBusy)}
+              </div>
+            ) : alreadyHere ? (
               <p className="text-sm text-gray-400">כבר משובץ/ת לתפקיד {eventTeamRoleLabel(roleSlot)} באירוע זה.</p>
             ) : occupiedBy ? (
               <div className="bg-amber-900/20 border border-amber-700/50 rounded-lg p-3 text-sm text-amber-200">
@@ -144,7 +178,7 @@ export default function AvailabilityPills({ requests, staffMembers, event, team,
             </Button>
             <Button
               onClick={confirm}
-              disabled={isAssigning || alreadyHere}
+              disabled={isAssigning || alreadyHere || !!candidateBusy}
               className={occupiedBy && !alreadyHere ? "bg-amber-600 hover:bg-amber-700 text-white" : "bg-green-600 hover:bg-green-700 text-white"}
             >
               {isAssigning ? (

@@ -166,7 +166,10 @@ export function StaffPickerCell({ event, role, roleKey, label, color, icon, staf
   return <TableCell className="px-1 py-1">{content}</TableCell>;
 }
 
-export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh, autoOpenEventId }) {
+export default function EventsTableWithBulkDelete({ events, allEvents = null, isLoading, onRefresh, autoOpenEventId }) {
+  // The crew pickers check who is booked that day against every event, not only the rows shown (a search or a filter
+  // hid the other weddings of that day — 2026-11-09, "אסור שזה יקרה").
+  const crewEvents = allEvents || events;
   const { widths, setWidth } = useColumnWidths();
   const tableRef = useRef(null);
   const [resizingColumn, setResizingColumn] = useState(null);
@@ -561,7 +564,7 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
                           <StaffPickerCell
                             event={event} role="photo1" roleKey="photographer1" label="צלם"
                             color="bg-blue-500/20 text-blue-400 border-blue-500/30" icon="📸"
-                            staffList={photographers} events={events} onRefresh={onRefresh}
+                            staffList={photographers} events={crewEvents} onRefresh={onRefresh}
                             editingKey={editingTeamEventId} setEditingKey={setEditingTeamEventId}
                             sendCalendarInviteByName={sendCalendarInviteByName}
                             isWrapped={true}
@@ -573,7 +576,7 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
                           <StaffPickerCell
                             event={event} role="photo2" roleKey="photographer2" label="צלם"
                             color="bg-blue-500/20 text-blue-400 border-blue-500/30" icon="📸"
-                            staffList={photographers} events={events} onRefresh={onRefresh}
+                            staffList={photographers} events={crewEvents} onRefresh={onRefresh}
                             editingKey={editingTeamEventId} setEditingKey={setEditingTeamEventId}
                             sendCalendarInviteByName={sendCalendarInviteByName}
                             isWrapped={true}
@@ -585,7 +588,7 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
                           <StaffPickerCell
                             event={event} role="video1" roleKey="videographer" label="וידאו"
                             color="bg-pink-500/20 text-pink-400 border-pink-500/30" icon="🎥"
-                            staffList={videographers} events={events} onRefresh={onRefresh}
+                            staffList={videographers} events={crewEvents} onRefresh={onRefresh}
                             editingKey={editingTeamEventId} setEditingKey={setEditingTeamEventId}
                             sendCalendarInviteByName={sendCalendarInviteByName}
                             isWrapped={true}
@@ -597,7 +600,7 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
                           <StaffPickerCell
                             event={event} role="video2" roleKey="videographer2" label="וידאו"
                             color="bg-pink-500/20 text-pink-400 border-pink-500/30" icon="🎥"
-                            staffList={videographers} events={events} onRefresh={onRefresh}
+                            staffList={videographers} events={crewEvents} onRefresh={onRefresh}
                             editingKey={editingTeamEventId} setEditingKey={setEditingTeamEventId}
                             sendCalendarInviteByName={sendCalendarInviteByName}
                             isWrapped={true}
@@ -636,7 +639,7 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
                                     color="bg-purple-500/20 text-purple-400"
                                     staffList={editors}
                                     event={event}
-                                    events={events}
+                                    events={crewEvents}
                                     roleKey="editor"
                                     member={videoEditor}
                                     checkBooked={false}
@@ -843,7 +846,7 @@ export default function EventsTableWithBulkDelete({ events, isLoading, onRefresh
       isOpen={!!selectedEventForTeamSheet}
       onClose={() => setSelectedEventForTeamSheet(null)}
       staffMembers={staffMembers}
-      events={events}
+      events={crewEvents}
       onRefresh={onRefresh}
       sendCalendarInviteByName={sendCalendarInviteByName}
     />

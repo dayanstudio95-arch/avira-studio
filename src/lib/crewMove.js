@@ -81,6 +81,19 @@ export function planCrewMove({ source, fromSlot, target, toSlot, staffMembers })
   };
 }
 
+/**
+ * The saves of a move, in an order the database accepts (0115, 2026-11-09: no one on two events of the same day, not
+ * even for a moment): someone leaves an event before he joins the other. A swap takes three: the target's person leaves
+ * it, then the source (the mover out, the swapped one in), then the target (the mover in). [{ eventId, team, step }].
+ */
+export function moveWrites(plan, source, target, toSlot) {
+  const steps = [];
+  if (plan.swapped) steps.push({ eventId: target.id, team: (target.team || []).filter((m) => m?.role !== toSlot), step: "free" });
+  steps.push({ eventId: source.id, team: plan.sourceTeam, step: "source" });
+  steps.push({ eventId: target.id, team: plan.targetTeam, step: "target" });
+  return steps;
+}
+
 // The "you were moved" message for one person (moved or swapped). `lead`: the new event's lead.
 export function moveMessage(template, move, lead) {
   const day = String(move.toEvent?.date || "").slice(0, 10);

@@ -1,4 +1,5 @@
 import { teamRoleSlotsForJobRole } from "@/lib/staffRoles";
+import { bookedElsewhere } from "@/lib/sameDayCrew";
 
 // "תשובות זמינות" (2026-10-07): every availability answer for an upcoming event, grouped by
 // event, each with what is left to do. Pure — tested in scripts/test-whatsapp-bot.mjs PART 36.
@@ -13,6 +14,9 @@ import { teamRoleSlotsForJobRole } from "@/lib/staffRoles";
 //               full, stop waiting) — decision_dismissed_at, plus group_closed_at (0086) so
 //               "פתח מחדש" brings back only what "סגור" took out, never a personal "לא צריך"
 //   pending / declined — no answer yet / "לא פנוי"
+//   busy      — said "פנוי" (or not yet), but is already on ANOTHER event that day (2026-11-09, the owner: Ayalon
+//               "פנוי" for שחר ובן while on קמילה ואסף that day) — no "שבץ", not counted in "צריך החלטה" / "ממתינים";
+//               `busy` = { eventId, couple, role }. Not for the editor (works from home).
 const named = (m) => !!String(m?.staffMemberName || "").trim();
 
 export function buildAvailabilityInbox({ requests, events, today }) {
@@ -55,11 +59,20 @@ export function buildAvailabilityInbox({ requests, events, today }) {
       freeSlots = teamRoleSlotsForJobRole(r.role).filter((slot) => !team.some((m) => m.role === slot && named(m)));
       state = freeSlots.length ? "decide" : "full";
     }
+    // Already booked that day on another event: nothing to decide (the database refuses it too, 0115).
+    let busy = null;
+    if (["decide", "full", "pending", "no_event"].includes(state) && r.teamRole !== "editor" && r.role !== "editor") {
+      busy = bookedElsewhere(events, { date: groups.get(key).date, eventId: event?.id }, r.staffNameSnapshot);
+      if (busy) {
+        state = "busy";
+        freeSlots = [];
+      }
+    }
     const defaultSlot = freeSlots.includes(r.teamRole) ? r.teamRole : freeSlots[0] || null;
-    groups.get(key).rows.push({ request: r, state, freeSlots, defaultSlot, assignedSlot: teamEntry?.role || null });
+    groups.get(key).rows.push({ request: r, state, freeSlots, defaultSlot, assignedSlot: teamEntry?.role || null, busy });
   }
 
-  const ORDER = { decide: 0, full: 1, no_event: 2, pending: 3, assigned: 4, declined: 5, dismissed: 6, closed: 7 };
+  const ORDER = { decide: 0, full: 1, no_event: 2, pending: 3, assigned: 4, busy: 5, declined: 6, dismissed: 7, closed: 8 };
   const list = [...groups.values()].map((g) => ({
     ...g,
     rows: g.rows.sort((a, b) => ORDER[a.state] - ORDER[b.state]),

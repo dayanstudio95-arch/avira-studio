@@ -20,6 +20,7 @@ import StaffAssignmentRoleList from "@/components/events/StaffAssignmentRoleList
 import StaffAvailabilityModal from "@/components/leads/StaffAvailabilityModal";
 import AvailabilityPills from "@/components/events/AvailabilityPills";
 import AvailabilityAnswers, { useAvailabilityRequests } from "@/components/staffScheduling/AvailabilityAnswers";
+import DoubleBookings from "@/components/staffScheduling/DoubleBookings";
 import { buildAvailabilityInbox } from "@/lib/availabilityInbox";
 
 // Module-level so the array isn't rebuilt on every render. Short form on mobile
@@ -738,6 +739,19 @@ export default function StaffScheduling() {
             </div>
           );
         })()}
+
+        {/* Double bookings already saved (2026-11-09): a banner until each one is fixed. */}
+        <DoubleBookings
+          events={events}
+          today={today}
+          onOpen={(id) => {
+            const ev = events.find((e) => e.id === id);
+            if (!ev) return;
+            setViewMode("list");
+            setSelectedEvent(ev);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+        />
 
         {viewMode === "answers" ? (
           <AvailabilityAnswers events={events} staffMembers={staffMembers} onEventsChanged={() => loadData({ silent: true })} focusLeadId={focusLeadId} onCheckAvailability={openAvailability} />

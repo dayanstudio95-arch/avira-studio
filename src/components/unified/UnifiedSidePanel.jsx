@@ -505,7 +505,8 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
       if (onLeadUpdated) onLeadUpdated();
     } catch (error) {
       console.error('Error updating date:', error);
-      toast.error('שגיאה בעדכון התאריך');
+      // e.g. a crew member already on another wedding on the new date (0115) — the words say who and where.
+      toast.error('שגיאה בעדכון התאריך', { description: error?.message });
     }
   };
 

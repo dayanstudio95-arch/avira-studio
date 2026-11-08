@@ -1,7 +1,8 @@
 // The crew picker in the events list (2026-10-15, the owner's request): one scroll, a
 // search box, a sensible order, and a one-time ("זמני") crew member saved on the event
 // only. Pure — PART 61.
-import { sameDayOthers, bookingsByName, bookingText } from "./sameDayCrew";
+import { sameDayOthers, bookingsByName, bookingText, isPlaceholder } from "./sameDayCrew";
+import { eventTeamRoleLabel } from "./staffRoles";
 
 // Which staff_members.role fills an event-team slot.
 export function jobRoleForSlot(roleKey) {
@@ -14,9 +15,10 @@ export function jobRoleForSlot(roleKey) {
 const norm = (s) => String(s || "").trim().toLowerCase();
 
 // Rows to show: filtered by the search, favourites first, then א-ב, and anyone already
-// booked that day (for this slot type) at the end. `bookedText` (2026-10-25): where the person
-// is booked that day in any role — "משובץ: נועה ואיתי · צלם 2" — shown under the name, those
-// rows after the free ones; only the same slot type blocks picking (isBooked), as before.
+// booked that day at the end. `bookedText` (2026-10-25): where the person is booked that day —
+// "משובץ: נועה ואיתי · צלם 2" — shown under the name. Since 2026-11-09 (the owner: "אסור שזה
+// יקרה") being booked that day in ANY slot blocks picking (isBooked) — before, only the same
+// slot did, and a צלם 1 elsewhere could be put in as צלם 2. Not for the editor (works from home).
 export function pickerRows({ staffList, event, events, roleKey, member, search, checkBooked = true }) {
   const q = norm(search);
   const bookings = checkBooked ? bookingsByName(sameDayOthers(events, { date: event?.date, eventId: event?.id })) : new Map();
@@ -24,11 +26,13 @@ export function pickerRows({ staffList, event, events, roleKey, member, search, 
     .filter((s) => !q || norm(s.name).includes(q))
     .map((s) => {
       const isSelected = member?.staffMemberName === s.name;
-      const isBooked = checkBooked && (events || []).some((e) =>
-        e.id !== event?.id && e.date === event?.date &&
-        (e.team || []).some((m) => m.staffMemberName === s.name && m.role === roleKey)
-      );
-      return { staff: s, isSelected, isBooked: isBooked && !isSelected, bookedText: isSelected ? null : bookingText(bookings, s.name) };
+      // Already on THIS event in another slot (2026-11-09): one person, one slot — "אין סטילס" aside.
+      const here = checkBooked && roleKey !== "editor" && !isPlaceholder(s.name)
+        ? (event?.team || []).find((m) => m?.role !== roleKey && m?.role !== "editor" && String(m?.staffMemberName || "").trim() === String(s.name || "").trim())
+        : null;
+      const isBooked = checkBooked && roleKey !== "editor" && (bookings.has(String(s.name || "").trim()) || !!here);
+      const bookedText = isSelected ? null : here ? `כבר משובץ כאן · ${eventTeamRoleLabel(here.role)}` : bookingText(bookings, s.name);
+      return { staff: s, isSelected, isBooked: isBooked && !isSelected, bookedText };
     });
   return rows.sort((a, b) =>
     (a.isBooked - b.isBooked) ||

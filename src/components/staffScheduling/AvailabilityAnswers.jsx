@@ -41,6 +41,8 @@ const STATE_UI = {
   pending: { icon: Clock, cls: "text-amber-300", text: "עוד לא ענה" },
   closed: { icon: Lock, cls: "text-slate-500", text: "לא ענה · האירוע נסגר (לא מחכים לתשובה)" },
   declined: { icon: XCircle, cls: "text-rose-400", text: "לא פנוי/ה" },
+  // Already on another event that day (2026-11-09): the words say where; no "שבץ".
+  busy: { icon: XCircle, cls: "text-rose-400", text: "כבר משובץ/ת באותו יום באירוע אחר" },
 };
 
 const hhmm = (iso) => {
@@ -283,7 +285,12 @@ export default function AvailabilityAnswers({ events, staffMembers, onEventsChan
                   const Icon = ui.icon;
                   const asked = r.teamRole ? AVAILABILITY_SLOT_LABELS[r.teamRole] : null;
                   // Where they are on the team, by slot (2026-10-07: "שיבצתי את זיו — לצלם 1 או 2?").
-                  const stateText = row.state === "assigned" && row.assignedSlot ? `✔ משובץ/ת כ${eventTeamRoleLabel(row.assignedSlot)}` : ui.text;
+                  const stateText =
+                    row.state === "assigned" && row.assignedSlot
+                      ? `✔ משובץ/ת כ${eventTeamRoleLabel(row.assignedSlot)}`
+                      : row.state === "busy"
+                        ? `${r.status === "available" ? 'ענה "פנוי" · ' : ""}אבל כבר משובץ/ת באותו יום אצל ${row.busy.couple} (${eventTeamRoleLabel(row.busy.role)})`
+                        : ui.text;
                   const slot = slotPick[r.id] || row.defaultSlot;
                   return (
                     <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
@@ -292,7 +299,8 @@ export default function AvailabilityAnswers({ events, staffMembers, onEventsChan
                         <div className="min-w-0">
                           <div className="text-sm font-medium text-white">{r.staffNameSnapshot}</div>
                           <div className="text-[11px] text-slate-400">
-                            {asked ? `שאלתי: ${asked} · ` : ""}{stateText}
+                            {asked ? `שאלתי: ${asked} · ` : ""}
+                            <span className={row.state === "busy" ? "text-rose-300" : ""} data-testid={row.state === "busy" ? "answer-busy" : undefined}>{stateText}</span>
                             {r.respondedAt && row.state !== "pending" ? ` · ענה ${hhmm(r.respondedAt)}` : ""}
                           </div>
                         </div>
@@ -306,6 +314,18 @@ export default function AvailabilityAnswers({ events, staffMembers, onEventsChan
                           className="flex h-8 items-center gap-1.5 rounded-lg border border-pink-500/40 bg-pink-500/10 px-3 text-xs font-medium text-pink-200 hover:bg-pink-500/20 disabled:opacity-50"
                         >
                           <Send className="h-3.5 w-3.5" /> שלח שוב
+                        </button>
+                      )}
+                      {/* Said "פנוי" but booked elsewhere that day: only "לא צריך", to clear it. */}
+                      {row.state === "busy" && r.status === "available" && !r.decisionDismissedAt && (
+                        <button
+                          type="button"
+                          disabled={busy === r.id}
+                          onClick={() => dismiss(row)}
+                          title="מוציא את השורה. איש הצוות לא מקבל שום הודעה."
+                          className="h-8 rounded-lg border border-[#2A3B57] bg-white/[0.04] px-3 text-xs text-slate-300 hover:text-white disabled:opacity-50"
+                        >
+                          לא צריך
                         </button>
                       )}
                       {(row.state === "decide" || row.state === "full") && (

@@ -732,6 +732,21 @@ section('replacement — assigning into a slot');
   check('input not mutated', team.find((m) => m.role === 'photographer2').staffMemberName, 'בני');
   check('fresh assignment is unpaid and pending', [next[1].isPaid, next[1].progressStatus], [false, 'pending']);
 }
+{
+  // 2026-11-09: one person, one photo/video slot on an event — assigning someone already here MOVES him ("לחץ לשינוי
+  // התפקיד" left him in both); "אין סטילס" (a mark, not a person) and the editor slot are left alone.
+  const staff = { name: 'אבי', defaultRate: 900 };
+  const team = [
+    { role: 'photographer1', staffMemberName: 'אבי ', cost: 900 },
+    { role: 'videographer', staffMemberName: 'רודי', cost: 1500 },
+    { role: 'editor', staffMemberName: 'אבי', cost: 300 },
+  ];
+  const moved = buildTeamWithAssignment(team, 'photographer2', staff);
+  check('change of role: out of צלם 1, into צלם 2 — the editor entry and the others stay', moved.map((m) => [m.role, m.staffMemberName.trim()]),
+    [['videographer', 'רודי'], ['editor', 'אבי'], ['photographer2', 'אבי']]);
+  const marks = [{ role: 'photographer1', staffMemberName: 'אין סטילס ' }];
+  check('"אין סטילס" may be in both slots', buildTeamWithAssignment(marks, 'photographer2', { name: 'אין סטילס ' }).map((m) => m.role), ['photographer1', 'photographer2']);
+}
 
 // =================================================================================
 // PART 9 — the follow-up queue (src/lib/followUpQueue.js, 2026-09-15)
@@ -2855,6 +2870,30 @@ console.log('\n— PART 60: payment entity —');
 }
 
 // =====================================================================================
+// PART 36b — "תשובות זמינות": already booked that day on another event (2026-11-09, the owner: איילון "פנוי" for שחר ובן
+// while he is צלם 1 at קמילה ואסף that day — "אסור שזה יקרה")
+console.log('\n— PART 36b: availability answers — booked elsewhere that day —');
+{
+  const ai = await loadModule('src/lib/availabilityInbox.js', 'availinbox36b');
+  const shachar = { id: 'S', sourceLeadId: 'LS', date: '2027-06-09', coupleNames: 'שחר ובן', team: [{ role: 'photographer1', staffMemberName: 'אביהו' }, { role: 'editor', staffMemberName: 'דרור' }] };
+  const kamila = { id: 'K', date: '2027-06-09', coupleNames: 'קמילה ואסף', team: [{ role: 'photographer1', staffMemberName: 'איילון' }, { role: 'editor', staffMemberName: 'דרור ' }] };
+  const req = (o) => ({ eventId: 'S', leadId: 'LS', role: 'photographer', eventDateSnapshot: '2027-06-09', requestedAt: '2026-08-24T10:00:00Z', ...o });
+  const out = ai.buildAvailabilityInbox({ today: '2026-11-09', events: [shachar, kamila], requests: [
+    req({ id: 'a', staffMemberId: 's1', staffNameSnapshot: 'איילון', status: 'available', teamRole: 'photographer2' }),
+    req({ id: 'b', staffMemberId: 's2', staffNameSnapshot: 'אני (דניאל)', status: 'available', teamRole: 'photographer2' }),
+    req({ id: 'c', staffMemberId: 's3', staffNameSnapshot: 'איילון', status: 'pending', eventId: 'K2', leadId: 'LX', requestedAt: '2026-08-25T10:00:00Z' }),
+    req({ id: 'd', staffMemberId: 's4', staffNameSnapshot: 'דרור', status: 'available', role: 'editor', teamRole: 'editor' }),
+  ] });
+  const g = out.groups.find((x) => x.key === 'S');
+  const row = (name) => g.rows.find((x) => x.request.staffNameSnapshot === name);
+  check('booked elsewhere that day → "busy" (where), no slot to assign; the free one still decides; the editor is never busy', [
+    row('איילון').state, row('איילון').busy, row('איילון').freeSlots, row('אני (דניאל)').state, row('דרור').state === 'busy',
+  ], ['busy', { eventId: 'K', couple: 'קמילה ואסף', role: 'photographer1' }, [], 'decide', false]);
+  check('"busy" is not counted in "צריך החלטה" / "ממתינים"; a lead with no event yet: any event that day counts', [
+    g.toDecide, out.groups.find((x) => x.key === 'lead:LX').rows[0].state,
+  ], [1, 'busy']);
+}
+
 // PART 61 — crew picker: search, order, one-time crew member (2026-10-15)
 console.log('\n— PART 61: crew picker —');
 {
@@ -2869,7 +2908,17 @@ console.log('\n— PART 61: crew picker —');
   check('order: favourite, א-ב, booked last', rows.map((r) => r.staff.name), ['איל ברוך', 'בני', 'עידן פרץ', 'אלמוג ספדי']);
   check('booked marked', rows.find((r) => r.staff.name === 'אלמוג ספדי').isBooked, true);
   check('search', sp.pickerRows({ staffList: staff, event, events, roleKey: 'photographer1', search: 'עיד' }).map((r) => r.staff.name), ['עידן פרץ']);
-  check('booked on another slot type is free', sp.pickerRows({ staffList: staff, event, events, roleKey: 'videographer', search: 'אלמוג' })[0].isBooked, false);
+  // 2026-11-09 (the owner: "אסור שזה יקרה"): booked that day in ANY slot blocks — before, another slot was free.
+  check('booked that day in another slot is blocked too', sp.pickerRows({ staffList: staff, event, events, roleKey: 'videographer', search: 'אלמוג' })[0].isBooked, true);
+  check('booked that day: blocked as צלם 2 too, the name trimmed', sp.pickerRows({ staffList: [{ id: 9, name: 'אלמוג ספדי ' }], event, events, roleKey: 'photographer2', search: '' })[0].isBooked, true);
+  check('already on THIS event in another slot → blocked, says where; "אין סטילס" is never busy', [
+    (() => { const r = sp.pickerRows({ staffList: [{ id: 5, name: 'בני' }], event: { ...event, team: [{ role: 'photographer1', staffMemberName: 'בני' }] }, events, roleKey: 'photographer2', search: '' })[0]; return [r.isBooked, r.bookedText]; })(),
+    sp.pickerRows({ staffList: [{ id: 6, name: 'אין וידאו' }], event: { ...event, team: [{ role: 'videographer', staffMemberName: 'אין וידאו' }] }, events: [event, { id: 'e7', date: '2026-11-01', team: [{ role: 'videographer', staffMemberName: 'אין וידאו' }] }], roleKey: 'videographer2', search: '' })[0].isBooked,
+  ], [[true, 'כבר משובץ כאן · צלם 1'], false]);
+  check('the editor slot is never blocked; an editor elsewhere is not busy', [
+    sp.pickerRows({ staffList: staff, event, events, roleKey: 'editor', search: 'אלמוג' })[0].isBooked,
+    sp.pickerRows({ staffList: staff, event, events: [event, { id: 'e3', date: '2026-11-01', team: [{ role: 'editor', staffMemberName: 'בני' }] }], roleKey: 'photographer1', search: 'בני' })[0].isBooked,
+  ], [false, false]);
   check('editor: no booking check', sp.pickerRows({ staffList: staff, event, events, roleKey: 'photographer1', search: 'אלמוג', checkBooked: false })[0].isBooked, false);
   const sel = sp.pickerRows({ staffList: staff, event, events, roleKey: 'photographer1', member: { staffMemberName: 'איל ברוך' }, search: '' });
   check('Enter picks the first free one (not the selected)', sp.firstPickable(sel).staff.name, 'בני');
@@ -3203,8 +3252,23 @@ console.log('\n— PART 69: same-day crew —');
     ['משובץ: נועה ואיתי · צלם 1', 'משובץ: שירה ועומר · צלם 1', null, null]);
   check('free first, booked after, each in their order', sd.freeFirst([{ name: 'יריב' }, { name: 'אביהו' }, { name: 'סלבה' }, { name: 'ג׳וני' }], bk).map((s) => s.name), ['אביהו', 'ג׳וני', 'יריב', 'סלבה']);
   const rows = sp.pickerRows({ staffList: [{ id: 1, name: 'יריב' }, { id: 2, name: 'ג׳וני' }, { id: 3, name: 'סלבה' }], event: me, events, roleKey: 'photographer2', search: '' });
-  check('picker: booked elsewhere in another role → text, still pickable, after the free ones', rows.map((r) => [r.staff.name, r.isBooked, r.bookedText]),
-    [['ג׳וני', false, null], ['יריב', false, 'משובץ: נועה ואיתי · צלם 1'], ['סלבה', false, 'משובץ: שירה ועומר · צלם 1']]);
+  // 2026-11-09 (the owner: "אסור שזה יקרה"): booked elsewhere that day in another role is blocked too (was: pickable).
+  check('picker: booked elsewhere in another role → text, blocked, after the free ones', rows.map((r) => [r.staff.name, r.isBooked, r.bookedText]),
+    [['ג׳וני', false, null], ['יריב', true, 'משובץ: נועה ואיתי · צלם 1'], ['סלבה', true, 'משובץ: שירה ועומר · צלם 1']]);
+  check('booked elsewhere that day: where, and the words (as the database says them)', [
+    sd.bookedElsewhere(events, { date: me.date, eventId: me.id }, ' סלבה '), sd.bookedElsewhere(events, { date: me.date, eventId: me.id }, 'דרור'),
+    sd.bookedElsewhere(events, { date: me.date, eventId: me.id }, 'ג׳וני'),
+    sd.doubleBookingText('איילון ', '2027-06-09', { couple: 'קמילה ואסף', role: 'photographer1' }),
+  ], [{ eventId: 'E2', couple: 'שירה ועומר', role: 'photographer1' }, null, null, 'איילון כבר משובץ/ת ב-9.6.2027 אצל קמילה ואסף (צלם 1). קודם מוציאים אותו משם.']);
+  const clashes = sd.sameDayClashes([
+    ...events,
+    { id: 'E4', date: '2027-06-23', coupleNames: 'עוד זוג', team: [{ role: 'videographer', staffMemberName: 'סלבה ' }, { role: 'editor', staffMemberName: 'דרור' }] },
+    { id: 'E5', date: '2026-01-01', coupleNames: 'עבר', team: [{ role: 'photographer1', staffMemberName: 'x' }] },
+    { id: 'E6', date: '2026-01-01', coupleNames: 'עבר 2', team: [{ role: 'photographer2', staffMemberName: 'x' }] },
+  ], { from: '2026-11-09' });
+  check('double bookings already saved: same person, same day, two events (not the editor, not the past)', clashes, [
+    { date: '2027-06-23', name: 'סלבה', items: [{ eventId: 'E2', couple: 'שירה ועומר', role: 'photographer1' }, { eventId: 'E4', couple: 'עוד זוג', role: 'videographer' }] },
+  ]);
   const same = sp.pickerRows({ staffList: [{ id: 1, name: 'יריב' }], event: me, events, roleKey: 'photographer1', search: '' });
   check('picker: same slot type elsewhere → blocked as before, with the text', [same[0].isBooked, same[0].bookedText], [true, 'משובץ: נועה ואיתי · צלם 1']);
 }
@@ -3252,6 +3316,25 @@ console.log('\n— PART 70: crew move between same-day events —');
     [sw.targetTeam.map((m) => [m.role, m.staffMemberName, m.cost]), sw.sourceTeam.map((m) => [m.role, m.staffMemberName, m.cost])],
     [[['photographer2', 'סלבה', 900]], [['photographer1', 'יריב', 1000], ['videographer', 'רודי', 1500], ['photographer2', 'דודו', 700]]]);
   check('…the swapped one is described the other way round', [sw.swapped.name, sw.swapped.fromEvent.id, sw.swapped.fromSlot, sw.swapped.toEvent.id, sw.swapped.toSlot], ['דודו', 'B', 'photographer2', 'A', 'photographer2']);
+
+  // 2026-11-09 (0115): the database refuses anyone on two events of a day, even for a moment — the saves of a move go in
+  // an order where nobody is on both after any one of them (a swap: the target's person leaves first).
+  const replay = (plan, src, tgt, slot) => {
+    const teams = { [src.id]: src.team || [], [tgt.id]: tgt.team || [] };
+    const states = [];
+    for (const w of cm.moveWrites(plan, src, tgt, slot)) {
+      teams[w.eventId] = w.team;
+      const names = (id) => new Set(teams[id].filter((m) => m.role !== 'editor').map((m) => String(m.staffMemberName).trim()));
+      states.push([w.step, [...names(src.id)].filter((n) => names(tgt.id).has(n))]);
+    }
+    return { states, final: [teams[src.id], teams[tgt.id]] };
+  };
+  const mv = replay(p, source, free, 'photographer1');
+  const sv = replay(sw, source, free, 'photographer2');
+  check('a move: out of the old event, then into the new one — nobody on both at any step; the end is the plan', [mv.states, mv.final],
+    [[['source', []], ['target', []]], [p.sourceTeam, p.targetTeam]]);
+  check('a swap: the target\'s person leaves, then the source, then the target — nobody on both at any step', [sv.states, sv.final],
+    [[['free', []], ['source', []], ['target', []]], [sw.sourceTeam, sw.targetTeam]]);
 
   const temp = { ...source, team: [{ role: 'photographer2', staffMemberName: 'מישהו חד פעמי', cost: 650, isTemporary: true, phone: '0501234567' }] };
   check('a one-time member keeps the price that was typed (and his phone)',

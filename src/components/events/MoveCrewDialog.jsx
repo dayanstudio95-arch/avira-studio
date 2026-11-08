@@ -7,7 +7,7 @@ import { base44 } from "@/api/base44Client";
 import { sendCalendarInviteByName } from "@/lib/calendarInvites";
 import { eventTeamRoleLabel } from "@/lib/staffRoles";
 import { formatDateWithWeekday } from "@/lib/chatModel";
-import { moveOptions, planCrewMove, moveMessage, friendlySendError, MOVE_TEMPLATE_KEY } from "@/lib/crewMove";
+import { moveOptions, planCrewMove, moveWrites, moveMessage, friendlySendError, MOVE_TEMPLATE_KEY } from "@/lib/crewMove";
 
 // "באותו יום" → a name → "העבר לאירוע הזה" (2026-10-25, the owner's request). Step 1: which
 // slot on this event (a taken one = swap). Step 2: both events are re-read, the move is planned
@@ -51,11 +51,21 @@ export default function MoveCrewDialog({ open, source, fromSlot, target, staffMe
       if (!s || !t) throw new Error("אחד האירועים לא נמצא");
       const plan = planCrewMove({ source: s, fromSlot, target: t, toSlot, staffMembers });
       setDirty(true);
-      await base44.entities.Event.update(t.id, { team: plan.targetTeam });
-      try {
-        await base44.entities.Event.update(s.id, { team: plan.sourceTeam });
-      } catch (e) {
-        throw new Error(`${plan.moved.name} נוסף ל${t.coupleNames}, אבל ההסרה מ${s.coupleNames} נכשלה — הסירו אותו שם ידנית (${e?.message || "שגיאה"})`);
+      // Out of one event before into the other (2026-11-09): the database refuses anyone on two events of a day (0115).
+      const [first, ...rest] = moveWrites(plan, s, t, toSlot);
+      await base44.entities.Event.update(first.eventId, { team: first.team });
+      for (const w of rest) {
+        try {
+          await base44.entities.Event.update(w.eventId, { team: w.team });
+        } catch (e) {
+          // A swap whose second save failed: the target gets its person back (nothing half done).
+          if (w.step === "source" && first.step === "free") await base44.entities.Event.update(t.id, { team: t.team || [] }).catch(() => {});
+          throw new Error(
+            w.step === "source"
+              ? `ההעברה לא בוצעה: ${e?.message || "שגיאה"}`
+              : `${plan.moved.name} הוצא מ${s.coupleNames}, אבל ההוספה ל${t.coupleNames} נכשלה — מוסיפים אותו שם ידנית (${e?.message || "שגיאה"})`,
+          );
+        }
       }
       // best-effort and slow — the message step doesn't wait for it
       sendCalendarInviteByName(t.id, plan.moved.name);

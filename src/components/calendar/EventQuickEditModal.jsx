@@ -65,7 +65,8 @@ export default function EventQuickEditModal({ event, isOpen, onClose, onUpdate }
       onClose();
     } catch (error) {
       console.error("Error updating event:", error);
-      toast.error("שגיאה בעדכון האירוע");
+      // e.g. a crew member already on another wedding on the new date (0115) — the words say who and where.
+      toast.error("שגיאה בעדכון האירוע", { description: error?.message });
     } finally {
       setIsSaving(false);
     }

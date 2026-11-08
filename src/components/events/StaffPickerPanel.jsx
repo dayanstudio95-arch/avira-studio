@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Search, UserPlus } from "lucide-react";
+import { toast } from "sonner";
 import { pickerRows, firstPickable, temporaryNameProblem } from "@/lib/staffPicker";
 
 // The inside of the crew picker (2026-10-15): fixed header + search, ONE scrolling list,
@@ -21,14 +22,15 @@ export default function StaffPickerPanel({
   const pick = async (staff, isSelected) => {
     if (busy) return;
     setBusy(true);
-    try { await onSelect(staff, isSelected); } finally { setBusy(false); }
+    // A save the database refused (e.g. the same person already on another wedding that day — 0115) is said, not lost.
+    try { await onSelect(staff, isSelected); } catch (e) { toast.error("השיבוץ לא נשמר", { description: e?.message }); } finally { setBusy(false); }
   };
 
   const saveTemp = async () => {
     const problem = temporaryNameProblem(temp.name, staffList);
     if (problem) { setTempError(problem); return; }
     setBusy(true);
-    try { await onAddTemporary(temp); } finally { setBusy(false); }
+    try { await onAddTemporary(temp); } catch (e) { toast.error("השיבוץ לא נשמר", { description: e?.message }); } finally { setBusy(false); }
   };
 
   return (

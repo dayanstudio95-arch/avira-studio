@@ -416,7 +416,7 @@ export default function Events() {
         )}
 
         {/* Events Table */}
-        <EventsTableWithBulkDelete events={filteredEvents} isLoading={isLoading} onRefresh={loadEvents} autoOpenEventId={autoOpenEventId} />
+        <EventsTableWithBulkDelete events={filteredEvents} allEvents={events} isLoading={isLoading} onRefresh={loadEvents} autoOpenEventId={autoOpenEventId} />
 
         {/* CSV Import Dialog */}
         <CSVImportDialog 
