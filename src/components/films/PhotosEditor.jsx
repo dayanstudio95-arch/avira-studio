@@ -1288,7 +1288,7 @@ function CoverPreview({ src, pos, coupleName, onChange }) {
         </Button>
       </div>
       <p className="text-xs text-gray-500">לחצו או גררו על התמונה כדי לבחור איזה חלק שלה יישאר במרכז. בצד: איך זה ייראה במחשב ובטלפון. את התמונה עצמה בוחרים עם ★ בתמונות למטה.</p>
-      <div className="grid gap-4 md:grid-cols-[1fr_1.4fr] items-start">
+      <div className="grid gap-4 md:grid-cols-[1fr_1.4fr] items-start [&>*]:min-w-0">
         <div
           className="relative cursor-crosshair touch-none rounded-lg overflow-hidden bg-black"
           onPointerDown={(e) => {
@@ -1306,7 +1306,9 @@ function CoverPreview({ src, pos, coupleName, onChange }) {
           <img src={src} alt="" draggable={false} className="block w-full max-h-[360px] object-contain select-none" />
           <span className="absolute w-5 h-5 -ml-2.5 -mt-2.5 rounded-full border-[3px] border-white shadow" style={{ left: `${p.x}%`, top: `${p.y}%` }} />
         </div>
-        <div className="flex items-end gap-4">
+        {/* Wraps on a phone (2026-11-09): side by side the two previews were 426px, and the whole gallery page moved
+            sideways with its text cut. */}
+        <div className="flex flex-wrap items-end gap-4 min-w-0">
           {frame("w-[300px] max-w-full aspect-[16/10] rounded-lg text-xl", "מחשב")}
           {frame("w-[110px] aspect-[9/19.5] rounded-2xl text-sm", "טלפון")}
         </div>

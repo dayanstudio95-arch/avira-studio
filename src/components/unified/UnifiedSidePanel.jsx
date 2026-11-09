@@ -522,7 +522,9 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
   return (
     <>
       <Sheet open={isOpen} onOpenChange={onClose}>
-        <SheetContent className="bg-gray-900 border-gray-800 text-white overflow-y-auto max-w-lg" dir="rtl">
+        {/* A phone (2026-11-09, the mobile pass): the whole width, and every row of buttons wraps instead of running off
+            the side (the panel used to scroll sideways, "לוז שישי" / the invoices / "שלח חוזה" cut). */}
+        <SheetContent className="bg-gray-900 border-gray-800 text-white overflow-y-auto overflow-x-hidden max-w-lg w-full sm:w-3/4" dir="rtl">
           <SheetHeader>
             <div className="flex items-center justify-between">
               <SheetTitle className="text-white text-2xl">{coupleNames}</SheetTitle>
@@ -549,12 +551,12 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
               {/* בטל אירוע (אם יש אירוע) + ערוך ליד (אם יש ליד) — באותה שורה; כשיש רק אחד
                   מהם הוא תופס את כל הרוחב */}
               {(safeEvent || lead) && (
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   {safeEvent && (
                     <Button
                       onClick={() => setShowCancelConfirm(true)}
                       disabled={isCancelingEvent}
-                      className="flex-1 bg-red-600/80 hover:bg-red-700 text-white font-semibold py-3 rounded-xl gap-2"
+                      className="flex-1 min-w-[8rem] bg-red-600/80 hover:bg-red-700 text-white font-semibold py-3 rounded-xl gap-2"
                       title="בטל את האירוע הנוכחי"
                     >
                       <Trash2 className="w-5 h-5" />
@@ -564,7 +566,7 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                   {lead && (
                     <Button
                       onClick={() => setIsEditLeadOpen(true)}
-                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl gap-2"
+                      className="flex-1 min-w-[8rem] bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl gap-2"
                       title="פתח את טופס עריכת הליד"
                     >
                       <Edit2 className="w-5 h-5" />
@@ -590,7 +592,7 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                   request, and a warning before an invoice from the other business. */}
               {lead && (
                 <div className="rounded-xl border border-gray-700 bg-gray-800/40 p-2.5 text-sm">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="text-gray-300">העסק שהזוג משלם לו:</span>
                     <div className="flex gap-1">
                       {Object.values(ENTITIES).map((e) => {
@@ -651,7 +653,7 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                 </Button>
               )}
               {lead?.signedContractPdfUrl && (
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={() =>
@@ -659,7 +661,7 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                         toast.error("פתיחת החוזה החתום נכשלה", { description: e?.message })
                       )
                     }
-                    className="flex-1 flex items-center justify-center gap-2 bg-green-700 hover:bg-green-600 text-white font-semibold py-3 rounded-xl text-sm"
+                    className="flex-1 min-w-[10rem] flex items-center justify-center gap-2 bg-green-700 hover:bg-green-600 text-white font-semibold py-3 rounded-xl text-sm"
                   >
                     <FileDown className="w-5 h-5" />
                     צפה בחוזה החתום (PDF)
@@ -710,24 +712,24 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
             {/* כפתורי לוז — נשלחים דרך תבניות template_schedule_summer/_winter/_friday
                 שנערכות בהגדרות → תבניות הודעה (ראו handleSendSchedule) */}
             {lead && (
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button
                   onClick={() => handleSendSchedule('summer')}
-                  className="flex-1 flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-800 text-white font-semibold py-3 rounded-xl text-sm"
+                  className="flex-1 min-w-[6.5rem] flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-800 text-white font-semibold py-3 rounded-xl text-sm"
                 >
                   <Send className="w-4 h-4" />
                   לוז קיץ
                 </Button>
                 <Button
                   onClick={() => handleSendSchedule('winter')}
-                  className="flex-1 flex items-center justify-center gap-2 bg-sky-600 hover:bg-sky-700 disabled:bg-sky-800 text-white font-semibold py-3 rounded-xl text-sm"
+                  className="flex-1 min-w-[6.5rem] flex items-center justify-center gap-2 bg-sky-600 hover:bg-sky-700 disabled:bg-sky-800 text-white font-semibold py-3 rounded-xl text-sm"
                 >
                   <Send className="w-4 h-4" />
                   לוז חורף
                 </Button>
                 <Button
                   onClick={() => handleSendSchedule('friday')}
-                  className="flex-1 flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-700 disabled:bg-violet-800 text-white font-semibold py-3 rounded-xl text-sm"
+                  className="flex-1 min-w-[6.5rem] flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-700 disabled:bg-violet-800 text-white font-semibold py-3 rounded-xl text-sm"
                 >
                   <Send className="w-4 h-4" />
                   לוז שישי
@@ -738,10 +740,10 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
             {/* בדיקת זמינות צלם/וידאו — פותח פופאפ לבחירת תפקיד ואז אנשי צוות
                 לשליחת הודעת וואטסאפ בדיקת זמינות לתאריך/מיקום האירוע */}
             {(lead || safeEvent) && (
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button
                   onClick={() => { setReplacementMode(false); setShowAvailabilityModal(true); }}
-                  className="flex-1 flex items-center justify-center gap-2 bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 rounded-xl text-sm"
+                  className="flex-1 min-w-[8rem] flex items-center justify-center gap-2 bg-pink-600 hover:bg-pink-700 text-white font-semibold py-3 rounded-xl text-sm"
                 >
                   <Send className="w-4 h-4" />
                   זמינות צלם
@@ -751,7 +753,7 @@ export default function UnifiedSidePanel({ isOpen, onClose, lead, event, staffMe
                 {safeEvent && (
                   <Button
                     onClick={() => { setReplacementMode(true); setShowAvailabilityModal(true); }}
-                    className="flex-1 flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-700 text-white font-semibold py-3 rounded-xl text-sm"
+                    className="flex-1 min-w-[8rem] flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-700 text-white font-semibold py-3 rounded-xl text-sm"
                     title="צלם ביטל? שולח בדיקת זמינות לכל מי שבתפקיד לתאריך הזה"
                   >
                     🔁 מצא מחליף

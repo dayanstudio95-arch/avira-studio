@@ -12,6 +12,7 @@ import { peopleText } from "@/lib/photoProcessingPlan";
 // connection went when Google sends the browser back (?drive=connected / ?drive_error=…). 2026-11-09: also what comes
 // after a load — measuring and reading the photos (src/lib/photoProcessing.js) — on a line of its own, and the
 // galleries left half way when the tab was closed go on from here.
+// On a phone (2026-11-09) it sits right of the yellow "+" (bottom-left), not over it.
 const PHASE = { queued: "ממתין בתור", preparing: "מכין את התיקיות בדרייב…", uploading: "מעלה לדרייב", paused: "מושהה", finishing: "טוען את התמונות לגלריה…", done: "עלה לדרייב", error: "ההעלאה נעצרה" };
 const CONNECT_ERRORS = { access_denied: "החיבור לגוגל דרייב בוטל.", no_drive_scope: "בחלון של גוגל לא אושרה הגישה לדרייב. מתחברים שוב ומסמנים את האישור לדרייב.", no_refresh_token: "גוגל לא השלימה את החיבור. מתחברים שוב." };
 
@@ -173,7 +174,7 @@ export default function DriveUploadPill() {
   if (!job && !work) return null;
   if (!job) {
     return (
-      <div className="fixed bottom-4 left-1/2 z-[70] w-[min(92vw,420px)] -translate-x-1/2 rounded-xl border border-gray-700 bg-gray-900/95 shadow-2xl shadow-black/60 backdrop-blur" dir="rtl" data-testid="drive-pill">
+      <div className="fixed bottom-4 right-3 left-[88px] z-[70] md:left-1/2 md:right-auto md:w-[min(92vw,420px)] md:-translate-x-1/2 rounded-xl border border-gray-700 bg-gray-900/95 shadow-2xl shadow-black/60 backdrop-blur" dir="rtl" data-testid="drive-pill">
         <ProcessingLine job={work} />
         {workWaiting > 0 && <div className="px-3 pb-2 text-[11px] text-gray-400">ועוד {workWaiting} בתור</div>}
         {isProcessing(work) && <p className="px-3 pb-2 text-[11px] text-gray-500">אפשר לעבור בין הדפים. נסגר הדפדפן? ממשיך בפעם הבאה שהמערכת פתוחה.</p>}
@@ -184,7 +185,7 @@ export default function DriveUploadPill() {
   const live = job.liveBytes ?? job.bytesDone;
   const pct = job.bytesTotal ? Math.min(100, Math.round((live / job.bytesTotal) * 100)) : 0;
   return (
-    <div className="fixed bottom-4 left-1/2 z-[70] w-[min(92vw,420px)] -translate-x-1/2 rounded-xl border border-gray-700 bg-gray-900/95 shadow-2xl shadow-black/60 backdrop-blur" dir="rtl" data-testid="drive-pill">
+    <div className="fixed bottom-4 right-3 left-[88px] z-[70] md:left-1/2 md:right-auto md:w-[min(92vw,420px)] md:-translate-x-1/2 rounded-xl border border-gray-700 bg-gray-900/95 shadow-2xl shadow-black/60 backdrop-blur" dir="rtl" data-testid="drive-pill">
       <div className="flex items-center gap-2 px-3 py-2">
         {job.phase === "done" ? <CheckCircle2 className="h-4 w-4 shrink-0 text-green-400" /> : <CloudUpload className={`h-4 w-4 shrink-0 ${job.phase === "error" ? "text-red-400" : "text-brand-300"}`} />}
         <button type="button" onClick={() => setOpen((o) => !o)} className="min-w-0 flex-1 text-right">

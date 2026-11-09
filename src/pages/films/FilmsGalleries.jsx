@@ -175,12 +175,16 @@ function Thumb({ g }) {
   );
 }
 
+// Cards or table, as last chosen on this computer; never chosen: cards on a phone (2026-11-09 — the table is 1,300px
+// wide there, "שלח לזוג" far off to the side), the table on a computer.
 function readCards() {
   try {
-    return localStorage.getItem("films:cards") === "1";
+    const v = localStorage.getItem("films:cards");
+    if (v === "1" || v === "0") return v === "1";
   } catch {
-    return false;
+    /* private mode: by the screen */
   }
+  return typeof window !== "undefined" && window.matchMedia?.("(max-width: 767px)").matches === true;
 }
 
 export default function FilmsGalleries() {

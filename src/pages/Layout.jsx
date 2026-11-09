@@ -42,6 +42,7 @@ import {
   SidebarFooter,
   SidebarProvider,
   SidebarTrigger,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import {
   DropdownMenu,
@@ -182,6 +183,26 @@ function WorkCount({ value, tone = "neutral", title }) {
 }
 
 // The list is shared by the bell (rendered twice) and the menu, so it lives above both.
+
+// On a phone the menu is a sheet over the page (2026-11-09, the mobile pass): choosing a page closes it — it stayed open
+// over the new page and had to be closed by hand. Also when the page tapped is the one already open (no navigation).
+function CloseMobileMenuOnNavigate() {
+  const { isMobile, openMobile, setOpenMobile } = useSidebar();
+  const { pathname, search } = useLocation();
+  useEffect(() => {
+    if (isMobile) setOpenMobile(false);
+  }, [pathname, search, isMobile, setOpenMobile]);
+  useEffect(() => {
+    if (!isMobile || !openMobile) return undefined;
+    const onClick = (e) => {
+      if (e.target instanceof Element && e.target.closest('[data-mobile="true"] a[href]')) setOpenMobile(false);
+    };
+    document.addEventListener("click", onClick);
+    return () => document.removeEventListener("click", onClick);
+  }, [isMobile, openMobile, setOpenMobile]);
+  return null;
+}
+
 export default function Layout({ children }) {
   return (
     <NotificationsProvider>
@@ -389,6 +410,7 @@ function LayoutShell({ children }) {
 
   return (
     <SidebarProvider>
+      <CloseMobileMenuOnNavigate />
       <style>{`
         :root {
           --avira-gold: #F5CF00;
@@ -651,7 +673,9 @@ function LayoutShell({ children }) {
             </div>
           </header>
 
-          <div className="flex-1 overflow-auto">
+          {/* pb-28 on a phone (2026-11-09): room under the last button of a page, which stayed under the yellow "+"
+              (and the upload pill) with nothing left to scroll. */}
+          <div className="flex-1 overflow-auto pb-28 md:pb-0">
             {children}
           </div>
         </main>
