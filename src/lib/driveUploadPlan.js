@@ -59,6 +59,32 @@ export function planUpload(files) {
   };
 }
 
+/** The top folder a dropped / picked file sits in, as planUpload groups it ('' = a photo dropped by itself). */
+export function topFolderOf(path) {
+  const parts = String(path || "").split("/").filter(Boolean);
+  return parts.length > 1 ? parts[0].trim() : "";
+}
+
+/**
+ * Folders chosen one after another (2026-11-10, the owner's request: the Mac's folder window takes one folder at a
+ * time, and the next one replaced it): what is picked or dropped next joins what was chosen before, for one upload.
+ * The same file twice (same path and size — the same folder picked again) is kept once.
+ */
+export function addPicked(before, added) {
+  const key = (f) => `${f.path}|${Number(f.size) || 0}`;
+  const out = [...(before || [])];
+  const seen = new Set(out.map(key));
+  for (const f of added || []) {
+    if (!f || typeof f.path !== "string" || seen.has(key(f))) continue;
+    seen.add(key(f));
+    out.push(f);
+  }
+  return out;
+}
+
+/** "X" on a folder in the list: its files out ('' = the photos dropped by themselves). */
+export const withoutFolder = (files, name) => (files || []).filter((f) => topFolderOf(f.path) !== name);
+
 /** "ויקה ואיליה 1/11/26" — the event's folder (the owner's own naming). */
 export function galleryFolderName(coupleName, date) {
   const d = String(date || "").slice(0, 10);

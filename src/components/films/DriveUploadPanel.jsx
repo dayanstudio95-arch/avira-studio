@@ -1,22 +1,27 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { toast } from "sonner";
-import { Camera, FolderDown, Loader2, PlugZap, Upload } from "lucide-react";
+import { Camera, FolderDown, FolderPlus, Loader2, PlugZap, Upload, X } from "lucide-react";
 import { supabase } from "@/api/supabaseClient";
 import { appFolderOf, connectDrive, dismissUpload, driveQuota, driveStatus, filesFromDrop, filesFromInput, isOpen, jobFor, startUpload, subscribe } from "@/lib/driveUpload";
-import { defaultUploadRoles, drivePath, galleryFolderName, photosText, planUpload, READ_DEPTH, sizeText, teamPhotographers } from "@/lib/driveUploadPlan";
+import { addPicked, defaultUploadRoles, drivePath, galleryFolderName, photosText, planUpload, READ_DEPTH, sizeText, teamPhotographers, withoutFolder } from "@/lib/driveUploadPlan";
 import { DriveJobButtons, DriveJobProgress } from "@/components/DriveUploadPill";
 
 // "העלאה מהמחשב לגוגל דרייב" on a photo gallery (Avira, 2026-11-03, the owner's request; src/lib/driveUpload.js): the
 // wedding's folder is dropped here, its sub-folders are the sets; whose materials they are (the event's photographers,
 // as on work status — marked "done" there at the end; 2026-11-09: or "יהיו עוד בהמשך" — not marked, the end offers to
 // mark him); then the upload runs in the background.
+// 2026-11-10: folders picked / dropped one after another join one list (one upload), each with an "X".
 // `galleryId` null = a new gallery not saved yet: `onReady({ plan, roles, people, later })` hands the choice to the form,
-// which starts the upload once the gallery is made.
+// which starts the upload once the gallery is made (null when nothing is chosen).
 export default function DriveUploadPanel({ galleryId = null, coupleName = "", date = "", eventId = null, existingFolderUrl = "", onReady = null }) {
   const location = useLocation();
   const [status, setStatus] = useState(null); // { connected, email } | { failed }
-  const [plan, setPlan] = useState(null);
+  // Every file chosen so far ({ path, size, file }), from every folder picked or dropped.
+  const [picked, setPicked] = useState([]);
+  const pickedRef = useRef(picked);
+  pickedRef.current = picked;
+  const plan = useMemo(() => (picked.length ? planUpload(picked) : null), [picked]);
   const [reading, setReading] = useState(false);
   const [over, setOver] = useState(false);
   const [team, setTeam] = useState([]);
@@ -78,16 +83,22 @@ export default function DriveUploadPanel({ galleryId = null, coupleName = "", da
     else setTarget({ checked: true, folderId: null });
   }, [status?.connected, existingFolderUrl]);
 
+  // What is picked or dropped joins what was chosen before (the same folder again is kept once).
   const choose = async (files) => {
     setReading(true);
     try {
-      const p = planUpload(await files);
-      if (!p.count) {
+      const added = await files;
+      if (!planUpload(added).count) {
         toast.error("לא נמצאו תמונות בתיקייה (JPG, PNG, HEIC…)");
         return;
       }
-      setPlan(p);
-      onReady?.({ plan: p, roles, people, later: later.filter((r) => roles.includes(r)) });
+      const before = pickedRef.current;
+      const next = addPicked(before, added);
+      if (next.length === before.length) {
+        toast.info("התיקייה הזו כבר ברשימה");
+        return;
+      }
+      setPicked(next);
     } catch {
       toast.error("לא הצלחנו לקרוא את התיקייה. גוררים אותה שוב, או בוחרים אותה מהמחשב.");
     } finally {
@@ -95,13 +106,13 @@ export default function DriveUploadPanel({ galleryId = null, coupleName = "", da
     }
   };
   useEffect(() => {
-    if (plan) onReady?.({ plan, roles, people, later: later.filter((r) => roles.includes(r)) });
-  }, [roles, later]);
+    onReady?.(plan ? { plan, roles, people, later: later.filter((r) => roles.includes(r)) } : null);
+  }, [plan, roles, later]);
 
   const start = () => {
     try {
       startUpload({ galleryId, coupleName, date, eventId, roles, people, later: later.filter((r) => roles.includes(r)), plan, folderId: target.folderId });
-      setPlan(null);
+      setPicked([]);
     } catch (e) {
       toast.error(e.message);
     }
@@ -168,6 +179,15 @@ export default function DriveUploadPanel({ galleryId = null, coupleName = "", da
       >
         {reading ? (
           <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> קורא את התיקייה…</span>
+        ) : plan ? (
+          <>
+            <FolderDown className="mx-auto mb-1 h-5 w-5" />
+            גוררים לכאן עוד תיקיות, או{" "}
+            <button type="button" onClick={() => inputRef.current?.click()} className="text-brand-300 underline">
+              מוסיפים תיקייה מהמחשב
+            </button>
+            . הן מצטרפות לרשימה.
+          </>
         ) : (
           <>
             <FolderDown className="mx-auto mb-1 h-5 w-5" />
@@ -177,7 +197,19 @@ export default function DriveUploadPanel({ galleryId = null, coupleName = "", da
             </button>
           </>
         )}
-        <input ref={inputRef} type="file" className="hidden" webkitdirectory="" multiple onChange={(e) => choose(filesFromInput(e.target.files))} data-testid="drive-input" />
+        {/* The Mac's window picks one folder: the value is cleared, so the next pick (even the same folder) is read too. */}
+        <input
+          ref={inputRef}
+          type="file"
+          className="hidden"
+          webkitdirectory=""
+          multiple
+          onChange={(e) => {
+            choose(filesFromInput(e.target.files));
+            e.target.value = "";
+          }}
+          data-testid="drive-input"
+        />
       </div>
 
       {plan && (
@@ -196,12 +228,24 @@ export default function DriveUploadPanel({ galleryId = null, coupleName = "", da
           </p>
           <div className="divide-y divide-gray-800 text-xs">
             {plan.groups.map((g) => (
-              <div key={g.name || "-"} className="flex justify-between gap-3 py-1">
-                <span className="text-gray-200">
+              <div key={g.name || "-"} className="flex items-center justify-between gap-3 py-1" data-testid="drive-group">
+                <span className="min-w-0 text-gray-200">
                   {g.name ? `📁 ${g.name}` : "ישר בתיקיית האירוע"}
                   {g.folders > 0 && <span className="text-gray-500"> · {g.folders === 1 ? "תיקייה אחת בתוכה" : `${g.folders} תיקיות בתוכה`}</span>}
                 </span>
-                <span className="shrink-0 text-gray-400">{photosText(g.count)}</span>
+                <span className="flex shrink-0 items-center gap-2 text-gray-400">
+                  {photosText(g.count)}
+                  <button
+                    type="button"
+                    onClick={() => setPicked((p) => withoutFolder(p, g.name))}
+                    title="להוריד מהרשימה"
+                    aria-label={`הורדת ${g.name || "התמונות שבלי תיקייה"} מהרשימה`}
+                    className="rounded p-1 text-gray-500 hover:bg-red-500/10 hover:text-red-300"
+                    data-testid="drive-group-remove"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </span>
               </div>
             ))}
             <div className="flex justify-between py-1 font-semibold text-white">
@@ -211,6 +255,15 @@ export default function DriveUploadPanel({ galleryId = null, coupleName = "", da
               </span>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            disabled={reading}
+            className="inline-flex items-center gap-1.5 rounded-md border border-gray-600 px-2.5 py-1 text-xs text-gray-200 hover:border-gray-400 disabled:opacity-50"
+            data-testid="drive-add-folder"
+          >
+            <FolderPlus className="h-3.5 w-3.5" /> הוספת תיקייה
+          </button>
           {plan.deep > 0 && <p className="text-xs text-amber-300">{photosText(plan.deep)} יותר מ-{READ_DEPTH} תיקיות פנימה: הן יעלו לדרייב, אבל הגלריה לא תקרא אותן.</p>}
           {plan.skipped > 0 && <p className="text-xs text-gray-500">{plan.skipped === 1 ? "קובץ אחד שאינו תמונה לא יעלה." : `${plan.skipped.toLocaleString("he-IL")} קבצים שאינם תמונות לא יעלו.`}</p>}
 
@@ -265,7 +318,7 @@ export default function DriveUploadPanel({ galleryId = null, coupleName = "", da
               <button type="button" onClick={start} disabled={!target.checked} className="inline-flex items-center gap-1.5 rounded-md bg-brand-400 px-3 py-1.5 text-sm font-semibold text-brand-fg hover:bg-brand-500 disabled:opacity-50" data-testid="drive-start">
                 <Upload className="h-4 w-4" /> העלאה לדרייב
               </button>
-              <button type="button" onClick={() => setPlan(null)} className="text-xs text-gray-400 hover:text-white">
+              <button type="button" onClick={() => setPicked([])} className="text-xs text-gray-400 hover:text-white">
                 ביטול
               </button>
               {free != null && (

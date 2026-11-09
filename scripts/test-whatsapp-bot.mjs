@@ -3876,6 +3876,28 @@ console.log('\n— PART 75: album group messages + list order —');
     ['טיזר/a/b/c/deep.jpg', 'צלם ראשון/01 חופה/A.JPG', 'צלם ראשון/01 חופה/A (2).jpg', 'צלם ראשון/02 התארגנות/AVIRA-9.jpg', 'צלם ראשון/02 התארגנות/AVIRA-10.jpg', 'צלם שני/B.jpeg', 'cover.png'],
     ['טיזר:1:1', 'צלם ראשון:4:2', 'צלם שני:1:0', ':1:0'], 3, 1, 7, 70,
   ]);
+  {
+    // 2026-11-10: folders picked one after another (the Mac's window takes one) join one list; "X" takes a folder out.
+    const first = [f('צלם ראשון/01 חופה/A.jpg'), f('צלם ראשון/01 חופה/B.jpg', 12)];
+    const second = [f('צלם שני/C.jpg'), f('צלם שני/notes.txt')];
+    const both = du.addPicked(first, second);
+    const again = du.addPicked(both, [f('צלם ראשון/01 חופה/A.jpg'), f('צלם ראשון/01 חופה/B.jpg', 12)]);
+    const other = du.addPicked(both, [f('צלם ראשון/01 חופה/A.jpg', 11)]);
+    const loose = du.addPicked(both, [f('cover.png')]);
+    check('folders chosen one after another join one upload; the same folder again is kept once; X takes one folder out', [
+      du.planUpload(both).groups.map((g) => `${g.name}:${g.count}`), again.length === both.length,
+      du.planUpload(other).files.map((x) => [...x.dir, x.name].join('/')),
+      du.planUpload(du.withoutFolder(both, 'צלם ראשון')).groups.map((g) => g.name), du.withoutFolder(loose, '').length, du.withoutFolder(both, 'צלם שני').length,
+      [du.topFolderOf('צלם ראשון/x/a.jpg'), du.topFolderOf(' טיזר /a.jpg'), du.topFolderOf('a.jpg'), du.topFolderOf('')],
+      du.addPicked(null, [f('a.jpg'), null, { size: 1 }]).length, du.addPicked([], []).length,
+    ], [
+      ['צלם ראשון:2', 'צלם שני:1'], true,
+      ['צלם ראשון/01 חופה/A.jpg', 'צלם ראשון/01 חופה/A (2).jpg', 'צלם ראשון/01 חופה/B.jpg', 'צלם שני/C.jpg'],
+      ['צלם שני'], 4, 2,
+      ['צלם ראשון', 'טיזר', '', ''],
+      1, 0,
+    ]);
+  }
   check('the event folder by the owner\'s naming, filed by its date; a stopped upload goes on with what is missing (name and size)', [
     du.galleryFolderName('ויקה ואיליה', '2026-11-01'), du.galleryFolderName('עידן & ליני', '2027-01-09'), du.galleryFolderName('א', ''),
     du.drivePath('2026-11-01'), du.drivePath('2027-01-09'), du.drivePath(''),
