@@ -287,7 +287,7 @@ function LayoutShell({ children }) {
     let alive = true;
     const loadStats = async () => {
       try {
-        const [events, convs, newLeads, meetings, availability, albumOrders] = await Promise.all([
+        const [events, convs, newLeads, meetings, availability, albumOrders, packages] = await Promise.all([
           base44.entities.Event.list(),
           base44.entities.WhatsAppConversation.list("-lastMessageAt", 600).catch(() => []),
           base44.entities.Lead.filter({ status: "חדש" }, undefined, 500, "id").catch(() => []),
@@ -295,6 +295,8 @@ function LayoutShell({ children }) {
           base44.entities.StaffAvailabilityRequest.filter({ eventDateSnapshot: { $gte: israelToday() } }, "-requestedAt", 1000).catch(() => []),
           // album orders waiting for payment (2026-10-29) — only the two status columns
           base44.entities.AlbumOrder.filter({ paymentStatus: { $ne: "paid" } }, undefined, 500, "id, workflow_status, payment_status").catch(() => []),
+          // what each event's package needs — "צריך החלטה" leaves out a full team (2026-11-11), as on the page
+          base44.entities.Package.list().catch(() => []),
         ]);
         const today = israelToday();
         const year = yearProgress(events);
@@ -307,7 +309,7 @@ function LayoutShell({ children }) {
           waitingChats: (convs || []).filter(needsReply).length,
           newLeads: (newLeads || []).length,
           meetingsToday: (meetings || []).filter((m) => utcToIsraelParts(m.startsAt).date === today).length,
-          availabilityToDecide: buildAvailabilityInbox({ requests: availability || [], events, today }).toDecide,
+          availabilityToDecide: buildAvailabilityInbox({ requests: availability || [], events, today, packagesById: Object.fromEntries((packages || []).map((p) => [p.id, p])) }).toDecide,
           albumsAwaitingPayment: (albumOrders || []).filter(isAwaitingPayment).length,
           filmsToSend: events.filter(isFilmWaiting).length,
         });

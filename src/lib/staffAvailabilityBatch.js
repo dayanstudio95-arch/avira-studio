@@ -61,6 +61,40 @@ export function batchAvailabilityMessage({ name, slot, events, link }) {
   ].join("\n");
 }
 
+// A reminder to several people at once (2026-11-11, the owner: "שאני יוכל לסמן את שניהם ולשלוח לשניהם ביחד הודעה",
+// even from different events). `items` = the unanswered requests ticked, each { request, date, venue, couple }. One
+// message per person — all his dates and one link (his choice) — split only when he was asked for different roles
+// (the answer page names one role). Ordered by name; each plan's dates in order.
+export function reminderPlans({ items, staffMembers = [] }) {
+  const byId = new Map((staffMembers || []).map((s) => [s.id, s]));
+  const plans = new Map();
+  for (const it of items || []) {
+    const r = it?.request;
+    if (!r) continue;
+    const slot = r.teamRole || null;
+    const key = `${r.staffMemberId || r.staffNameSnapshot}|${slot || r.role || ""}`;
+    if (!plans.has(key)) plans.set(key, { key, staff: byId.get(r.staffMemberId) || null, name: r.staffNameSnapshot || "", slot, role: r.role || null, items: [] });
+    plans.get(key).items.push(it);
+  }
+  return [...plans.values()]
+    .map((p) => ({ ...p, items: [...p.items].sort((a, b) => String(a.date || "").localeCompare(String(b.date || ""))) }))
+    .sort((a, b) => a.name.localeCompare(b.name, "he") || String(a.slot || "").localeCompare(String(b.slot || "")));
+}
+
+export function reminderMessage({ name, slot, role, items, link }) {
+  const first = String(name || "").split(" ")[0];
+  const who = slotOption(slot)?.messageLabel || (role === "videographer" ? "צלם וידאו" : "צלם");
+  const many = (items || []).length > 1;
+  return [
+    "🔔 תזכורת — עוד לא קיבלנו ממך תשובה",
+    `היי${first ? ` ${first}` : ""}! רציתי לבדוק זמינות שלך בתור ${who} ${many ? "לאירועים הבאים" : "לאירוע הבא"}:`,
+    ...(items || []).map((it) => line({ date: it.date, venue: it.venue, coupleNames: it.couple })),
+    "",
+    many ? "אפשר לסמן לכל אירוע פנוי / לא פנוי כאן:" : "אפשר לסמן פנוי / לא פנוי כאן:",
+    link || "{{link}}",
+  ].join("\n");
+}
+
 // "You're booked" for several events in one message.
 export function combinedBookingMessage({ name, items }) {
   const first = String(name || "").split(" ")[0];

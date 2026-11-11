@@ -79,6 +79,28 @@ export function expectedSplit(e, pkg) {
   return { photo: 2, video: n - 2 };
 }
 
+// How many photographers / videographers are still missing by the package split (0 when none;
+// never below 0). 2026-11-11: an answer about a role with no gap is not needed any more.
+export function roleGap(e, pkg) {
+  const named = (e?.team || []).filter((m) => m && String(m.staffMemberName || "").trim());
+  const want = expectedSplit(e, pkg);
+  return {
+    photo: Math.max(0, want.photo - named.filter((m) => PHOTO_ROLES.includes(m.role)).length),
+    video: Math.max(0, want.video - named.filter((m) => VIDEO_ROLES.includes(m.role)).length),
+  };
+}
+
+// The empty slots that make up the gap, in order (2026-11-11, "זימון לצלם 2" on a card): a
+// photographer short → the first empty of צלם 1 / צלם 2; the same for video.
+export function missingSlots(e, pkg) {
+  const gap = roleGap(e, pkg);
+  const filled = new Set((e?.team || []).filter((m) => m && String(m.staffMemberName || "").trim()).map((m) => m.role));
+  return [
+    ...PHOTO_ROLES.filter((r) => !filled.has(r)).slice(0, gap.photo),
+    ...VIDEO_ROLES.filter((r) => !filled.has(r)).slice(0, gap.video),
+  ];
+}
+
 export function missingRoles(e, pkg) {
   const named = (e?.team || []).filter((m) => m && String(m.staffMemberName || "").trim());
   const photo = named.filter((m) => PHOTO_ROLES.includes(m.role)).length;

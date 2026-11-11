@@ -102,6 +102,9 @@ export default function StaffAvailabilityModal({
   replacement = null,
   eventTeam = null,
   eventsOnDate = null,
+  // 2026-11-11 — "זימון לצלם 2" on a card of "חסר צוות": { jobRole, slot } skips the role picker, and each person
+  // ticked gets that slot (still changeable per person).
+  initialRole = null,
 }) {
   const isReplacement = !!replacement;
   // 'photographer' | 'videographer' | 'favorites' (send flow, combined roles) |
@@ -135,8 +138,16 @@ export default function StaffAvailabilityModal({
   // Jump straight to the role when the caller already knows it.
   useEffect(() => {
     if (open && isReplacement && replacement?.jobRole) handlePickRole(replacement.jobRole);
+    else if (open && !isReplacement && initialRole?.jobRole) handlePickRole(initialRole.jobRole);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, isReplacement, replacement?.jobRole]);
+  }, [open, isReplacement, replacement?.jobRole, initialRole?.jobRole]);
+  // A person's slot: the one picked for him, else the slot the window was opened for (null = picked off).
+  const slotOf = (s) =>
+    Object.prototype.hasOwnProperty.call(slotById, s.id)
+      ? slotById[s.id] || undefined
+      : initialRole?.slot && teamRoleSlotsForJobRole(s.role).includes(initialRole.slot)
+        ? initialRole.slot
+        : undefined;
 
   useEffect(() => {
     if (!open) {
@@ -246,14 +257,14 @@ export default function StaffAvailabilityModal({
       staffMemberId: staffMember.id,
       staffNameSnapshot: staffMember.name,
       role: selectedRole === "favorites" ? staffMember.role : selectedRole,
-      teamRole: slotById[staffMember.id] || null,
+      teamRole: slotOf(staffMember) || null,
       eventDateSnapshot: eventDate || null,
       venueSnapshot: venue || null,
       coupleNamesSnapshot: coupleNames || null,
       tokenHash,
     });
     const link = `${window.location.origin}/staff-availability/${rawToken}`;
-    const text = message.replace(/\{\{role\}\}/g, roleLabelFor(staffMember, slotById[staffMember.id]));
+    const text = message.replace(/\{\{role\}\}/g, roleLabelFor(staffMember, slotOf(staffMember)));
     return base44.functions.invoke("sendWhatsAppMessage", { to: staffMember.phoneNumber, message: `${text}\n\n${link}` });
   };
 
@@ -447,12 +458,12 @@ export default function StaffAvailabilityModal({
                       <div className="flex flex-wrap items-center gap-1.5 pb-1.5 ps-8">
                         <span className="text-[11px] text-gray-400">תפקיד:</span>
                         {teamRoleSlotsForJobRole(s.role).map((slot) => {
-                          const on = slotById[s.id] === slot;
+                          const on = slotOf(s) === slot;
                           return (
                             <button
                               key={slot}
                               type="button"
-                              onClick={() => setSlotById((m) => ({ ...m, [s.id]: on ? undefined : slot }))}
+                              onClick={() => setSlotById((m) => ({ ...m, [s.id]: on ? null : slot }))}
                               className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
                                 on ? "border-pink-400 bg-pink-500/20 text-pink-200" : "border-gray-600 text-gray-300 hover:border-pink-400/60"
                               }`}
@@ -481,7 +492,7 @@ export default function StaffAvailabilityModal({
                   {(() => {
                     const first = roleStaff.find((s) => selectedIds.has(s.id));
                     if (!first || !message.includes("{{role}}")) return null;
-                    const line = message.replace(/\{\{role\}\}/g, roleLabelFor(first, slotById[first.id])).split("\n")[0];
+                    const line = message.replace(/\{\{role\}\}/g, roleLabelFor(first, slotOf(first))).split("\n")[0];
                     return <p className="mt-1 rounded-md bg-gray-800/70 px-2 py-1 text-[11px] text-gray-300">לדוגמה ל{first.name}: {line}</p>;
                   })()}
                 </div>

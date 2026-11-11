@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { isMissingTeam, israelToday, eventDay, assignedShooters, requiredShooters, combinedNotes } from "@/lib/missingTeam";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { base44 } from "@/api/base44Client";
@@ -59,7 +60,13 @@ export default function StaffScheduling() {
   // "זמינות צלם" — the plain availability check (pick a role, tick names, send), the same
   // one the lead panel has. Owner's request on 2026-09-24, for the mobile sheet. Reuses the
   // same modal with `replacement: null`.
-  const openAvailability = (forEvent) => setReplacementTarget({ event: forEvent, plain: true });
+  // 2026-11-11: `initialRole` = { jobRole, slot } — "זימון לצלם 2" on a card of "חסר צוות" opens on that role.
+  const openAvailability = (forEvent, initialRole = null) => setReplacementTarget({ event: forEvent, plain: true, initialRole });
+  // The packages say what each event needs (the same query as the answers tab) — for the tab's count.
+  const pkgQ = useQuery({ queryKey: ["dashPackages"], queryFn: () => base44.entities.Package.list(), staleTime: 600000 });
+  const packagesById = useMemo(() => Object.fromEntries((pkgQ.data || []).map((p) => [p.id, p])), [pkgQ.data]);
+  // The "חסר צוות" count opens "תשובות זמינות" on its filter (2026-11-11); `at` lets a second click ask again.
+  const [answersAsk, setAnswersAsk] = useState(null);
   // Bumped after a send so the sheet re-reads who has been asked / answered.
   const [availabilityVersion, setAvailabilityVersion] = useState(0);
 
@@ -109,11 +116,17 @@ export default function StaffScheduling() {
       const [rawEvents, staffData, leadNotes] = await Promise.all([
         base44.entities.Event.list("-date"),
         base44.entities.StaffMember.list(),
-        // Only id + notes: an event's notes are often written on its lead (combinedNotes).
-        base44.entities.Lead.filter({}, undefined, undefined, "id, notes").catch(() => []),
+        // Only id + notes: an event's notes are often written on its lead (combinedNotes); and what the couple wrote
+        // when signing (2026-11-11, "ככה אני יוכל לדעת אם הם ביקשו צלם ספציפי").
+        base44.entities.Lead.filter({}, undefined, undefined, "id, notes, couple_notes_signed").catch(() => []),
       ]);
-      const notesByLead = new Map((leadNotes || []).map((l) => [l.id, l.notes]));
-      const eventsData = rawEvents.map((e) => ({ ...e, displayNotes: combinedNotes(e.notes, notesByLead.get(e.sourceLeadId)) }));
+      const leadById = new Map((leadNotes || []).map((l) => [l.id, l]));
+      const eventsData = rawEvents.map((e) => {
+        const lead = leadById.get(e.sourceLeadId);
+        const displayNotes = combinedNotes(e.notes, lead?.notes);
+        const couple = String(lead?.coupleNotesSigned || "").trim();
+        return { ...e, displayNotes, coupleNotes: couple && !displayNotes.includes(couple) ? couple : "" };
+      });
       setEvents(eventsData);
       const sorted = [...staffData].sort((a, b) => (a.orderIndex ?? 999) - (b.orderIndex ?? 999));
       setStaffMembers(sorted);
@@ -699,7 +712,7 @@ export default function StaffScheduling() {
               לוח שנה
             </Button>
             {(() => {
-              const toDecide = buildAvailabilityInbox({ requests: answersQ.data || [], events, today }).toDecide;
+              const toDecide = buildAvailabilityInbox({ requests: answersQ.data || [], events, today, packagesById }).toDecide;
               return (
                 <Button
                   variant={viewMode === "answers" ? "default" : "outline"}
@@ -725,8 +738,20 @@ export default function StaffScheduling() {
           ];
           return (
             <div className="grid grid-cols-3 gap-2.5 md:gap-4 mb-5">
-              {tiles.map((t) => (
-                <div key={t.label} className="dash-card flex items-center justify-end gap-2 px-3 py-3 md:gap-4 md:px-5 md:py-4">
+              {tiles.map((t) => {
+                // "חסר צוות" opens the events missing crew, with who to invite (2026-11-11).
+                const open = t.label === "חסר צוות" ? () => { setViewMode("answers"); setAnswersAsk({ filter: "missing", at: Date.now() }); } : null;
+                return (
+                <div
+                  key={t.label}
+                  onClick={open || undefined}
+                  role={open ? "button" : undefined}
+                  tabIndex={open ? 0 : undefined}
+                  onKeyDown={open ? (e) => (e.key === "Enter" || e.key === " ") && open() : undefined}
+                  title={open ? "פתיחת האירועים שחסר בהם צוות" : undefined}
+                  className={`dash-card flex items-center justify-end gap-2 px-3 py-3 md:gap-4 md:px-5 md:py-4 ${open ? "cursor-pointer hover:ring-1 hover:ring-rose-400/50" : ""}`}
+                  data-testid={open ? "tile-missing" : undefined}
+                >
                   <div>
                     <div className="text-xl md:text-2xl font-bold leading-tight text-white tabular-nums">{t.value}</div>
                     <div className="text-[11px] md:text-sm text-slate-400 whitespace-nowrap">{t.label}</div>
@@ -735,7 +760,8 @@ export default function StaffScheduling() {
                     <t.icon className="h-5 w-5 md:h-6 md:w-6" strokeWidth={1.75} />
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           );
         })()}
@@ -754,7 +780,7 @@ export default function StaffScheduling() {
         />
 
         {viewMode === "answers" ? (
-          <AvailabilityAnswers events={events} staffMembers={staffMembers} onEventsChanged={() => loadData({ silent: true })} focusLeadId={focusLeadId} onCheckAvailability={openAvailability} />
+          <AvailabilityAnswers events={events} staffMembers={staffMembers} onEventsChanged={() => loadData({ silent: true })} focusLeadId={focusLeadId} onCheckAvailability={openAvailability} ask={answersAsk} />
         ) : viewMode === "list" ? renderListView() : renderCalendarView()}
 
         {/* Calendar Edit Modal */}
@@ -813,6 +839,7 @@ export default function StaffScheduling() {
           eventTeam={replacementTarget?.event?.team || []}
           eventsOnDate={events}
           replacement={replacementTarget && !replacementTarget.plain ? { jobRole: replacementTarget.jobRole, excludeName: replacementTarget.excludeName } : null}
+          initialRole={replacementTarget?.plain ? replacementTarget.initialRole || null : null}
           existingRequests={[]}
           onStaffMembersChanged={loadData}
         />

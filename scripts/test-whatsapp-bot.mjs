@@ -2037,7 +2037,8 @@ console.log('\n— PART 36: availability answers inbox —');
   check('pending / declined', [st.c, st.d].join(','), 'pending,declined');
   check('toDecide counts 1', out.toDecide, 1);
   const full = ai.buildAvailabilityInbox({ today: '2026-10-07', events: [{ ...ev, team: [{ role: 'photographer1', staffMemberName: 'x' }, { role: 'photographer2', staffMemberName: 'y' }] }], requests: [req({ id: 'e', staffMemberId: 's6', staffNameSnapshot: 'עידן', status: 'available' })] });
-  check('slots taken → full', full.groups[0].rows[0].state, 'full');
+  // 2026-11-11: both photographers on, only video missing → a photographer's "פנוי" is not needed (was "full").
+  check('photographers full (only video missing) → a photographer\'s answer is not needed', [full.groups[0].rows[0].state, full.toDecide], ['not_needed', 0]);
   const dis = ai.buildAvailabilityInbox({ today: '2026-10-07', events: [ev], requests: [req({ id: 'f', staffMemberId: 's7', staffNameSnapshot: 'ז', status: 'available', decisionDismissedAt: '2026-10-07T11:00:00Z' })] });
   check('לא צריך → dismissed, not counted', [dis.groups[0].rows[0].state, dis.toDecide].join(','), 'dismissed,0');
   const noEv = ai.buildAvailabilityInbox({ today: '2026-10-07', events: [], requests: [req({ id: 'g', eventId: null, leadId: 'L9', staffMemberId: 's8', staffNameSnapshot: 'ח', status: 'available' })] });
@@ -2065,6 +2066,66 @@ console.log('\n— PART 36: availability answers inbox —');
   ] });
   check('never closed → no "פתח מחדש"', onlyPersonal.groups[0].closed, 0);
   check('closed before 0086 (no mark) → the old rule', ai.reopenRows(cl.groups[0].rows).map((r) => r.request.id).join(), 'p1');
+}
+
+// PART 36c — "תשובות זמינות" sorted (2026-11-11, the owner): "חסר צוות" first — every upcoming event missing crew, with
+// the empty slots to invite for; a full team (or a role with no gap) needs no answer — out of "ממתינים" / "צריך החלטה",
+// back by itself when someone leaves the team.
+console.log('\n— PART 36c: availability answers — missing crew, full team needs no answer —');
+{
+  const ai = await loadModule('src/lib/availabilityInbox.js', 'availinbox36c');
+  const mt = await loadModule('src/lib/missingTeam.js', 'missingteam36c');
+  const pkgs = { P3: { id: 'P3', photographers: 2, videographers: 1 }, P1: { id: 'P1', photographers: 1, videographers: 0 } };
+  const t = (...xs) => xs.map(([role, staffMemberName]) => ({ role, staffMemberName }));
+  const fullEv = { id: 'F', date: '2027-01-21', coupleNames: 'דניאל ומאי', packageId: 'P3', requiredCrew: 3, team: t(['photographer1', 'אני (דניאל)'], ['photographer2', 'איילון'], ['videographer', 'דודו'], ['editor', 'דרור']) };
+  const noVideo = { id: 'V', date: '2027-02-18', coupleNames: 'איוון וטניה', packageId: 'P3', requiredCrew: 3, team: t(['photographer1', 'אני (דניאל)'], ['photographer2', 'איילון']) };
+  const nobodyAsked = { id: 'N', date: '2027-03-01', coupleNames: 'עדי וטל', packageId: 'P3', requiredCrew: 3, team: t(['photographer1', 'סלבה']) };
+  const onePhoto = { id: 'O', date: '2027-02-11', coupleNames: 'אנג׳לינה ודב', packageId: 'P1', requiredCrew: 1, team: t(['photographer2', 'יריב']) };
+  const past = { id: 'X', date: '2026-11-01', coupleNames: 'עבר', packageId: 'P3', team: [] };
+  const req = (o) => ({ role: 'photographer', requestedAt: '2026-10-27T10:00:00Z', ...o });
+  const requests = [
+    req({ id: 'f1', eventId: 'F', eventDateSnapshot: '2027-01-21', staffMemberId: 's1', staffNameSnapshot: 'עמית', role: 'videographer', status: 'pending' }),
+    req({ id: 'f2', eventId: 'F', eventDateSnapshot: '2027-01-21', staffMemberId: 's2', staffNameSnapshot: 'סלבה', status: 'available', teamRole: 'photographer2' }),
+    req({ id: 'v1', eventId: 'V', eventDateSnapshot: '2027-02-18', staffMemberId: 's1', staffNameSnapshot: 'עמית', role: 'videographer', teamRole: 'videographer', status: 'pending' }),
+    req({ id: 'v2', eventId: 'V', eventDateSnapshot: '2027-02-18', staffMemberId: 's3', staffNameSnapshot: 'יריב', status: 'pending' }),
+    req({ id: 'v3', eventId: 'V', eventDateSnapshot: '2027-02-18', staffMemberId: 's4', staffNameSnapshot: 'משה', role: 'videographer', status: 'declined' }),
+    req({ id: 'o1', eventId: 'O', eventDateSnapshot: '2027-02-11', staffMemberId: 's5', staffNameSnapshot: 'רודי', status: 'available' }),
+  ];
+  const out = ai.buildAvailabilityInbox({ today: '2026-11-11', events: [fullEv, noVideo, nobodyAsked, onePhoto, past], requests, packagesById: pkgs });
+  const g = (k) => out.groups.find((x) => x.key === k);
+  const st = (k) => Object.fromEntries(g(k).rows.map((r) => [r.request.id, r.state]).sort(([a], [b]) => a.localeCompare(b)));
+  check('full team: the unanswered and the undecided "פנוי" need nothing; not counted', [st('F'), g('F').waiting, g('F').toDecide, g('F').isMissing], [{ f1: 'not_needed', f2: 'not_needed' }, 0, 0, false]);
+  check('only video missing: the videographer still waits, the photographer is not needed; "לא פנוי" stays', [st('V'), g('V').waiting, g('V').missing, g('V').missingSlots], [{ v1: 'pending', v2: 'not_needed', v3: 'declined' }, 1, ['וידאו'], ['videographer']]);
+  check('a missing event nobody was asked about is a group with no rows; past events are not', [g('N')?.rows, g('N')?.missing, g('N')?.missingSlots, g('X')], [[], ['צלם', 'וידאו'], ['photographer2', 'videographer'], undefined]);
+  check('one-photographer package with צלם 2 on: full — a "פנוי" for the free צלם 1 slot is not a decision', [st('O'), g('O').isMissing, out.toDecide], [{ o1: 'not_needed' }, false, 0]);
+  check('the counts: missing events, waiting, to decide', [out.missing, out.waiting, out.toDecide], [2, 1, 0]);
+  const left = ai.buildAvailabilityInbox({ today: '2026-11-11', events: [{ ...fullEv, team: fullEv.team.filter((m) => m.role !== 'videographer') }], requests: requests.filter((r) => r.eventId === 'F'), packagesById: pkgs });
+  check('someone leaves the team → the event is missing again and the answers count again', [left.groups[0].isMissing, left.groups[0].rows.find((r) => r.request.id === 'f1').state, left.waiting], [true, 'pending', 1]);
+  const sb = await loadModule('src/lib/staffAvailabilityBatch.js', 'sab36c');
+  const it = (o, date, couple, venue = '') => ({ request: { role: 'photographer', ...o }, date, couple, venue });
+  const plans = sb.reminderPlans({
+    staffMembers: [{ id: 's1', name: 'עמית לוי', phoneNumber: '050' }, { id: 's3', name: 'יריב' }],
+    items: [
+      it({ id: 'a', staffMemberId: 's1', staffNameSnapshot: 'עמית לוי', role: 'videographer', teamRole: 'videographer' }, '2027-02-18', 'איוון וטניה', 'לאג׳ו'),
+      it({ id: 'b', staffMemberId: 's3', staffNameSnapshot: 'יריב' }, '2027-03-01', 'עדי וטל'),
+      it({ id: 'c', staffMemberId: 's1', staffNameSnapshot: 'עמית לוי', role: 'videographer', teamRole: 'videographer' }, '2027-01-07', 'נוי ואור'),
+      it({ id: 'd', staffMemberId: 's1', staffNameSnapshot: 'עמית לוי', role: 'videographer', teamRole: 'videographer2' }, '2027-04-01', 'דנה ורון'),
+    ],
+  });
+  check('reminders: one message per person with all his dates (in order); a different role is its own message', plans.map((p) => [p.name, p.slot, p.items.map((x) => x.request.id), !!p.staff?.phoneNumber]), [
+    ['יריב', null, ['b'], false], ['עמית לוי', 'videographer', ['c', 'a'], true], ['עמית לוי', 'videographer2', ['d'], true],
+  ]);
+  check('the reminder: who, every date, one link; one date in the singular', [
+    sb.reminderMessage({ name: plans[1].name, slot: plans[1].slot, role: plans[1].role, items: plans[1].items, link: 'L' }).split('\n'),
+    sb.reminderMessage({ name: 'יריב', slot: null, role: 'photographer', items: plans[0].items }).split('\n').filter((l) => /היי|אפשר|\{\{link\}\}/.test(l)),
+  ], [
+    ['🔔 תזכורת — עוד לא קיבלנו ממך תשובה', 'היי עמית! רציתי לבדוק זמינות שלך בתור צלם וידאו יום מלא (וידאו 1) לאירועים הבאים:', '• יום חמישי, 7.1.2027 · נוי ואור', '• יום חמישי, 18.2.2027 · לאג׳ו · איוון וטניה', '', 'אפשר לסמן לכל אירוע פנוי / לא פנוי כאן:', 'L'],
+    ['היי יריב! רציתי לבדוק זמינות שלך בתור צלם לאירוע הבא:', 'אפשר לסמן פנוי / לא פנוי כאן:', '{{link}}'],
+  ]);
+  check('the empty slots behind the gap, in order; a placeholder ("אין וידאו") fills its slot', [
+    mt.missingSlots({ team: t(['photographer2', 'א']) }, pkgs.P3), mt.missingSlots({ team: t(['photographer1', 'א'], ['videographer', 'אין וידאו']) }, pkgs.P3),
+    mt.missingSlots({ team: [] }, null), mt.missingSlots({ team: t(['photographer2', 'א']) }, pkgs.P1), mt.roleGap({ team: t(['photographer1', 'א']) }, pkgs.P3),
+  ], [['photographer1', 'videographer'], ['photographer2'], ['photographer1', 'photographer2', 'videographer'], [], { photo: 1, video: 1 }]);
 }
 
 // PART 37 — follow-up pulses and the date line (2026-10-07)

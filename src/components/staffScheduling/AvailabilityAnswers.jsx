@@ -2,17 +2,19 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
-import { Loader2, CheckCircle2, Clock, XCircle, MapPin, CalendarDays, Send, Lock, RotateCcw } from "lucide-react";
+import { Loader2, CheckCircle2, Clock, XCircle, MapPin, CalendarDays, Send, Lock, RotateCcw, Bell, MinusCircle, StickyNote } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { buildMessage, roleLabelFor } from "@/components/leads/StaffAvailabilityModal";
 import { resendAvailabilityRequest } from "@/lib/availabilityResend";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import { buildAvailabilityInbox, reopenRows } from "@/lib/availabilityInbox";
-import { israelToday, missingRoles } from "@/lib/missingTeam";
+import { israelToday } from "@/lib/missingTeam";
 import { eventTeamRoleLabel, AVAILABILITY_SLOT_LABELS } from "@/lib/staffRoles";
 import { assignStaffToEventSlot } from "@/lib/assignStaffToEvent";
 import { formatDateWithWeekday } from "@/lib/chatModel";
 import StaffBookingMessageDialog from "@/components/events/StaffBookingMessageDialog";
+import CrewAvailabilityDialog from "@/components/staffScheduling/CrewAvailabilityDialog";
+import ReminderDialog from "@/components/staffScheduling/ReminderDialog";
 
 export const AVAILABILITY_INBOX_KEY = ["availabilityInbox"];
 const TEAM_ORDER = ["photographer1", "photographer2", "videographer", "videographer2"];
@@ -26,7 +28,9 @@ export function useAvailabilityRequests() {
   });
 }
 
+// "חסר צוות" first (2026-11-11, the owner: "אני רוצה שאני יוכל לראות את כל האירועים שחסר לי צוות ואז לשלוח זימון").
 const FILTERS = [
+  { key: "missing", label: "חסר צוות" },
   { key: "decide", label: "צריך החלטה" },
   { key: "pending", label: "ממתינים לתשובה" },
   { key: "all", label: "הכל" },
@@ -43,7 +47,36 @@ const STATE_UI = {
   declined: { icon: XCircle, cls: "text-rose-400", text: "לא פנוי/ה" },
   // Already on another event that day (2026-11-09): the words say where; no "שבץ".
   busy: { icon: XCircle, cls: "text-rose-400", text: "כבר משובץ/ת באותו יום באירוע אחר" },
+  // Nothing missing for it any more (2026-11-11): the team is full, or this role is.
+  not_needed: { icon: MinusCircle, cls: "text-slate-500", text: "לא צריך" },
 };
+
+// The notes on a card, two lines until clicked (median 47 characters, a few hundreds).
+function CardNotes({ notes, couple }) {
+  const [open, setOpen] = useState(false);
+  if (!notes && !couple) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => setOpen((o) => !o)}
+      title={open ? "" : "לחיצה מציגה את כל ההערות"}
+      className="mt-2 flex w-full items-start gap-1.5 rounded-lg border border-amber-400/25 bg-amber-400/[0.07] px-2.5 py-1.5 text-start text-xs text-amber-100/90"
+      data-testid="answer-notes"
+    >
+      <StickyNote className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-300" />
+      {/* Each part two lines until clicked — what the couple wrote is never hidden under the studio's notes. */}
+      <span className="min-w-0 space-y-0.5">
+        {notes && <span className={`block whitespace-pre-line ${open ? "" : "line-clamp-2"}`}>{notes}</span>}
+        {couple && (
+          <span className={`block whitespace-pre-line ${open ? "" : "line-clamp-2"}`}>
+            <span className="text-amber-300/80">הזוג בחתימה: </span>
+            {couple}
+          </span>
+        )}
+      </span>
+    </button>
+  );
+}
 
 const hhmm = (iso) => {
   if (!iso) return "";
@@ -54,25 +87,42 @@ const hhmm = (iso) => {
 // "📥 תשובות זמינות" (2026-10-07, the owner's request): instead of opening notification
 // after notification, every answer in one place, grouped by event — who is already on the
 // team, who said "פנוי" and still needs a decision (assign / "לא צריך"), who hasn't answered.
-export default function AvailabilityAnswers({ events, staffMembers, onEventsChanged, focusLeadId, onCheckAvailability }) {
+export default function AvailabilityAnswers({ events, staffMembers, onEventsChanged, focusLeadId, onCheckAvailability, ask }) {
   const qc = useQueryClient();
   const q = useAvailabilityRequests();
   const pkgQ = useQuery({ queryKey: ["dashPackages"], queryFn: () => base44.entities.Package.list(), staleTime: 600000 });
-  const [filter, setFilter] = useState(focusLeadId ? "all" : "decide");
+  const [filter, setFilter] = useState(focusLeadId ? "all" : ask?.filter || "missing");
+  useEffect(() => {
+    if (ask?.filter) setFilter(ask.filter);
+  }, [ask?.at]);
+  // Unanswered rows ticked for one reminder (request ids), across events (2026-11-11).
+  const [picked, setPicked] = useState(() => new Set());
+  const [reminding, setReminding] = useState(null); // the ticked items, frozen while the window is open
+  const [crewOpen, setCrewOpen] = useState(false);
   const [busy, setBusy] = useState(null);
   const [slotPick, setSlotPick] = useState({});
   const [booked, setBooked] = useState(null); // { staff, roleSlot, event, lead }
   const [resend, setResend] = useState(null); // { request, staff, text } — reminder preview
   const focusRef = useRef(null);
 
-  const inbox = useMemo(
-    () => buildAvailabilityInbox({ requests: q.data || [], events, today: israelToday() }),
-    [q.data, events]
-  );
   const pkgById = useMemo(() => Object.fromEntries((pkgQ.data || []).map((p) => [p.id, p])), [pkgQ.data]);
-  const groups = inbox.groups.filter((g) =>
-    filter === "decide" ? g.toDecide > 0 : filter === "pending" ? g.waiting > 0 : true
+  const inbox = useMemo(
+    () => buildAvailabilityInbox({ requests: q.data || [], events, today: israelToday(), packagesById: pkgById }),
+    [q.data, events, pkgById]
   );
+  const groups = inbox.groups.filter((g) =>
+    filter === "missing" ? g.isMissing : filter === "decide" ? g.toDecide > 0 : filter === "pending" ? g.waiting > 0 : true
+  );
+  // Every unanswered row now, by request id — what a tick can point at (a sent or answered one drops out by itself).
+  const pendingById = useMemo(() => {
+    const m = new Map();
+    for (const g of inbox.groups) for (const row of g.rows) if (row.state === "pending") m.set(row.request.id, { request: row.request, date: g.date, venue: g.venue, couple: g.couple, eventKey: g.key });
+    return m;
+  }, [inbox]);
+  const pickedItems = [...picked].filter((id) => pendingById.has(id)).map((id) => pendingById.get(id));
+  const pickedEvents = new Set(pickedItems.map((x) => x.eventKey)).size;
+  const togglePick = (id) => setPicked((cur) => { const next = new Set(cur); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  const shownPending = groups.flatMap((g) => g.rows.filter((r) => r.state === "pending").map((r) => r.request.id));
 
   useEffect(() => {
     if (focusLeadId && focusRef.current) focusRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -180,7 +230,7 @@ export default function AvailabilityAnswers({ events, staffMembers, onEventsChan
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         {FILTERS.map((f) => {
-          const n = f.key === "decide" ? inbox.toDecide : f.key === "pending" ? inbox.groups.reduce((t, g) => t + g.waiting, 0) : inbox.groups.length;
+          const n = f.key === "missing" ? inbox.missing : f.key === "decide" ? inbox.toDecide : f.key === "pending" ? inbox.waiting : inbox.groups.length;
           return (
             <button
               key={f.key}
@@ -196,16 +246,39 @@ export default function AvailabilityAnswers({ events, staffMembers, onEventsChan
         })}
         {q.isFetching && <Loader2 className="h-4 w-4 animate-spin text-slate-500" />}
       </div>
+      {filter === "missing" && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+          <button
+            type="button"
+            onClick={() => setCrewOpen(true)}
+            className="flex h-8 items-center gap-1.5 rounded-lg border border-pink-500/40 bg-pink-500/10 px-3 font-medium text-pink-200 hover:bg-pink-500/20"
+            data-testid="crew-multi"
+          >
+            <Send className="h-3.5 w-3.5" /> זימון לכמה אירועים יחד
+          </button>
+          בוחרים תפקיד ואירועים, וכל איש צוות מקבל הודעה אחת עם כל התאריכים.
+        </div>
+      )}
+      {shownPending.length > 1 && filter !== "missing" && (
+        <button
+          type="button"
+          onClick={() => setPicked((cur) => { const all = shownPending.every((id) => cur.has(id)); const next = new Set(cur); shownPending.forEach((id) => (all ? next.delete(id) : next.add(id))); return next; })}
+          className="text-xs text-pink-200 underline-offset-2 hover:underline"
+          data-testid="pick-all-pending"
+        >
+          {shownPending.every((id) => picked.has(id)) ? "ניקוי הסימון" : `סימון כל מי שלא ענה כאן (${shownPending.length}) לתזכורת`}
+        </button>
+      )}
 
       {q.isLoading ? (
         <div className="py-16 text-center text-slate-400"><Loader2 className="mx-auto h-6 w-6 animate-spin" /></div>
       ) : groups.length === 0 ? (
         <div className="dash-card py-14 text-center text-slate-400">
-          {filter === "decide" ? "אין תשובות שמחכות להחלטה ✅" : filter === "pending" ? "כולם ענו ✅" : "אין בקשות זמינות לאירועים קרובים"}
+          {filter === "missing" ? "בכל האירועים הקרובים הצוות מלא ✅" : filter === "decide" ? "אין תשובות שמחכות להחלטה ✅" : filter === "pending" ? "כולם ענו ✅" : "אין בקשות זמינות לאירועים קרובים"}
         </div>
       ) : (
         groups.map((g) => {
-          const missing = g.event ? missingRoles(g.event, pkgById[g.event.packageId]) : [];
+          const missing = g.missing;
           const focused = focusLeadId && g.leadId === focusLeadId;
           return (
             <div key={g.key} ref={focused ? focusRef : undefined} className={`dash-card overflow-hidden ${focused ? "ring-2 ring-[#60A5FA]/60" : ""}`}>
@@ -230,11 +303,27 @@ export default function AvailabilityAnswers({ events, staffMembers, onEventsChan
                       })()}
                     </div>
                   )}
+                  {/* The notes (2026-11-11, "ככה אני יוכל לדעת אם הם ביקשו צלם ספציפי"): the event's, its lead's, and
+                      what the couple wrote when signing. */}
+                  <CardNotes notes={g.event?.displayNotes || ""} couple={g.event?.coupleNotes || ""} />
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  {/* Missing crew (2026-11-11): one pink button per empty slot, opening on that role. */}
+                  {onCheckAvailability && g.isMissing && g.missingSlots.map((slot) => (
+                    <button
+                      key={slot}
+                      type="button"
+                      onClick={() => onCheckAvailability(g.event, { jobRole: slot.startsWith("video") ? "videographer" : "photographer", slot })}
+                      title={`שליחת בדיקת זמינות ל${eventTeamRoleLabel(slot)} לתאריך הזה`}
+                      className="flex h-7 items-center gap-1 rounded-lg bg-pink-600 px-2.5 text-xs font-semibold text-white hover:bg-pink-700"
+                      data-testid={`invite-${slot}`}
+                    >
+                      <Send className="h-3.5 w-3.5" /> זימון ל{eventTeamRoleLabel(slot)}
+                    </button>
+                  ))}
                   {/* Ask more people about this date (2026-10-09) — the same pink "זמינות צלם"
                       as the event panel; a couple without an event yet is asked by its lead. */}
-                  {onCheckAvailability && (
+                  {onCheckAvailability && !(g.isMissing && g.missingSlots.length) && (
                     <button
                       type="button"
                       onClick={() =>
@@ -250,7 +339,7 @@ export default function AvailabilityAnswers({ events, staffMembers, onEventsChan
                   )}
                   {!g.event ? (
                     <span className="e-chip e-chip-gray">אין אירוע עדיין</span>
-                  ) : missing.length ? (
+                  ) : g.isMissing ? (
                     <span className="e-chip e-chip-red">חסר: {missing.join(" + ")}</span>
                   ) : (
                     <span className="e-chip e-chip-green">✅ הצוות מלא</span>
@@ -279,6 +368,7 @@ export default function AvailabilityAnswers({ events, staffMembers, onEventsChan
                 </div>
               </div>
               <div className="divide-y divide-white/[0.05] px-3 py-1">
+                {!g.rows.length && <div className="py-2.5 text-xs text-slate-400">עוד לא שאלת אף אחד על התאריך הזה.</div>}
                 {g.rows.map((row) => {
                   const r = row.request;
                   const ui = STATE_UI[row.state];
@@ -288,13 +378,26 @@ export default function AvailabilityAnswers({ events, staffMembers, onEventsChan
                   const stateText =
                     row.state === "assigned" && row.assignedSlot
                       ? `✔ משובץ/ת כ${eventTeamRoleLabel(row.assignedSlot)}`
+                      : row.state === "not_needed"
+                        ? `${r.status === "available" ? "פנוי/ה" : "לא ענה"} · לא צריך תשובה, ${g.isMissing ? "התפקיד הזה כבר מלא" : "הצוות מלא"}`
                       : row.state === "busy"
                         ? `${r.status === "available" ? 'ענה "פנוי" · ' : ""}אבל כבר משובץ/ת באותו יום אצל ${row.busy.couple} (${eventTeamRoleLabel(row.busy.role)})`
                         : ui.text;
                   const slot = slotPick[r.id] || row.defaultSlot;
                   return (
-                    <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+                    <div key={r.id} className={`flex flex-wrap items-center justify-between gap-2 py-2.5 ${row.state === "not_needed" ? "opacity-60" : ""}`} data-testid={`answer-row-${row.state}`}>
                       <div className="flex min-w-0 items-center gap-2">
+                        {/* Ticked for one reminder to several people (2026-11-11). */}
+                        {row.state === "pending" && (
+                          <input
+                            type="checkbox"
+                            checked={picked.has(r.id)}
+                            onChange={() => togglePick(r.id)}
+                            aria-label={`סימון ${r.staffNameSnapshot} לתזכורת`}
+                            className="h-4 w-4 shrink-0 accent-pink-500"
+                            data-testid="pick-pending"
+                          />
+                        )}
                         <Icon className={`h-4 w-4 shrink-0 ${ui.cls}`} />
                         <div className="min-w-0">
                           <div className="text-sm font-medium text-white">{r.staffNameSnapshot}</div>
@@ -368,6 +471,44 @@ export default function AvailabilityAnswers({ events, staffMembers, onEventsChan
           );
         })
       )}
+
+      {/* The ticked ones: one reminder each, from any event (2026-11-11). Fixed at the bottom of the screen, clear of the
+          yellow "+" (bottom-left): beside it on a phone, centred on a computer — where the upload pill sits too. */}
+      {pickedItems.length > 0 && <div className="h-16" aria-hidden="true" />}
+      {pickedItems.length > 0 && (
+        <div className="fixed bottom-4 left-[88px] right-3 z-[60] flex flex-wrap items-center justify-between gap-2 rounded-xl border border-pink-500/40 bg-[#0B1529]/95 px-4 py-2.5 shadow-lg backdrop-blur md:left-1/2 md:right-auto md:w-[min(92vw,520px)] md:-translate-x-1/2" data-testid="pick-bar">
+          <span className="text-sm text-white">
+            נבחרו {pickedItems.length === 1 ? "איש צוות אחד" : `${pickedItems.length} אנשי צוות`}
+            {pickedEvents > 1 ? ` מ-${pickedEvents} אירועים` : ""}
+          </span>
+          <span className="flex items-center gap-2">
+            <button type="button" onClick={() => setPicked(new Set())} className="h-8 rounded-lg border border-[#2A3B57] px-3 text-xs text-slate-300 hover:text-white">
+              ניקוי
+            </button>
+            <button
+              type="button"
+              onClick={() => setReminding(pickedItems)}
+              className="flex h-8 items-center gap-1.5 rounded-lg bg-green-600 px-3 text-xs font-semibold text-white hover:bg-green-700"
+              data-testid="remind-picked"
+            >
+              <Bell className="h-3.5 w-3.5" /> תזכורת {pickedItems.length === 1 ? "" : "לכולם"}
+            </button>
+          </span>
+        </div>
+      )}
+
+      {reminding && (
+        <ReminderDialog
+          items={reminding}
+          staffMembers={staffMembers}
+          onClose={() => {
+            setReminding(null);
+            refresh();
+          }}
+          onSent={(ids) => setPicked((cur) => { const next = new Set(cur); ids.forEach((id) => next.delete(id)); return next; })}
+        />
+      )}
+      {crewOpen && <CrewAvailabilityDialog open onClose={() => { setCrewOpen(false); refresh(); }} />}
 
       <Dialog open={!!resend} onOpenChange={(o) => !o && busy !== resend?.request.id && setResend(null)}>
         <DialogContent dir="rtl" className="max-w-md border-gray-700 bg-gray-900 text-white">
