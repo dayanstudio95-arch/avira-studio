@@ -4379,5 +4379,30 @@ console.log('\n— PART 75: album group messages + list order —');
   ], [[fixes[0], { ...fixes[1], sentAt: at }], null, true, false, null, null, null]);
 }
 
+{
+  section('reports: "אני מול הצוות" — the owner\'s events vs the team\'s (2026-11-11)');
+  const mt = await loadModule('src/lib/meVsTeam.js', 'mvt1');
+  check('who is "me": a name starting with the word "אני" — never "אין וידאו" or "אניטה"', [
+    mt.isMeName('אני (דניאל)'), mt.isMeName(' אני (דניאל) '), mt.isMeName('אני'), mt.isMeName('אני(דניאל)'), mt.isMeName('אין וידאו'), mt.isMeName('אניטה'), mt.isMeName(null),
+    mt.meStaffName([{ name: 'אין וידאו' }, { name: 'אני (דניאל)' }]), mt.meStaffName([{ name: 'סלבה' }]), mt.meStaffName(undefined),
+  ], [true, true, true, true, false, false, false, 'אני (דניאל)', null, null]);
+  const mine = { date: '2026-01-15', totalAmountGross: 11800, vatAmount: 1800, team: [
+    { role: 'photographer1', staffMemberName: 'אני (דניאל)', cost: 0 }, { role: 'videographer', staffMemberName: 'דודו', cost: 2000 }, { role: 'editor', staffMemberName: 'דרור', cost: 1200 }] };
+  const theirs = { date: '2026-01-20', totalAmountGross: 9440, vatPercent: 18, team: [{ role: 'photographer1', staffMemberName: 'סלבה', cost: 1300 }, { role: 'videographer', staffMemberName: 'רודי', cost: '1800' }] };
+  const noPrice = { date: '2026-12-31', team: [{ role: 'photographer1', staffMemberName: 'יונתן', cost: 1200 }] };
+  const split = mt.splitMeTeam([mine, theirs, noPrice]);
+  check('the split: his event keeps his pay (cost 0) and pays only the rest of the team; the same numbers as "סיכום פיננסי", so me + team = the total', [
+    split.me, split.team, split.meShare, split.me.profit + split.team.profit === mt.sumEvents([mine, theirs, noPrice]).profit,
+  ], [{ count: 1, gross: 11800, vat: 1800, cost: 3200, profit: 6800 }, { count: 2, gross: 9440, vat: 1440, cost: 4300, profit: 4900 }, 58, true]);
+  const loss = { date: '2026-02-01', totalAmountGross: 1180, vatAmount: 180, team: [{ staffMemberName: 'סלבה', cost: 3000 }] };
+  check('no share bar when a side lost money or nothing at all; an empty period is zeros', [
+    mt.splitMeTeam([mine, loss]).meShare, mt.splitMeTeam([]).meShare, mt.splitMeTeam([]).me, mt.splitMeTeam([mine]).meShare, mt.splitMeTeam([theirs]).meShare,
+  ], [null, null, { count: 0, gross: 0, vat: 0, cost: 0, profit: 0 }, 100, 0]);
+  const months = mt.meVsTeamByMonth([mine, theirs, noPrice, { ...mine, date: '2025-01-10' }], 2026);
+  check('the annual table: 12 months by the calendar date, other years left out', [
+    months.length, months[0].me.count, months[0].team.count, months[0].meShare, months[11].team.count, months[5].me.count + months[5].team.count, months.map((m) => m.month).join(','),
+  ], [12, 1, 1, 58, 1, 0, '0,1,2,3,4,5,6,7,8,9,10,11']);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

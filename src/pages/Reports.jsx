@@ -12,6 +12,7 @@ import LeadsReport from "../components/reports/LeadsReport";
 import ReportsChart from "../components/reports/ReportsChart";
 import MonthlyChart from "../components/reports/MonthlyChart";
 import ReportsTable from "../components/reports/ReportsTable";
+import MeVsTeamCard, { MeVsTeamByMonth } from "../components/reports/MeVsTeamCard";
 import YearPicker from "@/components/common/YearPicker";
 import { todayInIsrael } from "@/lib/localDate";
 import { weekOf, inWeek, weekLabel, addDays } from "@/lib/reportWeek";
@@ -201,6 +202,14 @@ export default function Reports() {
               />
             </div>
 
+            {/* 2026-11-11: the owner's events vs the team's (src/components/reports/MeVsTeamCard.jsx) */}
+            <MeVsTeamCard
+              events={filterEventsByPeriod('monthly')}
+              staffMembers={staffMembers}
+              isLoading={isLoading}
+              periodLabel={`${MONTHS[selectedMonth].label} ${selectedYear}`}
+            />
+
             {/* Monthly Overview Chart */}
             <MonthlyChart events={events} isLoading={isLoading} staffMembers={staffMembers} year={selectedYear} />
           </TabsContent>
@@ -283,6 +292,8 @@ export default function Reports() {
                 periodLabel={`יום א׳–שבת · ${weekLabel(week)}`}
               />
             </div>
+
+            <MeVsTeamCard events={filterEventsByPeriod('weekly')} staffMembers={staffMembers} isLoading={isLoading} periodLabel={weekLabel(week)} />
           </TabsContent>
 
           {/* Annual Tab */}
@@ -315,6 +326,19 @@ export default function Reports() {
                 periodLabel={String(selectedYear)}
               />
             </div>
+
+            <MeVsTeamCard events={filterEventsByPeriod('annual')} staffMembers={staffMembers} isLoading={isLoading} periodLabel={String(selectedYear)} />
+            <MeVsTeamByMonth
+              events={events}
+              year={selectedYear}
+              staffMembers={staffMembers}
+              isLoading={isLoading}
+              onPickMonth={(m) => {
+                setSelectedMonth(m);
+                setActiveTab("monthly");
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+            />
 
             {/* Monthly Overview Chart for Annual View */}
             <MonthlyChart events={events} isLoading={isLoading} staffMembers={staffMembers} year={selectedYear} />
