@@ -16,6 +16,7 @@ import { format } from "date-fns";
 import PageIcon from "@/components/layout/PageIcon";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import AlbumReminderDialog from "@/components/albums/AlbumReminderDialog";
+import AlbumInvoiceDialog, { AlbumInvoiceChip } from "@/components/albums/AlbumInvoiceDialog";
 import { lastOpenedText, reminderKind, REMINDERS, sortOrdersForList } from "@/lib/albumPrintDetails";
 
 // The couple's visits are recorded from this day on (migration 0094); an order made before
@@ -90,6 +91,7 @@ export default function AlbumOrders() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [reminderFor, setReminderFor] = useState(null); // an order in review — the reminder window
+  const [invoiceFor, setInvoiceFor] = useState(null); // חשבונית מס קבלה on an album (2026-11-12)
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [linkMode, setLinkMode] = useState("event"); // 'event' | 'manual'
   const [eventSearch, setEventSearch] = useState("");
@@ -362,6 +364,7 @@ export default function AlbumOrders() {
                         {PAYMENT_STATUS_LABELS[order.paymentStatus]}
                       </Badge>
                     )}
+                    <AlbumInvoiceChip order={order} onIssue={setInvoiceFor} />
                     <Button
                       size="icon"
                       variant="ghost"
@@ -389,6 +392,16 @@ export default function AlbumOrders() {
             onSent={() => queryClient.invalidateQueries({ queryKey: ["albumOrders"] })}
           />
         )}
+
+        <AlbumInvoiceDialog
+          isOpen={!!invoiceFor}
+          order={invoiceFor}
+          coupleNames={invoiceFor ? displayName(invoiceFor) : ""}
+          eventDate={invoiceFor ? displayDate(invoiceFor) : ""}
+          leadId={invoiceFor?.eventId ? eventsById[invoiceFor.eventId]?.sourceLeadId || null : null}
+          onClose={() => setInvoiceFor(null)}
+          onDone={() => queryClient.invalidateQueries({ queryKey: ["albumOrders"] })}
+        />
 
         <Dialog open={isDialogOpen} onOpenChange={(open) => (open ? setIsDialogOpen(true) : handleCloseDialog())}>
           <DialogContent className="bg-gray-900 border-gray-800 text-white">

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
+import { supabase } from "@/api/supabaseClient";
 import { format } from "date-fns";
 import { Download, Loader2, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,8 @@ export default function AllInvoicesPage() {
   const { tenantDefaults } = useAuth();
   const vatPercent = tenantDefaults?.defaultVatPercent ?? 18;
   const [leads, setLeads] = useState([]);
+  // Invoices issued on album orders (2026-11-12) — kept on album_orders.invoices_list, not on the lead.
+  const [albumRows, setAlbumRows] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -20,8 +23,23 @@ export default function AllInvoicesPage() {
   const loadAllLeads = async () => {
     setIsLoading(true);
     try {
-      const allLeads = await base44.entities.Lead.list("-created_date");
+      const [allLeads, albums] = await Promise.all([
+        base44.entities.Lead.list("-created_date"),
+        supabase.from("album_orders").select("id, invoices_list, couple_names_manual, wedding_date_manual, event:events(couple_names, date)"),
+      ]);
       setLeads(allLeads || []);
+      if (albums.error) console.error("Error loading album invoices:", albums.error);
+      setAlbumRows(
+        (albums.data || []).flatMap((o) =>
+          (Array.isArray(o.invoices_list) ? o.invoices_list : []).map((inv) => ({
+            ...inv,
+            albumOrderId: o.id,
+            isAlbum: true,
+            coupleNames: o.event?.couple_names || o.couple_names_manual || "",
+            leadEventDate: o.event?.date || o.wedding_date_manual || null,
+          })),
+        ),
+      );
     } catch (error) {
       console.error("Error loading leads:", error);
       toast.error("שגיאה בטעינת הנתונים");
@@ -31,14 +49,17 @@ export default function AllInvoicesPage() {
   };
 
   // Flatten all invoices from all leads
-  const allInvoices = leads.flatMap(lead =>
-    (lead.invoicesList || []).map(inv => ({
-      ...inv,
-      leadId: lead.id,
-      coupleNames: lead.coupleNames,
-      leadEventDate: lead.eventDate,
-    }))
-  );
+  const allInvoices = [
+    ...leads.flatMap(lead =>
+      (lead.invoicesList || []).map(inv => ({
+        ...inv,
+        leadId: lead.id,
+        coupleNames: lead.coupleNames,
+        leadEventDate: lead.eventDate,
+      }))
+    ),
+    ...albumRows,
+  ];
 
   // Filter by search term
   const filteredInvoices = allInvoices.filter(inv =>
@@ -131,7 +152,7 @@ export default function AllInvoicesPage() {
           </div>
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
             <div className="text-gray-400 text-xs font-semibold uppercase mb-1">מע"מ {vatRatePercent}%</div>
-            <div className="text-2xl font-bold text-yellow-400">₪{totalVat.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+            <div className="text-2xl font-bold text-yellow-400">₪{totalVat.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
           </div>
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
             <div className="text-gray-400 text-xs font-semibold uppercase mb-1">סה"כ לידים</div>
@@ -176,7 +197,10 @@ export default function AllInvoicesPage() {
                   <tbody>
                     {sortedInvoices.map((inv, idx) => (
                       <tr key={idx} className="border-b border-gray-800 hover:bg-gray-800/40 transition-colors">
-                        <td className="px-4 py-3 text-white font-medium">{inv.coupleNames || "—"}</td>
+                        <td className="px-4 py-3 text-white font-medium">
+                          {inv.coupleNames || "—"}
+                          {inv.isAlbum && <span className="mr-1.5 rounded border border-pink-500/40 bg-pink-500/10 px-1.5 py-0.5 text-[10px] text-pink-300">אלבום</span>}
+                        </td>
                         <td className="px-3 py-3 text-gray-300 text-center whitespace-nowrap">
                           {inv.leadEventDate ? format(new Date(inv.leadEventDate), "d/M/yyyy") : "—"}
                         </td>
@@ -226,7 +250,10 @@ export default function AllInvoicesPage() {
                   <div key={idx} className="bg-gray-800/50 border border-gray-700 rounded-xl p-4 space-y-2">
                     <div className="flex justify-between items-start">
                       <div>
-                        <p className="font-bold text-white">{inv.coupleNames || "—"}</p>
+                        <p className="font-bold text-white">
+                          {inv.coupleNames || "—"}
+                          {inv.isAlbum && <span className="mr-1.5 rounded border border-pink-500/40 bg-pink-500/10 px-1.5 py-0.5 text-[10px] font-normal text-pink-300">אלבום</span>}
+                        </p>
                         <p className="text-xs text-gray-400">מס' {inv.number || "—"}</p>
                       </div>
                       <span className="text-green-400 font-bold whitespace-nowrap">

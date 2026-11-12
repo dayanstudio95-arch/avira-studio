@@ -19,8 +19,10 @@ import { Input } from "@/components/ui/input";
 import {
   ArrowRight, Upload, Copy, Link2, Ban, RefreshCw, ImageIcon, CheckCircle2,
   CreditCard, Printer, Loader2, ChevronDown, ChevronUp, AlertTriangle, ExternalLink,
-  Package, Gift, Download, Eye, Trash2, Truck, PackageCheck, MapPin,
+  Package, Gift, Download, Eye, Trash2, Truck, PackageCheck, MapPin, FileText,
 } from "lucide-react";
+import AlbumInvoiceDialog from "@/components/albums/AlbumInvoiceDialog";
+import { albumInvoices, albumInvoiceState, leftToInvoice, invoiceDateText } from "@/lib/albumInvoice";
 import SpreadReviewViewer, { SPREAD_STATUS_STYLES } from "@/components/albums/SpreadReviewViewer";
 import { WORKFLOW_STATUS_LABELS, WORKFLOW_STATUS_COLORS, PAYMENT_STATUS_LABELS, PAYMENT_STATUS_COLORS, getOrderNameColorClass } from "./AlbumOrders";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
@@ -76,6 +78,7 @@ export default function AlbumOrderDetail() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [invoiceOpen, setInvoiceOpen] = useState(false); // חשבונית מס קבלה on the album (2026-11-12)
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
   const [failedUploads, setFailedUploads] = useState([]); // [{file, sequenceNumber, versionId, fileName, errorMessage}] -- files that failed this batch, kept in memory so "נסה שוב" can retry the exact same File objects without re-selecting
   const [retryingUploads, setRetryingUploads] = useState(false);
@@ -1454,17 +1457,47 @@ export default function AlbumOrderDetail() {
                 {PAYMENT_STATUS_LABELS[order.paymentStatus]}
               </Badge>
             </div>
+            {albumInvoices(order).map((inv, i) => (
+              <div key={inv.id || i} className="flex items-center justify-between gap-2 text-sm" data-testid="album-invoice-line">
+                <span className="text-gray-400">חשבונית</span>
+                {inv.url ? (
+                  <a href={inv.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-emerald-300 hover:underline">
+                    מס קבלה {inv.number} · {invoiceDateText(inv.date)} · ₪{Number(inv.amount || 0).toLocaleString()}
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                ) : (
+                  <span className="text-emerald-300">מס קבלה {inv.number} · {invoiceDateText(inv.date)} · ₪{Number(inv.amount || 0).toLocaleString()}</span>
+                )}
+              </div>
+            ))}
             {order.transferProofFileKey && (
               <Button size="sm" variant="outline" onClick={viewTransferProof} className="border-gray-700 bg-gray-800 text-gray-300 hover:bg-gray-700">
                 צפייה באסמכתת העברה
               </Button>
             )}
-            {order.paymentStatus !== "paid" && (
-              <Button size="sm" onClick={() => markPaidMutation.mutate()} className="bg-green-600 hover:bg-green-700 text-white">
-                <CheckCircle2 className="w-4 h-4 mr-2" />
-                סמן כשולם
-              </Button>
-            )}
+            <div className="flex flex-wrap gap-2">
+              {["todo", "partial"].includes(albumInvoiceState(order)) && (
+                <Button size="sm" onClick={() => setInvoiceOpen(true)} className="bg-amber-500 hover:bg-amber-400 text-gray-900 font-semibold" data-testid="album-invoice-issue">
+                  <FileText className="w-4 h-4 ml-1.5" />
+                  {albumInvoiceState(order) === "partial" ? `חשבונית על ההפרש ₪${leftToInvoice(order).toLocaleString()}` : "הוצאת חשבונית"}
+                </Button>
+              )}
+              {order.paymentStatus !== "paid" && (
+                <Button size="sm" onClick={() => markPaidMutation.mutate()} className="bg-green-600 hover:bg-green-700 text-white">
+                  <CheckCircle2 className="w-4 h-4 mr-2" />
+                  סמן כשולם
+                </Button>
+              )}
+            </div>
+            <AlbumInvoiceDialog
+              isOpen={invoiceOpen}
+              order={order}
+              coupleNames={displayName || ""}
+              eventDate={displayDate || ""}
+              leadId={event?.sourceLeadId || null}
+              onClose={() => setInvoiceOpen(false)}
+              onDone={() => { invalidateOrder(); queryClient.invalidateQueries({ queryKey: ["albumOrders"] }); }}
+            />
             {(order.shippingName || order.shippingAddress) && (
               <div className="bg-gray-800/50 p-3 rounded-lg text-sm text-gray-300 space-y-1 mt-2">
                 {order.shippingName && <p>נמען: {order.shippingName}</p>}

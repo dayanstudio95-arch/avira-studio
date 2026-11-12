@@ -20,6 +20,7 @@
 import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { fetchMorningToken } from '../_shared/morningAuth.ts';
 import { invoiceOrderFields, isLinkRefusal } from '../_shared/workOrder.ts';
+import { albumInvoiceEntry, albumInvoiceText, albumOrderInvoicePatch } from '../_shared/albumInvoice.ts';
 import { createUserClient, getRequestUser } from '../_shared/supabaseClients.ts';
 
 const SETTINGS_KEYS: Record<string, { key: string; secret: string }> = {
@@ -57,6 +58,11 @@ Deno.serve(async (req) => {
     const workOrderId = body.workOrderId ? String(body.workOrderId) : null;
     const linkMode: 'link' | 'text' = body.linkMode === 'text' ? 'text' : 'link';
     const isPreview = body.preview === true;
+    // An album's invoice (2026-11-12, from the album orders screens): saved on that album order, never on the
+    // lead (its invoices sum to the photography balance) and never linked to the couple's work order (the
+    // photography package). markPaid: the owner left "לסמן שולם" ticked. See _shared/albumInvoice.ts.
+    const albumOrderId = body.albumOrderId ? String(body.albumOrderId) : null;
+    const markPaid = body.markPaid === true;
 
     const businessType = SETTINGS_KEYS[body.businessType] ? body.businessType : 'sole_prop';
     const settingKeys = SETTINGS_KEYS[businessType];
@@ -107,11 +113,19 @@ Deno.serve(async (req) => {
 
     const clientEmail = body.clientEmail || 'avira.media1@gmail.com';
     const paymentType = Number(paymentMethodType) || 4;
-    const incomeDescription = String(itemDescription || defaultServiceDescription);
+    const incomeDescription = albumOrderId
+      ? (albumInvoiceText(itemDescription) || 'אלבומים')
+      : String(itemDescription || defaultServiceDescription);
 
     let orderFields: ReturnType<typeof invoiceOrderFields> | null = null;
     let workOrder: any = null;
-    if (workOrderId) {
+    let albumOrder: any = null;
+    if (albumOrderId) {
+      const { data: ao } = await supabase.from('album_orders')
+        .select('id, invoices_list, payment_status, workflow_status').eq('id', albumOrderId).maybeSingle();
+      if (!ao) return jsonResponse({ error: 'הזמנת האלבום לא נמצאה' }, { status: 404 });
+      albumOrder = ao;
+    } else if (workOrderId) {
       const { data: wo } = await supabase.from('work_orders').select('*').eq('id', workOrderId).maybeSingle();
       if (!wo) return jsonResponse({ error: 'הזמנת העבודה לא נמצאה' }, { status: 404 });
       // Only the couple's current order — never one that was replaced, closed or is mid-issue
@@ -211,6 +225,45 @@ Deno.serve(async (req) => {
     let invoiceUrl = invoice.url;
     if (invoiceUrl && typeof invoiceUrl === 'object') {
       invoiceUrl = invoiceUrl.origin || invoiceUrl.he || Object.values(invoiceUrl)[0] || null;
+    }
+
+    // An album's invoice: onto that album order (fresh list, so nothing issued meanwhile is lost) — never the lead.
+    if (albumOrder) {
+      const entry = albumInvoiceEntry({
+        invoice, url: invoiceUrl, date: normalizedDate, amount: exactAmount, businessType,
+        description: incomeDescription, paymentType,
+      });
+      try {
+        const { data: fresh, error: readErr } = await supabase.from('album_orders')
+          .select('invoices_list, payment_status, workflow_status').eq('id', albumOrder.id).maybeSingle();
+        if (readErr || !fresh) throw new Error(readErr?.message || 'Album order not found');
+        const { error: updateErr } = await supabase.from('album_orders')
+          .update(albumOrderInvoicePatch(fresh, entry, markPaid)).eq('id', albumOrder.id);
+        if (updateErr) throw new Error(updateErr.message);
+      } catch (dbError) {
+        return jsonResponse({
+          success: false,
+          warning: `החשבונית מס' ${invoice.number} נוצרה במורנינג, אבל לא נשמרה על הזמנת האלבום. אל תפיקו שוב — היא קיימת במורנינג.`,
+          invoiceId: invoice.id,
+          invoiceNumber: invoice.number,
+          invoiceUrl,
+          invoiceDate: normalizedDate,
+          amount: exactAmount,
+          errorDetails: (dbError as Error).message,
+        }, { status: 201 });
+      }
+      return jsonResponse({
+        success: true,
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.number,
+        invoiceUrl,
+        invoiceDate: normalizedDate,
+        amount: exactAmount,
+        description: incomeDescription,
+        businessType,
+        albumOrderId: albumOrder.id,
+        markedPaid: markPaid,
+      });
     }
 
     // Save invoice onto the Lead's invoices_list — best-effort, mirrors the original's

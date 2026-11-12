@@ -4404,5 +4404,59 @@ console.log('\n— PART 75: album group messages + list order —');
   ], [12, 1, 1, 58, 1, 0, '0,1,2,3,4,5,6,7,8,9,10,11']);
 }
 
+{
+  section('albums: חשבונית מס קבלה — issued from the album screens, saved on the album order (2026-11-12)');
+  const ai = await loadModule('src/lib/albumInvoice.js', 'albuminv1');
+  const sv = await loadModule('supabase/functions/_shared/albumInvoice.ts', 'albuminv2');
+  const sel = [
+    { product_name_snapshot: 'סט 3 אלבומים ', cover_name_snapshot: 'HM111' },
+    { product_name_snapshot: 'סט 3 אלבומים', cover_name_snapshot: 'HM111' },
+  ];
+  const add = [{ addon_name_snapshot: 'הגדלה זכוכית 50/70', quantity: 1 }, { addon_name_snapshot: 'עמוד נוסף לאלבום', quantity: 12 }];
+  check('the line text from the order: products, covers, add-ons; the same thing twice is ×2; nothing chosen → "אלבומים"; camelCase rows too; capped at 200', [
+    ai.albumInvoiceDescription(sel.slice(0, 1), add),
+    ai.albumInvoiceDescription(sel, []),
+    ai.albumInvoiceDescription([], []),
+    ai.albumInvoiceDescription([{ productNameSnapshot: 'אלבום זוג', coverNameSnapshot: 'פשתן טבעי' }], [{ addonNameSnapshot: 'תוספת אלבום הורים' }]),
+    ai.albumInvoiceDescription([{ product_name_snapshot: 'א'.repeat(300) }], []).length,
+  ], [
+    'אלבומים: סט 3 אלבומים, כריכה HM111, הגדלה זכוכית 50/70, עמוד נוסף לאלבום ×12',
+    'אלבומים: סט 3 אלבומים ×2, כריכה HM111 ×2',
+    'אלבומים',
+    'אלבומים: אלבום זוג, כריכה פשתן טבעי, תוספת אלבום הורים',
+    200,
+  ]);
+  const noTotal = { totalAmount: null, invoicesList: [] };
+  const todo = { totalAmount: '1860.00', invoicesList: [] };
+  const done = { totalAmount: 1860, invoicesList: [{ number: '40214', amount: 1860, url: 'u' }] };
+  const grew = { totalAmount: 2310, invoicesList: [{ number: '40214', amount: 1860 }, { number: '40220', amount: 0.5 }] };
+  check('what is left to invoice and the button: none without a total, "הוצאת חשבונית" before, the number after, "על ההפרש" when the order grew', [
+    ai.albumInvoiceState(noTotal), ai.albumInvoiceState(todo), ai.albumInvoiceState(done), ai.albumInvoiceState(grew), ai.albumInvoiceState({}),
+    ai.leftToInvoice(todo), ai.leftToInvoice(done), ai.leftToInvoice(grew), ai.invoicedTotal(grew), ai.lastAlbumInvoice(grew).number, ai.lastAlbumInvoice(todo),
+    ai.albumInvoiceState({ totalAmount: 800, invoicesList: [{ amount: 900 }] }), ai.leftToInvoice({ totalAmount: 800, invoicesList: [{ amount: 900 }] }),
+    ai.invoiceDateText('2026-11-12'), ai.invoiceDateText(null),
+  ], ['none', 'todo', 'done', 'partial', 'none', 1860, 0, 449.5, 1860.5, '40220', null, 'done', 0, '12/11/2026', '']);
+  const now = new Date('2026-11-12T10:00:00Z');
+  const entry = sv.albumInvoiceEntry({ invoice: { id: 'abc', number: 40214 }, url: 'https://m/1', date: '2026-11-12T00:00', amount: '1860.004', businessType: 'sole_prop', description: 'אלבומים: סט', paymentType: 4, now });
+  check('the saved entry: number as text, date, amount in agorot, the business and the text', [entry], [{
+    id: 'abc', number: '40214', date: '2026-11-12', amount: 1860, url: 'https://m/1', businessType: 'sole_prop', description: 'אלבומים: סט', paymentType: 4, createdAt: '2026-11-12T10:00:00.000Z',
+  }]);
+  const old = { number: '1', amount: 100 };
+  check('the album order after the invoice: appended to what is there; "לסמן שולם" marks it like "סמן כשולם" (awaiting_payment → paid); a paid order is left as it is; unticked changes nothing else', [
+    sv.albumOrderInvoicePatch({ invoices_list: [old], payment_status: 'unpaid', workflow_status: 'awaiting_payment' }, entry, true),
+    sv.albumOrderInvoicePatch({ invoices_list: null, payment_status: 'transfer_pending_review', workflow_status: 'in_print' }, entry, true),
+    sv.albumOrderInvoicePatch({ invoices_list: [], payment_status: 'paid', workflow_status: 'awaiting_payment' }, entry, true),
+    sv.albumOrderInvoicePatch({ invoices_list: [], payment_status: 'unpaid', workflow_status: 'awaiting_payment' }, entry, false),
+  ], [
+    { invoices_list: [old, entry], payment_status: 'paid', workflow_status: 'paid' },
+    { invoices_list: [entry], payment_status: 'paid' },
+    { invoices_list: [entry] },
+    { invoices_list: [entry] },
+  ]);
+  check('the line text on the server: spaces collapsed, capped at 200, empty stays empty', [
+    sv.albumInvoiceText('  אלבומים:\n סט  3 '), sv.albumInvoiceText('ב'.repeat(250)).length, sv.albumInvoiceText(undefined),
+  ], ['אלבומים: סט 3', 200, '']);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
