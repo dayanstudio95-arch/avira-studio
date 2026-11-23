@@ -4458,5 +4458,146 @@ console.log('\n— PART 75: album group messages + list order —');
   ], ['אלבומים: סט 3', 200, '']);
 }
 
+{
+  section('expenses: מרכז הוצאות — sorting, duplicates, Morning, the group and the mailboxes (2026-11-23)');
+  const ex = await loadModule('supabase/functions/_shared/expenses.ts', 'expensesPure');
+  const rd = await loadModule('supabase/functions/_shared/expenseDocReader.ts', 'expenseReader');
+  const ui = await loadModule('src/lib/expenses.js', 'expensesUi');
+  const ms = await loadModule('src/lib/expensesMailScript.js', 'expensesMailScript');
+  const payers = { company: { name: 'אווירה מדיה צילום בע"מ', id: '517309670', accounts: [] }, sole_prop: { name: 'דניאל דיין', id: '039999995', accounts: [] } };
+  const R = (o) => ({ kind: 'purchase', category: 'other', doc_type: '', doc_number: '', issuer: '', issuer_tax_id: '', issued_to: '', issued_to_id: '', date: '', amount: '', vat: '', currency: '', allocation_number: '', description: '', card_last4: '', ...o });
+  const pick = (s) => [s.status, s.entity, s.entityBy, s.suggested];
+  check('issued to the company (its ח.פ., or its name in any spelling) → the company, always — even with a rule for the supplier', [
+    pick(ex.sortExpense(R({ issuer: 'פז', issued_to_id: '517309670', amount: '400' }), payers, {})),
+    pick(ex.sortExpense(R({ issuer: 'פז', issued_to: 'אוירה מדיה צילום בעמ', amount: '400' }), payers, {})),
+    pick(ex.sortExpense(R({ issuer: 'פז', issuer_tax_id: '520000001', issued_to_id: '517309670', amount: '400' }), payers, { 'id:520000001': 'home' })),
+  ], [['done', 'company', 'issued_to', null], ['done', 'company', 'issued_to', null], ['done', 'company', 'issued_to', null]]);
+  check('issued to the owner / no "לכבוד": nothing yet — the AI suggests (home bills → home, the rest → עוסק), the owner confirms once', [
+    pick(ex.sortExpense(R({ issuer: 'חברת החשמל', issued_to: 'דניאל דיין', issued_to_id: '039999995', category: 'home', amount: '687' }), payers, {})),
+    pick(ex.sortExpense(R({ issuer: 'מיקה תפעול תחנות דלק', category: 'fuel', amount: '412' }), payers, {})),
+  ], [['done', null, null, 'home'], ['done', null, null, 'sole_prop']]);
+  check('the owner\'s rule for the supplier: by its tax id, else by its name ("בע"מ" and quotes ignored)', [
+    pick(ex.sortExpense(R({ issuer: 'חברת החשמל', issuer_tax_id: '52-002726-1', amount: '687' }), payers, { 'id:520027261': 'home' })),
+    pick(ex.sortExpense(R({ issuer: 'מיקה תפעול תחנות דלק בע"מ', amount: '412' }), payers, { 'name:מיקה תפעול תחנות דלק': 'sole_prop' })),
+  ], [['done', 'home', 'supplier', null], ['done', 'sole_prop', 'supplier', null]]);
+  check('not an expense: the studio\'s own invoice to a client, a transfer screenshot, a photo', [
+    pick(ex.sortExpense(R({ issuer: 'אווירה מדיה צילום בע"מ', issuer_tax_id: '517309670', amount: '5900' }), payers, {})),
+    pick(ex.sortExpense(R({ issuer: 'דניאל דיין', amount: '3000' }), payers, {})),
+    ex.sortExpense(R({ kind: 'payment_proof' }), payers, {}).note.slice(0, 11),
+    pick(ex.sortExpense(R({ kind: 'other' }), payers, {})),
+    // A one-word name is some other business, not the studio ("צילום", "דניאל").
+    pick(ex.sortExpense(R({ issuer: 'דניאל', amount: '50' }), payers, {})),
+    pick(ex.sortExpense(R({ issuer: 'צילום', issued_to: 'מדיה', amount: '50' }), payers, {})),
+  ], [['not_expense', null, null, null], ['not_expense', null, null, null], 'אישור תשלום', ['not_expense', null, null, null], ['done', null, null, 'sole_prop'], ['done', null, null, 'sole_prop']]);
+  check('warnings: no amount, a quote, a foreign currency, issued to someone else while sorted to the company, no allocation number above ₪5,000', [
+    ex.expenseWarnings(R({ doc_type: 'קבלה' }), 'sole_prop', payers),
+    ex.expenseWarnings(R({ doc_type: 'הצעת מחיר', amount: '800' }), null, payers).length,
+    ex.expenseWarnings(R({ amount: '20', currency: 'USD' }), 'sole_prop', payers),
+    ex.expenseWarnings(R({ amount: '20', currency: 'ILS' }), 'sole_prop', payers),
+    ex.expenseWarnings(R({ amount: '300', issued_to: 'דניאל דיין' }), 'company', payers).length,
+    ex.expenseWarnings(R({ doc_type: 'חשבונית מס', amount: '7080', vat: '1080' }), 'company', payers).length,
+    ex.expenseWarnings(R({ doc_type: 'חשבונית מס', amount: '7080', vat: '1080', allocation_number: '123456789' }), 'company', payers).length,
+    ex.expenseWarnings(R({ doc_type: 'חשבונית מס', amount: '5800' }), 'company', payers).length,
+    ex.expenseWarnings(R({ doc_type: 'חשבונית מס', amount: '7080' }), 'home', payers).length,
+  ], [['לא נמצא סכום — לבדוק במסמך'], 1, ['סכום במטבע USD'], [], 1, 1, 0, 0, 0]);
+  check('the supplier key: a tax id (padded to 9), else the name without "בע"מ" / quotes / punctuation; nothing → null', [
+    ex.supplierKey('x', '52-002726-1'), ex.supplierKey('x', '12345678'), ex.supplierKey('הראל חברה לביטוח בע"מ', ''), ex.supplierKey('הראל חברה לביטוח בעמ', '12'),
+    ex.supplierKey('Adobe Systems Ltd.', ''), ex.supplierKey('', ''),
+  ], ['id:520027261', 'id:012345678', 'name:הראל חברה לביטוח', 'name:הראל חברה לביטוח', 'name:adobe systems', null]);
+  check('amounts and dates as the reader gives them', [
+    ex.amountOf('2,124.50 ₪'), ex.amountOf(''), ex.amountOf('0'), ex.dateOf('2026-11-16'), ex.dateOf('2026-02-30'), ex.dateOf('16/11/2026'),
+  ], [2124.5, null, null, '2026-11-16', null, null]);
+  const a = { id: 'a', content_hash: 'h1', supplier_key: 'id:520027261', doc_number: '88123', amount: 3860 };
+  check('the same document twice: the same file, or the same supplier + number + amount (not itself, not another number)', [
+    ex.findDuplicate({ id: 'b', content_hash: 'h1' }, [a]),
+    ex.findDuplicate({ id: 'b', supplier_key: 'id:520027261', doc_number: 'חשבונית 88123', amount: '3860.4' }, [a]),
+    ex.findDuplicate({ id: 'b', supplier_key: 'id:520027261', doc_number: '88124', amount: 3860 }, [a]),
+    ex.findDuplicate({ id: 'a', content_hash: 'h1' }, [a]),
+    ex.findStaffDuplicate({ issuer: 'יוני צלם', doc_number: '500284', amount: 2124 }, [{ id: 's1', issuer: 'יוני צלם', doc_number: '500284', amount: 2124 }]),
+    ex.findStaffDuplicate({ issuer: 'אחר', doc_number: '500284', amount: 2124 }, [{ id: 's1', issuer: 'יוני צלם', doc_number: '500284', amount: 2124 }]),
+  ], ['a', 'a', null, null, 's1', null]);
+  const rows = [
+    { account: 'sole_prop', morning_id: 'm1', number: '20462', amount: 490.04, doc_date: '2026-10-28', supplier_name: 'מיקה תפעול תחנות דלק' },
+    { account: 'company', morning_id: 'm2', number: '30091', amount: 5900, doc_date: '2026-10-30', supplier_name: 'אביהוא בשארי' },
+    { account: 'company', morning_id: 'm3', number: '777', amount: 100, doc_date: '2026-11-02', supplier_name: 'ספק כפול' },
+    { account: 'sole_prop', morning_id: 'm4', number: '777', amount: 100, doc_date: '2026-11-02', supplier_name: 'ספק כפול' },
+  ];
+  const mm = (d) => ex.matchMorning(d, rows)?.morning_id ?? null;
+  check('already in Morning: the same number + amount in its business; else the same supplier + amount within a week; none for home; not sorted and in both → not matched', [
+    mm({ entity: 'sole_prop', doc_number: '20462', amount: 490.04 }),
+    mm({ entity: 'company', doc_number: '20462', amount: 490.04 }),
+    mm({ entity: null, doc_number: '20462', amount: 490 }),
+    mm({ entity: 'company', issuer: 'אביהוא בשארי', amount: 5900, doc_date: '2026-11-04' }),
+    mm({ entity: 'company', issuer: 'אביהוא בשארי', amount: 5900, doc_date: '2026-11-20' }),
+    mm({ entity: 'home', doc_number: '20462', amount: 490.04 }),
+    mm({ entity: null, doc_number: '777', amount: 100 }),
+    mm({ entity: 'company', doc_number: '777', amount: 100 }),
+  ], ['m1', null, 'm1', 'm2', null, null, null, 'm3']);
+  check('Morning\'s search answer → a row (no id → nothing)', [
+    ex.morningRowOf({ id: 'x1', date: '2026-10-29', number: 6366, amount: '836.87', vat: 127.66, supplier: { name: 'לייזר לינק' }, documentType: 320, status: 10 }, 'sole_prop'),
+    ex.morningRowOf({ number: 1 }, 'company'),
+  ], [{ account: 'sole_prop', morning_id: 'x1', doc_date: '2026-10-29', number: '6366', amount: 836.87, vat: 127.66, supplier_name: 'לייזר לינק', document_type: 320, status: 10 }, null]);
+  check('a message in the "קבלות" group: a photo / PDF, an invoice link, or nothing (text, a Word file); who sent it', [
+    ex.groupDocOf({ id: '1', media_mime: 'application/pdf' }),
+    ex.groupDocOf({ id: '2', type_message: 'imageMessage', media_url: 'https://g/1' }),
+    ex.groupDocOf({ id: '3', body_text: 'החשבונית: https://mrng.to/AbC123' })?.link?.provider,
+    ex.groupDocOf({ id: '4', body_text: 'קניתי דלק' }),
+    ex.groupDocOf({ id: '5', media_mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }),
+    ex.groupSenderName({ direction: 'inbound', sender_name: 'סבינה' }), ex.groupSenderName({ direction: 'outbound_human' }), ex.groupSenderName({ direction: 'inbound' }),
+  ], [{ kind: 'file', mime: 'application/pdf' }, { kind: 'file', mime: 'image/jpeg' }, 'morning', null, null, 'סבינה', 'מספר הסטודיו', '']);
+  const rep = ex.parseMailReport({ mail: { id: '18c2f3a9b0d1e2f3', from: 'Harel <no@harel.co.il>', subject: 'חשבונית מס 88123', date: '2026-11-16T08:00:00Z', text: 'מצורפת', html: true,
+    parts: [{ n: 0, name: 'inv.pdf', mime: 'application/pdf', size: 120000 }, { n: 1, name: 'x.zip', mime: 'application/zip', size: 5 }, { n: 2, name: 'big.jpg', mime: 'image/jpeg', size: 20 * 1024 * 1024 }] } });
+  check('a mailbox script\'s report: checked, only readable files up to 10MB; a bad id is refused', [
+    rep.parts.map((p) => p.n), rep.date, ex.parseMailReport({ mail: { id: 'a b' } }), ex.parseMailReport({}),
+  ], [[0], '2026-11-16T08:00:00.000Z', null, null]);
+  const plan = (o) => { const p = ex.mailPlan({ id: 'abcdef', from: '', subject: '', date: null, text: '', parts: [], html: true, ...o }); return [p.parts.length, p.link?.provider ?? null, p.body]; };
+  check('what is taken from a mail: its files; else its invoice link; else the mail itself as a PDF when the subject says receipt / invoice', [
+    plan({ parts: [{ n: 0, name: 'a.pdf', mime: 'application/pdf', size: 1 }] }),
+    plan({ text: 'לצפייה בחשבונית: https://mrng.to/Zx9' }),
+    plan({ subject: 'Your receipt from Adobe' }),
+    plan({ subject: 'מבצע! קבלו הנחה' }),
+    plan({ subject: 'Your receipt from Adobe', html: false }),
+  ], [[1, null, false], [0, 'morning', false], [0, null, true], [0, null, false], [0, null, false]]);
+  check('the answer in the group', [
+    ex.confirmText({ read_status: 'done', issuer: 'מיקה תפעול תחנות דלק', amount: 412, entity: 'sole_prop' }),
+    ex.confirmText({ read_status: 'done', issuer: 'חברת החשמל', amount: 687.5, entity: null }),
+    ex.confirmText({ read_status: 'duplicate', issuer: 'פז', amount: 100 }),
+    ex.confirmText({ read_status: 'not_expense', note: 'אישור תשלום' }),
+    ex.confirmText({ read_status: 'failed' }),
+  ], ['✅ נקלט: מיקה תפעול תחנות דלק ₪412 · עוסק', '✅ נקלט: חברת החשמל ₪687.5 · לבחור עסק במסך "הוצאות"', '🔁 כבר קיים במערכת: פז ₪100', '⚪ לא נקלט כהוצאה: אישור תשלום', '⚠️ לא הצלחתי לקרוא את המסמך — אפשר לבדוק במסך "הוצאות"']);
+  check('the reader\'s answer cleaned: an unknown kind / category falls back, fields trimmed and capped', [
+    rd.cleanReading({ kind: 'weird', category: 'toys', issuer: '  פז  ', amount: 12 }).kind, rd.cleanReading({ kind: 'purchase', category: 'toys' }).category,
+    rd.cleanReading({ kind: 'purchase', issuer: '  פז  ' }).issuer, rd.cleanReading({ issuer: 'x'.repeat(300) }).issuer.length, rd.cleanReading(null).kind,
+  ], ['other', 'other', 'פז', 200, 'other']);
+  const D = (o) => ({ id: 'abcdef12', read_status: 'done', entity: null, received_at: '2026-11-16T10:00:00Z', ...o });
+  const docs = [
+    D({ entity: 'company', amount: 100, file_path: 'p1', morning_expense_id: 'm' }), D({ entity: 'company', amount: 50, file_path: 'p2' }), D({ entity: 'home', file_path: 'p3' }),
+    D({}), D({ read_status: 'failed' }), D({ read_status: 'pending' }), D({ read_status: 'duplicate' }), D({ read_status: 'not_expense' }),
+    D({ entity: 'sole_prop', doc_date: '2026-10-30', file_path: 'p4' }),
+  ];
+  check('the screen\'s tabs: "הכל" without what is not an expense; "צריך החלטה" = not sorted or not read', [
+    ui.tabCounts(docs), docs.map(ui.tabOf),
+  ], [{ all: 7, company: 2, sole_prop: 1, home: 1, decide: 2, skip: 2 }, ['company', 'company', 'home', 'decide', 'decide', 'reading', 'skip', 'skip', 'sole_prop']]);
+  check('the row\'s chip', docs.slice(0, 8).map((d) => ui.chipOf(d).text),
+    ['חברה · כבר במורנינג ✓', 'חברה · עוד לא במורנינג', 'בית · לרואה החשבון', 'צריך החלטה שלך', 'לא נקרא', 'בקריאה…', 'כפילות', 'לא הוצאה']);
+  check('the ZIP: read, with a file, the month by the document\'s date, by default only what Morning lacks; its file names and summary', [
+    ui.zipList(docs, '2026-11', 'company').length, ui.zipList(docs, '2026-11', 'company', { onlyMissing: false }).length, ui.zipList(docs, '2026-11', 'sole_prop').length, ui.zipList(docs, '2026-10', 'sole_prop').length,
+    ui.docFileName({ id: 'abcdef1234', doc_date: '2026-11-16', issuer: 'הראל/ביטוח', doc_type: 'חשבונית מס', doc_number: '88123', amount: 3860, file_mime: 'application/pdf' }),
+    ui.summaryCsv([{ id: 'x', issuer: 'פז, בע"מ', amount: 1 }]).split('\n')[1].startsWith(',"פז, בע""מ"'), ui.summaryCsv([]).charCodeAt(0), ui.zipName('2026-11', 'company'),
+  ], [1, 2, 0, 1, '2026-11-16 הראל-ביטוח חשבונית מס 88123 3,860₪ abcdef.pdf', true, 65279, 'הוצאות 2026-11 חברה.zip']);
+  check('the months to choose, where it came from, and why it is in its business', [
+    ui.monthsSince('2026-11-01', new Date('2027-01-05T10:00:00Z')),
+    ui.sourceText({ source: 'whatsapp', sender_name: 'סבינה' }), ui.sourceText({ source: 'email', mailbox_id: 'b1' }, [{ id: 'b1', label: 'avira.media1@gmail.com' }]), ui.sourceText({ source: 'upload' }),
+    ui.reasonText({ entity_by: 'issued_to', issued_to: 'אווירה מדיה צילום בע"מ', issued_to_id: '517309670' }), ui.reasonText({ read_status: 'done', suggested_entity: 'home' }).slice(0, 9),
+  ], [['2027-01', '2026-12', '2026-11'], 'מהקבוצה (סבינה)', 'מהמייל avira.media1', 'הועלה במסך', 'הונפק ל"אווירה מדיה צילום בע"מ", 517309670', 'הצעה: בית']);
+  const script = ms.expensesMailScript({ url: 'https://x.supabase.co/functions/v1/expenses-mail', token: 'T'.repeat(64), since: '2026-11-01' });
+  let parses = true;
+  try { new Function(script); } catch { parses = false; }
+  check('the mailbox script: parses, carries the address / token / start day, searches from that day, and labels what went through', [
+    parses, script.includes('"https://x.supabase.co/functions/v1/expenses-mail"'), script.includes(`"${'T'.repeat(64)}"`), script.includes('const SINCE = "2026-11-01"'),
+    script.includes("'after:' + SINCE.replace"), script.includes('thread.addLabel(label)'), script.includes('everyMinutes(10)'),
+  ], [true, true, true, true, true, true, true]);
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

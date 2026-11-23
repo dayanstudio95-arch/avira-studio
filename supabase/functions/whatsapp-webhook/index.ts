@@ -58,6 +58,7 @@ import { handleOptions, jsonResponse } from '../_shared/cors.ts';
 import { createServiceRoleClient } from '../_shared/supabaseClients.ts';
 import { checkRateLimit } from '../_shared/rateLimit.ts';
 import { normalizeIsraeliPhone, chatIdToLocalPhone, isGroupChatId } from '../_shared/phone.ts';
+import { takeGroupMessage } from '../_shared/expenseIntake.ts';
 import {
   loadQuietHoursSettings, isInQuietHoursNow, nextQuietHoursEnd, type QuietHoursSettings,
 } from '../_shared/automationGuards.ts';
@@ -549,11 +550,19 @@ Deno.serve(async (req: Request) => {
     }
 
     // Our own copy of the media, after the response (Green API's link is temporary).
-    if (mediaUrl) {
-      EdgeRuntime.waitUntil(copyMediaToStorage(supabase, {
+    const mediaCopy = mediaUrl
+      ? copyMediaToStorage(supabase, {
         tenantId, conversationId: conversation.id, idMessage, downloadUrl: mediaUrl,
         mimeType: mediaMime, fileName: mediaFileName,
-      }));
+      })
+      : null;
+    if (mediaCopy) EdgeRuntime.waitUntil(mediaCopy);
+
+    // "מרכז הוצאות" (2026-11-23, 0117): a receipt / invoice posted to the studio's "קבלות" group is taken in, read and
+    // answered, after its media copy (only that group — takeGroupMessage checks). Our own answers there are sent by the
+    // API and are never documents.
+    if (isGroup && typeWebhook !== 'outgoingAPIMessageReceived') {
+      EdgeRuntime.waitUntil(takeGroupMessage(supabase, tenantId, chatId, idMessage, mediaCopy));
     }
 
     // ---- Conversation aggregates --------------------------------------------

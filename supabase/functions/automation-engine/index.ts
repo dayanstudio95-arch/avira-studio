@@ -46,6 +46,7 @@ import { DAILY_BRIEF_DEFAULT_TEMPLATE, findBriefLead, dailyBriefVars } from '../
 import { sendPush } from '../_shared/webPush.ts';
 import { israelToday, renderStaffSchedule, staffSchedule } from '../_shared/staffSchedule.ts';
 import { runStaffInvoices } from '../_shared/staffInvoicesScan.ts';
+import { runExpenses } from '../_shared/expenseIntake.ts';
 import { refreshAvatars } from '../_shared/whatsappAvatars.ts';
 
 function getTargetMonth(mode: string) {
@@ -1401,7 +1402,14 @@ Deno.serve(async (req) => {
       } catch (e: any) {
         console.error('[automationEngine] staff invoices failed for tenant', t.id, e?.message || e);
       }
-      perTenantResults.push({ tenant_id: t.id, ...result, whatsapp, stuckAlerts, mediaPurged, avatars, staffInvoices });
+      // "מרכז הוצאות" (2026-11-23, 0117): the "קבלות" group caught up, documents read, Morning's expenses copied (read only).
+      let expenses = null;
+      try {
+        expenses = await runExpenses(supabase, t.id, { maxReads: 4 });
+      } catch (e: any) {
+        console.error('[automationEngine] expenses failed for tenant', t.id, e?.message || e);
+      }
+      perTenantResults.push({ tenant_id: t.id, ...result, whatsapp, stuckAlerts, mediaPurged, avatars, staffInvoices, expenses });
     }
 
     return jsonResponse({ success: true, tenants: perTenantResults.length, results: perTenantResults });

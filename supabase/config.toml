@@ -87,3 +87,9 @@ verify_jwt = false
 # app_settings.drive_helper_token_hash (also how the studio is found).
 [functions.drive-helper]
 verify_jwt = false
+
+# "מרכז הוצאות" (2026-11-23, 0117): a Google Apps Script in each of the studio's mailboxes, with no Supabase session.
+# Authenticates itself via the x-avira-token header, whose SHA-256 is expense_mailboxes.token_hash (also how the studio
+# and the mailbox are found).
+[functions.expenses-mail]
+verify_jwt = false

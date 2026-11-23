@@ -50,7 +50,7 @@ async function anthropicKey(supabase: any, tenantId: string): Promise<string | n
   return data?.[0]?.value || Deno.env.get('ANTHROPIC_API_KEY') || null;
 }
 
-async function fetchPdf(url: string): Promise<Uint8Array | null> {
+export async function fetchPdf(url: string): Promise<Uint8Array | null> {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 20_000);
   try {
@@ -67,7 +67,8 @@ async function fetchPdf(url: string): Promise<Uint8Array | null> {
 }
 
 /** The link's PDF: the file itself, or Paperless's (its page's API names the signed PDF). */
-async function linkPdf(link: { url: string; provider: string | null }): Promise<Uint8Array | null> {
+// Also used by "מרכז הוצאות" (expenseIntake.ts, 2026-11-23).
+export async function linkPdf(link: { url: string; provider: string | null }): Promise<Uint8Array | null> {
   if (link.provider !== 'paperless') return fetchPdf(link.url);
   const info = paperlessInfoUrl(link.url);
   if (!info) return null;

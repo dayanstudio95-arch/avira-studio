@@ -148,6 +148,8 @@ const secondaryNavItems = [
   { title: "דפי צלמים",         url: "/photos/photographers",              icon: Camera },
   { title: "ניהול חשבוניות",    url: createPageUrl("AllInvoicesPage"),     icon: FileText },
   { title: "חשבוניות מהצוות",   url: "/StaffInvoices",                     icon: FileText },
+  // "מרכז הוצאות" (2026-11-23, 0117): every expense document — the "קבלות" group, the two mailboxes, uploads.
+  { title: "הוצאות",            url: "/Expenses",                          icon: FileText },
   // B4 (owner's decision, 2026-10-07): "אישור הודעות" removed from the menu — nothing queues there
   // (the two approval automations are off) and the page breaks when something does. Put it
   // back, and fix it, before turning those automations on. The route /PendingApprovals stays.
