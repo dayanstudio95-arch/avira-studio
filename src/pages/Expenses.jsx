@@ -90,6 +90,7 @@ function DocRow({ d, open, onToggle, mailboxes, act, busy }) {
             {kind && <span className="text-gray-400"> · {kind}</span>}
           </div>
           <div className={`text-[11px] truncate ${d.warnings?.length ? "text-orange-300" : "text-gray-500"}`}>
+            <span className="sm:hidden text-gray-300">{fmtMoney(d.amount)} · </span>
             {d.warnings?.length ? d.warnings[0] : `${sourceText(d, mailboxes)} · ${day(d.doc_date || String(d.received_at || "").slice(0, 10))}`}
           </div>
         </div>
