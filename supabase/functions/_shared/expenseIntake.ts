@@ -9,7 +9,7 @@
 // Morning is only READ: both accounts' expenses are copied to morning_expenses (syncMorning) to mark "כבר במורנינג".
 import {
   CONFIRM_WITHIN_MS, EXPENSES_BUCKET, EXPENSES_TRACK_SINCE, GROUP_CONFIRM_KEY, GROUP_KEY, MAX_EXPENSE_BYTES, MAX_READ_TRIES,
-  MORNING_SYNCED_KEY, amountOf, confirmText, dateOf, expenseWarnings, extOfMime, findDuplicate, findStaffDuplicate, groupDocOf,
+  MORNING_SYNCED_KEY, amountOf, cleanLink, confirmText, dateOf, expenseWarnings, extOfMime, findDuplicate, findStaffDuplicate, groupDocOf,
   groupSenderName, isExpenseEntity, mailPlan, mailPrefix, matchMorning, morningRowOf, sameMailTwin, sortExpense,
   type ExpenseEntity, type ExpenseReading, type GroupMessage, type MailReport, type MorningRow,
 } from './expenses.ts';
@@ -213,7 +213,7 @@ async function processDoc(supabase: any, tenantId: string, doc: any, ctx: Ctx): 
   let bytes: Uint8Array | null = null;
   let mime = String(doc.file_mime || '');
   if (!doc.file_path && doc.link_url) {
-    bytes = await linkPdf({ url: doc.link_url, provider: doc.provider ?? null });
+    bytes = await linkPdf({ url: cleanLink(doc.link_url), provider: doc.provider ?? null });
     if (!bytes) {
       await fail(supabase, doc.id, tries, 'הקישור לא החזיר קובץ — לפתוח ולשמור ידנית', 'manual');
       return 'failed';

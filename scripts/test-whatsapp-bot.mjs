@@ -4562,6 +4562,20 @@ console.log('\n— PART 75: album group messages + list order —');
     plan({ subject: 'החשבונית החודשית שלך', text: 'לצפייה בחשבונית https://8596jmye.r.eu-central-1.awstrack.me/L0/x' }),
     plan({ subject: 'עדכון', text: 'החשבונית https://www.paperless.tax/invoice?sID=abcdefghij12' }),
   ], [[1, null, false], [0, 'morning', false], [0, null, true], [0, null, false], [0, null, false], [0, null, false], [0, 'other', false], [0, 'paperless', false]]);
+  const ml = (t) => { const l = ex.mailInvoiceLink(t); return l ? [l.provider, l.url] : null; };
+  check('links in a mail\'s plain text ("<https://…>"): the closing ">" is not part of the address; Rivhit and Morning\'s mail links are known', [
+    ml('לצפייה בחשבונית <https://api.rivhit.co.il/pdf/FileService.svc/GetDocument/515149078/abc/true/02_006584>'),
+    ml('הורדה <https://api.morning.co/communication/t/05b4af.0.WZHm4W>'),
+    ml('חשבונית <https://www.paperless.tax/invoice?sID=5aoP5Dabcdef12>'),
+    ml('Invoice: https://mrng.to/AbC123.'),
+    ex.cleanLink('https://x.co/a/b>'), ex.cleanLink(' https://x.co/a). '), ml('שלום, אין כאן קישור'),
+  ], [
+    ['rivhit', 'https://api.rivhit.co.il/pdf/FileService.svc/GetDocument/515149078/abc/true/02_006584'],
+    ['morning', 'https://api.morning.co/communication/t/05b4af.0.WZHm4W'],
+    ['paperless', 'https://www.paperless.tax/invoice?sID=5aoP5Dabcdef12'],
+    ['morning', 'https://mrng.to/AbC123'],
+    'https://x.co/a/b', 'https://x.co/a', null,
+  ]);
   check('one mail\'s parts, and an invoice + a receipt for the same purchase in it (counted once; no amount → never twins)', [
     ex.mailPrefix('mail:box1:18c2f3a9:0'), ex.mailPrefix('mail:box1:18c2f3a9:body'), ex.mailPrefix('wa:123'), ex.mailPrefix(null),
     ex.sameMailTwin({ id: 'b', supplier_key: 'name:railway corporation', amount: 5 }, [{ id: 'a', supplier_key: 'name:railway corporation', amount: '5.00' }]),

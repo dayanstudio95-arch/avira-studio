@@ -347,9 +347,32 @@ export function parseMailReport(body: any): MailReport | null {
 export function mailPlan(r: MailReport): { parts: MailPart[]; link: InvoiceLink | null; body: boolean } {
   if (r.parts.length) return { parts: r.parts, link: null, body: false };
   const subjectSays = RECEIPT_SUBJECT.test(r.subject);
-  const link = invoiceLink(`${r.subject}\n${r.text}`);
+  const link = mailInvoiceLink(`${r.subject}\n${r.text}`);
   if (link && (link.provider !== 'other' || subjectSays)) return { parts: [], link, body: false };
   return { parts: [], link: null, body: r.html && subjectSays };
+}
+
+/**
+ * A link as written in a mail's plain text: Gmail writes "טקסט <https://…>", so the closing ">" (and other closing
+ * marks) is not part of the address (2026-11-23: every Rivhit / Paperless / Morning link of the first run failed on it).
+ */
+export const cleanLink = (url: unknown) => String(url ?? '').trim().replace(/[)>\]}.,;'"]+$/, '');
+
+/** Invoice links that only come by mail: Morning's mail links (they lead to the PDF), Rivhit's PDF service. */
+const MAIL_LINKS: { re: RegExp; provider: string }[] = [
+  { re: /https?:\/\/api\.morning\.co\/communication\/t\/[^\s<>"]+/, provider: 'morning' },
+  { re: /https?:\/\/api\.rivhit\.co\.il\/pdf\/[^\s<>"]+/, provider: 'rivhit' },
+];
+
+/** The invoice link in a mail's text: the mail-only providers first, then the ones the staff chats know. */
+export function mailInvoiceLink(text: unknown): InvoiceLink | null {
+  const t = String(text ?? '').replace(/<(https?:\/\/[^<>\s]+)>/g, ' $1 ');
+  for (const l of MAIL_LINKS) {
+    const m = l.re.exec(t);
+    if (m) return { url: cleanLink(m[0]), provider: l.provider, direct: true };
+  }
+  const link = invoiceLink(t);
+  return link ? { ...link, url: cleanLink(link.url) } : null;
 }
 
 /** "mail:<mailbox>:<gmail id>:" — the parts of one mail share it; null for a document that did not come by mail. */
