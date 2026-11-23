@@ -340,12 +340,35 @@ export function parseMailReport(body: any): MailReport | null {
 /**
  * What to take from a mail: its readable attachments; else an invoice link in its text; else, when the subject says
  * it is a receipt / invoice, the mail itself as a PDF (online receipts come as the mail's body).
+ * Any other link counts only when the SUBJECT says invoice / receipt (2026-11-23, the first run on the owner's
+ * mailbox: a newsletter that mentions "invoice" next to a link came in as a document); Morning / Paperless / SmartBee /
+ * iCount / Invoice4U links always count.
  */
 export function mailPlan(r: MailReport): { parts: MailPart[]; link: InvoiceLink | null; body: boolean } {
   if (r.parts.length) return { parts: r.parts, link: null, body: false };
+  const subjectSays = RECEIPT_SUBJECT.test(r.subject);
   const link = invoiceLink(`${r.subject}\n${r.text}`);
-  if (link) return { parts: [], link, body: false };
-  return { parts: [], link: null, body: r.html && RECEIPT_SUBJECT.test(r.subject) };
+  if (link && (link.provider !== 'other' || subjectSays)) return { parts: [], link, body: false };
+  return { parts: [], link: null, body: r.html && subjectSays };
+}
+
+/** "mail:<mailbox>:<gmail id>:" — the parts of one mail share it; null for a document that did not come by mail. */
+export function mailPrefix(sourceRef: unknown): string | null {
+  const m = /^(mail:[^:]+:[^:]+:)/.exec(String(sourceRef ?? ''));
+  return m ? m[1] : null;
+}
+
+/**
+ * The same purchase twice in one mail: an invoice and a receipt for it (Stripe-style mails attach both) — the same
+ * supplier and the same amount. The earlier one stays; this one is a duplicate. Documents without an amount (a
+ * ticket per passenger) are never twins.
+ */
+export function sameMailTwin(doc: DocLike, others: DocLike[]): string | null {
+  if (!doc.supplier_key || doc.amount === null || doc.amount === undefined) return null;
+  for (const o of others) {
+    if (o.id && o.id !== doc.id && o.supplier_key === doc.supplier_key && near(o.amount, doc.amount)) return o.id;
+  }
+  return null;
 }
 
 /** The mailbox's label on the screen and in the row: "avira.media1" for avira.media1@gmail.com. */

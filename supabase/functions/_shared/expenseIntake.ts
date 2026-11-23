@@ -10,7 +10,7 @@
 import {
   CONFIRM_WITHIN_MS, EXPENSES_BUCKET, EXPENSES_TRACK_SINCE, GROUP_CONFIRM_KEY, GROUP_KEY, MAX_EXPENSE_BYTES, MAX_READ_TRIES,
   MORNING_SYNCED_KEY, amountOf, confirmText, dateOf, expenseWarnings, extOfMime, findDuplicate, findStaffDuplicate, groupDocOf,
-  groupSenderName, isExpenseEntity, mailPlan, matchMorning, morningRowOf, sortExpense,
+  groupSenderName, isExpenseEntity, mailPlan, mailPrefix, matchMorning, morningRowOf, sameMailTwin, sortExpense,
   type ExpenseEntity, type ExpenseReading, type GroupMessage, type MailReport, type MorningRow,
 } from './expenses.ts';
 import { STAFF_PAYERS_KEY, type Payers } from './staffInvoices.ts';
@@ -296,6 +296,13 @@ async function processDoc(supabase: any, tenantId: string, doc: any, ctx: Ctx): 
       const { data: others } = await supabase.from('expense_docs').select('id, content_hash, supplier_key, doc_number, amount').eq('tenant_id', tenantId).eq('supplier_key', s.supplierKey).eq('read_status', 'done').neq('id', doc.id).limit(50);
       const dup = findDuplicate(me, others ?? []);
       if (dup) Object.assign(update, { read_status: 'duplicate', dup_of: dup, note: 'המסמך הזה כבר נקלט' });
+    }
+    // An invoice and a receipt for the same purchase in one mail: counted once.
+    const prefix = mailPrefix(doc.source_ref);
+    if (update.read_status === 'done' && prefix && s.supplierKey && me.amount !== null) {
+      const { data: sameMail } = await supabase.from('expense_docs').select('id, supplier_key, amount').eq('tenant_id', tenantId).like('source_ref', `${prefix}%`).eq('read_status', 'done').neq('id', doc.id).limit(20);
+      const twin = sameMailTwin(me, sameMail ?? []);
+      if (twin) Object.assign(update, { read_status: 'duplicate', dup_of: twin, note: 'חשבונית וקבלה על אותה רכישה, באותו מייל — נספר פעם אחת' });
     }
     if (update.read_status === 'done' && me.doc_number) {
       const { data: staff } = await supabase.from('staff_invoices').select('id, issuer, doc_number, amount').eq('tenant_id', tenantId).eq('doc_number', me.doc_number).limit(10);
